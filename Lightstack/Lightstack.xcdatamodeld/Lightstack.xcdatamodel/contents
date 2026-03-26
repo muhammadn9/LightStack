@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23231" systemVersion="24D81" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="NO" userDefinedModelVersionIdentifier="">
+    <entity name="CDUserProfile" representedClassName="CDUserProfile" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="userId" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="displayName" optional="YES" attributeType="String"/>
+        <attribute name="age" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="heightInches" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="weightLbs" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="trainingAgeMonths" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="primaryGoals" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="[String]"/>
+        <attribute name="splitDays" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="[String]"/>
+        <attribute name="avoidExercises" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="[String]"/>
+        <attribute name="equipment" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformerName" customClassName="[String: Bool]"/>
+        <attribute name="notesToCoach" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
+    </entity>
+    <entity name="CDWorkout" representedClassName="CDWorkout" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="userId" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="localId" optional="YES" attributeType="String"/>
+        <attribute name="date" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="workoutType" attributeType="String"/>
+        <attribute name="durationMinutes" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="energyLevel" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="timeAvailableMinutes" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userNote" optional="YES" attributeType="String"/>
+        <attribute name="aiProgressionNote" optional="YES" attributeType="String"/>
+        <attribute name="plannedSessionId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="syncStatus" attributeType="String" defaultValueString="pending"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="exercises" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CDExercise" inverseName="workout" inverseEntity="CDExercise"/>
+    </entity>
+    <entity name="CDExercise" representedClassName="CDExercise" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="localId" optional="YES" attributeType="String"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="muscleGroup" attributeType="String"/>
+        <attribute name="orderIndex" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="targetSets" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="targetReps" optional="YES" attributeType="String"/>
+        <attribute name="targetRir" optional="YES" attributeType="String"/>
+        <attribute name="restSeconds" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="coachNote" optional="YES" attributeType="String"/>
+        <attribute name="syncStatus" attributeType="String" defaultValueString="pending"/>
+        <relationship name="workout" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDWorkout" inverseName="exercises" inverseEntity="CDWorkout"/>
+        <relationship name="sets" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CDWorkoutSet" inverseName="exercise" inverseEntity="CDWorkoutSet"/>
+    </entity>
+    <entity name="CDWorkoutSet" representedClassName="CDWorkoutSet" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="localId" optional="YES" attributeType="String"/>
+        <attribute name="setNumber" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="weightLbs" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="reps" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="rir" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="userFeedback" optional="YES" attributeType="String"/>
+        <attribute name="isPR" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="syncStatus" attributeType="String" defaultValueString="pending"/>
+        <attribute name="recordedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="exercise" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDExercise" inverseName="sets" inverseEntity="CDExercise"/>
+    </entity>
+    <entity name="CDPersonalRecord" representedClassName="CDPersonalRecord" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="userId" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="exerciseName" attributeType="String"/>
+        <attribute name="weightLbs" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="reps" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="dateAchieved" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="workoutId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+    </entity>
+    <entity name="CDMonthPlan" representedClassName="CDMonthPlan" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="userId" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
+        <attribute name="targetGoal" optional="YES" attributeType="String"/>
+        <attribute name="startDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="endDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="aiOverview" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="plannedSessions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CDPlannedSession" inverseName="monthPlan" inverseEntity="CDPlannedSession"/>
+    </entity>
+    <entity name="CDPlannedSession" representedClassName="CDPlannedSession" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="userId" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="plannedDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="workoutType" attributeType="String"/>
+        <attribute name="focusNote" optional="YES" attributeType="String"/>
+        <attribute name="isRestDay" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="completed" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="workoutId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <relationship name="monthPlan" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CDMonthPlan" inverseName="plannedSessions" inverseEntity="CDMonthPlan"/>
+    </entity>
+    <entity name="CDAIContextSummary" representedClassName="CDAIContextSummary" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="userId" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="workoutType" attributeType="String"/>
+        <attribute name="summaryText" attributeType="String"/>
+        <attribute name="sessionsCovered" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="lastUpdated" attributeType="Date" usesScalarValueType="NO"/>
+    </entity>
+</model>
