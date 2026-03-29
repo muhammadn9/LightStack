@@ -17,6 +17,11 @@ final class ValidationService {
         InputSanitizer.sanitizeInteger(value, min: min, max: max)
     }
 
+    /// Sanitize a short label (split day name, workout type). Max 50 chars.
+    func sanitizeLabel(_ input: String) -> String {
+        InputSanitizer.sanitizeLabel(input)
+    }
+
     /// Returns true if the sanitized string is non-empty.
     func isValid(_ input: String) -> Bool {
         !sanitize(input).isEmpty

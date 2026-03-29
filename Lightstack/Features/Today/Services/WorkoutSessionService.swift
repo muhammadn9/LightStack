@@ -34,6 +34,7 @@ final class WorkoutSessionService: GeminiServiceDelegate {
     private let localStorage: LocalStorageService
     private let supabaseService: SupabaseService
     private let validationService: ValidationService
+    private let offlineQueueManager: OfflineQueueManager
 
     private var currentRequestType: SessionRequestType = .planGeneration
     private var currentWorkout: Workout?
@@ -57,7 +58,8 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         monthPlanRepository: MonthPlanRepository,
         localStorage: LocalStorageService,
         supabaseService: SupabaseService,
-        validationService: ValidationService
+        validationService: ValidationService,
+        offlineQueueManager: OfflineQueueManager
     ) {
         self.geminiService = geminiService
         self.coachPromptService = coachPromptService
@@ -67,6 +69,7 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         self.localStorage = localStorage
         self.supabaseService = supabaseService
         self.validationService = validationService
+        self.offlineQueueManager = offlineQueueManager
 
         self.geminiService.delegate = self
     }
@@ -82,23 +85,13 @@ final class WorkoutSessionService: GeminiServiceDelegate {
     ) {
         currentRequestType = .planGeneration
 
-        // Build enriched context with rolling summary
-        let context = coachContextBuilder.buildContext(userId: userId, workoutType: workoutType)
-        let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
-        let userMessage = coachPromptService.buildWorkoutRequestMessage(
-            workoutType: workoutType,
-            time: time,
-            energy: energy,
-            notes: notes,
-            rollingSummary: context.rollingSummary,
-            recentSessions: context.recentSessions,
-            recentSessionExercises: context.recentSessionSets
-        )
+        let sanitizedType = validationService.sanitizeLabel(workoutType)
+        let sanitizedNotes = notes.map { validationService.sanitize($0) }
 
-        // Create workout record
+        // Create workout record immediately so it's available offline
         let workout = Workout.create(
             userId: userId,
-            workoutType: workoutType,
+            workoutType: sanitizedType,
             energyLevel: energy,
             timeAvailableMinutes: time
         )
@@ -106,8 +99,37 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         currentWorkoutId = workout.id
         workoutRepository.createWorkout(workout)
 
-        // Call Gemini
-        geminiService.generateContent(systemPrompt: systemPrompt, userMessage: userMessage)
+        Task { @MainActor in
+            // Check rate limit before spending an API call
+            do {
+                let allowed = try await supabaseService.checkRateLimit(userId: userId)
+                if !allowed {
+                    let error = NSError(
+                        domain: "WorkoutSessionService",
+                        code: 429,
+                        userInfo: [NSLocalizedDescriptionKey: "Too many AI requests. Please wait a moment before trying again."]
+                    )
+                    delegate?.sessionServiceDidFail(self, error: error)
+                    return
+                }
+            } catch {
+                // Rate limit check failed (network issue) — proceed and let Gemini decide
+            }
+
+            let context = coachContextBuilder.buildContext(userId: userId, workoutType: sanitizedType)
+            let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
+            let userMessage = coachPromptService.buildWorkoutRequestMessage(
+                workoutType: sanitizedType,
+                time: time,
+                energy: energy,
+                notes: sanitizedNotes,
+                rollingSummary: context.rollingSummary,
+                recentSessions: context.recentSessions,
+                recentSessionExercises: context.recentSessionSets
+            )
+
+            geminiService.generateContent(systemPrompt: systemPrompt, userMessage: userMessage)
+        }
     }
 
     // MARK: - Start Session
@@ -145,15 +167,32 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         workout.userNote = userNote.map { validationService.sanitize($0) }
         currentWorkout = workout
 
-        // Request AI progression note
-        let context = coachContextBuilder.buildContext(userId: userId)
-        let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
-        let userMessage = coachPromptService.buildPostSessionMessage(
-            exercises: exercises,
-            sets: allSets
-        )
+        Task { @MainActor in
+            // Check rate limit before spending an API call
+            do {
+                let allowed = try await supabaseService.checkRateLimit(userId: userId)
+                if !allowed {
+                    let error = NSError(
+                        domain: "WorkoutSessionService",
+                        code: 429,
+                        userInfo: [NSLocalizedDescriptionKey: "Too many AI requests. Please wait a moment before trying again."]
+                    )
+                    delegate?.sessionServiceDidFail(self, error: error)
+                    return
+                }
+            } catch {
+                // Rate limit check failed — proceed
+            }
 
-        geminiService.generateContent(systemPrompt: systemPrompt, userMessage: userMessage)
+            let context = coachContextBuilder.buildContext(userId: userId)
+            let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
+            let userMessage = coachPromptService.buildPostSessionMessage(
+                exercises: exercises,
+                sets: allSets
+            )
+
+            geminiService.generateContent(systemPrompt: systemPrompt, userMessage: userMessage)
+        }
     }
 
     // MARK: - Save Completed Workout
@@ -230,8 +269,8 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         ) { [weak self] result in
             switch result {
             case .success(let summaryText):
-                // Fetch existing summary to increment sessions covered
-                let existing = self?.localStorage.fetchContextSummary(userId: userId, workoutType: workoutType)
+                guard let self = self else { return }
+                let existing = self.localStorage.fetchContextSummary(userId: userId, workoutType: workoutType)
                 let sessionsCovered = (existing != nil ? Int(existing!.sessionsCovered) : 0) + 1
 
                 let summary = AIContextSummary.create(
@@ -240,10 +279,14 @@ final class WorkoutSessionService: GeminiServiceDelegate {
                     summaryText: summaryText,
                     sessionsCovered: sessionsCovered
                 )
-                self?.localStorage.saveContextSummary(summary)
+                self.localStorage.saveContextSummary(summary)
 
                 Task {
-                    try? await self?.supabaseService.upsertContextSummary(summary)
+                    do {
+                        try await self.supabaseService.upsertContextSummary(summary)
+                    } catch {
+                        self.offlineQueueManager.enqueue(.upsertContextSummary, payload: summary)
+                    }
                 }
             case .failure(let error):
                 print("WorkoutSessionService: Context summary generation failed: \(error.localizedDescription)")

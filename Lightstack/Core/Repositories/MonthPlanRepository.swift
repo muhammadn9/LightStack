@@ -6,10 +6,16 @@ final class MonthPlanRepository {
 
     private let localStorage: LocalStorageService
     private let supabaseService: SupabaseService
+    private let offlineQueueManager: OfflineQueueManager
 
-    init(localStorage: LocalStorageService, supabaseService: SupabaseService) {
+    init(
+        localStorage: LocalStorageService,
+        supabaseService: SupabaseService,
+        offlineQueueManager: OfflineQueueManager
+    ) {
         self.localStorage = localStorage
         self.supabaseService = supabaseService
+        self.offlineQueueManager = offlineQueueManager
     }
 
     // MARK: - Fetch
@@ -40,7 +46,8 @@ final class MonthPlanRepository {
                 try await supabaseService.insertMonthPlan(plan)
                 try await supabaseService.insertPlannedSessions(sessions)
             } catch {
-                print("MonthPlanRepository: Supabase insert failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.insertMonthPlan, payload: plan)
+                offlineQueueManager.enqueue(.insertPlannedSessions, payload: sessions)
             }
         }
     }
@@ -56,7 +63,7 @@ final class MonthPlanRepository {
             do {
                 try await supabaseService.updatePlannedSession(updated)
             } catch {
-                print("MonthPlanRepository: Supabase update failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.updatePlannedSession, payload: updated)
             }
         }
     }

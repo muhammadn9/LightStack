@@ -6,10 +6,16 @@ final class PRRepository {
 
     private let localStorage: LocalStorageService
     private let supabaseService: SupabaseService
+    private let offlineQueueManager: OfflineQueueManager
 
-    init(localStorage: LocalStorageService, supabaseService: SupabaseService) {
+    init(
+        localStorage: LocalStorageService,
+        supabaseService: SupabaseService,
+        offlineQueueManager: OfflineQueueManager
+    ) {
         self.localStorage = localStorage
         self.supabaseService = supabaseService
+        self.offlineQueueManager = offlineQueueManager
     }
 
     // MARK: - Fetch
@@ -61,12 +67,12 @@ final class PRRepository {
         // Save locally
         localStorage.savePersonalRecord(pr)
 
-        // Background sync to Supabase
+        // Sync to Supabase, queue on failure
         Task {
             do {
                 try await supabaseService.insertPersonalRecord(pr)
             } catch {
-                print("PRRepository: Supabase insert failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.insertPersonalRecord, payload: pr)
             }
         }
 
