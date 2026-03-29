@@ -5,10 +5,16 @@ final class ProfileRepository {
 
     private let localStorage: LocalStorageService
     private let supabaseService: SupabaseService
+    private let offlineQueueManager: OfflineQueueManager
 
-    init(localStorage: LocalStorageService, supabaseService: SupabaseService) {
+    init(
+        localStorage: LocalStorageService,
+        supabaseService: SupabaseService,
+        offlineQueueManager: OfflineQueueManager
+    ) {
         self.localStorage = localStorage
         self.supabaseService = supabaseService
+        self.offlineQueueManager = offlineQueueManager
     }
 
     /// Read profile from Core Data instantly, then background-fetch from Supabase.
@@ -35,7 +41,7 @@ final class ProfileRepository {
             do {
                 try await supabaseService.upsertProfile(profile)
             } catch {
-                print("ProfileRepository: Supabase upsert failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.upsertProfile, payload: profile)
             }
         }
     }

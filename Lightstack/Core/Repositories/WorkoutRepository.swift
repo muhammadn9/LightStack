@@ -7,10 +7,16 @@ final class WorkoutRepository {
 
     private let localStorage: LocalStorageService
     private let supabaseService: SupabaseService
+    private let offlineQueueManager: OfflineQueueManager
 
-    init(localStorage: LocalStorageService, supabaseService: SupabaseService) {
+    init(
+        localStorage: LocalStorageService,
+        supabaseService: SupabaseService,
+        offlineQueueManager: OfflineQueueManager
+    ) {
         self.localStorage = localStorage
         self.supabaseService = supabaseService
+        self.offlineQueueManager = offlineQueueManager
     }
 
     // MARK: - Fetch
@@ -33,7 +39,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.insertWorkout(workout)
             } catch {
-                print("WorkoutRepository: Supabase insert failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.insertWorkout, payload: workout)
             }
         }
     }
@@ -44,7 +50,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.insertExercises(exercises)
             } catch {
-                print("WorkoutRepository: Supabase exercises insert failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.insertExercises, payload: exercises)
             }
         }
     }
@@ -55,7 +61,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.insertSet(workoutSet)
             } catch {
-                print("WorkoutRepository: Supabase set insert failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.insertSet, payload: workoutSet)
             }
         }
     }
@@ -68,7 +74,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.updateWorkout(workout)
             } catch {
-                print("WorkoutRepository: Supabase update failed: \(error.localizedDescription)")
+                offlineQueueManager.enqueue(.updateWorkout, payload: workout)
             }
         }
     }
@@ -81,7 +87,6 @@ final class WorkoutRepository {
     // MARK: - Streak
 
     func fetchStreak(userId: UUID) -> Int {
-        // Try Supabase view first, fallback to local calculation
         var streak = localStorage.countConsecutiveWorkoutDays(userId: userId)
         Task {
             do {

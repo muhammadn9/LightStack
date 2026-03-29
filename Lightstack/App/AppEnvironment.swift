@@ -27,6 +27,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let authService: AuthService
     let supabaseService: SupabaseService
     let localStorageService: LocalStorageService
+    let offlineQueueManager: OfflineQueueManager
     let syncService: SyncService
     let validationService: ValidationService
     let geminiService: GeminiService
@@ -64,26 +65,31 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.authService = AuthService(client: supabaseClient)
         self.localStorageService = LocalStorageService()
         self.supabaseService = SupabaseService(client: supabaseClient)
-        self.syncService = SyncService()
+        self.offlineQueueManager = OfflineQueueManager(supabaseService: supabaseService)
+        self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
         self.validationService = ValidationService()
         self.geminiService = GeminiService()
         self.workoutStatsService = WorkoutStatsService(localStorage: localStorageService)
 
         self.profileRepository = ProfileRepository(
             localStorage: localStorageService,
-            supabaseService: supabaseService
+            supabaseService: supabaseService,
+            offlineQueueManager: offlineQueueManager
         )
         self.workoutRepository = WorkoutRepository(
             localStorage: localStorageService,
-            supabaseService: supabaseService
+            supabaseService: supabaseService,
+            offlineQueueManager: offlineQueueManager
         )
         self.prRepository = PRRepository(
             localStorage: localStorageService,
-            supabaseService: supabaseService
+            supabaseService: supabaseService,
+            offlineQueueManager: offlineQueueManager
         )
         self.monthPlanRepository = MonthPlanRepository(
             localStorage: localStorageService,
-            supabaseService: supabaseService
+            supabaseService: supabaseService,
+            offlineQueueManager: offlineQueueManager
         )
 
         self.coachPromptService = CoachPromptService(validationService: validationService)
@@ -102,7 +108,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             monthPlanRepository: monthPlanRepository,
             localStorage: localStorageService,
             supabaseService: supabaseService,
-            validationService: validationService
+            validationService: validationService,
+            offlineQueueManager: offlineQueueManager
         )
 
         self.monthPlanService = MonthPlanService(
@@ -186,6 +193,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = nil
         pendingVerificationPassword = nil
         isAuthenticated = true
+        // Flush any queued writes from before sign-in
+        syncService.triggerFlush()
     }
 
     func authServiceDidSignOut(_ service: AuthService) {
