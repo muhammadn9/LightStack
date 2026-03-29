@@ -8,6 +8,9 @@ struct LightstackApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(environment)
+                .onOpenURL { url in
+                    environment.authService.handleDeepLink(url)
+                }
         }
     }
 }

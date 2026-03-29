@@ -2,16 +2,16 @@ import SwiftUI
 
 /// Main tab bar with 4 tabs: Today, Month Plan, History, Profile.
 struct MainTabView: View {
-    // TODO: Phase 0 — Implement tab bar shell (Task #7)
+    @EnvironmentObject var environment: AppEnvironment
 
     var body: some View {
         TabView {
-            TodayView()
+            TodayView(viewModel: environment.makeTodayViewModel())
                 .tabItem {
                     Label("Today", systemImage: "figure.strengthtraining.traditional")
                 }
 
-            MonthPlanView()
+            MonthPlanView(viewModel: environment.makeMonthPlanViewModel())
                 .tabItem {
                     Label("Month Plan", systemImage: "calendar")
                 }
@@ -26,5 +26,6 @@ struct MainTabView: View {
                     Label("Profile", systemImage: "person.crop.circle")
                 }
         }
+        .tint(AppTheme.accent)
     }
 }

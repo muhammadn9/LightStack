@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Checkbox-style picker for available gym equipment.
-/// Used in both OnboardingView (step 3) and Profile editing.
+/// Checkbox-style picker for available gym equipment with purple theme.
 struct EquipmentPickerView: View {
     @Binding var selectedEquipment: [String: Bool]
 
@@ -16,9 +15,10 @@ struct EquipmentPickerView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Your Equipment")
                     .font(.title2.bold())
+                    .foregroundStyle(AppTheme.textPrimary)
                 Text("Select what's available at your gym.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.textSecondary)
 
                 equipmentGrid
             }
@@ -42,14 +42,19 @@ struct EquipmentPickerView: View {
         return Button(action: { toggleEquipment(item) }) {
             HStack {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isSelected ? .accent : .secondary)
+                    .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textSecondary)
                 Text(item)
                     .font(.subheadline)
+                    .foregroundStyle(AppTheme.textPrimary)
                 Spacer()
             }
             .padding(12)
-            .background(isSelected ? Color.accentColor.opacity(0.1) : Color.secondary.opacity(0.06))
+            .background(isSelected ? AppTheme.accent.opacity(0.12) : AppTheme.surface)
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? AppTheme.accent.opacity(0.4) : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }

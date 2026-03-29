@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Three-step onboarding flow:
+/// Three-step onboarding flow with purple radiant dark theme:
 /// 1. Profile stats (age, weight, height, training age, goals)
 /// 2. Split day setup with preset suggestions
 /// 3. Equipment picker
@@ -12,7 +12,8 @@ struct OnboardingView: View {
     @State private var displayName = ""
     @State private var age = ""
     @State private var weightLbs = ""
-    @State private var heightInches = ""
+    @State private var heightFeet = ""
+    @State private var heightInchesPartial = ""
     @State private var trainingAgeMonths = ""
     @State private var selectedGoals: Set<String> = []
 
@@ -30,19 +31,24 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            VStack {
-                stepIndicator
-                TabView(selection: $currentStep) {
-                    profileStepView.tag(0)
-                    splitDayStepView.tag(1)
-                    equipmentStepView.tag(2)
+            ZStack {
+                AppTheme.backgroundGradient.ignoresSafeArea()
+
+                VStack {
+                    stepIndicator
+                    TabView(selection: $currentStep) {
+                        profileStepView.tag(0)
+                        splitDayStepView.tag(1)
+                        equipmentStepView.tag(2)
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .animation(.easeInOut, value: currentStep)
+                    navigationButtons
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut, value: currentStep)
-                navigationButtons
             }
             .navigationTitle("Get Started")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 
@@ -52,7 +58,9 @@ struct OnboardingView: View {
         HStack(spacing: 8) {
             ForEach(0..<3) { index in
                 Capsule()
-                    .fill(index <= currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
+                    .fill(index <= currentStep
+                          ? AppTheme.accentGradient
+                          : LinearGradient(colors: [AppTheme.surfaceElevated], startPoint: .leading, endPoint: .trailing))
                     .frame(height: 4)
             }
         }
@@ -67,9 +75,9 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("About You")
                     .font(.title2.bold())
+                    .foregroundStyle(AppTheme.textPrimary)
 
-                TextField("Display Name", text: $displayName)
-                    .textFieldStyle(.roundedBorder)
+                themedField("Display Name", text: $displayName)
 
                 HStack(spacing: 12) {
                     labeledField("Age", text: $age, keyboard: .numberPad)
@@ -77,12 +85,14 @@ struct OnboardingView: View {
                 }
 
                 HStack(spacing: 12) {
-                    labeledField("Height (in)", text: $heightInches, keyboard: .decimalPad)
+                    labeledField("Height (ft)", text: $heightFeet, keyboard: .numberPad)
+                    labeledField("Height (in)", text: $heightInchesPartial, keyboard: .numberPad)
                     labeledField("Training (months)", text: $trainingAgeMonths, keyboard: .numberPad)
                 }
 
                 Text("Goals")
                     .font(.headline)
+                    .foregroundStyle(AppTheme.textPrimary)
                 goalSelectionGrid
             }
             .padding(24)
@@ -104,9 +114,12 @@ struct OnboardingView: View {
                 .font(.subheadline)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(isSelected ? Color.accentColor : Color.secondary.opacity(0.15))
-                .foregroundStyle(isSelected ? .white : .primary)
+                .background(isSelected ? AppTheme.accent : AppTheme.surface)
+                .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
                 .clipShape(Capsule())
+                .overlay(
+                    Capsule().stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
+                )
         }
     }
 
@@ -125,9 +138,10 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Your Split Days")
                     .font(.title2.bold())
+                    .foregroundStyle(AppTheme.textPrimary)
                 Text("Name your training days however you like. These are suggestions to get started.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.textSecondary)
 
                 presetSuggestions
                 currentSplitDaysList
@@ -141,6 +155,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Quick Presets")
                 .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
             presetButton("PPL", days: ["Push", "Pull", "Legs"])
             presetButton("Bro Split", days: ["Chest", "Back", "Shoulders", "Arms", "Legs"])
             presetButton("Upper / Lower", days: ["Upper", "Lower"])
@@ -149,17 +164,22 @@ struct OnboardingView: View {
     }
 
     private func presetButton(_ name: String, days: [String]) -> some View {
-        Button(action: { splitDays = days }) {
+        let isActive = splitDays == days
+        return Button(action: { splitDays = days }) {
             HStack {
-                Text(name).fontWeight(.medium)
+                Text(name).fontWeight(.medium).foregroundStyle(AppTheme.textPrimary)
                 Spacer()
                 Text(days.joined(separator: ", "))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.textSecondary)
             }
             .padding(12)
-            .background(Color.secondary.opacity(0.08))
+            .background(isActive ? AppTheme.accent.opacity(0.15) : AppTheme.surface)
             .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isActive ? AppTheme.accent : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -169,6 +189,7 @@ struct OnboardingView: View {
             if !splitDays.isEmpty {
                 Text("Your Days")
                     .font(.headline)
+                    .foregroundStyle(AppTheme.textPrimary)
                     .padding(.top, 8)
                 ForEach(Array(splitDays.enumerated()), id: \.offset) { index, day in
                     splitDayRow(day, at: index)
@@ -179,25 +200,29 @@ struct OnboardingView: View {
 
     private func splitDayRow(_ day: String, at index: Int) -> some View {
         HStack {
-            Text(day)
+            Text(day).foregroundStyle(AppTheme.textPrimary)
             Spacer()
             Button(action: { splitDays.remove(at: index) }) {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTheme.textSecondary)
             }
         }
         .padding(10)
-        .background(Color.secondary.opacity(0.06))
+        .background(AppTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var addCustomDayField: some View {
         HStack {
             TextField("Add custom day (e.g. Heavy Pull)", text: $newDayLabel)
-                .textFieldStyle(.roundedBorder)
+                .padding(12)
+                .background(AppTheme.surfaceElevated)
+                .foregroundStyle(AppTheme.textPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             Button(action: addCustomDay) {
                 Image(systemName: "plus.circle.fill")
                     .font(.title3)
+                    .foregroundStyle(AppTheme.accent)
             }
             .disabled(newDayLabel.trimmingCharacters(in: .whitespaces).isEmpty)
         }
@@ -222,15 +247,30 @@ struct OnboardingView: View {
         HStack {
             if currentStep > 0 {
                 Button("Back") { currentStep -= 1 }
-                    .buttonStyle(.bordered)
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 24)
+                    .background(AppTheme.surface)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
             Spacer()
             if currentStep < 2 {
                 Button("Next") { currentStep += 1 }
-                    .buttonStyle(.borderedProminent)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 24)
+                    .background(AppTheme.accentGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             } else {
                 Button("Finish") { completeOnboarding() }
-                    .buttonStyle(.borderedProminent)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 24)
+                    .background(AppTheme.accentGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
         .padding(.horizontal, 24)
@@ -238,11 +278,36 @@ struct OnboardingView: View {
     }
 
     private func completeOnboarding() {
-        // TODO: Save profile to Core Data + Supabase via ProfileRepository
+        guard let userId = environment.authService.currentUser()?.userId else { return }
+
+        let profile = UserProfile.create(
+            userId: userId,
+            displayName: displayName.isEmpty ? nil : displayName,
+            age: Int(age),
+            heightInches: Double((Int(heightFeet) ?? 0) * 12 + (Int(heightInchesPartial) ?? 0)),
+            weightLbs: Double(weightLbs),
+            trainingAgeMonths: Int(trainingAgeMonths),
+            primaryGoals: Array(selectedGoals),
+            splitDays: splitDays,
+            avoidExercises: [],
+            equipment: selectedEquipment,
+            notesToCoach: nil
+        )
+
+        environment.profileRepository.saveProfile(profile)
+        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         environment.hasCompletedOnboarding = true
     }
 
     // MARK: - Helpers
+
+    private func themedField(_ label: String, text: Binding<String>) -> some View {
+        TextField(label, text: text)
+            .padding(14)
+            .background(AppTheme.surfaceElevated)
+            .foregroundStyle(AppTheme.textPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
 
     private func labeledField(
         _ label: String,
@@ -250,17 +315,19 @@ struct OnboardingView: View {
         keyboard: UIKeyboardType
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(label).font(.caption).foregroundStyle(AppTheme.textSecondary)
             TextField(label, text: text)
                 .keyboardType(keyboard)
-                .textFieldStyle(.roundedBorder)
+                .padding(12)
+                .background(AppTheme.surfaceElevated)
+                .foregroundStyle(AppTheme.textPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 }
 
 // MARK: - FlowLayout
 
-/// Simple flow layout for wrapping chips/tags horizontally.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 

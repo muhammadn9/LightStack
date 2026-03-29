@@ -1,10 +1,54 @@
 import SwiftUI
 
-/// Single set row within an exercise: weight x reps x RIR with inline editing.
+/// Single logged set display with purple-themed styling.
 struct SetRowView: View {
-    // TODO: Phase 1 — Implement single set row
+    let workoutSet: WorkoutSet
 
     var body: some View {
-        Text("Set Row — TODO")
+        HStack(spacing: 6) {
+            // Set number badge
+            Text("\(workoutSet.setNumber)")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 22, height: 22)
+                .background(AppTheme.accent)
+                .clipShape(Circle())
+
+            Text(String(format: "%.1f", workoutSet.weightLbs))
+                .fontWeight(.semibold)
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("lbs")
+                .foregroundStyle(AppTheme.textSecondary)
+
+            Text("x")
+                .foregroundStyle(AppTheme.textSecondary)
+
+            Text("\(workoutSet.reps)")
+                .fontWeight(.semibold)
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("reps")
+                .foregroundStyle(AppTheme.textSecondary)
+
+            Text("@")
+                .foregroundStyle(AppTheme.textSecondary)
+
+            Text("RIR \(workoutSet.rir)")
+                .fontWeight(.medium)
+                .foregroundStyle(AppTheme.textPrimary)
+
+            Spacer()
+
+            if workoutSet.isPR {
+                Image(systemName: "star.fill")
+                    .foregroundStyle(AppTheme.warning)
+                    .font(.caption)
+                    .shadow(color: AppTheme.warning.opacity(0.5), radius: 4)
+            }
+        }
+        .font(.subheadline)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(AppTheme.surfaceElevated.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
