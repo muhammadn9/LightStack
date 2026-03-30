@@ -5,33 +5,49 @@ import Foundation
 /// before it reaches any AI prompt.
 struct InputSanitizer {
 
-    private static let blockedPatterns: [NSRegularExpression] = [
-        // Classic instruction override attempts
-        try! NSRegularExpression(pattern: "ignore (previous|all|your) instructions", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "disregard (previous|all|your) instructions", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "forget (previous|all|your) instructions", options: .caseInsensitive),
-        // Role/identity hijacking
-        try! NSRegularExpression(pattern: "you are now", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "act as (a |an )?", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "pretend (you are|to be)", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "roleplay as", options: .caseInsensitive),
-        // Prompt structure leakage
-        try! NSRegularExpression(pattern: "system prompt", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "your instructions", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "your (system |original )?prompt", options: .caseInsensitive),
-        // Model-specific injection tokens
-        try! NSRegularExpression(pattern: "\\[INST\\]", options: []),
-        try! NSRegularExpression(pattern: "\\[/INST\\]", options: []),
-        try! NSRegularExpression(pattern: "<\\|system\\|>", options: []),
-        try! NSRegularExpression(pattern: "<\\|user\\|>", options: []),
-        try! NSRegularExpression(pattern: "<\\|assistant\\|>", options: []),
-        // General jailbreak terms
-        try! NSRegularExpression(pattern: "jailbreak", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "DAN mode", options: .caseInsensitive),
-        try! NSRegularExpression(pattern: "developer mode", options: .caseInsensitive),
-    ]
+    /// Patterns are compiled once at startup via a validated factory.
+    /// `try!` is intentionally avoided: a regex syntax error would crash the
+    /// app on launch with no recovery path. Instead, bad patterns are caught
+    /// by `assertionFailure` during development and silently skipped in release.
+    private static let blockedPatterns: [NSRegularExpression] = {
+        let rawPatterns: [(String, NSRegularExpression.Options)] = [
+            // Classic instruction override attempts
+            ("ignore (previous|all|your) instructions",        .caseInsensitive),
+            ("disregard (previous|all|your) instructions",     .caseInsensitive),
+            ("forget (previous|all|your) instructions",        .caseInsensitive),
+            // Role / identity hijacking
+            ("you are now",                                     .caseInsensitive),
+            ("act as (a |an )?",                               .caseInsensitive),
+            ("pretend (you are|to be)",                        .caseInsensitive),
+            ("roleplay as",                                     .caseInsensitive),
+            // Prompt structure leakage
+            ("system prompt",                                   .caseInsensitive),
+            ("your instructions",                               .caseInsensitive),
+            ("your (system |original )?prompt",                .caseInsensitive),
+            // Model-specific injection tokens
+            ("\\[INST\\]",                                      []),
+            ("\\[/INST\\]",                                     []),
+            ("<\\|system\\|>",                                  []),
+            ("<\\|user\\|>",                                    []),
+            ("<\\|assistant\\|>",                               []),
+            // General jailbreak terms
+            ("jailbreak",                                       .caseInsensitive),
+            ("DAN mode",                                        .caseInsensitive),
+            ("developer mode",                                  .caseInsensitive),
+        ]
+
+        return rawPatterns.compactMap { pattern, options in
+            do {
+                return try NSRegularExpression(pattern: pattern, options: options)
+            } catch {
+                assertionFailure("InputSanitizer: invalid regex pattern '\(pattern)': \(error)")
+                return nil
+            }
+        }
+    }()
 
     private static let maxLength = 500
+    private static let maxLabelLength = 50
 
     /// Trim whitespace, strip blocked regex patterns, truncate to 500 chars.
     static func sanitize(_ input: String) -> String {
@@ -55,12 +71,12 @@ struct InputSanitizer {
         return result
     }
 
-    /// Sanitize a short label (split day name, workout type).
+    /// Sanitize a short label (split day name, workout type, exercise name).
     /// Applies the same pattern stripping but caps at 50 chars.
     static func sanitizeLabel(_ input: String) -> String {
         var result = sanitize(input)
-        if result.count > 50 {
-            result = String(result.prefix(50))
+        if result.count > maxLabelLength {
+            result = String(result.prefix(maxLabelLength))
         }
         return result
     }

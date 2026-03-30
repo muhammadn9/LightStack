@@ -39,7 +39,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.insertWorkout(workout)
             } catch {
-                offlineQueueManager.enqueue(.insertWorkout, payload: workout)
+                await offlineQueueManager.enqueue(.insertWorkout, payload: workout)
             }
         }
     }
@@ -50,7 +50,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.insertExercises(exercises)
             } catch {
-                offlineQueueManager.enqueue(.insertExercises, payload: exercises)
+                await offlineQueueManager.enqueue(.insertExercises, payload: exercises)
             }
         }
     }
@@ -61,7 +61,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.insertSet(workoutSet)
             } catch {
-                offlineQueueManager.enqueue(.insertSet, payload: workoutSet)
+                await offlineQueueManager.enqueue(.insertSet, payload: workoutSet)
             }
         }
     }
@@ -74,7 +74,7 @@ final class WorkoutRepository {
             do {
                 try await supabaseService.updateWorkout(workout)
             } catch {
-                offlineQueueManager.enqueue(.updateWorkout, payload: workout)
+                await offlineQueueManager.enqueue(.updateWorkout, payload: workout)
             }
         }
     }
@@ -87,18 +87,7 @@ final class WorkoutRepository {
     // MARK: - Streak
 
     func fetchStreak(userId: UUID) -> Int {
-        var streak = localStorage.countConsecutiveWorkoutDays(userId: userId)
-        Task {
-            do {
-                let remoteStreak = try await supabaseService.fetchCurrentStreak(userId: userId)
-                if remoteStreak > streak {
-                    streak = remoteStreak
-                }
-            } catch {
-                // Local calculation is the fallback
-            }
-        }
-        return streak
+        localStorage.countConsecutiveWorkoutDays(userId: userId)
     }
 
     // MARK: - Fetch Exercises/Sets (for post-workout)

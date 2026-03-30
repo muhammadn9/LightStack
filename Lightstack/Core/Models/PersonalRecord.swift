@@ -101,6 +101,7 @@ struct PersonalRecord: Codable, Identifiable {
 
     // MARK: - Computed Properties
 
+    /// Estimated 1-rep max using the Epley formula: weight × (1 + reps/30).
     var estimatedOneRepMax: Double {
         weightLbs * (1 + Double(reps) / 30)
     }

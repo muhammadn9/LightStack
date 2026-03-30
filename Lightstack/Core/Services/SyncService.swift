@@ -4,6 +4,9 @@ import Network
 /// Monitors connectivity via NWPathMonitor and coordinates sync
 /// between local Core Data and remote Supabase.
 /// Triggers OfflineQueueManager flush on reconnect.
+/// @MainActor ensures all state mutations (isOnline, flushTask) happen
+/// on the main actor, preventing data races from concurrent callers.
+@MainActor
 final class SyncService: ObservableObject {
 
     @Published private(set) var isOnline: Bool = false
@@ -26,7 +29,7 @@ final class SyncService: ObservableObject {
 
     // MARK: - Public
 
-    /// Manually trigger a queue flush — call on app foreground.
+    /// Manually trigger a queue flush — called on sign-in and app foreground.
     func triggerFlush() {
         flushTask?.cancel()
         flushTask = Task { [weak self] in
@@ -38,9 +41,9 @@ final class SyncService: ObservableObject {
 
     private func startMonitoring() {
         monitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
             let nowOnline = path.status == .satisfied
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 let wasOffline = !self.isOnline
                 self.isOnline = nowOnline
                 if nowOnline && wasOffline {
