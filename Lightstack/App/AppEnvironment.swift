@@ -213,6 +213,18 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = nil
         pendingVerificationPassword = nil
         isAuthenticated = true
+
+        // Check if profile exists in database - if so, skip onboarding
+        if let userId = authService.currentUser()?.userId {
+            let profile = profileRepository.fetchProfileSync(userId: userId)
+            if profile != nil {
+                hasCompletedOnboarding = true
+                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+            } else {
+                hasCompletedOnboarding = false
+            }
+        }
+
         Task { @MainActor in
             syncService.triggerFlush()
         }

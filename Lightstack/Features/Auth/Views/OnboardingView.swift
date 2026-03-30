@@ -256,13 +256,18 @@ struct OnboardingView: View {
             }
             Spacer()
             if currentStep < 2 {
-                Button("Next") { currentStep += 1 }
+                Button("Next") {
+                    if canProceedToNextStep {
+                        currentStep += 1
+                    }
+                }
                     .font(.headline)
                     .foregroundStyle(.white)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
-                    .background(AppTheme.accentGradient)
+                    .background(canProceedToNextStep ? AppTheme.accentGradient : LinearGradient(colors: [AppTheme.surfaceElevated], startPoint: .leading, endPoint: .trailing))
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                    .disabled(!canProceedToNextStep)
             } else {
                 Button("Finish") { completeOnboarding() }
                     .font(.headline)
@@ -275,6 +280,21 @@ struct OnboardingView: View {
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 16)
+    }
+
+    // MARK: - Validation
+
+    private var canProceedToNextStep: Bool {
+        switch currentStep {
+        case 0:
+            // Step 1: Profile - require at least display name
+            return !displayName.trimmingCharacters(in: .whitespaces).isEmpty
+        case 1:
+            // Step 2: Split Days - require at least one split day
+            return !splitDays.isEmpty
+        default:
+            return true
+        }
     }
 
     private func completeOnboarding() {
