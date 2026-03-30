@@ -42,12 +42,18 @@ final class MonthPlanRepository {
         localStorage.saveMonthPlan(plan)
         localStorage.savePlannedSessions(sessions, monthPlanId: plan.id)
         Task {
+            // Separate do/catch blocks: only enqueue the operation that actually failed.
+            // If insertMonthPlan succeeds but insertPlannedSessions fails, enqueueing
+            // the plan would cause a PK conflict on retry — so they must be tracked separately.
             do {
                 try await supabaseService.insertMonthPlan(plan)
+            } catch {
+                await offlineQueueManager.enqueue(.insertMonthPlan, payload: plan)
+            }
+            do {
                 try await supabaseService.insertPlannedSessions(sessions)
             } catch {
-                offlineQueueManager.enqueue(.insertMonthPlan, payload: plan)
-                offlineQueueManager.enqueue(.insertPlannedSessions, payload: sessions)
+                await offlineQueueManager.enqueue(.insertPlannedSessions, payload: sessions)
             }
         }
     }
@@ -63,7 +69,7 @@ final class MonthPlanRepository {
             do {
                 try await supabaseService.updatePlannedSession(updated)
             } catch {
-                offlineQueueManager.enqueue(.updatePlannedSession, payload: updated)
+                await offlineQueueManager.enqueue(.updatePlannedSession, payload: updated)
             }
         }
     }

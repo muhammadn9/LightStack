@@ -39,9 +39,11 @@ struct QueuedOperation: Codable, Identifiable {
 // MARK: - OfflineQueueManager
 
 /// Queues writes when the device is offline.
-/// Flushes pending records to Supabase on reconnect.
+/// Declared as an actor so all queue read-modify-write operations are
+/// serialized — preventing concurrent enqueues from racing and silently
+/// dropping operations.
 /// Uses local_id (device UUID) to prevent duplicate inserts on retry.
-final class OfflineQueueManager {
+actor OfflineQueueManager {
 
     private let queueKey = "lightstack_offline_queue_v1"
     private let maxAttempts = 5
@@ -65,14 +67,23 @@ final class OfflineQueueManager {
         saveQueue(current)
     }
 
+    /// Remove all queued operations.
+    /// Called on sign-out to prevent a future session from flushing
+    /// stale operations under the wrong user's JWT.
+    func clearQueue() {
+        saveQueue([])
+    }
+
     /// Flush all pending operations to Supabase in FK-dependency order.
-    /// Operations that fail are re-queued up to maxAttempts times.
+    /// Unknown operation types are processed last rather than dropped.
+    /// Failed operations are re-queued up to maxAttempts times.
     /// Data is always safe in Core Data regardless of queue state.
     func flush() async {
-        var current = loadQueue()
+        let current = loadQueue()
         guard !current.isEmpty else { return }
 
-        // Process in FK order: workouts must exist before exercises, exercises before sets
+        // Ordered by FK dependency: parents before children.
+        // Any type NOT in this list is sorted to the end — never silently dropped.
         let order: [QueuedOperationType] = [
             .insertWorkout, .updateWorkout,
             .insertExercises, .insertSet,
@@ -80,7 +91,11 @@ final class OfflineQueueManager {
             .upsertContextSummary,
             .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession
         ]
-        let sorted = order.flatMap { type in current.filter { $0.type == type } }
+        let sorted = current.sorted { a, b in
+            let ai = order.firstIndex(of: a.type) ?? order.count
+            let bi = order.firstIndex(of: b.type) ?? order.count
+            return ai < bi
+        }
 
         var failed: [QueuedOperation] = []
         for var op in sorted {

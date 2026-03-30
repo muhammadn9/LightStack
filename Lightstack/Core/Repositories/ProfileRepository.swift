@@ -41,7 +41,7 @@ final class ProfileRepository {
             do {
                 try await supabaseService.upsertProfile(profile)
             } catch {
-                offlineQueueManager.enqueue(.upsertProfile, payload: profile)
+                await offlineQueueManager.enqueue(.upsertProfile, payload: profile)
             }
         }
     }

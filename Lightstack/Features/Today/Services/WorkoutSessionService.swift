@@ -41,6 +41,8 @@ final class WorkoutSessionService: GeminiServiceDelegate {
     private(set) var currentWorkoutId: UUID?
     private var pendingSummaryExercises: [Exercise] = []
     private var pendingSummarySets: [UUID: [WorkoutSet]] = [:]
+    /// Retained until the async callback fires — prevents dealloc before response arrives.
+    private var summaryGeminiService: GeminiService?
 
     var currentWorkoutCreatedAt: Date? {
         currentWorkout?.createdAt
@@ -88,19 +90,18 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         let sanitizedType = validationService.sanitizeLabel(workoutType)
         let sanitizedNotes = notes.map { validationService.sanitize($0) }
 
-        // Create workout record immediately so it's available offline
-        let workout = Workout.create(
+        // Pre-build the workout value so it's ready the moment rate limit passes.
+        // Do NOT create the record yet — creating it before the rate-limit check
+        // would leave phantom workouts in history if the check fails.
+        let pendingWorkout = Workout.create(
             userId: userId,
             workoutType: sanitizedType,
             energyLevel: energy,
             timeAvailableMinutes: time
         )
-        currentWorkout = workout
-        currentWorkoutId = workout.id
-        workoutRepository.createWorkout(workout)
 
         Task { @MainActor in
-            // Check rate limit before spending an API call
+            // Rate limit check before any writes or API calls
             do {
                 let allowed = try await supabaseService.checkRateLimit(userId: userId)
                 if !allowed {
@@ -115,6 +116,11 @@ final class WorkoutSessionService: GeminiServiceDelegate {
             } catch {
                 // Rate limit check failed (network issue) — proceed and let Gemini decide
             }
+
+            // Write the workout record only after passing rate limit
+            currentWorkout = pendingWorkout
+            currentWorkoutId = pendingWorkout.id
+            workoutRepository.createWorkout(pendingWorkout)
 
             let context = coachContextBuilder.buildContext(userId: userId, workoutType: sanitizedType)
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
@@ -156,19 +162,20 @@ final class WorkoutSessionService: GeminiServiceDelegate {
     ) {
         currentRequestType = .progressionNote
 
-        // Store for later summary generation
         pendingSummaryExercises = exercises
         pendingSummarySets = allSets
 
-        // Calculate duration
         guard var workout = currentWorkout else { return }
         let durationMinutes = Int(Date().timeIntervalSince(workout.createdAt) / 60)
         workout.durationMinutes = durationMinutes
         workout.userNote = userNote.map { validationService.sanitize($0) }
         currentWorkout = workout
 
+        // Persist duration immediately — if the app is backgrounded/killed while
+        // waiting for the AI note, the duration is already saved in Core Data.
+        workoutRepository.updateWorkout(workout)
+
         Task { @MainActor in
-            // Check rate limit before spending an API call
             do {
                 let allowed = try await supabaseService.checkRateLimit(userId: userId)
                 if !allowed {
@@ -205,10 +212,8 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         currentWorkout = workout
         workoutRepository.updateWorkout(workout)
 
-        // Mark today's planned session as completed if it matches
         markMatchingPlannedSessionCompleted(workout: workout)
 
-        // Trigger background context summary generation
         let exercises = pendingSummaryExercises
         let sets = pendingSummarySets
         let workoutType = workout.workoutType
@@ -253,8 +258,12 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         exercises: [Exercise],
         sets: [UUID: [WorkoutSet]]
     ) {
-        // Use a separate GeminiService instance to avoid delegate conflict
+        // Stored as an instance property so ARC keeps it alive until the callback fires.
+        // A local `let` would be deallocated before the network response arrives,
+        // causing the completion handler to receive an empty response.
         let summaryGemini = GeminiService()
+        summaryGeminiService = summaryGemini
+
         let context = coachContextBuilder.buildContext(userId: userId)
         let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
         let userMessage = coachPromptService.buildContextSummaryMessage(
@@ -267,11 +276,14 @@ final class WorkoutSessionService: GeminiServiceDelegate {
             systemPrompt: systemPrompt,
             messages: [ChatMessage(role: .user, content: userMessage)]
         ) { [weak self] result in
+            guard let self = self else { return }
+            // Release the retained instance now that the callback has fired
+            self.summaryGeminiService = nil
+
             switch result {
             case .success(let summaryText):
-                guard let self = self else { return }
                 let existing = self.localStorage.fetchContextSummary(userId: userId, workoutType: workoutType)
-                let sessionsCovered = (existing != nil ? Int(existing!.sessionsCovered) : 0) + 1
+                let sessionsCovered = existing.map { Int($0.sessionsCovered) + 1 } ?? 1
 
                 let summary = AIContextSummary.create(
                     userId: userId,
@@ -285,7 +297,7 @@ final class WorkoutSessionService: GeminiServiceDelegate {
                     do {
                         try await self.supabaseService.upsertContextSummary(summary)
                     } catch {
-                        self.offlineQueueManager.enqueue(.upsertContextSummary, payload: summary)
+                        await self.offlineQueueManager.enqueue(.upsertContextSummary, payload: summary)
                     }
                 }
             case .failure(let error):
@@ -302,28 +314,30 @@ final class WorkoutSessionService: GeminiServiceDelegate {
     func parseExerciseTable(_ text: String) -> [Exercise] {
         guard let workoutId = currentWorkoutId else { return [] }
 
-        let lines = text.components(separatedBy: "\n")
+        // Use .newlines to handle both \n and \r\n line endings from API responses
+        let lines = text.components(separatedBy: .newlines)
         var exercises: [Exercise] = []
         var orderIndex = 0
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-            // Skip non-table lines
             guard trimmed.hasPrefix("|") && trimmed.hasSuffix("|") else { continue }
 
-            // Split columns
             let columns = trimmed
                 .split(separator: "|")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
 
-            // Skip header row and separator row
             guard columns.count >= 4 else { continue }
             if columns[0].lowercased().contains("exercise") { continue }
             if columns[0].contains("---") { continue }
 
-            let name = columns[0]
-            guard !name.isEmpty, !name.contains("---") else { continue }
+            let rawName = columns[0]
+            guard !rawName.isEmpty, !rawName.contains("---") else { continue }
+
+            // Sanitize AI-generated exercise names before storing
+            let name = validationService.sanitizeLabel(rawName)
+            guard !name.isEmpty else { continue }
 
             let setsStr = columns.count > 1 ? columns[1] : ""
             let weightStr = columns.count > 2 ? columns[2] : ""
@@ -373,7 +387,6 @@ final class WorkoutSessionService: GeminiServiceDelegate {
             delegate?.sessionServiceDidReceiveProgressionNote(self, note: text)
 
         case .contextSummary:
-            // Handled by async callback, not delegate
             break
         }
     }
@@ -391,7 +404,6 @@ final class WorkoutSessionService: GeminiServiceDelegate {
 
     private func parseRestSeconds(_ str: String) -> Int? {
         guard let value = parseFirstInt(str) else { return nil }
-        // If the string contains "min", multiply by 60
         if str.lowercased().contains("min") {
             return value * 60
         }

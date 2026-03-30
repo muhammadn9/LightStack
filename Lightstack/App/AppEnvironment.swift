@@ -14,9 +14,21 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     @Published var needsEmailVerification: Bool = false
     @Published var pendingVerificationEmail: String?
     @Published var authErrorMessage: String?
-    /// Temporarily stored so "I've verified" can re-sign-in to confirm.
-    /// Cleared on successful sign-in or sign-out.
-    var pendingVerificationPassword: String?
+
+    /// The verification password is stored in the Keychain rather than as a
+    /// plain property, so it never appears in memory dumps, crash reports,
+    /// or SwiftUI state observation. The setter writes to / deletes from the
+    /// Keychain; the getter reads from it on demand.
+    var pendingVerificationPassword: String? {
+        get { KeychainService.load(key: "pending_verification_password") }
+        set {
+            if let value = newValue {
+                KeychainService.save(key: "pending_verification_password", value: value)
+            } else {
+                KeychainService.delete(key: "pending_verification_password")
+            }
+        }
+    }
 
     // MARK: - Shared Client
 
@@ -50,11 +62,18 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     // MARK: - Init
 
     init() {
-        let url = Bundle.main.infoDictionary?["SUPABASE_URL"] as? String ?? ""
-        let key = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String ?? ""
+        let supabaseURL = Bundle.main.infoDictionary?["SUPABASE_URL"] as? String ?? ""
+        let supabaseKey = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String ?? ""
+
+        // Fail loudly at development time if keys are missing so misconfiguration
+        // is never silently swallowed (placeholder URL would produce cryptic errors).
+        assert(!supabaseURL.isEmpty, "SUPABASE_URL is not configured — add Secrets.xcconfig")
+        assert(!supabaseKey.isEmpty, "SUPABASE_ANON_KEY is not configured — add Secrets.xcconfig")
+
+        let resolvedURL = URL(string: supabaseURL) ?? URL(string: "https://placeholder.supabase.co")!
         self.supabaseClient = SupabaseClient(
-            supabaseURL: URL(string: url) ?? URL(string: "https://placeholder.supabase.co")!,
-            supabaseKey: key,
+            supabaseURL: resolvedURL,
+            supabaseKey: supabaseKey,
             options: .init(
                 auth: .init(
                     redirectToURL: AuthService.redirectURL
@@ -193,7 +212,6 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = nil
         pendingVerificationPassword = nil
         isAuthenticated = true
-        // Flush any queued writes from before sign-in
         syncService.triggerFlush()
     }
 
@@ -204,6 +222,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = nil
         pendingVerificationPassword = nil
         UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+        // Clear queued writes so a future session (or different user) does not
+        // flush stale operations under the wrong JWT.
+        Task { await offlineQueueManager.clearQueue() }
     }
 
     func authServiceNeedsEmailVerification(_ service: AuthService, email: String) {

@@ -7,6 +7,10 @@ final class PRRepository {
     private let localStorage: LocalStorageService
     private let supabaseService: SupabaseService
     private let offlineQueueManager: OfflineQueueManager
+    /// Serializes the fetch-compare-write block so concurrent set logs
+    /// for the same exercise cannot both read the same baseline and both
+    /// create duplicate PR records.
+    private let prLock = NSLock()
 
     init(
         localStorage: LocalStorageService,
@@ -36,6 +40,8 @@ final class PRRepository {
 
     /// Check if a new set beats the existing PR for this exercise.
     /// Returns the new PersonalRecord if it's a PR, nil otherwise.
+    /// Uses NSLock to prevent concurrent set logs from both passing
+    /// the same e1RM threshold and creating duplicate PR records.
     func checkAndRecordPR(
         userId: UUID,
         exerciseName: String,
@@ -43,19 +49,22 @@ final class PRRepository {
         reps: Int,
         workoutId: UUID?
     ) -> PersonalRecord? {
-        // Calculate estimated 1RM using Brzycki formula
+        guard reps > 0, weightLbs > 0 else { return nil }
+
+        var newPR: PersonalRecord?
+
+        // Lock covers the read-compare-write sequence atomically
+        prLock.lock()
+        defer { prLock.unlock() }
+
+        // Calculate estimated 1RM using Epley formula: weight × (1 + reps/30)
         let newE1RM = weightLbs * (1 + Double(reps) / 30)
 
-        // Fetch existing PR for this exercise
         let existingPR = fetchPR(userId: userId, exerciseName: exerciseName)
         let existingE1RM = existingPR?.estimatedOneRepMax ?? 0
 
-        // Check if new set beats existing PR
-        guard newE1RM > existingE1RM else {
-            return nil
-        }
+        guard newE1RM > existingE1RM else { return nil }
 
-        // Create new PR record
         let pr = PersonalRecord.create(
             userId: userId,
             exerciseName: exerciseName,
@@ -63,19 +72,18 @@ final class PRRepository {
             reps: reps,
             workoutId: workoutId
         )
-
-        // Save locally
         localStorage.savePersonalRecord(pr)
+        newPR = pr
 
-        // Sync to Supabase, queue on failure
+        // Supabase sync happens outside the lock — network I/O must never block it
         Task {
             do {
                 try await supabaseService.insertPersonalRecord(pr)
             } catch {
-                offlineQueueManager.enqueue(.insertPersonalRecord, payload: pr)
+                await offlineQueueManager.enqueue(.insertPersonalRecord, payload: pr)
             }
         }
 
-        return pr
+        return newPR
     }
 }
