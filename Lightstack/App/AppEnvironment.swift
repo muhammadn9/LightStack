@@ -61,6 +61,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     // MARK: - Init
 
+    @MainActor
     init() {
         let supabaseURL = Bundle.main.infoDictionary?["SUPABASE_URL"] as? String ?? ""
         let supabaseKey = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String ?? ""
@@ -212,7 +213,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = nil
         pendingVerificationPassword = nil
         isAuthenticated = true
-        syncService.triggerFlush()
+        Task { @MainActor in
+            syncService.triggerFlush()
+        }
     }
 
     func authServiceDidSignOut(_ service: AuthService) {

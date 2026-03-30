@@ -79,7 +79,13 @@ struct HistoryListView: View {
                 .foregroundStyle(isSelected ? .white : AppTheme.textSecondary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(isSelected ? AppTheme.accentGradient : AnyShapeStyle(AppTheme.surfaceElevated))
+                .background {
+                    if isSelected {
+                        AppTheme.accentGradient
+                    } else {
+                        AppTheme.surfaceElevated
+                    }
+                }
                 .clipShape(Capsule())
         }
     }
