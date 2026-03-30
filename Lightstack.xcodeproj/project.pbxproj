@@ -59,6 +59,7 @@
 		E18D773B912C619728FFE4C7 /* ProfileViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E258457263378E2CB56BEC14 /* ProfileViewModel.swift */; };
 		E556AEF88F21825FF1D51EFF /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C48010D6E8588D794E4A142 /* SupabaseService.swift */; };
 		E65828876C6E0CCF717A9E36 /* DateFormatter+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5ABE1748E32FBB842C3F56C /* DateFormatter+Extensions.swift */; };
+		b2aebeeb02a6431dbf57f6ca /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = d4f1049e7fe14415938e63cf /* FlowLayout.swift */; };
 		E6CF7B1646F5CAB4FC40F6C1 /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36C0EAACD6D6D70D4F7503E /* Workout.swift */; };
 		E775B7901D34DE62274E280D /* PlanBuilderChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F4F2252D3041687661CAA6 /* PlanBuilderChatView.swift */; };
 		E8595107FFB5AF3CEF8825F8 /* LightstackApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21439901BE53CEAA4F2C880 /* LightstackApp.swift */; };
@@ -130,6 +131,7 @@
 		D1246336455EAB944BBCD0D7 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		D2A525AFA143BAA2CA880FE1 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		D5ABE1748E32FBB842C3F56C /* DateFormatter+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DateFormatter+Extensions.swift"; sourceTree = "<group>"; };
+		d4f1049e7fe14415938e63cf /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		D5C94DFBB4CB8B3576B08D79 /* MonthPlanViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthPlanViewModel.swift; sourceTree = "<group>"; };
 		D6CB6CB55C70D30BE1962647 /* MonthPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthPlanView.swift; sourceTree = "<group>"; };
 		D7D54686ED96849FAACA363D /* PostWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostWorkoutView.swift; sourceTree = "<group>"; };
@@ -416,6 +418,7 @@
 			isa = PBXGroup;
 			children = (
 				D5ABE1748E32FBB842C3F56C /* DateFormatter+Extensions.swift */,
+				d4f1049e7fe14415938e63cf /* FlowLayout.swift */,
 				7BBDAB25F700350CB7047E5F /* InputSanitizer.swift */,
 				943DDDDBD93BD87F949E45E2 /* OfflineQueueManager.swift */,
 			);
@@ -583,6 +586,7 @@
 				625B0022E2CA23DBC6DC4784 /* CoachContextBuilder.swift in Sources */,
 				EC489EB4795015F25EAC559E /* CoachPromptService.swift in Sources */,
 				E65828876C6E0CCF717A9E36 /* DateFormatter+Extensions.swift in Sources */,
+				b2aebeeb02a6431dbf57f6ca /* FlowLayout.swift in Sources */,
 				743305F5E054784067AAC2E7 /* EmailVerificationView.swift in Sources */,
 				87811207C311FE79DD3DAEF6 /* EquipmentPickerView.swift in Sources */,
 				982ED5F8ADB4A05CD9F909E1 /* Exercise.swift in Sources */,

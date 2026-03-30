@@ -62,7 +62,8 @@ struct PersonalRecord: Codable, Identifiable {
         self.dateAchieved = cdEntity.dateAchieved ?? Date()
         self.workoutId = cdEntity.workoutId
         self.createdAt = cdEntity.createdAt ?? Date()
-        self.syncStatus = SyncStatus(rawValue: cdEntity.syncStatus ?? "pending") ?? .pending
+        // CDPersonalRecord doesn't have syncStatus - always default to synced when reading from Core Data
+        self.syncStatus = .synced
     }
 
     func applyToCoreData(_ entity: CDPersonalRecord) {
@@ -74,7 +75,7 @@ struct PersonalRecord: Codable, Identifiable {
         entity.dateAchieved = dateAchieved
         entity.workoutId = workoutId
         entity.createdAt = createdAt
-        entity.syncStatus = syncStatus.rawValue
+        // CDPersonalRecord doesn't have syncStatus - not persisted to Core Data
     }
 
     // MARK: - Factory
