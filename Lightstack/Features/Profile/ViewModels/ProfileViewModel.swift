@@ -29,6 +29,7 @@ final class ProfileViewModel: ObservableObject {
     @Published var editGoals: Set<String> = []
     @Published var editSplitDays: [String] = []
     @Published var editEquipment: [String: Bool] = [:]
+    @Published var editCustomEquipment: String = ""
     @Published var editNotesToCoach: String = ""
 
     private let workoutRepository: WorkoutRepository
@@ -98,6 +99,7 @@ final class ProfileViewModel: ObservableObject {
         editGoals = Set(profile.primaryGoals)
         editSplitDays = profile.splitDays
         editEquipment = profile.equipment
+        editCustomEquipment = profile.customEquipment ?? ""
         editNotesToCoach = profile.notesToCoach ?? ""
     }
 
@@ -122,6 +124,7 @@ final class ProfileViewModel: ObservableObject {
         profile.primaryGoals = Array(editGoals)
         profile.splitDays = editSplitDays
         profile.equipment = editEquipment
+        profile.customEquipment = editCustomEquipment.isEmpty ? nil : validationService.sanitize(editCustomEquipment)
         profile.notesToCoach = validationService.sanitize(editNotesToCoach)
         profile.updatedAt = Date()
 

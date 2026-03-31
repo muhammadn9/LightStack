@@ -3,6 +3,7 @@ import SwiftUI
 /// Checkbox-style picker for available gym equipment with purple theme.
 struct EquipmentPickerView: View {
     @Binding var selectedEquipment: [String: Bool]
+    @Binding var customEquipment: String
 
     private let equipmentOptions = [
         "Dumbbells", "Barbell", "Cables", "Machines",
@@ -21,6 +22,8 @@ struct EquipmentPickerView: View {
                     .foregroundStyle(AppTheme.textSecondary)
 
                 equipmentGrid
+
+                customEquipmentSection
             }
             .padding(24)
         }
@@ -62,5 +65,27 @@ struct EquipmentPickerView: View {
     private func toggleEquipment(_ item: String) {
         let current = selectedEquipment[item] ?? false
         selectedEquipment[item] = !current
+    }
+
+    private var customEquipmentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Other Equipment")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+
+            Text("List any other equipment you have access to (e.g., TRX, battle ropes, sandbags)")
+                .font(.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+
+            TextField("Type custom equipment here...", text: $customEquipment, axis: .vertical)
+                .lineLimit(3...6)
+                .padding(12)
+                .background(AppTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+                )
+        }
     }
 }

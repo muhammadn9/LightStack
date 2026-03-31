@@ -15,6 +15,7 @@ struct UserProfile: Codable, Identifiable {
     var splitDays: [String]
     var avoidExercises: [String]
     var equipment: [String: Bool]
+    var customEquipment: String?
     var notesToCoach: String?
     var createdAt: Date
     var updatedAt: Date
@@ -31,6 +32,7 @@ struct UserProfile: Codable, Identifiable {
         case splitDays = "split_days"
         case avoidExercises = "avoid_exercises"
         case equipment
+        case customEquipment = "custom_equipment"
         case notesToCoach = "notes_to_coach"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -50,6 +52,7 @@ struct UserProfile: Codable, Identifiable {
         self.splitDays = cdEntity.splitDays ?? []
         self.avoidExercises = cdEntity.avoidExercises ?? []
         self.equipment = cdEntity.equipment ?? [:]
+        self.customEquipment = cdEntity.customEquipment
         self.notesToCoach = cdEntity.notesToCoach
         self.createdAt = cdEntity.createdAt ?? Date()
         self.updatedAt = cdEntity.updatedAt ?? Date()
@@ -67,6 +70,7 @@ struct UserProfile: Codable, Identifiable {
         entity.splitDays = splitDays
         entity.avoidExercises = avoidExercises
         entity.equipment = equipment
+        entity.customEquipment = customEquipment
         entity.notesToCoach = notesToCoach
         entity.createdAt = createdAt
         entity.updatedAt = updatedAt
@@ -85,6 +89,7 @@ struct UserProfile: Codable, Identifiable {
         splitDays: [String],
         avoidExercises: [String],
         equipment: [String: Bool],
+        customEquipment: String?,
         notesToCoach: String?
     ) -> UserProfile {
         let now = Date()
@@ -100,6 +105,7 @@ struct UserProfile: Codable, Identifiable {
             splitDays: splitDays,
             avoidExercises: avoidExercises,
             equipment: equipment,
+            customEquipment: customEquipment,
             notesToCoach: notesToCoach,
             createdAt: now,
             updatedAt: now
@@ -120,6 +126,7 @@ struct UserProfile: Codable, Identifiable {
         splitDays: [String],
         avoidExercises: [String],
         equipment: [String: Bool],
+        customEquipment: String?,
         notesToCoach: String?,
         createdAt: Date,
         updatedAt: Date
@@ -135,6 +142,7 @@ struct UserProfile: Codable, Identifiable {
         self.splitDays = splitDays
         self.avoidExercises = avoidExercises
         self.equipment = equipment
+        self.customEquipment = customEquipment
         self.notesToCoach = notesToCoach
         self.createdAt = createdAt
         self.updatedAt = updatedAt

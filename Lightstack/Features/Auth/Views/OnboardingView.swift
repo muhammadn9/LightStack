@@ -23,6 +23,7 @@ struct OnboardingView: View {
 
     // Step 3: Equipment
     @State private var selectedEquipment: [String: Bool] = [:]
+    @State private var customEquipment = ""
 
     private let goalOptions = [
         "Build Muscle", "Get Stronger", "Lose Fat",
@@ -239,7 +240,10 @@ struct OnboardingView: View {
     // MARK: - Step 3: Equipment
 
     private var equipmentStepView: some View {
-        EquipmentPickerView(selectedEquipment: $selectedEquipment)
+        EquipmentPickerView(
+            selectedEquipment: $selectedEquipment,
+            customEquipment: $customEquipment
+        )
     }
 
     // MARK: - Navigation
@@ -312,6 +316,7 @@ struct OnboardingView: View {
             splitDays: splitDays,
             avoidExercises: [],
             equipment: selectedEquipment,
+            customEquipment: customEquipment.isEmpty ? nil : customEquipment,
             notesToCoach: nil
         )
 

@@ -179,6 +179,28 @@ struct EditProfileView: View {
                     equipmentToggle(item)
                 }
             }
+
+            Divider()
+                .background(AppTheme.textSecondary.opacity(0.3))
+                .padding(.vertical, 8)
+
+            Text("Other Equipment")
+                .font(.subheadline.bold())
+                .foregroundStyle(AppTheme.textPrimary)
+
+            Text("List any other equipment you have access to")
+                .font(.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+
+            TextField("Type custom equipment here...", text: $viewModel.editCustomEquipment, axis: .vertical)
+                .lineLimit(3...6)
+                .padding(12)
+                .background(AppTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+                )
         }
         .cardStyle()
     }
