@@ -35,7 +35,11 @@ final class ClaudeService: AIProvider {
         messages: [ChatMessage],
         completion: @escaping (Result<String, Error>) -> Void
     ) {
-        guard !apiKey.isEmpty else {
+        print("[ClaudeService] 🔵 API CALL INITIATED - This counts against quota!")
+        print("[ClaudeService] System prompt: \(systemPrompt.count) chars")
+        print("[ClaudeService] Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
+
+        guard !apiKey.isEmpty else{
             let error = NSError(
                 domain: "ClaudeService",
                 code: -1,

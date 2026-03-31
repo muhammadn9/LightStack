@@ -89,6 +89,10 @@ final class GeminiService {
         messages: [ChatMessage],
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        print("[GeminiService] 🔵 API CALL INITIATED - This counts against quota!")
+        print("[GeminiService] System prompt: \(systemPrompt.count) chars")
+        print("[GeminiService] Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
+
         guard !apiKey.isEmpty else {
             let error = NSError(domain: "GeminiService", code: -1,
                                 userInfo: [NSLocalizedDescriptionKey: "Missing GEMINI_API_KEY"])

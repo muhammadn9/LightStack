@@ -34,6 +34,10 @@ final class OpenAIService: AIProvider {
         messages: [ChatMessage],
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        print("[OpenAIService] 🔵 API CALL INITIATED - This counts against quota!")
+        print("[OpenAIService] System prompt: \(systemPrompt.count) chars")
+        print("[OpenAIService] Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
+
         guard !apiKey.isEmpty else {
             let error = NSError(
                 domain: "OpenAIService",
