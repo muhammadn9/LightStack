@@ -6,6 +6,7 @@ struct TodayView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: TodayViewModel
     @State private var chatViewModel: CoachChatViewModel?
+    @State private var setupViewModel: WorkoutSetupViewModel?
 
     var body: some View {
         NavigationStack {
@@ -15,10 +16,12 @@ struct TodayView: View {
                 Group {
                     switch viewModel.phase {
                     case .setup:
-                        WorkoutSetupView(
-                            viewModel: environment.makeWorkoutSetupViewModel(),
-                            todayViewModel: viewModel
-                        )
+                        if let setupVM = setupViewModel {
+                            WorkoutSetupView(
+                                viewModel: setupVM,
+                                todayViewModel: viewModel
+                            )
+                        }
 
                     case .generating:
                         generatingView
@@ -38,6 +41,9 @@ struct TodayView: View {
             .onAppear {
                 if chatViewModel == nil {
                     chatViewModel = environment.makeCoachChatViewModel()
+                }
+                if setupViewModel == nil {
+                    setupViewModel = environment.makeWorkoutSetupViewModel()
                 }
             }
             .onChange(of: viewModel.phase) { _, newPhase in
