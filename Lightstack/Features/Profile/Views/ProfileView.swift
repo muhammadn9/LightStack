@@ -5,6 +5,7 @@ struct ProfileView: View {
     @EnvironmentObject var environment: AppEnvironment
 
     @State private var viewModel: ProfileViewModel?
+    @State private var showEditSheet = false
     @State private var streak: Int = 0
     @State private var totalSessions: Int = 0
     @State private var totalVolume: Double = 0
@@ -40,12 +41,12 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear { loadProfileData() }
-            .sheet(isPresented: Binding(
-                get: { viewModel?.isEditing ?? false },
-                set: { if !$0 { viewModel?.cancelEditing() } }
-            )) {
+            .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
                     EditProfileView(viewModel: vm, userId: userId)
+                        .onDisappear {
+                            vm.cancelEditing()
+                        }
                 }
             }
         }
@@ -78,7 +79,8 @@ struct ProfileView: View {
             Button(action: {
                 print("[ProfileView] Edit button tapped, viewModel exists: \(viewModel != nil)")
                 viewModel?.startEditing()
-                print("[ProfileView] After startEditing, isEditing: \(viewModel?.isEditing ?? false)")
+                showEditSheet = true
+                print("[ProfileView] After startEditing, isEditing: \(viewModel?.isEditing ?? false), showEditSheet: \(showEditSheet)")
             }) {
                 Image(systemName: "pencil.circle.fill")
                     .font(.title2)
