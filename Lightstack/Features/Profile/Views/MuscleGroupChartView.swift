@@ -88,9 +88,11 @@ struct MuscleGroupChartView: View {
     }
 
     private func barWidth(sets: Int, maxWidth: CGFloat) -> CGFloat {
-        guard maxSets > 0, maxWidth.isFinite else { return 0 }
+        guard maxSets > 0, maxWidth.isFinite, maxWidth > 0 else { return 0 }
         let proportion = Double(sets) / Double(maxSets)
-        return maxWidth * proportion
+        guard proportion.isFinite else { return 0 }
+        let result = maxWidth * proportion
+        return result.isFinite ? result : 0
     }
 
     private func barOpacity(volume: Double) -> Double {

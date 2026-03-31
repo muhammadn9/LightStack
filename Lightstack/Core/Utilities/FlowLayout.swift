@@ -33,15 +33,29 @@ struct FlowLayout: Layout {
         proposal: ProposedViewSize,
         subviews: Subviews
     ) -> (size: CGSize, positions: [CGPoint]) {
-        let maxWidth = proposal.width ?? .infinity
+        // Use screen width as fallback instead of .infinity to prevent NaN propagation
+        let screenWidth = UIScreen.main.bounds.width
+        let maxWidth = proposal.width ?? screenWidth
+
+        // Guard against invalid widths
+        guard maxWidth.isFinite, maxWidth > 0 else {
+            return (CGSize(width: screenWidth, height: 0), [])
+        }
+
         var positions: [CGPoint] = []
         var x: CGFloat = 0
         var y: CGFloat = 0
         var rowHeight: CGFloat = 0
+        var maxRowWidth: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
+
+            // Guard against invalid subview sizes
+            guard size.width.isFinite, size.height.isFinite else { continue }
+
             if x + size.width > maxWidth, x > 0 {
+                maxRowWidth = max(maxRowWidth, x - spacing)
                 x = 0
                 y += rowHeight + spacing
                 rowHeight = 0
@@ -51,6 +65,10 @@ struct FlowLayout: Layout {
             x += size.width + spacing
         }
 
-        return (CGSize(width: maxWidth, height: y + rowHeight), positions)
+        // Calculate actual width used instead of returning maxWidth
+        maxRowWidth = max(maxRowWidth, x - spacing)
+        let actualWidth = min(maxRowWidth, maxWidth)
+
+        return (CGSize(width: actualWidth, height: y + rowHeight), positions)
     }
 }

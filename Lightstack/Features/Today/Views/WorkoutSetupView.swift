@@ -45,7 +45,9 @@ struct WorkoutSetupView: View {
                             splitDayChip(day)
                         }
                     }
+                    .padding(.horizontal, 4)
                 }
+                .frame(maxWidth: .infinity)
             }
         }
     }

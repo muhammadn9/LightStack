@@ -105,6 +105,7 @@ struct OnboardingView: View {
                 goalChip(goal)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func goalChip(_ goal: String) -> some View {

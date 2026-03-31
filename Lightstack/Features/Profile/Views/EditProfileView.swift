@@ -87,6 +87,7 @@ struct EditProfileView: View {
                     goalChip(goal)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .cardStyle()
     }
