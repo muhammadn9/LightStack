@@ -18,7 +18,7 @@ final class GeminiService {
 
     private let apiKey: String
     private let session: URLSession
-    private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+    private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     init() {
         self.apiKey = Bundle.main.infoDictionary?["GEMINI_API_KEY"] as? String ?? ""
