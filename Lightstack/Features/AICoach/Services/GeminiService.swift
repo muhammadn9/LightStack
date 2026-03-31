@@ -240,3 +240,39 @@ final class GeminiService {
         }
     }
 }
+
+// MARK: - AIProvider Conformance
+
+extension GeminiService: AIProvider {
+    var name: String { "Gemini" }
+
+    var isAvailable: Bool {
+        guard !apiKey.isEmpty else { return false }
+        if let rateLimitUntil = UserDefaults.standard.object(forKey: "gemini_rate_limit_until") as? Date {
+            return Date() >= rateLimitUntil
+        }
+        return true
+    }
+
+    var nextAvailableTime: Date? {
+        UserDefaults.standard.object(forKey: "gemini_rate_limit_until") as? Date
+    }
+
+    func generateChat(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        generateChatAsync(systemPrompt: systemPrompt, messages: messages, completion: completion)
+    }
+
+    func markRateLimited(until: Date) {
+        UserDefaults.standard.set(until, forKey: "gemini_rate_limit_until")
+        print("[GeminiService] Rate limited until \(until)")
+    }
+
+    func clearRateLimit() {
+        UserDefaults.standard.removeObject(forKey: "gemini_rate_limit_until")
+        print("[GeminiService] Rate limit cleared")
+    }
+}

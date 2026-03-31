@@ -42,7 +42,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let offlineQueueManager: OfflineQueueManager
     let syncService: SyncService
     let validationService: ValidationService
-    let geminiService: GeminiService
+    let aiServiceManager: AIServiceManager
+    let geminiService: GeminiService  // Keep for backward compatibility
     let coachPromptService: CoachPromptService
     let workoutStatsService: WorkoutStatsService
 
@@ -88,7 +89,13 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.offlineQueueManager = OfflineQueueManager(supabaseService: supabaseService)
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
         self.validationService = ValidationService()
+
+        // Initialize AI providers (priority order: Gemini → OpenAI → Claude)
         self.geminiService = GeminiService()
+        let openAIService = OpenAIService()
+        let claudeService = ClaudeService()
+        self.aiServiceManager = AIServiceManager(providers: [geminiService, openAIService, claudeService])
+
         self.workoutStatsService = WorkoutStatsService(localStorage: localStorageService)
 
         self.profileRepository = ProfileRepository(
