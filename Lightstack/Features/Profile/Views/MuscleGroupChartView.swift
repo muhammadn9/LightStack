@@ -78,20 +78,25 @@ struct MuscleGroupChartView: View {
     }
 
     private var maxSets: Int {
-        setsPerGroup.values.max() ?? 1
+        let max = setsPerGroup.values.max() ?? 0
+        return max > 0 ? max : 1  // Ensure never 0 to avoid division by zero
     }
 
     private var maxVolume: Double {
-        volumePerGroup.values.max() ?? 1
+        let max = volumePerGroup.values.max() ?? 0
+        return max > 0 ? max : 1  // Ensure never 0 to avoid division by zero
     }
 
     private func barWidth(sets: Int, maxWidth: CGFloat) -> CGFloat {
+        guard maxSets > 0, maxWidth.isFinite else { return 0 }
         let proportion = Double(sets) / Double(maxSets)
         return maxWidth * proportion
     }
 
     private func barOpacity(volume: Double) -> Double {
+        guard maxVolume > 0 else { return 0.4 }
         let proportion = volume / maxVolume
+        guard proportion.isFinite else { return 0.4 }
         return 0.4 + (proportion * 0.6) // Range: 0.4 to 1.0
     }
 }
