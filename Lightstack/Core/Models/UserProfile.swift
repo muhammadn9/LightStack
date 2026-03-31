@@ -63,10 +63,10 @@ struct UserProfile: Codable, Identifiable {
         entity.heightInches = heightInches ?? 0
         entity.weightLbs = weightLbs ?? 0
         entity.trainingAgeMonths = Int32(trainingAgeMonths ?? 0)
-        entity.primaryGoals = primaryGoals as NSArray
-        entity.splitDays = splitDays as NSArray
-        entity.avoidExercises = avoidExercises as NSArray
-        entity.equipment = equipment as NSDictionary
+        entity.primaryGoals = primaryGoals
+        entity.splitDays = splitDays
+        entity.avoidExercises = avoidExercises
+        entity.equipment = equipment
         entity.notesToCoach = notesToCoach
         entity.createdAt = createdAt
         entity.updatedAt = updatedAt
