@@ -76,7 +76,9 @@ struct ProfileView: View {
             Spacer()
 
             Button(action: {
+                print("[ProfileView] Edit button tapped, viewModel exists: \(viewModel != nil)")
                 viewModel?.startEditing()
+                print("[ProfileView] After startEditing, isEditing: \(viewModel?.isEditing ?? false)")
             }) {
                 Image(systemName: "pencil.circle.fill")
                     .font(.title2)
@@ -194,16 +196,22 @@ struct ProfileView: View {
     // MARK: - Helpers
 
     private func loadProfileData() {
-        guard let userId = environment.authService.currentUser()?.userId else { return }
+        guard let userId = environment.authService.currentUser()?.userId else {
+            print("[ProfileView] No userId found")
+            return
+        }
+        print("[ProfileView] Creating ProfileViewModel for userId: \(userId)")
         let vm = environment.makeProfileViewModel()
         vm.loadStats(userId: userId)
         vm.loadProfile(userId: userId)
+        print("[ProfileView] Profile loaded, isEditing: \(vm.isEditing), profile exists: \(vm.profile != nil)")
         streak = vm.streak
         totalSessions = vm.totalSessions
         totalVolume = vm.totalVolume
         averageSessionDuration = vm.averageSessionDuration
         topLifts = vm.topLifts
         viewModel = vm
+        print("[ProfileView] ViewModel assigned")
     }
 
     private var displayName: String {
