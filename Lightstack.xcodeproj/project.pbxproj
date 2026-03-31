@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FAE55275564F446DAAD4E6CA /* AIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE917FF70785446E827EC8AB /* AIProvider.swift */; };
+		031B0782D6BF4C1CADF77369 /* AIServiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58132967449B403EAA331A20 /* AIServiceManager.swift */; };
+		BADE26A3DC9C4E0181A0B680 /* OpenAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBEFCFE8A88249A2A67A2185 /* OpenAIService.swift */; };
+		461D52F78ED44005A8093722 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1613CF18334D45F0BDF46005 /* ClaudeService.swift */; };
 		013383C23AAFD428C65A00A4 /* Lightstack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = D3FD60834E9DEE694B6C5A1E /* Lightstack.xcdatamodeld */; };
 		0394F953EECCF5B52F98E4FB /* SetRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBEF4BBBE0A525AA2C190BD /* SetRowView.swift */; };
 		03E23C4610AE5B9575692AF6 /* WorkoutRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40FE44FC1CFE4A089DC9FEC7 /* WorkoutRepository.swift */; };
@@ -78,6 +82,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		CE917FF70785446E827EC8AB /* AIProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProvider.swift; sourceTree = "<group>"; };
+		58132967449B403EAA331A20 /* AIServiceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIServiceManager.swift; sourceTree = "<group>"; };
+		DBEFCFE8A88249A2A67A2185 /* OpenAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIService.swift; sourceTree = "<group>"; };
+		1613CF18334D45F0BDF46005 /* ClaudeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeService.swift; sourceTree = "<group>"; };
 		00619CD31B6A6FBF88081C18 /* CoachPromptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachPromptService.swift; sourceTree = "<group>"; };
 		024F1EDD97F21B6014FF7EF6 /* LocalStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStorageService.swift; sourceTree = "<group>"; };
 		03AEB7F749FC62646A5676BE /* MonthPlanRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthPlanRepository.swift; sourceTree = "<group>"; };
@@ -262,6 +270,14 @@
 			children = (
 				024F1EDD97F21B6014FF7EF6 /* LocalStorageService.swift */,
 				1C48010D6E8588D794E4A142 /* SupabaseService.swift */,
+
+				CE917FF70785446E827EC8AB /* AIProvider.swift */,
+
+				58132967449B403EAA331A20 /* AIServiceManager.swift */,
+
+				DBEFCFE8A88249A2A67A2185 /* OpenAIService.swift */,
+
+				1613CF18334D45F0BDF46005 /* ClaudeService.swift */,
 				2340377433B04F09D517D24E /* SyncService.swift */,
 				246C661744A8F0F458CF4900 /* ValidationService.swift */,
 				762A006B5C94242B7887782A /* WorkoutStatsService.swift */,
@@ -627,6 +643,14 @@
 				0394F953EECCF5B52F98E4FB /* SetRowView.swift in Sources */,
 				4EB8D7A7D05D304E9F7D8099 /* StreakView.swift in Sources */,
 				E556AEF88F21825FF1D51EFF /* SupabaseService.swift in Sources */,
+
+				FAE55275564F446DAAD4E6CA /* AIProvider.swift in Sources */,
+
+				031B0782D6BF4C1CADF77369 /* AIServiceManager.swift in Sources */,
+
+				BADE26A3DC9C4E0181A0B680 /* OpenAIService.swift in Sources */,
+
+				461D52F78ED44005A8093722 /* ClaudeService.swift in Sources */,
 				CFA2F95BBEA6F033D6EFDBA9 /* SyncService.swift in Sources */,
 				836F40875F5B308DA51B1B4C /* TodayView.swift in Sources */,
 				16424B48B13C644A5BD4D8E2 /* TodayViewModel.swift in Sources */,
