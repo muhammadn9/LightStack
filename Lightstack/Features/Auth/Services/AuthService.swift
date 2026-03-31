@@ -222,6 +222,7 @@ final class AuthService: NSObject {
             splitDays: [],
             avoidExercises: [],
             equipment: [:],
+            customEquipment: nil,
             notesToCoach: nil,
             createdAt: user.createdAt,
             updatedAt: user.createdAt
