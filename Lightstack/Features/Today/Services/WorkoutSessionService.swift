@@ -70,8 +70,6 @@ final class WorkoutSessionService {
         energy: Int,
         notes: String?
     ) {
-        currentRequestType = .planGeneration
-
         let sanitizedType = validationService.sanitizeLabel(workoutType)
         let sanitizedNotes = notes.map { validationService.sanitize($0) }
 
@@ -156,11 +154,6 @@ final class WorkoutSessionService {
         exercises: [Exercise],
         allSets: [UUID: [WorkoutSet]]
     ) {
-        currentRequestType = .progressionNote
-
-        pendingSummaryExercises = exercises
-        pendingSummarySets = allSets
-
         guard var workout = currentWorkout else { return }
         let durationMinutes = Int(Date().timeIntervalSince(workout.createdAt) / 60)
         workout.durationMinutes = durationMinutes
@@ -211,7 +204,12 @@ final class WorkoutSessionService {
 
     // MARK: - Save Completed Workout
 
-    func saveCompletedWorkout(userNote: String?, aiNote: String?) {
+    func saveCompletedWorkout(
+        userNote: String?,
+        aiNote: String?,
+        exercises: [Exercise],
+        sets: [UUID: [WorkoutSet]]
+    ) {
         guard var workout = currentWorkout else { return }
         workout.userNote = userNote.map { validationService.sanitize($0) }
         workout.aiProgressionNote = aiNote
@@ -221,12 +219,8 @@ final class WorkoutSessionService {
 
         markMatchingPlannedSessionCompleted(workout: workout)
 
-        let exercises = pendingSummaryExercises
-        let sets = pendingSummarySets
         let workoutType = workout.workoutType
         let userId = workout.userId
-        pendingSummaryExercises = []
-        pendingSummarySets = [:]
 
         if !exercises.isEmpty {
             generateContextSummary(
@@ -265,12 +259,6 @@ final class WorkoutSessionService {
         exercises: [Exercise],
         sets: [UUID: [WorkoutSet]]
     ) {
-        // Stored as an instance property so ARC keeps it alive until the callback fires.
-        // A local `let` would be deallocated before the network response arrives,
-        // causing the completion handler to receive an empty response.
-        let summaryGemini = GeminiService()
-        summaryGeminiService = summaryGemini
-
         let context = coachContextBuilder.buildContext(userId: userId)
         let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
         let userMessage = coachPromptService.buildContextSummaryMessage(
@@ -279,13 +267,11 @@ final class WorkoutSessionService {
             sets: sets
         )
 
-        summaryGemini.generateChatAsync(
+        aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
             messages: [ChatMessage(role: .user, content: userMessage)]
         ) { [weak self] result in
             guard let self = self else { return }
-            // Release the retained instance now that the callback has fired
-            self.summaryGeminiService = nil
 
             switch result {
             case .success(let summaryText):

@@ -112,7 +112,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     func saveWorkout(userNote: String?) {
         sessionService.saveCompletedWorkout(
             userNote: userNote,
-            aiNote: aiProgressionNote
+            aiNote: aiProgressionNote,
+            exercises: exercises,
+            sets: loggedSets
         )
     }
 
