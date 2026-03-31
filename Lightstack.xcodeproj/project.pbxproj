@@ -79,6 +79,7 @@
 		c10da7ffb6164e359d117a76 /* MuscleGroupChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7229867bd5514613903794d3 /* MuscleGroupChartView.swift */; };
 		c59faa99015446129af0654c /* EditProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = d8b743b28d3549cda23bbb79 /* EditProfileView.swift */; };
 		db64ac83ca0546ab94e6abec /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64231a22773d45c3850456c1 /* KeychainService.swift */; };
+		8B64D713199448C88346735C /* ManualWorkoutEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D9BABD338243949CBB71E2 /* ManualWorkoutEntryView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -157,6 +158,7 @@
 		FD7FAD3D73C29C60902B298C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		d4f1049e7fe14415938e63cf /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		d8b743b28d3549cda23bbb79 /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
+		09D9BABD338243949CBB71E2 /* ManualWorkoutEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualWorkoutEntryView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -664,7 +666,8 @@
 				2FE58081EA15148D436590FF /* WorkoutSetupView.swift in Sources */,
 				E18B1D92BBF6E17FE581AE7F /* WorkoutSetupViewModel.swift in Sources */,
 				79B4219BB4644501A361220D /* WorkoutStatsService.swift in Sources */,
-			);
+							8B64D713199448C88346735C /* ManualWorkoutEntryView.swift in Sources */,
+);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
@@ -893,4 +896,5 @@
 /* End XCVersionGroup section */
 	};
 	rootObject = 6BDF1FE9983FAE7780DDCB04 /* Project object */;
-}
+}				09D9BABD338243949CBB71E2 /* ManualWorkoutEntryView.swift */,
+

@@ -5,6 +5,7 @@ struct WorkoutSetupView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: WorkoutSetupViewModel
     @ObservedObject var todayViewModel: TodayViewModel
+    @State private var showManualEntry = false
 
     var body: some View {
         ScrollView {
@@ -14,6 +15,7 @@ struct WorkoutSetupView: View {
                 energySection
                 notesSection
                 generateButton
+                manualEntryButton
             }
             .padding(20)
         }
@@ -22,6 +24,14 @@ struct WorkoutSetupView: View {
             if let userId = environment.authService.currentUser()?.userId {
                 viewModel.loadSplitDays(userId: userId)
                 todayViewModel.setUserId(userId)
+            }
+        }
+        .sheet(isPresented: $showManualEntry) {
+            if let userId = environment.authService.currentUser()?.userId {
+                ManualWorkoutEntryView(
+                    todayViewModel: todayViewModel,
+                    userId: userId
+                )
             }
         }
     }
@@ -180,6 +190,25 @@ struct WorkoutSetupView: View {
         }
         .disabled(viewModel.selectedWorkoutType.isEmpty)
         .opacity(viewModel.selectedWorkoutType.isEmpty ? 0.6 : 1)
+    }
+
+    private var manualEntryButton: some View {
+        Button(action: { showManualEntry = true }) {
+            HStack(spacing: 8) {
+                Image(systemName: "pencil.and.list.clipboard")
+                Text("Manual Entry")
+            }
+            .font(.subheadline.bold())
+            .foregroundStyle(AppTheme.accent)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(AppTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .stroke(AppTheme.accent.opacity(0.5), lineWidth: 1)
+            )
+        }
     }
 
     private func submitWorkout() {
