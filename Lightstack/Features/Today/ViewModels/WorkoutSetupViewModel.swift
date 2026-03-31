@@ -21,11 +21,15 @@ final class WorkoutSetupViewModel: ObservableObject {
     }
 
     func loadSplitDays(userId: UUID) {
+        print("[WorkoutSetupViewModel] Loading split days for user: \(userId)")
         if let profile = profileRepository.fetchProfileSync(userId: userId) {
+            print("[WorkoutSetupViewModel] Profile found with split days: \(profile.splitDays)")
             splitDays = profile.splitDays
             if selectedWorkoutType.isEmpty, let first = splitDays.first {
                 selectedWorkoutType = first
             }
+        } else {
+            print("[WorkoutSetupViewModel] No profile found for user")
         }
     }
 

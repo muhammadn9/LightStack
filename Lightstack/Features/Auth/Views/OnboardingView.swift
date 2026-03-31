@@ -314,6 +314,7 @@ struct OnboardingView: View {
             notesToCoach: nil
         )
 
+        print("[OnboardingView] Saving profile with split days: \(splitDays)")
         environment.profileRepository.saveProfile(profile)
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         environment.hasCompletedOnboarding = true

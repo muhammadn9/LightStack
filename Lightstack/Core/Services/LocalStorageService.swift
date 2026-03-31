@@ -32,9 +32,11 @@ final class LocalStorageService {
     }
 
     func saveProfile(_ profile: UserProfile) {
+        print("[LocalStorageService] Saving profile with split days: \(profile.splitDays)")
         let existing = fetchProfile(userId: profile.userId)
         let entity = existing ?? CDUserProfile(context: context)
         profile.applyToCoreData(entity)
+        print("[LocalStorageService] After applyToCoreData, entity.splitDays: \(entity.splitDays ?? [])")
         save()
     }
 
