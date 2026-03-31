@@ -158,7 +158,7 @@ final class GeminiService {
             ],
             "generationConfig": [
                 "temperature": 0.7,
-                "maxOutputTokens": 2048
+                "maxOutputTokens": 8192
             ]
         ]
     }
@@ -181,7 +181,7 @@ final class GeminiService {
             "contents": contents,
             "generationConfig": [
                 "temperature": 0.7,
-                "maxOutputTokens": 2048
+                "maxOutputTokens": 8192
             ]
         ]
     }
