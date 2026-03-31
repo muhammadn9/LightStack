@@ -17,6 +17,7 @@ struct WorkoutSetupView: View {
             }
             .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
         .onAppear {
             if let userId = environment.authService.currentUser()?.userId {
                 viewModel.loadSplitDays(userId: userId)
@@ -147,6 +148,15 @@ struct WorkoutSetupView: View {
                 .foregroundStyle(AppTheme.textPrimary)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .lineLimit(2...4)
+                .submitLabel(.done)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") {
+                            hideKeyboard()
+                        }
+                    }
+                }
         }
     }
 
@@ -178,5 +188,9 @@ struct WorkoutSetupView: View {
             energy: params.energy,
             notes: params.notes
         )
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

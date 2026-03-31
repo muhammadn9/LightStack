@@ -183,17 +183,46 @@ final class GeminiService {
     }
 
     private func parseResponse(_ data: Data) throws -> String {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let candidates = json["candidates"] as? [[String: Any]],
-              let firstCandidate = candidates.first,
-              let content = firstCandidate["content"] as? [String: Any],
+        // Log raw response for debugging
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("[GeminiService] Raw API response: \(responseString)")
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("[GeminiService] Failed to parse JSON from response")
+            throw NSError(domain: "GeminiService", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - invalid JSON"])
+        }
+
+        // Check for API error response
+        if let error = json["error"] as? [String: Any],
+           let message = error["message"] as? String {
+            print("[GeminiService] API error: \(message)")
+            throw NSError(domain: "GeminiService", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Gemini API error: \(message)"])
+        }
+
+        guard let candidates = json["candidates"] as? [[String: Any]] else {
+            print("[GeminiService] No 'candidates' array in response. Keys: \(json.keys)")
+            throw NSError(domain: "GeminiService", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - no candidates"])
+        }
+
+        guard let firstCandidate = candidates.first else {
+            print("[GeminiService] Candidates array is empty")
+            throw NSError(domain: "GeminiService", code: -4,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - empty candidates"])
+        }
+
+        guard let content = firstCandidate["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]],
               let firstPart = parts.first,
-              let text = firstPart["text"] as? String
-        else {
+              let text = firstPart["text"] as? String else {
+            print("[GeminiService] Failed to extract text from candidate. Candidate keys: \(firstCandidate.keys)")
             throw NSError(domain: "GeminiService", code: -4,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response"])
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - invalid structure"])
         }
+
         return text
     }
 

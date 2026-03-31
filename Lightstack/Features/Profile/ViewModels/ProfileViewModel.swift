@@ -68,12 +68,18 @@ final class ProfileViewModel: ObservableObject {
 
     func loadProfile(userId: UUID) {
         profile = profileRepository.loadProfile(userId: userId)
+        print("[ProfileViewModel] Loaded profile: \(profile?.displayName ?? "nil")")
+        print("[ProfileViewModel] Split days: \(profile?.splitDays ?? [])")
     }
 
     // MARK: - Editing
 
     func startEditing() {
-        guard let profile = profile else { return }
+        guard let profile = profile else {
+            print("[ProfileViewModel] Cannot start editing - profile is nil")
+            return
+        }
+        print("[ProfileViewModel] Starting edit with profile: \(profile.displayName ?? "no name")")
         isEditing = true
 
         editDisplayName = profile.displayName ?? ""

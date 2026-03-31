@@ -256,9 +256,23 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     private func checkExistingSession() {
         isAuthenticated = authService.currentUser() != nil
+
+        // If authenticated, verify profile exists in database
+        if isAuthenticated, let userId = authService.currentUser()?.userId {
+            let profile = profileRepository.fetchProfileSync(userId: userId)
+            if profile != nil {
+                print("[AppEnvironment] Existing profile found, setting hasCompletedOnboarding = true")
+                hasCompletedOnboarding = true
+                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+            } else {
+                print("[AppEnvironment] No profile found, user needs onboarding")
+                hasCompletedOnboarding = false
+            }
+        }
     }
 
     private func loadOnboardingState() {
-        hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        // loadOnboardingState is now handled in checkExistingSession
+        // to ensure it's based on actual profile data, not just UserDefaults
     }
 }
