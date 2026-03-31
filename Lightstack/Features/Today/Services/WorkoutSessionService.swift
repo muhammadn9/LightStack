@@ -9,24 +9,16 @@ protocol WorkoutSessionServiceDelegate: AnyObject {
     func sessionServiceDidFail(_ service: WorkoutSessionService, error: Error)
 }
 
-// MARK: - Request Type
-
-enum SessionRequestType {
-    case planGeneration
-    case progressionNote
-    case contextSummary
-}
-
 // MARK: - WorkoutSessionService
 
 /// Owns the business logic for a single workout session:
 /// creating a workout record, adding exercises and sets,
 /// computing volume, and finalizing with AI progression note.
-final class WorkoutSessionService: GeminiServiceDelegate {
+final class WorkoutSessionService {
 
     weak var delegate: WorkoutSessionServiceDelegate?
 
-    private let geminiService: GeminiService
+    private let aiServiceManager: AIServiceManager
     private let coachPromptService: CoachPromptService
     private let coachContextBuilder: CoachContextBuilder
     private let workoutRepository: WorkoutRepository
@@ -36,13 +28,8 @@ final class WorkoutSessionService: GeminiServiceDelegate {
     private let validationService: ValidationService
     private let offlineQueueManager: OfflineQueueManager
 
-    private var currentRequestType: SessionRequestType = .planGeneration
     private var currentWorkout: Workout?
     private(set) var currentWorkoutId: UUID?
-    private var pendingSummaryExercises: [Exercise] = []
-    private var pendingSummarySets: [UUID: [WorkoutSet]] = [:]
-    /// Retained until the async callback fires — prevents dealloc before response arrives.
-    private var summaryGeminiService: GeminiService?
 
     var currentWorkoutCreatedAt: Date? {
         currentWorkout?.createdAt
@@ -53,7 +40,7 @@ final class WorkoutSessionService: GeminiServiceDelegate {
     }
 
     init(
-        geminiService: GeminiService,
+        aiServiceManager: AIServiceManager,
         coachPromptService: CoachPromptService,
         coachContextBuilder: CoachContextBuilder,
         workoutRepository: WorkoutRepository,
@@ -63,7 +50,7 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         validationService: ValidationService,
         offlineQueueManager: OfflineQueueManager
     ) {
-        self.geminiService = geminiService
+        self.aiServiceManager = aiServiceManager
         self.coachPromptService = coachPromptService
         self.coachContextBuilder = coachContextBuilder
         self.workoutRepository = workoutRepository
@@ -72,8 +59,6 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         self.supabaseService = supabaseService
         self.validationService = validationService
         self.offlineQueueManager = offlineQueueManager
-
-        self.geminiService.delegate = self
     }
 
     // MARK: - Generate Plan
@@ -134,7 +119,18 @@ final class WorkoutSessionService: GeminiServiceDelegate {
                 recentSessionExercises: context.recentSessionSets
             )
 
-            geminiService.generateContent(systemPrompt: systemPrompt, userMessage: userMessage)
+            aiServiceManager.generateChat(
+                systemPrompt: systemPrompt,
+                messages: [ChatMessage(role: .user, content: userMessage)]
+            ) { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let responseText):
+                    self.handleWorkoutPlanResponse(responseText)
+                case .failure(let error):
+                    self.delegate?.sessionServiceDidFail(self, error: error)
+                }
+            }
         }
     }
 
@@ -198,7 +194,18 @@ final class WorkoutSessionService: GeminiServiceDelegate {
                 sets: allSets
             )
 
-            geminiService.generateContent(systemPrompt: systemPrompt, userMessage: userMessage)
+            aiServiceManager.generateChat(
+                systemPrompt: systemPrompt,
+                messages: [ChatMessage(role: .user, content: userMessage)]
+            ) { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let responseText):
+                    self.handleProgressionNoteResponse(responseText)
+                case .failure(let error):
+                    self.delegate?.sessionServiceDidFail(self, error: error)
+                }
+            }
         }
     }
 
@@ -366,33 +373,24 @@ final class WorkoutSessionService: GeminiServiceDelegate {
         return exercises
     }
 
-    // MARK: - GeminiServiceDelegate
+    // MARK: - Response Handlers
 
-    func geminiService(_ service: GeminiService, didReceiveResponse text: String) {
-        switch currentRequestType {
-        case .planGeneration:
-            let exercises = parseExerciseTable(text)
-            if exercises.isEmpty {
-                let error = NSError(domain: "WorkoutSessionService", code: -1,
-                                    userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"])
-                delegate?.sessionServiceDidFail(self, error: error)
-                return
-            }
-            if let workoutId = currentWorkoutId {
-                workoutRepository.saveExercises(exercises, workoutId: workoutId)
-            }
-            delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises)
-
-        case .progressionNote:
-            delegate?.sessionServiceDidReceiveProgressionNote(self, note: text)
-
-        case .contextSummary:
-            break
+    private func handleWorkoutPlanResponse(_ text: String) {
+        let exercises = parseExerciseTable(text)
+        if exercises.isEmpty {
+            let error = NSError(domain: "WorkoutSessionService", code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"])
+            delegate?.sessionServiceDidFail(self, error: error)
+            return
         }
+        if let workoutId = currentWorkoutId {
+            workoutRepository.saveExercises(exercises, workoutId: workoutId)
+        }
+        delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises)
     }
 
-    func geminiService(_ service: GeminiService, didFailWith error: Error) {
-        delegate?.sessionServiceDidFail(self, error: error)
+    private func handleProgressionNoteResponse(_ text: String) {
+        delegate?.sessionServiceDidReceiveProgressionNote(self, note: text)
     }
 
     // MARK: - Private Helpers

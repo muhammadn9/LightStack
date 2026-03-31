@@ -128,7 +128,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         )
 
         self.workoutSessionService = WorkoutSessionService(
-            geminiService: geminiService,
+            aiServiceManager: aiServiceManager,
             coachPromptService: coachPromptService,
             coachContextBuilder: coachContextBuilder,
             workoutRepository: workoutRepository,
@@ -140,7 +140,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         )
 
         self.monthPlanService = MonthPlanService(
-            geminiService: GeminiService(), // Separate instance to avoid delegate conflicts
+            aiServiceManager: aiServiceManager,
             coachPromptService: coachPromptService,
             coachContextBuilder: coachContextBuilder,
             monthPlanRepository: monthPlanRepository,
@@ -191,7 +191,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     func makeCoachChatViewModel() -> CoachChatViewModel {
         CoachChatViewModel(
-            geminiService: GeminiService(), // Separate instance for chat
+            aiServiceManager: aiServiceManager,
             coachPromptService: coachPromptService,
             coachContextBuilder: coachContextBuilder,
             validationService: validationService

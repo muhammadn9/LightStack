@@ -8,7 +8,7 @@ final class CoachChatViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var inputText = ""
 
-    private let geminiService: GeminiService
+    private let aiServiceManager: AIServiceManager
     private let coachPromptService: CoachPromptService
     private let coachContextBuilder: CoachContextBuilder
     private let validationService: ValidationService
@@ -18,12 +18,12 @@ final class CoachChatViewModel: ObservableObject {
     private var systemPrompt: String = ""
 
     init(
-        geminiService: GeminiService,
+        aiServiceManager: AIServiceManager,
         coachPromptService: CoachPromptService,
         coachContextBuilder: CoachContextBuilder,
         validationService: ValidationService
     ) {
-        self.geminiService = geminiService
+        self.aiServiceManager = aiServiceManager
         self.coachPromptService = coachPromptService
         self.coachContextBuilder = coachContextBuilder
         self.validationService = validationService
@@ -75,7 +75,7 @@ final class CoachChatViewModel: ObservableObject {
         messages.append(userMessage)
         isLoading = true
 
-        geminiService.generateChatAsync(
+        aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
             messages: messages
         ) { [weak self] result in

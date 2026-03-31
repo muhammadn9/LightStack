@@ -12,20 +12,20 @@ final class MonthPlanService {
 
     weak var delegate: MonthPlanServiceDelegate?
 
-    private let geminiService: GeminiService
+    private let aiServiceManager: AIServiceManager
     private let coachPromptService: CoachPromptService
     private let coachContextBuilder: CoachContextBuilder
     private let monthPlanRepository: MonthPlanRepository
     private let validationService: ValidationService
 
     init(
-        geminiService: GeminiService,
+        aiServiceManager: AIServiceManager,
         coachPromptService: CoachPromptService,
         coachContextBuilder: CoachContextBuilder,
         monthPlanRepository: MonthPlanRepository,
         validationService: ValidationService
     ) {
-        self.geminiService = geminiService
+        self.aiServiceManager = aiServiceManager
         self.coachPromptService = coachPromptService
         self.coachContextBuilder = coachContextBuilder
         self.monthPlanRepository = monthPlanRepository
@@ -50,7 +50,7 @@ final class MonthPlanService {
             endDate: endDate
         )
 
-        geminiService.generateChatAsync(
+        aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
             messages: [ChatMessage(role: .user, content: userMessage)]
         ) { [weak self] result in
