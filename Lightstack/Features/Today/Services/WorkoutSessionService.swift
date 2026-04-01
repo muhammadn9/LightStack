@@ -28,7 +28,7 @@ final class WorkoutSessionService {
     private let validationService: ValidationService
     private let offlineQueueManager: OfflineQueueManager
 
-    private var currentWorkout: Workout?
+    private(set) var currentWorkout: Workout?
     private(set) var currentWorkoutId: UUID?
 
     var currentWorkoutCreatedAt: Date? {

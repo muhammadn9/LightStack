@@ -69,22 +69,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     func saveSessionState() {
         guard phase == .active || phase == .postWorkout,
-              let userId = userId,
-              let workoutType = sessionService.currentWorkoutType,
-              let createdAt = sessionService.currentWorkoutCreatedAt,
-              let workoutId = sessionService.currentWorkoutId else {
+              let workout = sessionService.currentWorkout else {
             return
         }
-
-        // Build workout from current session state
-        var workout = Workout.create(
-            userId: userId,
-            workoutType: workoutType,
-            energyLevel: 5,
-            timeAvailableMinutes: 60
-        )
-        workout.id = workoutId
-        workout.createdAt = createdAt
 
         sessionPersistence.saveSession(
             workout: workout,
