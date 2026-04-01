@@ -69,17 +69,22 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     func saveSessionState() {
         guard phase == .active || phase == .postWorkout,
-              let workout = sessionService.currentWorkoutCreatedAt.map({ _ in
-                  // Build workout from current state
-                  Workout.create(
-                      userId: userId ?? UUID(),
-                      workoutType: sessionService.currentWorkoutType ?? "Unknown",
-                      energyLevel: 5,
-                      timeAvailableMinutes: 60
-                  )
-              }) else {
+              let userId = userId,
+              let workoutType = sessionService.currentWorkoutType,
+              let createdAt = sessionService.currentWorkoutCreatedAt,
+              let workoutId = sessionService.currentWorkoutId else {
             return
         }
+
+        // Build workout from current session state
+        var workout = Workout.create(
+            userId: userId,
+            workoutType: workoutType,
+            energyLevel: 5,
+            timeAvailableMinutes: 60
+        )
+        workout.id = workoutId
+        workout.createdAt = createdAt
 
         sessionPersistence.saveSession(
             workout: workout,
@@ -235,9 +240,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 coachNote: note
             )
             exercises.append(newExercise)
-            sessionService.startSession(workout: sessionService.currentWorkoutCreatedAt.map {
-                Workout.create(userId: userId ?? UUID(), workoutType: sessionService.currentWorkoutType ?? "", energyLevel: 5, timeAvailableMinutes: 60)
-            }!, exercises: exercises)
+            // Save the new exercise to the repository
+            workoutRepository.saveExercises([newExercise], workoutId: workoutId)
 
         case .removeExercise(let name):
             if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {

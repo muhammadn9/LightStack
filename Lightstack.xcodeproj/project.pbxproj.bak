@@ -670,8 +670,6 @@
 				9F8E7D6C5B4A321098765432 /* ManualWorkoutEntryView.swift in Sources */,
 				E18B1D92BBF6E17FE581AE7F /* WorkoutSetupViewModel.swift in Sources */,
 				79B4219BB4644501A361220D /* WorkoutStatsService.swift in Sources */,
-				2779E5C0E0798AE34DD76031 /* WorkoutSessionPersistence.swift in Sources */,
-				6F1603A80F30A5B8FCF1852F /* WorkoutModification.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
