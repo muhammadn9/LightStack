@@ -24,22 +24,70 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     let sessionService: WorkoutSessionService
     let workoutRepository: WorkoutRepository
     let prRepository: PRRepository
+    let sessionPersistence: WorkoutSessionPersistence
     private(set) var userId: UUID?
 
     init(
         sessionService: WorkoutSessionService,
         workoutRepository: WorkoutRepository,
-        prRepository: PRRepository
+        prRepository: PRRepository,
+        sessionPersistence: WorkoutSessionPersistence
     ) {
         self.sessionService = sessionService
         self.workoutRepository = workoutRepository
         self.prRepository = prRepository
+        self.sessionPersistence = sessionPersistence
         sessionService.delegate = self
     }
 
     func setUserId(_ id: UUID) {
         self.userId = id
         self.streak = workoutRepository.fetchStreak(userId: id)
+
+        // Check for saved workout session
+        if let savedState = sessionPersistence.restoreSession() {
+            restoreSessionState(savedState)
+        }
+    }
+
+    private func restoreSessionState(_ state: WorkoutSessionPersistence.SessionState) {
+        // Restore all workout state
+        exercises = state.exercises
+        loggedSets = state.loggedSets
+
+        if state.phase == "active" {
+            phase = .active
+        } else if state.phase == "postWorkout" {
+            phase = .postWorkout
+        }
+
+        // Restore workout in session service
+        sessionService.startSession(workout: state.workout, exercises: state.exercises)
+
+        print("[TodayViewModel] Restored workout session: \(state.exercises.count) exercises, \(loggedSets.values.flatMap { $0 }.count) sets")
+    }
+
+    func saveSessionState() {
+        guard phase == .active || phase == .postWorkout,
+              let workout = sessionService.currentWorkoutCreatedAt.map({ _ in
+                  // Build workout from current state
+                  Workout.create(
+                      userId: userId ?? UUID(),
+                      workoutType: sessionService.currentWorkoutType ?? "Unknown",
+                      energyLevel: 5,
+                      timeAvailableMinutes: 60
+                  )
+              }) else {
+            return
+        }
+
+        sessionPersistence.saveSession(
+            workout: workout,
+            exercises: exercises,
+            loggedSets: loggedSets,
+            phase: phase,
+            userNote: nil
+        )
     }
 
     func generatePlan(workoutType: String, time: Int, energy: Int, notes: String?) {
@@ -138,6 +186,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         if let userId = userId {
             streak = workoutRepository.fetchStreak(userId: userId)
         }
+
+        // Clear saved session when resetting to setup
+        sessionPersistence.clearSession()
     }
 
     // MARK: - WorkoutSessionServiceDelegate
@@ -162,5 +213,91 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         if phase == .generating {
             phase = .setup
         }
+    }
+
+    // MARK: - Workout Modifications
+
+    /// Apply a workout modification while preserving already-logged sets.
+    func applyModification(_ modification: WorkoutModification, preserveLoggedSets: Bool) {
+        guard let workoutId = sessionService.currentWorkoutId else { return }
+
+        switch modification {
+        case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let note):
+            let newExercise = Exercise.create(
+                workoutId: workoutId,
+                name: name,
+                muscleGroup: muscleGroup,
+                orderIndex: exercises.count,
+                targetSets: targetSets,
+                targetReps: targetReps,
+                targetRir: targetRir,
+                restSeconds: restSeconds,
+                coachNote: note
+            )
+            exercises.append(newExercise)
+            sessionService.startSession(workout: sessionService.currentWorkoutCreatedAt.map {
+                Workout.create(userId: userId ?? UUID(), workoutType: sessionService.currentWorkoutType ?? "", energyLevel: 5, timeAvailableMinutes: 60)
+            }!, exercises: exercises)
+
+        case .removeExercise(let name):
+            if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+                let exerciseId = exercises[index].id
+                exercises.remove(at: index)
+                if !preserveLoggedSets || loggedSets[exerciseId]?.isEmpty ?? true {
+                    loggedSets.removeValue(forKey: exerciseId)
+                }
+                // Note: Already-logged sets are preserved in the dictionary if preserveLoggedSets is true
+            }
+
+        case .modifyExercise(let name, let newTargetSets, let newTargetReps, let newTargetRir, let newRest, let note):
+            if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+                var exercise = exercises[index]
+                if let sets = newTargetSets {
+                    exercise.targetSets = sets
+                }
+                if let reps = newTargetReps {
+                    exercise.targetReps = reps
+                }
+                if let rir = newTargetRir {
+                    exercise.targetRir = rir
+                }
+                if let rest = newRest {
+                    exercise.restSeconds = rest
+                }
+                if let note = note {
+                    exercise.coachNote = (exercise.coachNote ?? "") + " " + note
+                }
+                exercises[index] = exercise
+            }
+
+        case .replaceExercise(let oldName, let newName, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let note):
+            if let index = exercises.firstIndex(where: { $0.name.lowercased() == oldName.lowercased() }) {
+                let oldExerciseId = exercises[index].id
+                let orderIndex = exercises[index].orderIndex
+
+                // Create new exercise
+                let newExercise = Exercise.create(
+                    workoutId: workoutId,
+                    name: newName,
+                    muscleGroup: muscleGroup,
+                    orderIndex: orderIndex,
+                    targetSets: targetSets,
+                    targetReps: targetReps,
+                    targetRir: targetRir,
+                    restSeconds: restSeconds,
+                    coachNote: note
+                )
+
+                exercises[index] = newExercise
+
+                // Remove logged sets for old exercise unless preserving
+                if !preserveLoggedSets || loggedSets[oldExerciseId]?.isEmpty ?? true {
+                    loggedSets.removeValue(forKey: oldExerciseId)
+                }
+            }
+        }
+
+        // Save state after modification
+        saveSessionState()
     }
 }

@@ -41,6 +41,13 @@ struct HistoryListView: View {
                             workoutCard(workout: workout, vm: vm)
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive, action: {
+                                deleteWorkout(workout, vm: vm)
+                            }) {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -179,5 +186,9 @@ struct HistoryListView: View {
             return String(format: "%.0fK lbs", volume / 1_000)
         }
         return String(format: "%.0f lbs", volume)
+    }
+
+    private func deleteWorkout(_ workout: Workout, vm: HistoryViewModel) {
+        vm.deleteWorkout(workout)
     }
 }

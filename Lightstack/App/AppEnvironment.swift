@@ -46,6 +46,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let geminiService: GeminiService  // Keep for backward compatibility
     let coachPromptService: CoachPromptService
     let workoutStatsService: WorkoutStatsService
+    let sessionPersistence: WorkoutSessionPersistence
 
     // MARK: - Repositories
 
@@ -97,6 +98,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.aiServiceManager = AIServiceManager(providers: [geminiService, openAIService, claudeService])
 
         self.workoutStatsService = WorkoutStatsService(localStorage: localStorageService)
+        self.sessionPersistence = WorkoutSessionPersistence()
 
         self.profileRepository = ProfileRepository(
             localStorage: localStorageService,
@@ -158,7 +160,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         TodayViewModel(
             sessionService: workoutSessionService,
             workoutRepository: workoutRepository,
-            prRepository: prRepository
+            prRepository: prRepository,
+            sessionPersistence: sessionPersistence
         )
     }
 

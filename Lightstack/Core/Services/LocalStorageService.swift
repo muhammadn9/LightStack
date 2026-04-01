@@ -81,6 +81,13 @@ final class LocalStorageService {
         save()
     }
 
+    func deleteWorkout(workoutId: UUID) {
+        guard let entity = fetchWorkout(id: workoutId) else { return }
+        context.delete(entity)
+        // Core Data cascade delete rules will automatically delete related exercises and sets
+        save()
+    }
+
     // MARK: - Exercise
 
     func fetchExercises(workoutId: UUID) -> [CDExercise] {

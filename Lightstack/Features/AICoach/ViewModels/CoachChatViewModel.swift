@@ -7,15 +7,20 @@ final class CoachChatViewModel: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var isLoading = false
     @Published var inputText = ""
+    @Published var pendingModifications: [WorkoutModification] = []
+    @Published var showModificationConfirmation = false
 
     private let aiServiceManager: AIServiceManager
     private let coachPromptService: CoachPromptService
     private let coachContextBuilder: CoachContextBuilder
     private let validationService: ValidationService
+    private let modificationParser = WorkoutModificationParser()
 
     private var userId: UUID?
     private var workoutType: String?
     private var systemPrompt: String = ""
+    private var currentExercises: [Exercise] = []
+    private var currentLoggedSets: [UUID: [WorkoutSet]] = [:]
 
     init(
         aiServiceManager: AIServiceManager,
@@ -33,9 +38,24 @@ final class CoachChatViewModel: ObservableObject {
     func configure(userId: UUID, workoutType: String, exercises: [Exercise], loggedSets: [UUID: [WorkoutSet]]) {
         self.userId = userId
         self.workoutType = workoutType
+        self.currentExercises = exercises
+        self.currentLoggedSets = loggedSets
 
         let context = coachContextBuilder.buildContext(userId: userId, workoutType: workoutType)
-        systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
+        systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile) + """
+
+        WORKOUT MODIFICATIONS
+        You can suggest modifications to the current workout if the athlete asks.
+        Use these special commands in your response:
+
+        [ADD] Exercise Name | Muscle Group | Sets | Reps | RIR | Rest | Note
+        [REMOVE] Exercise Name
+        [MODIFY] Exercise Name | Sets | Reps | RIR | Rest | Note
+        [REPLACE] Old Name → New Name | Muscle Group | Sets | Reps | RIR | Rest | Note
+
+        Always explain WHY you're suggesting the change before the command.
+        The athlete will be asked to confirm before any changes are applied.
+        """
 
         // Add workout context as an initial system-like context message
         if messages.isEmpty {
@@ -86,6 +106,13 @@ final class CoachChatViewModel: ObservableObject {
             case .success(let responseText):
                 let coachMessage = ChatMessage(role: .coach, content: responseText)
                 self.messages.append(coachMessage)
+
+                // Parse for workout modifications
+                let modifications = self.modificationParser.parse(responseText)
+                if !modifications.isEmpty {
+                    self.pendingModifications = modifications
+                    self.showModificationConfirmation = true
+                }
             case .failure(let error):
                 let errorMessage = ChatMessage(role: .coach, content: "Sorry, I couldn't respond right now. Please try again. (\(error.localizedDescription))")
                 self.messages.append(errorMessage)
@@ -93,10 +120,27 @@ final class CoachChatViewModel: ObservableObject {
         }
     }
 
+    /// Called when user confirms modifications.
+    func confirmModifications(applyTo todayViewModel: TodayViewModel) {
+        for modification in pendingModifications {
+            todayViewModel.applyModification(modification, preserveLoggedSets: true)
+        }
+        pendingModifications = []
+        showModificationConfirmation = false
+    }
+
+    /// Called when user rejects modifications.
+    func rejectModifications() {
+        pendingModifications = []
+        showModificationConfirmation = false
+    }
+
     /// Clear all messages when leaving the workout.
     func clearChat() {
         messages = []
         inputText = ""
         isLoading = false
+        pendingModifications = []
+        showModificationConfirmation = false
     }
 }

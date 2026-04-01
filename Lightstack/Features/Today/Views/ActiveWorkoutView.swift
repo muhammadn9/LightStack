@@ -25,9 +25,12 @@ struct ActiveWorkoutView: View {
             }
         }
         .onAppear { viewModel.startTimer() }
-        .onDisappear { viewModel.stopTimer() }
+        .onDisappear {
+            viewModel.stopTimer()
+            todayViewModel.saveSessionState()
+        }
         .sheet(isPresented: $showChat) {
-            CoachChatView(viewModel: chatViewModel)
+            CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
         }
     }
 

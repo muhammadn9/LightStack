@@ -49,6 +49,15 @@ final class SupabaseService {
             .execute()
     }
 
+    func deleteWorkout(workoutId: UUID) async throws {
+        try await client
+            .from("workouts")
+            .delete()
+            .eq("id", value: workoutId.uuidString)
+            .execute()
+        // Postgres cascade delete will automatically remove related exercises and sets
+    }
+
     func fetchWorkoutsForUser(userId: UUID, limit: Int) async throws -> [Workout] {
         let response: [Workout] = try await client
             .from("workouts")

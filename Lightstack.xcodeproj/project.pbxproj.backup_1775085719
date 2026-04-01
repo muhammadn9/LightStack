@@ -81,9 +81,6 @@
 		c59faa99015446129af0654c /* EditProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = d8b743b28d3549cda23bbb79 /* EditProfileView.swift */; };
 		db64ac83ca0546ab94e6abec /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64231a22773d45c3850456c1 /* KeychainService.swift */; };
 		9F8E7D6C5B4A321098765432 /* ManualWorkoutEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6789012345678 /* ManualWorkoutEntryView.swift */; };
-		2779E5C0E0798AE34DD76031 /* WorkoutSessionPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E627CC381AA00683C80999 /* WorkoutSessionPersistence.swift */; };
-		6F1603A80F30A5B8FCF1852F /* WorkoutModification.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AF0E9D82E8A394B35BB381 /* WorkoutModification.swift */; };
-
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -164,9 +161,6 @@
 		d4f1049e7fe14415938e63cf /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		d8b743b28d3549cda23bbb79 /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6789012345678 /* ManualWorkoutEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualWorkoutEntryView.swift; sourceTree = "<group>"; };
-		07E627CC381AA00683C80999 /* WorkoutSessionPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionPersistence.swift; sourceTree = "<group>"; };
-		C2AF0E9D82E8A394B35BB381 /* WorkoutModification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutModification.swift; sourceTree = "<group>"; };
-
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */

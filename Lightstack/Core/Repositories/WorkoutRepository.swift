@@ -101,4 +101,17 @@ final class WorkoutRepository {
         localStorage.fetchSets(exerciseId: exerciseId)
             .map { WorkoutSet(from: $0) }
     }
+
+    // MARK: - Delete
+
+    func deleteWorkout(_ workout: Workout) {
+        localStorage.deleteWorkout(workoutId: workout.id)
+        Task {
+            do {
+                try await supabaseService.deleteWorkout(workoutId: workout.id)
+            } catch {
+                await offlineQueueManager.enqueue(.deleteWorkout, payload: workout)
+            }
+        }
+    }
 }

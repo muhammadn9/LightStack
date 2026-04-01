@@ -66,4 +66,12 @@ final class HistoryViewModel: ObservableObject {
     func fetchSets(exerciseId: UUID) -> [WorkoutSet] {
         workoutRepository.fetchSets(exerciseId: exerciseId)
     }
+
+    // MARK: - Delete
+
+    func deleteWorkout(_ workout: Workout) {
+        workoutRepository.deleteWorkout(workout)
+        // Remove from local list immediately for instant UI update
+        workouts.removeAll { $0.id == workout.id }
+    }
 }

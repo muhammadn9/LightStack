@@ -4,6 +4,7 @@ import SwiftUI
 /// Ephemeral per session — messages are held in memory only, not persisted.
 struct CoachChatView: View {
     @ObservedObject var viewModel: CoachChatViewModel
+    @ObservedObject var todayViewModel: TodayViewModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -22,7 +23,23 @@ struct CoachChatView: View {
                         .foregroundStyle(AppTheme.accent)
                 }
             }
+            .alert("Workout Modification", isPresented: $viewModel.showModificationConfirmation) {
+                Button("Apply Changes", role: .none) {
+                    viewModel.confirmModifications(applyTo: todayViewModel)
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {
+                    viewModel.rejectModifications()
+                }
+            } message: {
+                Text(modificationMessage)
+            }
         }
+    }
+
+    private var modificationMessage: String {
+        let changes = viewModel.pendingModifications.map { $0.description }
+        return "The coach suggested these changes:\n\n" + changes.joined(separator: "\n")
     }
 
     // MARK: - System Banner

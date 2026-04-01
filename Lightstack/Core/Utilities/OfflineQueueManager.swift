@@ -6,6 +6,7 @@ import Foundation
 enum QueuedOperationType: String, Codable {
     case insertWorkout
     case updateWorkout
+    case deleteWorkout
     case insertExercises
     case insertSet
     case upsertProfile
@@ -89,7 +90,8 @@ actor OfflineQueueManager {
             .insertExercises, .insertSet,
             .upsertProfile, .insertPersonalRecord,
             .upsertContextSummary,
-            .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession
+            .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession,
+            .deleteWorkout  // Delete operations should be last
         ]
         let sorted = current.sorted { a, b in
             let ai = order.firstIndex(of: a.type) ?? order.count
@@ -147,6 +149,9 @@ actor OfflineQueueManager {
         case .updatePlannedSession:
             let model = try decoder.decode(PlannedSession.self, from: op.payload)
             try await supabaseService.updatePlannedSession(model)
+        case .deleteWorkout:
+            let model = try decoder.decode(Workout.self, from: op.payload)
+            try await supabaseService.deleteWorkout(workoutId: model.id)
         }
     }
 
