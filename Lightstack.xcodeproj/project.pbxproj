@@ -220,6 +220,7 @@
 			isa = PBXGroup;
 			children = (
 				31760632B5C96652ADBAC3D6 /* WorkoutSessionService.swift */,
+				07E627CC381AA00683C80999 /* WorkoutSessionPersistence.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -398,6 +399,7 @@
 			children = (
 				312067699C57FBDCE983B2C0 /* CoachContextBuilder.swift */,
 				00619CD31B6A6FBF88081C18 /* CoachPromptService.swift */,
+				C2AF0E9D82E8A394B35BB381 /* WorkoutModification.swift */,
 				C34121902218FA929D4CA2EB /* GeminiService.swift */,
 			);
 			path = Services;
