@@ -164,8 +164,8 @@
 		d4f1049e7fe14415938e63cf /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		d8b743b28d3549cda23bbb79 /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6789012345678 /* ManualWorkoutEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualWorkoutEntryView.swift; sourceTree = "<group>"; };
-		07E627CC381AA00683C80999 /* WorkoutSessionPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionPersistence.swift; sourceTree = "<group>"; };
-		C2AF0E9D82E8A394B35BB381 /* WorkoutModification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutModification.swift; sourceTree = "<group>"; };
+		07E627CC381AA00683C80999 /* WorkoutSessionPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Today/Services/WorkoutSessionPersistence.swift; sourceTree = "<group>"; };
+		C2AF0E9D82E8A394B35BB381 /* WorkoutModification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/AICoach/Models/WorkoutModification.swift; sourceTree = "<group>"; };
 
 /* End PBXFileReference section */
 
@@ -220,7 +220,6 @@
 			isa = PBXGroup;
 			children = (
 				31760632B5C96652ADBAC3D6 /* WorkoutSessionService.swift */,
-				07E627CC381AA00683C80999 /* WorkoutSessionPersistence.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -399,7 +398,6 @@
 			children = (
 				312067699C57FBDCE983B2C0 /* CoachContextBuilder.swift */,
 				00619CD31B6A6FBF88081C18 /* CoachPromptService.swift */,
-				C2AF0E9D82E8A394B35BB381 /* WorkoutModification.swift */,
 				C34121902218FA929D4CA2EB /* GeminiService.swift */,
 			);
 			path = Services;
