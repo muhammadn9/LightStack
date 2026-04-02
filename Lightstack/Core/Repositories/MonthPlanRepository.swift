@@ -31,6 +31,14 @@ final class MonthPlanRepository {
         return plan
     }
 
+    func fetchActivePlans(userId: UUID) -> [MonthPlan] {
+        localStorage.fetchActiveMonthPlans(userId: userId).map { MonthPlan(from: $0) }
+    }
+
+    func deletePlan(_ plan: MonthPlan) {
+        localStorage.deleteMonthPlan(id: plan.id)
+    }
+
     func fetchSessions(monthPlanId: UUID) -> [PlannedSession] {
         localStorage.fetchPlannedSessions(monthPlanId: monthPlanId)
             .map { PlannedSession(from: $0) }

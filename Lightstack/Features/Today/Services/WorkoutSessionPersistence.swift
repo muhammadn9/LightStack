@@ -16,6 +16,7 @@ final class WorkoutSessionPersistence {
         let phase: String  // "active" or "postWorkout"
         let startTime: Date
         let userNote: String?
+        let elapsedSeconds: Int
 
         var isActive: Bool {
             // Session is considered stale after 24 hours
@@ -30,7 +31,8 @@ final class WorkoutSessionPersistence {
         exercises: [Exercise],
         loggedSets: [UUID: [WorkoutSet]],
         phase: TodayPhase,
-        userNote: String?
+        userNote: String?,
+        elapsedSeconds: Int = 0
     ) {
         let phaseString: String
         switch phase {
@@ -49,7 +51,8 @@ final class WorkoutSessionPersistence {
             loggedSets: loggedSets,
             phase: phaseString,
             startTime: workout.createdAt,
-            userNote: userNote
+            userNote: userNote,
+            elapsedSeconds: elapsedSeconds
         )
 
         do {

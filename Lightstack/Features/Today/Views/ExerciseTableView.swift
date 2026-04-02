@@ -7,6 +7,8 @@ struct ExerciseTableView: View {
     @Binding var editingWeight: String
     @Binding var editingReps: String
     @Binding var editingRir: String
+    @Binding var editingNote: String
+    let restTimeRemaining: String?
     let onLogSet: () -> Void
 
     var body: some View {
@@ -14,6 +16,9 @@ struct ExerciseTableView: View {
             headerRow
             targetInfoRow
             loggedSetsList
+            if let restTime = restTimeRemaining {
+                restTimerBanner(restTime)
+            }
             inputRow
         }
         .glowingCard()
@@ -81,21 +86,45 @@ struct ExerciseTableView: View {
         }
     }
 
+    // MARK: - Rest Timer Banner
+
+    private func restTimerBanner(_ time: String) -> some View {
+        HStack {
+            Image(systemName: "timer")
+                .foregroundStyle(AppTheme.warning)
+            Text("Rest: \(time)")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppTheme.warning)
+            Spacer()
+        }
+        .padding(10)
+        .background(AppTheme.warning.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
     // MARK: - Input Row
 
     private var inputRow: some View {
-        HStack(spacing: 8) {
-            inputField("lbs", text: $editingWeight, width: 70, keyboard: .decimalPad)
-            inputField("reps", text: $editingReps, width: 60, keyboard: .numberPad)
-            inputField("RIR", text: $editingRir, width: 50, keyboard: .numberPad)
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                inputField("lbs", text: $editingWeight, width: 70, keyboard: .decimalPad)
+                inputField("reps", text: $editingReps, width: 60, keyboard: .numberPad)
+                inputField("RIR", text: $editingRir, width: 50, keyboard: .numberPad)
 
-            Button(action: onLogSet) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.accent)
-                    .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
+                Button(action: onLogSet) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(AppTheme.accent)
+                        .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
+                }
+                .disabled(editingWeight.isEmpty || editingReps.isEmpty)
             }
-            .disabled(editingWeight.isEmpty || editingReps.isEmpty)
+            TextField("Set note (optional)...", text: $editingNote)
+                .font(.caption)
+                .padding(8)
+                .background(AppTheme.surfaceElevated)
+                .foregroundStyle(AppTheme.textPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 

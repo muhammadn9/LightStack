@@ -24,8 +24,9 @@ struct ActiveWorkoutView: View {
                 prToast(pr: pr)
             }
         }
-        .onAppear { viewModel.startTimer() }
+        .onAppear { viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed) }
         .onDisappear {
+            todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
             viewModel.stopTimer()
             todayViewModel.saveSessionState()
         }
@@ -43,6 +44,14 @@ struct ActiveWorkoutView: View {
             Text(viewModel.formattedElapsedTime)
                 .font(.title3.monospacedDigit().bold())
                 .foregroundStyle(AppTheme.accent)
+            Button(action: { viewModel.togglePause() }) {
+                Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.accent)
+                    .padding(6)
+                    .background(AppTheme.surfaceElevated)
+                    .clipShape(Circle())
+            }
             Spacer()
 
             let volume = runningVolume
@@ -76,12 +85,19 @@ struct ActiveWorkoutView: View {
                         editingWeight: binding(for: exercise.id, in: \.editingWeight),
                         editingReps: binding(for: exercise.id, in: \.editingReps),
                         editingRir: binding(for: exercise.id, in: \.editingRir),
+                        editingNote: noteBinding(for: exercise.id),
+                        restTimeRemaining: viewModel.formattedRestTime(for: exercise.id),
                         onLogSet: { logSetForExercise(exercise.id) }
                     )
                 }
             }
             .padding(16)
             .padding(.bottom, 60) // Extra space for floating chat button
+        }
+        .onAppear {
+            for exercise in todayViewModel.exercises {
+                viewModel.prefillTargets(for: exercise)
+            }
         }
     }
 
@@ -157,6 +173,17 @@ struct ActiveWorkoutView: View {
                 viewModel.loggedSets[exerciseId] = sets
             }
         }
+
+        // Start rest timer if exercise has a rest interval
+        if let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }),
+           let rest = exercise.restSeconds, rest > 0 {
+            viewModel.startRestTimer(for: exerciseId, seconds: rest, exerciseName: exercise.name)
+        }
+
+        // Reset fields to AI targets for next set
+        if let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }) {
+            viewModel.resetToTargets(for: exercise)
+        }
     }
 
     private func prToast(pr: PersonalRecord) -> some View {
@@ -198,6 +225,13 @@ struct ActiveWorkoutView: View {
         Binding(
             get: { viewModel[keyPath: keyPath][exerciseId] ?? "" },
             set: { viewModel[keyPath: keyPath][exerciseId] = $0 }
+        )
+    }
+
+    private func noteBinding(for exerciseId: UUID) -> Binding<String> {
+        Binding(
+            get: { viewModel.editingNote[exerciseId] ?? "" },
+            set: { viewModel.editingNote[exerciseId] = $0 }
         )
     }
 }

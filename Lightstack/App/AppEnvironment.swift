@@ -60,6 +60,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let coachContextBuilder: CoachContextBuilder
     let workoutSessionService: WorkoutSessionService
     let monthPlanService: MonthPlanService
+    let notificationService: NotificationService
 
     // MARK: - Init
 
@@ -148,6 +149,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             monthPlanRepository: monthPlanRepository,
             validationService: validationService
         )
+
+        self.notificationService = NotificationService()
 
         authService.delegate = self
         checkExistingSession()

@@ -35,6 +35,20 @@ extension DateFormatter {
         f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
+
+    /// Day abbreviation: "Mon", "Tue", etc.
+    static let dayAbbreviation: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f
+    }()
+
+    /// Day number: "1", "25", etc.
+    static let dayNumber: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "d"
+        return f
+    }()
 }
 
 extension Date {

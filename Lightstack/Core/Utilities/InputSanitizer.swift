@@ -72,9 +72,17 @@ struct InputSanitizer {
     }
 
     /// Sanitize a short label (split day name, workout type, exercise name).
-    /// Applies the same pattern stripping but caps at 50 chars.
+    /// Strips markdown bold/italic markers first, then applies the same pattern
+    /// stripping and caps at 50 chars.
     static func sanitizeLabel(_ input: String) -> String {
-        var result = sanitize(input)
+        // Strip markdown bold/italic markers first
+        var cleaned = input
+        // Remove **text** and *text* → text
+        cleaned = cleaned.replacingOccurrences(of: #"\*{1,2}([^*\n]+)\*{1,2}"#, with: "$1", options: .regularExpression)
+        // Remove leading heading markers: ### text → text
+        cleaned = cleaned.replacingOccurrences(of: #"^#{1,6}\s+"#, with: "", options: [.regularExpression, .anchored])
+
+        var result = sanitize(cleaned)
         if result.count > maxLabelLength {
             result = String(result.prefix(maxLabelLength))
         }

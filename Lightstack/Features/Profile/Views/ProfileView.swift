@@ -43,7 +43,7 @@ struct ProfileView: View {
             .onAppear { loadProfileData() }
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
-                    EditProfileView(viewModel: vm, userId: userId)
+                    EditProfileView(viewModel: vm, userId: userId, userEmail: environment.supabaseClient.auth.currentUser?.email ?? "")
                         .onDisappear {
                             vm.cancelEditing()
                         }

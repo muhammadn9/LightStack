@@ -4,6 +4,7 @@ import Foundation
 enum TodayPhase {
     case setup
     case generating
+    case confirmation  // show generated workout before starting
     case active
     case postWorkout
 }
@@ -26,6 +27,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     let prRepository: PRRepository
     let sessionPersistence: WorkoutSessionPersistence
     private(set) var userId: UUID?
+    var activeWorkoutElapsed: Int = 0
 
     init(
         sessionService: WorkoutSessionService,
@@ -54,6 +56,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         // Restore all workout state
         exercises = state.exercises
         loggedSets = state.loggedSets
+        activeWorkoutElapsed = state.elapsedSeconds
 
         if state.phase == "active" {
             phase = .active
@@ -78,7 +81,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             exercises: exercises,
             loggedSets: loggedSets,
             phase: phase,
-            userNote: nil
+            userNote: nil,
+            elapsedSeconds: activeWorkoutElapsed
         )
     }
 
@@ -175,6 +179,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         aiProgressionNote = nil
         errorMessage = nil
         isLoadingNote = false
+        activeWorkoutElapsed = 0
         if let userId = userId {
             streak = workoutRepository.fetchStreak(userId: userId)
         }
@@ -187,7 +192,11 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise]) {
         self.exercises = exercises
-        self.phase = .active
+        self.phase = .confirmation
+    }
+
+    func confirmAndStartWorkout() {
+        phase = .active
     }
 
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String) {

@@ -5,6 +5,10 @@ struct EditProfileView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: ProfileViewModel
     let userId: UUID
+    let userEmail: String
+
+    @State private var newCustomGoal: String = ""
+    @State private var newSplitDay: String = ""
 
     private let goalOptions = [
         "Build Muscle", "Get Stronger", "Lose Fat",
@@ -60,6 +64,16 @@ struct EditProfileView: View {
 
             themedField("Display Name", text: $viewModel.editDisplayName)
 
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Email").font(.caption).foregroundStyle(AppTheme.textSecondary)
+                Text(userEmail)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AppTheme.surfaceElevated)
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+
             HStack(spacing: 12) {
                 labeledField("Age", text: $viewModel.editAge, keyboard: .numberPad)
                 labeledField("Weight (lbs)", text: $viewModel.editWeightLbs, keyboard: .decimalPad)
@@ -88,6 +102,33 @@ struct EditProfileView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack {
+                TextField("Add custom goal", text: $newCustomGoal)
+                    .padding(12)
+                    .background(AppTheme.surfaceElevated)
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .onSubmit {
+                        let trimmed = newCustomGoal.trimmingCharacters(in: .whitespaces)
+                        if !trimmed.isEmpty {
+                            viewModel.editGoals.insert(trimmed)
+                            newCustomGoal = ""
+                        }
+                    }
+                Button(action: {
+                    let trimmed = newCustomGoal.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        viewModel.editGoals.insert(trimmed)
+                        newCustomGoal = ""
+                    }
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(newCustomGoal.trimmingCharacters(in: .whitespaces).isEmpty ? AppTheme.textSecondary : AppTheme.accent)
+                }
+                .disabled(newCustomGoal.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
         }
         .cardStyle()
     }
@@ -131,19 +172,30 @@ struct EditProfileView: View {
             }
 
             HStack {
-                TextField("Add custom day", text: .constant(""))
+                TextField("Add custom day", text: $newSplitDay)
                     .padding(12)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     .onSubmit {
-                        // Add day logic here if needed
+                        let trimmed = newSplitDay.trimmingCharacters(in: .whitespaces)
+                        if !trimmed.isEmpty {
+                            viewModel.addSplitDay(trimmed)
+                            newSplitDay = ""
+                        }
                     }
-                Button(action: {}) {
+                Button(action: {
+                    let trimmed = newSplitDay.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        viewModel.addSplitDay(trimmed)
+                        newSplitDay = ""
+                    }
+                }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(AppTheme.accent)
+                        .foregroundStyle(newSplitDay.trimmingCharacters(in: .whitespaces).isEmpty ? AppTheme.textSecondary : AppTheme.accent)
                 }
+                .disabled(newSplitDay.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .cardStyle()
@@ -201,6 +253,14 @@ struct EditProfileView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") {
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        }
+                    }
+                }
         }
         .cardStyle()
     }

@@ -382,8 +382,8 @@ final class WorkoutSessionService {
     // MARK: - Private Helpers
 
     private func parseFirstInt(_ str: String) -> Int? {
-        let digits = str.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-        return Int(digits)
+        guard let range = str.range(of: #"\d+"#, options: .regularExpression) else { return nil }
+        return Int(str[range])
     }
 
     private func parseRestSeconds(_ str: String) -> Int? {

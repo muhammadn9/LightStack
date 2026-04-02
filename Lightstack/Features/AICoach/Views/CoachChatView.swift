@@ -12,6 +12,8 @@ struct CoachChatView: View {
             VStack(spacing: 0) {
                 systemBanner
                 messageList
+            }
+            .safeAreaInset(edge: .bottom) {
                 inputBar
             }
             .themedBackground()

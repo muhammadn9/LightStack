@@ -7,6 +7,7 @@ struct TodayView: View {
     @ObservedObject var viewModel: TodayViewModel
     @State private var chatViewModel: CoachChatViewModel?
     @State private var setupViewModel: WorkoutSetupViewModel?
+    @State private var activeWorkoutViewModel: ActiveWorkoutViewModel?
 
     var body: some View {
         NavigationStack {
@@ -26,12 +27,17 @@ struct TodayView: View {
                     case .generating:
                         generatingView
 
+                    case .confirmation:
+                        ConfirmWorkoutView(todayViewModel: viewModel)
+
                     case .active:
-                        ActiveWorkoutView(
-                            viewModel: environment.makeActiveWorkoutViewModel(),
-                            todayViewModel: viewModel,
-                            chatViewModel: chatViewModel ?? environment.makeCoachChatViewModel()
-                        )
+                        if let activeVM = activeWorkoutViewModel {
+                            ActiveWorkoutView(
+                                viewModel: activeVM,
+                                todayViewModel: viewModel,
+                                chatViewModel: chatViewModel ?? environment.makeCoachChatViewModel()
+                            )
+                        }
 
                     case .postWorkout:
                         PostWorkoutView(todayViewModel: viewModel)
@@ -49,6 +55,16 @@ struct TodayView: View {
             .onChange(of: viewModel.phase) { _, newPhase in
                 if newPhase == .setup {
                     chatViewModel?.clearChat()
+                    activeWorkoutViewModel = nil
+                } else if newPhase == .active, activeWorkoutViewModel == nil {
+                    let vm = environment.makeActiveWorkoutViewModel()
+                    vm.onRestTimerStart = { name, seconds in
+                        environment.notificationService.scheduleRestTimerAlert(exerciseName: name, totalRestSeconds: seconds)
+                    }
+                    vm.onRestTimerCancel = {
+                        environment.notificationService.cancelPendingRestAlerts()
+                    }
+                    activeWorkoutViewModel = vm
                 }
             }
             .navigationTitle("Today")

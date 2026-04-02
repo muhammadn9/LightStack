@@ -5,14 +5,15 @@ import SwiftUI
 struct PlannedSessionView: View {
     let session: PlannedSession
     let onStartWorkout: (() -> Void)?
+    let onConfigureWithAI: (() -> Void)?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 headerCard
                 detailsCard
-                if isToday && !session.completed && !session.isRestDay {
-                    startButton
+                if !session.isRestDay {
+                    actionButtons
                 }
             }
             .padding(16)
@@ -78,20 +79,37 @@ struct PlannedSessionView: View {
         .cardStyle()
     }
 
-    // MARK: - Start Button
+    // MARK: - Action Buttons
 
-    private var startButton: some View {
-        Button(action: { onStartWorkout?() }) {
-            HStack {
-                Image(systemName: "play.fill")
-                Text("Start This Workout")
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            if isToday && !session.completed {
+                Button(action: { onStartWorkout?() }) {
+                    HStack {
+                        Image(systemName: "play.fill")
+                        Text("Start This Workout")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(AppTheme.accentGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
             }
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.accentGradient)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+
+            Button(action: { onConfigureWithAI?() }) {
+                HStack {
+                    Image(systemName: "sparkles")
+                    Text("Configure with AI")
+                }
+                .font(.headline)
+                .foregroundStyle(AppTheme.accent)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(AppTheme.accent.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            }
         }
     }
 

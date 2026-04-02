@@ -7,6 +7,7 @@ final class HistoryViewModel: ObservableObject {
     @Published var workouts: [Workout] = []
     @Published var filterType: String? = nil
     @Published var isLoading: Bool = false
+    @Published private(set) var allWorkouts: [Workout] = []
 
     private let workoutRepository: WorkoutRepository
 
@@ -18,12 +19,13 @@ final class HistoryViewModel: ObservableObject {
 
     func loadWorkouts(userId: UUID) {
         isLoading = true
-        let allWorkouts = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 200)
+        let fetched = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 200)
+        allWorkouts = fetched
 
         if let filter = filterType {
-            workouts = allWorkouts.filter { $0.workoutType.lowercased() == filter.lowercased() }
+            workouts = fetched.filter { $0.workoutType.lowercased() == filter.lowercased() }
         } else {
-            workouts = allWorkouts
+            workouts = fetched
         }
 
         isLoading = false
@@ -37,7 +39,7 @@ final class HistoryViewModel: ObservableObject {
     }
 
     var availableTypes: [String] {
-        let types = Set(workouts.map { $0.workoutType })
+        let types = Set(allWorkouts.map { $0.workoutType })
         return types.sorted()
     }
 
@@ -73,5 +75,6 @@ final class HistoryViewModel: ObservableObject {
         workoutRepository.deleteWorkout(workout)
         // Remove from local list immediately for instant UI update
         workouts.removeAll { $0.id == workout.id }
+        allWorkouts.removeAll { $0.id == workout.id }
     }
 }

@@ -8,6 +8,8 @@ final class MonthPlanViewModel: ObservableObject {
     @Published var sessions: [PlannedSession] = []
     @Published var selectedDate: Date?
     @Published var isLoading = false
+    @Published var allPlans: [MonthPlan] = []
+    @Published var canCreateNewPlan: Bool = true
 
     private let monthPlanRepository: MonthPlanRepository
     private var userId: UUID?
@@ -21,20 +23,51 @@ final class MonthPlanViewModel: ObservableObject {
     }
 
     func loadPlan() {
+        loadPlans()
+    }
+
+    func loadPlans() {
         guard let userId = userId else { return }
         isLoading = true
-
-        if let plan = monthPlanRepository.fetchActivePlan(userId: userId) {
-            activePlan = plan
+        let plans = monthPlanRepository.fetchActivePlans(userId: userId)
+        allPlans = plans
+        activePlan = plans.first
+        canCreateNewPlan = plans.count < 5
+        if let plan = activePlan {
             sessions = monthPlanRepository.fetchSessions(monthPlanId: plan.id)
         }
         isLoading = false
     }
 
-    /// Reload plan data (e.g., after plan generation).
-    func reload(plan: MonthPlan, sessions newSessions: [PlannedSession]) {
+    func selectPlan(_ plan: MonthPlan) {
+        activePlan = plan
+        sessions = monthPlanRepository.fetchSessions(monthPlanId: plan.id)
+    }
+
+    func addPlan(_ plan: MonthPlan, sessions newSessions: [PlannedSession]) {
+        allPlans.insert(plan, at: 0)
         activePlan = plan
         sessions = newSessions
+        canCreateNewPlan = allPlans.count < 5
+    }
+
+    func deletePlan(_ plan: MonthPlan) {
+        monthPlanRepository.deletePlan(plan)
+        allPlans.removeAll { $0.id == plan.id }
+        if activePlan?.id == plan.id {
+            activePlan = allPlans.first
+            if let next = activePlan {
+                sessions = monthPlanRepository.fetchSessions(monthPlanId: next.id)
+            } else {
+                sessions = []
+            }
+        }
+        canCreateNewPlan = allPlans.count < 5
+    }
+
+    /// Reload plan data (e.g., after plan generation).
+    func reload(plan: MonthPlan, sessions newSessions: [PlannedSession]) {
+        addPlan(plan, sessions: newSessions)
     }
 
     /// Group sessions by week for calendar display.

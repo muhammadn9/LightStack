@@ -6,30 +6,42 @@ import SwiftUI
 struct MonthPlanView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: MonthPlanViewModel
+    @Binding var selectedTab: Int
     @State private var selectedSession: PlannedSession?
+    @State private var showPlanBuilder = false
 
     var body: some View {
         NavigationStack {
-            Group {
-                if viewModel.activePlan != nil {
-                    calendarContent
-                } else {
+            calendarContent
+                .navigationTitle("Month Plan")
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .toolbar {
+                    if viewModel.canCreateNewPlan {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showPlanBuilder = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .foregroundStyle(AppTheme.accent)
+                            }
+                        }
+                    }
+                }
+                .sheet(isPresented: $showPlanBuilder) {
                     PlanBuilderWrapper(
                         environment: environment,
                         onPlanGenerated: { plan, sessions in
                             viewModel.reload(plan: plan, sessions: sessions)
+                            showPlanBuilder = false
                         }
                     )
                 }
-            }
-            .navigationTitle("Month Plan")
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .onAppear {
-                if let userId = environment.authService.currentUser()?.userId {
-                    viewModel.setUserId(userId)
-                    viewModel.loadPlan()
+                .onAppear {
+                    if let userId = environment.authService.currentUser()?.userId {
+                        viewModel.setUserId(userId)
+                        viewModel.loadPlan()
+                    }
                 }
-            }
         }
     }
 
@@ -38,25 +50,87 @@ struct MonthPlanView: View {
     private var calendarContent: some View {
         ScrollView {
             VStack(spacing: 20) {
-                if let plan = viewModel.activePlan {
-                    planHeader(plan)
+                if viewModel.activePlan == nil {
+                    emptyPlansState
+                } else {
+                    if let plan = viewModel.activePlan {
+                        planHeader(plan)
+                    }
+                    // Plan switcher chips (when more than 1 plan)
+                    if viewModel.allPlans.count > 1 {
+                        planSwitcherChips
+                    }
+                    progressBar
+                    calendarGrid
                 }
-                progressBar
-                calendarGrid
             }
             .padding(16)
         }
         .themedBackground()
         .sheet(item: $selectedSession) { session in
             NavigationStack {
-                PlannedSessionView(session: session, onStartWorkout: nil)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") { selectedSession = nil }
-                                .foregroundStyle(AppTheme.accent)
-                        }
+                PlannedSessionView(
+                    session: session,
+                    onStartWorkout: {
+                        selectedSession = nil
+                        selectedTab = 0
+                    },
+                    onConfigureWithAI: {
+                        selectedSession = nil
+                        // For now, just dismiss the session sheet
+                        // Full AI configure feature is future scope
                     }
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { selectedSession = nil }
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                }
             }
+        }
+    }
+
+    // MARK: - Empty State
+
+    private var emptyPlansState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.system(size: 48))
+                .foregroundStyle(AppTheme.accent)
+            Text("No Active Plans")
+                .font(.title3.bold())
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("Tap + to create your first month plan")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(40)
+        .cardStyle()
+    }
+
+    // MARK: - Plan Switcher Chips
+
+    private var planSwitcherChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(viewModel.allPlans) { plan in
+                    Button {
+                        viewModel.selectPlan(plan)
+                    } label: {
+                        Text(plan.title ?? "Plan")
+                            .font(.caption.weight(.medium))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(viewModel.activePlan?.id == plan.id ? AppTheme.accent : AppTheme.surfaceElevated)
+                            .foregroundStyle(viewModel.activePlan?.id == plan.id ? Color.white : AppTheme.textPrimary)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+            .padding(.horizontal, 4)
         }
     }
 
@@ -74,7 +148,6 @@ struct MonthPlanView: View {
                 Text(overview)
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.textSecondary)
-                    .lineLimit(3)
             }
 
             HStack {

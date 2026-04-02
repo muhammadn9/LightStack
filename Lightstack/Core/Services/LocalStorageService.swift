@@ -158,6 +158,24 @@ final class LocalStorageService {
         return try? context.fetch(request).first
     }
 
+    func fetchActiveMonthPlans(userId: UUID) -> [CDMonthPlan] {
+        let today = Calendar.current.startOfDay(for: Date())
+        let request: NSFetchRequest<CDMonthPlan> = CDMonthPlan.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "userId == %@ AND endDate >= %@",
+            userId as CVarArg, today as CVarArg
+        )
+        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+        request.fetchLimit = 5
+        return (try? context.fetch(request)) ?? []
+    }
+
+    func deleteMonthPlan(id: UUID) {
+        guard let entity = fetchMonthPlan(id: id) else { return }
+        context.delete(entity)
+        save()
+    }
+
     func saveMonthPlan(_ plan: MonthPlan) {
         let existing = fetchMonthPlan(id: plan.id)
         let entity = existing ?? CDMonthPlan(context: context)

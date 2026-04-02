@@ -31,29 +31,30 @@ struct HistoryListView: View {
     // MARK: - Workout List
 
     private func workoutList(vm: HistoryViewModel) -> some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                filterChips(vm: vm)
-
-                LazyVStack(spacing: 12) {
-                    ForEach(vm.workouts) { workout in
-                        NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: vm)) {
-                            workoutCard(workout: workout, vm: vm)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive, action: {
-                                deleteWorkout(workout, vm: vm)
-                            }) {
-                                Label("Delete", systemImage: "trash")
-                            }
+        VStack(spacing: 0) {
+            filterChips(vm: vm)
+                .padding(.top, 16)
+            List {
+                ForEach(vm.workouts) { workout in
+                    NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: vm)) {
+                        workoutCard(workout: workout, vm: vm)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive, action: {
+                            deleteWorkout(workout, vm: vm)
+                        }) {
+                            Label("Delete", systemImage: "trash")
                         }
                     }
                 }
-                .padding(.horizontal, 16)
             }
-            .padding(.top, 16)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Filter Chips
@@ -168,15 +169,11 @@ struct HistoryListView: View {
     }
 
     private func dayAbbrev(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date).uppercased()
+        DateFormatter.dayAbbreviation.string(from: date).uppercased()
     }
 
     private func dayNumber(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "d"
-        return formatter.string(from: date)
+        DateFormatter.dayNumber.string(from: date)
     }
 
     private func formatVolume(_ volume: Double) -> String {
