@@ -30,9 +30,9 @@ struct HistoryListView: View {
         guard let userId = environment.authService.currentUser()?.userId else { return }
         if viewModel == nil {
             let vm = environment.makeHistoryViewModel()
-            vm.loadWorkouts(userId: userId)
             viewModel = vm
         }
+        viewModel?.loadWorkouts(userId: userId)
     }
 }
 

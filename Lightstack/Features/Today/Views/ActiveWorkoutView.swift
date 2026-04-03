@@ -138,8 +138,30 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Finish Button
 
+    private func autoLogAllPendingSets() {
+        for exercise in todayViewModel.exercises {
+            let exerciseId = exercise.id
+            // Iterate a copy since logSetForExercise mutates pendingSets
+            let count = viewModel.pendingSets[exerciseId]?.count ?? 0
+            var logged = 0
+            for _ in 0..<count {
+                // Always target index 0 because each log removes the entry
+                if let set = viewModel.pendingSets[exerciseId], !set.isEmpty,
+                   !set[0].reps.isEmpty {
+                    logSetForExercise(at: 0, exerciseId: exerciseId)
+                    logged += 1
+                } else {
+                    break
+                }
+            }
+        }
+    }
+
     private var finishButton: some View {
-        Button(action: { todayViewModel.finishWorkout(userNote: nil) }) {
+        Button(action: {
+            autoLogAllPendingSets()
+            todayViewModel.finishWorkout(userNote: nil)
+        }) {
             HStack {
                 Image(systemName: "checkmark.circle.fill")
                 Text("Finish Workout")

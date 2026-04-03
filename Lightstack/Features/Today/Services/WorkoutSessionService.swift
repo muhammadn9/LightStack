@@ -169,16 +169,17 @@ final class WorkoutSessionService {
             do {
                 let allowed = try await supabaseService.checkRateLimit(userId: userId)
                 if !allowed {
-                    let error = NSError(
-                        domain: "WorkoutSessionService",
-                        code: 429,
-                        userInfo: [NSLocalizedDescriptionKey: "Too many AI requests. Please wait a moment before trying again."]
+                    // Rate-limited — save workout without AI note and move on silently
+                    self.saveCompletedWorkout(
+                        userNote: userNote.map { self.validationService.sanitize($0) },
+                        aiNote: nil,
+                        exercises: exercises,
+                        sets: allSets
                     )
-                    delegate?.sessionServiceDidFail(self, error: error)
                     return
                 }
             } catch {
-                // Rate limit check failed — proceed
+                // Rate limit check failed — proceed without blocking
             }
 
             let context = coachContextBuilder.buildContext(userId: userId)
@@ -196,8 +197,14 @@ final class WorkoutSessionService {
                 switch result {
                 case .success(let responseText):
                     self.handleProgressionNoteResponse(responseText)
-                case .failure(let error):
-                    self.delegate?.sessionServiceDidFail(self, error: error)
+                case .failure:
+                    // AI call failed — save workout without a progression note
+                    self.saveCompletedWorkout(
+                        userNote: userNote.map { self.validationService.sanitize($0) },
+                        aiNote: nil,
+                        exercises: exercises,
+                        sets: allSets
+                    )
                 }
             }
         }
