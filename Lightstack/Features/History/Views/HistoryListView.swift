@@ -59,7 +59,9 @@ private struct HistoryContentView: View {
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
-                                viewModel.deleteWorkout(workout)
+                                if let userId = environment.authService.currentUser()?.userId {
+                                    viewModel.deleteWorkout(workout, userId: userId)
+                                }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }

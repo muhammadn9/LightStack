@@ -214,7 +214,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     func makeHistoryViewModel() -> HistoryViewModel {
         HistoryViewModel(
-            workoutRepository: workoutRepository
+            workoutRepository: workoutRepository,
+            prRepository: prRepository
         )
     }
 

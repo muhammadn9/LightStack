@@ -10,9 +10,11 @@ final class HistoryViewModel: ObservableObject {
     @Published private(set) var allWorkouts: [Workout] = []
 
     private let workoutRepository: WorkoutRepository
+    private let prRepository: PRRepository
 
-    init(workoutRepository: WorkoutRepository) {
+    init(workoutRepository: WorkoutRepository, prRepository: PRRepository) {
         self.workoutRepository = workoutRepository
+        self.prRepository = prRepository
     }
 
     // MARK: - Load Workouts
@@ -71,10 +73,17 @@ final class HistoryViewModel: ObservableObject {
 
     // MARK: - Delete
 
-    func deleteWorkout(_ workout: Workout) {
+    func deleteWorkout(_ workout: Workout, userId: UUID) {
+        // Capture exercise names before cascade delete removes them
+        let exerciseNames = workoutRepository.fetchExercises(workoutId: workout.id).map { $0.name }
+
         workoutRepository.deleteWorkout(workout)
-        // Remove from local list immediately for instant UI update
         workouts.removeAll { $0.id == workout.id }
         allWorkouts.removeAll { $0.id == workout.id }
+
+        // Recalculate PRs for every exercise in the deleted workout
+        for name in exerciseNames {
+            prRepository.recalculatePR(userId: userId, exerciseName: name)
+        }
     }
 }

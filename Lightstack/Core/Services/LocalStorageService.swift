@@ -256,6 +256,29 @@ final class LocalStorageService {
         save()
     }
 
+    func deletePersonalRecord(userId: UUID, exerciseName: String) {
+        let request: NSFetchRequest<CDPersonalRecord> = CDPersonalRecord.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "userId == %@ AND exerciseName == %@",
+            userId as CVarArg, exerciseName
+        )
+        if let entities = try? context.fetch(request) {
+            entities.forEach { context.delete($0) }
+            save()
+        }
+    }
+
+    /// Returns all sets for a given exercise name across all workouts for a user,
+    /// used to recalculate PRs after a workout is deleted.
+    func fetchAllSetsForExerciseName(userId: UUID, exerciseName: String) -> [CDWorkoutSet] {
+        let request: NSFetchRequest<CDWorkoutSet> = CDWorkoutSet.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "exercise.name == %@ AND exercise.workout.userId == %@",
+            exerciseName, userId as CVarArg
+        )
+        return (try? context.fetch(request)) ?? []
+    }
+
     // MARK: - Streak
 
     func countConsecutiveWorkoutDays(userId: UUID) -> Int {

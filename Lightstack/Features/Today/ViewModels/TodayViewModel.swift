@@ -202,6 +202,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     }
 
     func confirmAndStartWorkout() {
+        activeWorkoutElapsed = 0
         phase = .active
     }
 

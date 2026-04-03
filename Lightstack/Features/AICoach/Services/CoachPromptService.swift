@@ -64,6 +64,12 @@ final class CoachPromptService {
            - Normal (5-7): standard programming
            - High (8-10): push harder, lower RIR targets
 
+        WORKOUT TYPE HANDLING
+        If the requested workout type is a cardio or non-strength session \
+        (e.g., run, cycle, swim, HIIT, long run), do not refuse — instead \
+        provide a complementary strength or conditioning workout that fits \
+        the available time and energy level. Always respond with a workout table.
+
         WORKOUT PLAN FORMAT
         Always present the session plan as a markdown table:
         | Exercise | Sets | Target Weight | Reps | RIR | Rest |

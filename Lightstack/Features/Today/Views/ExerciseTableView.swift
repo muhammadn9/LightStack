@@ -103,8 +103,30 @@ struct ExerciseTableView: View {
 
     // MARK: - Pending Set Input Rows
 
+    private var pendingSetColumnHeaders: some View {
+        HStack(spacing: 8) {
+            Text("")
+                .frame(width: 40)
+            Text("Lbs")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(width: 70)
+            Text("Reps")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(width: 60)
+            Text("RIR")
+                .font(.caption2)
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(width: 50)
+        }
+    }
+
     @ViewBuilder
     private var pendingSetInputRows: some View {
+        if !pendingSets.isEmpty {
+            pendingSetColumnHeaders
+        }
         ForEach(Array(pendingSets.enumerated()), id: \.element.id) { index, _ in
             HStack(spacing: 8) {
                 Text("Set \(loggedSets.count + index + 1)")

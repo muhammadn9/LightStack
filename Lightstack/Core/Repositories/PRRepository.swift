@@ -86,4 +86,45 @@ final class PRRepository {
 
         return newPR
     }
+
+    // MARK: - Recalculation after deletion
+
+    /// Deletes the stored PR for an exercise and rebuilds it from all remaining sets.
+    /// Call this for each exercise in a workout that is being deleted.
+    func recalculatePR(userId: UUID, exerciseName: String) {
+        prLock.lock()
+        defer { prLock.unlock() }
+
+        // Remove the stale PR entry
+        localStorage.deletePersonalRecord(userId: userId, exerciseName: exerciseName)
+
+        // Re-derive the best set from remaining data
+        let sets = localStorage.fetchAllSetsForExerciseName(userId: userId, exerciseName: exerciseName)
+        guard !sets.isEmpty else { return }
+
+        // Pick the set with the highest estimated 1RM (Epley formula)
+        var bestSet: CDWorkoutSet?
+        var bestE1RM: Double = 0
+        for set in sets {
+            let reps = Int(set.reps)
+            let weight = set.weightLbs
+            guard reps > 0, weight > 0 else { continue }
+            let e1rm = weight * (1 + Double(reps) / 30)
+            if e1rm > bestE1RM {
+                bestE1RM = e1rm
+                bestSet = set
+            }
+        }
+
+        guard let best = bestSet else { return }
+
+        let pr = PersonalRecord.create(
+            userId: userId,
+            exerciseName: exerciseName,
+            weightLbs: best.weightLbs,
+            reps: Int(best.reps),
+            workoutId: best.exercise?.workout?.id
+        )
+        localStorage.savePersonalRecord(pr)
+    }
 }
