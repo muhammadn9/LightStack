@@ -12,10 +12,10 @@ struct HistoryListView: View {
                 AppTheme.backgroundGradient.ignoresSafeArea()
 
                 if let vm = viewModel {
-                    if vm.workouts.isEmpty {
+                    if vm.workouts.isEmpty && !vm.isLoading {
                         emptyState
                     } else {
-                        workoutList(vm: vm)
+                        HistoryContentView(viewModel: vm)
                     }
                 } else {
                     ProgressView()
@@ -28,24 +28,58 @@ struct HistoryListView: View {
         }
     }
 
-    // MARK: - Workout List
+    // MARK: - Empty State
 
-    private func workoutList(vm: HistoryViewModel) -> some View {
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 60))
+                .foregroundStyle(AppTheme.accent.opacity(0.5))
+            Text("No workout history yet")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("Complete your first workout to see it here")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(40)
+    }
+
+    // MARK: - Helpers
+
+    private func loadHistory() {
+        guard let userId = environment.authService.currentUser()?.userId else { return }
+        if viewModel == nil {
+            let vm = environment.makeHistoryViewModel()
+            vm.loadWorkouts(userId: userId)
+            viewModel = vm
+        }
+    }
+}
+
+// MARK: - HistoryContentView
+
+private struct HistoryContentView: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @ObservedObject var viewModel: HistoryViewModel
+
+    var body: some View {
         VStack(spacing: 0) {
-            filterChips(vm: vm)
+            filterChips
                 .padding(.top, 16)
             List {
-                ForEach(vm.workouts) { workout in
-                    NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: vm)) {
-                        workoutCard(workout: workout, vm: vm)
+                ForEach(viewModel.workouts) { workout in
+                    NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: viewModel)) {
+                        workoutCard(workout: workout)
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive, action: {
-                            deleteWorkout(workout, vm: vm)
-                        }) {
+                        Button(role: .destructive) {
+                            viewModel.deleteWorkout(workout)
+                        } label: {
                             Label("Delete", systemImage: "trash")
                         }
                     }
@@ -57,21 +91,18 @@ struct HistoryListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Filter Chips
-
-    private func filterChips(vm: HistoryViewModel) -> some View {
+    private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                filterChip(label: "All", isSelected: vm.filterType == nil) {
+                filterChip(label: "All", isSelected: viewModel.filterType == nil) {
                     if let userId = environment.authService.currentUser()?.userId {
-                        vm.setFilter(nil, userId: userId)
+                        viewModel.setFilter(nil, userId: userId)
                     }
                 }
-
-                ForEach(vm.availableTypes, id: \.self) { type in
-                    filterChip(label: type, isSelected: vm.filterType == type) {
+                ForEach(viewModel.availableTypes, id: \.self) { type in
+                    filterChip(label: type, isSelected: viewModel.filterType == type) {
                         if let userId = environment.authService.currentUser()?.userId {
-                            vm.setFilter(type, userId: userId)
+                            viewModel.setFilter(type, userId: userId)
                         }
                     }
                 }
@@ -98,29 +129,23 @@ struct HistoryListView: View {
         }
     }
 
-    // MARK: - Workout Card
-
-    private func workoutCard(workout: Workout, vm: HistoryViewModel) -> some View {
-        let summary = vm.workoutSummary(workout)
-
+    private func workoutCard(workout: Workout) -> some View {
+        let summary = viewModel.workoutSummary(workout)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                // Date badge
                 VStack(spacing: 2) {
-                    Text(dayAbbrev(workout.date))
+                    Text(DateFormatter.dayAbbreviation.string(from: workout.date).uppercased())
                         .font(.caption.weight(.bold))
                         .foregroundStyle(AppTheme.textSecondary)
-                    Text("\(dayNumber(workout.date))")
+                    Text(DateFormatter.dayNumber.string(from: workout.date))
                         .font(.title2.bold())
                         .foregroundStyle(AppTheme.accent)
                 }
                 .frame(width: 50)
-
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workout.workoutType)
                         .font(.headline)
                         .foregroundStyle(AppTheme.textPrimary)
-
                     HStack(spacing: 12) {
                         Label("\(summary.exerciseCount) exercises", systemImage: "figure.strengthtraining.traditional")
                         if let duration = workout.durationMinutes {
@@ -131,9 +156,7 @@ struct HistoryListView: View {
                     .font(.caption)
                     .foregroundStyle(AppTheme.textSecondary)
                 }
-
                 Spacer()
-
                 Image(systemName: "chevron.right")
                     .foregroundStyle(AppTheme.textSecondary)
             }
@@ -141,51 +164,9 @@ struct HistoryListView: View {
         .cardStyle()
     }
 
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 60))
-                .foregroundStyle(AppTheme.accent.opacity(0.5))
-            Text("No workout history yet")
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
-            Text("Complete your first workout to see it here")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.textSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(40)
-    }
-
-    // MARK: - Helpers
-
-    private func loadHistory() {
-        guard let userId = environment.authService.currentUser()?.userId else { return }
-        let vm = environment.makeHistoryViewModel()
-        vm.loadWorkouts(userId: userId)
-        viewModel = vm
-    }
-
-    private func dayAbbrev(_ date: Date) -> String {
-        DateFormatter.dayAbbreviation.string(from: date).uppercased()
-    }
-
-    private func dayNumber(_ date: Date) -> String {
-        DateFormatter.dayNumber.string(from: date)
-    }
-
     private func formatVolume(_ volume: Double) -> String {
-        if volume >= 1_000_000 {
-            return String(format: "%.1fM lbs", volume / 1_000_000)
-        } else if volume >= 1_000 {
-            return String(format: "%.0fK lbs", volume / 1_000)
-        }
+        if volume >= 1_000_000 { return String(format: "%.1fM lbs", volume / 1_000_000) }
+        if volume >= 1_000 { return String(format: "%.0fK lbs", volume / 1_000) }
         return String(format: "%.0f lbs", volume)
-    }
-
-    private func deleteWorkout(_ workout: Workout, vm: HistoryViewModel) {
-        vm.deleteWorkout(workout)
     }
 }
