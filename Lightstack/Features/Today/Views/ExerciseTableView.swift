@@ -163,7 +163,6 @@ struct ExerciseTableView: View {
                 inputField("lbs", text: $editingWeight, width: 70, keyboard: .decimalPad)
                 inputField("reps", text: $editingReps, width: 60, keyboard: .numberPad)
                 inputField("RIR", text: $editingRir, width: 50, keyboard: .numberPad)
-
                 Button(action: onLogSet) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
@@ -178,6 +177,18 @@ struct ExerciseTableView: View {
                 .background(AppTheme.surfaceElevated)
                 .foregroundStyle(AppTheme.textPrimary)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil, from: nil, for: nil
+                    )
+                }
+                .foregroundStyle(AppTheme.accent)
+            }
         }
     }
 
