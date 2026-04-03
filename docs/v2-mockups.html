@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LightStack V2 — UI Concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ─── RESET & PAGE ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:#080C08;
+  color:#eee;
+  font-family:'Share Tech Mono',monospace;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ─── SCANLINE OVERLAY ───────────────────────────────── */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px);
+  pointer-events:none;z-index:9999;
+}
+
+/* ─── PAGE HEADER ────────────────────────────────────── */
+.page-header{
+  text-align:center;
+  padding:60px 20px 40px;
+  position:relative;
+}
+.page-header h1{
+  font-family:'Press Start 2P',monospace;
+  font-size:clamp(14px,3vw,26px);
+  color:#4ADE80;
+  text-shadow:0 0 20px #4ADE8080,0 0 60px #4ADE8040;
+  letter-spacing:4px;
+  line-height:1.6;
+  animation:glow 3s ease-in-out infinite alternate;
+}
+.page-header p{
+  font-family:'VT323',monospace;
+  font-size:22px;
+  color:#86EFAC;
+  margin-top:16px;
+  letter-spacing:2px;
+}
+@keyframes glow{
+  from{text-shadow:0 0 20px #4ADE8080,0 0 40px #4ADE8040}
+  to{text-shadow:0 0 30px #4ADE80CC,0 0 80px #4ADE8080,0 0 120px #4ADE8040}
+}
+
+/* ─── CONCEPT SECTION ────────────────────────────────── */
+.concept-section{
+  padding:40px 20px 60px;
+  max-width:1600px;
+  margin:0 auto;
+}
+.concept-label{
+  font-family:'Press Start 2P',monospace;
+  font-size:11px;
+  letter-spacing:3px;
+  margin-bottom:8px;
+}
+.concept-title{
+  font-family:'VT323',monospace;
+  font-size:42px;
+  margin-bottom:6px;
+}
+.concept-desc{
+  font-size:14px;
+  opacity:.7;
+  margin-bottom:30px;
+  max-width:700px;
+  line-height:1.6;
+}
+
+/* ─── PALETTE SWATCHES ───────────────────────────────── */
+.palette{
+  display:flex;gap:10px;flex-wrap:wrap;margin-bottom:36px;
+}
+.swatch{
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+.swatch-color{
+  width:48px;height:48px;
+  border-radius:4px;
+  border:2px solid rgba(255,255,255,.15);
+}
+.swatch-label{
+  font-size:10px;opacity:.6;letter-spacing:1px;
+}
+
+/* ─── MODE LABEL ─────────────────────────────────────── */
+.mode-row{
+  display:flex;gap:32px;flex-wrap:wrap;margin-bottom:48px;
+}
+.mode-group{flex:1;min-width:300px;}
+.mode-tag{
+  font-family:'Press Start 2P',monospace;
+  font-size:9px;
+  padding:6px 12px;
+  border-radius:3px;
+  display:inline-block;
+  margin-bottom:20px;
+  letter-spacing:2px;
+}
+.phones-row{
+  display:flex;gap:20px;flex-wrap:wrap;
+}
+
+/* ─── PHONE FRAME ────────────────────────────────────── */
+.phone{
+  position:relative;
+  width:220px;flex-shrink:0;
+}
+.phone-shell{
+  border-radius:34px;
+  padding:10px;
+  box-shadow:0 24px 64px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.phone-notch{
+  width:60px;height:8px;
+  border-radius:0 0 8px 8px;
+  margin:0 auto 8px;
+}
+.phone-screen{
+  border-radius:24px;
+  overflow:hidden;
+  height:430px;
+  position:relative;
+  display:flex;flex-direction:column;
+}
+.phone-label{
+  font-family:'VT323',monospace;
+  font-size:15px;
+  text-align:center;
+  margin-top:8px;
+  opacity:.6;
+  letter-spacing:2px;
+}
+
+/* ════════════════════════════════════════════════════════
+   CONCEPT A — PIXEL DUNGEON
+════════════════════════════════════════════════════════ */
+
+/* --- A DARK MODE --- */
+.pd-dark .phone-shell{background:#0A140A;border:3px solid #1A3A1A;}
+.pd-dark .phone-notch{background:#1A3A1A;}
+.pd-dark .phone-screen{background:#0A140A;}
+
+/* Pixel border mixin (using outline) */
+.pd-card{
+  background:#0F1F0F;
+  border:3px solid #4ADE80;
+  box-shadow:inset 0 0 0 1px #0A140A,4px 4px 0 0 #1A5C1A;
+  padding:10px;
+  margin:6px;
+  border-radius:0;
+}
+.pd-card-dim{
+  background:#0C180C;
+  border:2px solid #1E5C1E;
+  box-shadow:inset 0 0 0 1px #0A140A;
+  padding:8px;margin:4px 6px;border-radius:0;
+}
+
+/* Status bar */
+.pd-statusbar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:6px 12px 4px;
+  background:#0A140A;
+}
+.pd-statusbar-time{font-family:'VT323',monospace;font-size:14px;color:#4ADE80;}
+.pd-statusbar-icons{display:flex;gap:4px;}
+.pd-statusbar-icon{width:8px;height:8px;background:#4ADE80;clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);}
+
+/* Tab bar */
+.pd-tabbar{
+  display:flex;
+  background:#081208;
+  border-top:3px solid #1A5C1A;
+  margin-top:auto;flex-shrink:0;
+}
+.pd-tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  padding:6px 0 8px;gap:2px;cursor:pointer;
+}
+.pd-tab-icon{font-size:14px;line-height:1;}
+.pd-tab-label{font-family:'Press Start 2P',monospace;font-size:5px;color:#4B8B5E;letter-spacing:0;}
+.pd-tab.active .pd-tab-label{color:#4ADE80;}
+.pd-tab.active .pd-tab-icon{filter:drop-shadow(0 0 4px #4ADE80);}
+
+/* HP Bar */
+.pd-hpbar-wrap{margin:4px 6px;}
+.pd-hpbar-label{font-family:'VT323',monospace;font-size:13px;color:#86EFAC;margin-bottom:2px;display:flex;justify-content:space-between;}
+.pd-hpbar-track{height:10px;background:#0C180C;border:2px solid #1E5C1E;box-shadow:inset 0 0 0 1px #0A140A;}
+.pd-hpbar-fill{height:100%;background:linear-gradient(90deg,#16A34A,#4ADE80);box-shadow:0 0 8px #4ADE8080;}
+
+/* Heading */
+.pd-heading{font-family:'Press Start 2P',monospace;font-size:7px;color:#4ADE80;letter-spacing:1px;text-shadow:0 0 8px #4ADE8060;}
+.pd-subheading{font-family:'VT323',monospace;font-size:18px;color:#86EFAC;margin-top:2px;}
+.pd-text{font-family:'VT323',monospace;font-size:14px;color:#A3C4A3;}
+.pd-text-sm{font-family:'VT323',monospace;font-size:12px;color:#4B8B5E;}
+
+/* Chip */
+.pd-chips{display:flex;flex-wrap:wrap;gap:4px;padding:0 6px;}
+.pd-chip{
+  font-family:'Press Start 2P',monospace;font-size:6px;
+  padding:5px 6px;
+  border:2px solid #1E5C1E;
+  color:#4B8B5E;background:#0C180C;cursor:pointer;
+  border-radius:0;letter-spacing:0;
+}
+.pd-chip.sel{border-color:#4ADE80;color:#4ADE80;background:#0F1F0F;box-shadow:inset 0 0 0 1px #0A140A,0 0 8px #4ADE8040;}
+
+/* Button */
+.pd-btn{
+  display:block;
+  font-family:'Press Start 2P',monospace;font-size:7px;
+  background:#16A34A;color:#E0FFE0;
+  border:3px solid #4ADE80;
+  box-shadow:4px 4px 0 0 #0D4D1F,inset 0 0 0 1px #22C55E80;
+  padding:10px 12px;margin:6px;cursor:pointer;
+  border-radius:0;letter-spacing:1px;text-align:center;
+  text-shadow:1px 1px 0 #0D4D1F;
+}
+.pd-btn-sm{
+  font-family:'Press Start 2P',monospace;font-size:6px;
+  background:#0C180C;color:#4ADE80;
+  border:2px solid #4ADE80;
+  padding:5px 8px;cursor:pointer;border-radius:0;
+}
+
+/* Set row */
+.pd-setrow{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 6px;border-bottom:1px solid #0F1F0F;
+}
+.pd-setnum{font-family:'Press Start 2P',monospace;font-size:6px;color:#4B8B5E;width:24px;}
+.pd-setdata{font-family:'VT323',monospace;font-size:15px;color:#86EFAC;flex:1;}
+.pd-check{width:12px;height:12px;background:#4ADE80;box-shadow:0 0 6px #4ADE80;}
+.pd-check-empty{width:12px;height:12px;border:2px solid #1E5C1E;}
+
+/* Input row */
+.pd-input-row{display:flex;gap:4px;padding:4px 6px;}
+.pd-input{
+  flex:1;background:#081208;border:2px solid #4ADE80;
+  font-family:'VT323',monospace;font-size:15px;color:#4ADE80;
+  padding:4px;text-align:center;border-radius:0;
+}
+.pd-input-label{font-family:'VT323',monospace;font-size:11px;color:#4B8B5E;text-align:center;margin-top:1px;}
+
+/* Calendar */
+.pd-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 4px;}
+.pd-cal-day{
+  aspect-ratio:1;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Press Start 2P',monospace;font-size:5px;color:#4B8B5E;
+  border:1px solid #0F1F0F;cursor:pointer;
+}
+.pd-cal-day.done{background:#16A34A;color:#E0FFE0;border-color:#4ADE80;}
+.pd-cal-day.planned{background:#0C180C;color:#4ADE80;border:1px dashed #1E5C1E;}
+.pd-cal-day.rest{background:#0A140A;color:#1E5C1E;}
+.pd-cal-day.today{border:2px solid #4ADE80;color:#4ADE80;box-shadow:0 0 6px #4ADE8060;}
+.pd-cal-day.empty{opacity:0;}
+.pd-cal-header{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 4px 4px;}
+.pd-cal-dow{font-family:'Press Start 2P',monospace;font-size:4px;color:#1E5C1E;text-align:center;padding:2px 0;}
+
+/* Stat block */
+.pd-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px 6px;}
+.pd-stat{background:#0C180C;border:2px solid #1E5C1E;padding:6px 4px;text-align:center;}
+.pd-stat-num{font-family:'Press Start 2P',monospace;font-size:9px;color:#4ADE80;}
+.pd-stat-lbl{font-family:'VT323',monospace;font-size:12px;color:#4B8B5E;margin-top:2px;}
+
+/* XP bar */
+.pd-xpbar-wrap{padding:4px 6px;}
+.pd-xpbar-label{font-family:'Press Start 2P',monospace;font-size:6px;color:#4ADE80;margin-bottom:3px;display:flex;justify-content:space-between;}
+.pd-xpbar-track{height:12px;background:#0C180C;border:2px solid #4ADE80;box-shadow:0 0 8px #4ADE8040;}
+.pd-xpbar-fill{height:100%;background:repeating-linear-gradient(90deg,#16A34A 0,#16A34A 8px,#22C55E 8px,#22C55E 16px);width:68%;box-shadow:0 0 10px #4ADE8080;}
+
+/* PR row */
+.pd-prrow{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #0F1F0F;}
+.pd-prname{font-family:'VT323',monospace;font-size:14px;color:#86EFAC;}
+.pd-prval{font-family:'Press Start 2P',monospace;font-size:7px;color:#4ADE80;}
+
+/* Energy meter */
+.pd-energy{display:flex;gap:2px;padding:0 6px;}
+.pd-pip{width:14px;height:14px;border:2px solid #1E5C1E;}
+.pd-pip.on{background:#4ADE80;box-shadow:0 0 6px #4ADE8080;border-color:#4ADE80;}
+
+/* Timer bar */
+.pd-timer{
+  display:flex;align-items:center;justify-content:space-between;
+  background:#081208;border-bottom:3px solid #1A5C1A;
+  padding:6px 10px;flex-shrink:0;
+}
+.pd-timer-time{font-family:'Press Start 2P',monospace;font-size:10px;color:#4ADE80;text-shadow:0 0 8px #4ADE8080;}
+.pd-timer-btns{display:flex;gap:6px;}
+.pd-timer-btn{width:22px;height:22px;border:2px solid #1E5C1E;background:#0C180C;display:flex;align-items:center;justify-content:center;font-size:8px;cursor:pointer;}
+
+/* Streak badge */
+.pd-streak{
+  display:flex;align-items:center;gap:3px;
+  background:#0C180C;border:2px solid #F97316;
+  padding:3px 6px;
+  box-shadow:0 0 8px #F9731640;
+}
+.pd-streak-num{font-family:'Press Start 2P',monospace;font-size:8px;color:#F97316;}
+.pd-streak-icon{font-size:10px;}
+
+/* Level badge */
+.pd-level{
+  font-family:'Press Start 2P',monospace;font-size:7px;
+  background:#16A34A;color:#E0FFE0;
+  border:3px solid #4ADE80;
+  box-shadow:2px 2px 0 0 #0D4D1F;
+  padding:4px 8px;display:inline-block;
+  text-shadow:1px 1px 0 #0D4D1F;
+}
+
+/* Muscle badge */
+.pd-muscle{
+  font-family:'Press Start 2P',monospace;font-size:5px;
+  background:#0C180C;color:#4ADE80;
+  border:1px solid #4ADE80;padding:2px 4px;
+}
+
+/* Slider */
+.pd-slider-wrap{padding:0 8px;}
+.pd-slider-label{font-family:'VT323',monospace;font-size:14px;color:#86EFAC;display:flex;justify-content:space-between;margin-bottom:3px;}
+.pd-slider{
+  width:100%;height:10px;
+  background:repeating-linear-gradient(90deg,#1E5C1E 0,#1E5C1E 2px,#0C180C 2px,#0C180C 8px);
+  border:2px solid #1E5C1E;
+  appearance:none;cursor:pointer;outline:none;
+}
+
+/* Grid texture for dark bg */
+.pd-screen-bg{
+  background:#0A140A;
+  background-image:
+    linear-gradient(rgba(74,222,128,.04) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(74,222,128,.04) 1px,transparent 1px);
+  background-size:16px 16px;
+  flex:1;overflow:hidden;display:flex;flex-direction:column;
+}
+
+/* ════════════════════════════════════════════════════════
+   CONCEPT A — LIGHT MODE  (Toxic Meadow)
+════════════════════════════════════════════════════════ */
+.pd-light .phone-shell{background:#ECFDF5;border:3px solid #BBF7D0;}
+.pd-light .phone-notch{background:#BBF7D0;}
+.pd-light .phone-screen{background:#ECFDF5;}
+.pd-light .pd-screen-bg{
+  background:#F0FFF4;
+  background-image:
+    linear-gradient(rgba(22,163,74,.06) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(22,163,74,.06) 1px,transparent 1px);
+  background-size:16px 16px;
+}
+.pd-light .pd-statusbar{background:#ECFDF5;}
+.pd-light .pd-statusbar-time{color:#16A34A;}
+.pd-light .pd-statusbar-icon{background:#16A34A;}
+.pd-light .pd-card{background:#FFFFFF;border:3px solid #16A34A;box-shadow:inset 0 0 0 1px #F0FFF4,4px 4px 0 0 #BBF7D0;}
+.pd-light .pd-card-dim{background:#F7FFF9;border:2px solid #BBF7D0;}
+.pd-light .pd-tabbar{background:#F0FFF4;border-top:3px solid #BBF7D0;}
+.pd-light .pd-tab-label{color:#4B8B5E;}
+.pd-light .pd-tab.active .pd-tab-label{color:#16A34A;}
+.pd-light .pd-heading{color:#15803D;text-shadow:none;}
+.pd-light .pd-subheading{color:#166534;}
+.pd-light .pd-text{color:#4B8B5E;}
+.pd-light .pd-text-sm{color:#86EFAC;}
+.pd-light .pd-chip{border:2px solid #BBF7D0;color:#4B8B5E;background:#F0FFF4;}
+.pd-light .pd-chip.sel{border-color:#16A34A;color:#16A34A;background:#DCFCE7;box-shadow:none;}
+.pd-light .pd-btn{background:#16A34A;border:3px solid #15803D;box-shadow:4px 4px 0 0 #166534;}
+.pd-light .pd-btn-sm{background:#F0FFF4;color:#16A34A;border:2px solid #16A34A;}
+.pd-light .pd-setrow{border-bottom:1px solid #DCFCE7;}
+.pd-light .pd-setnum{color:#86EFAC;}
+.pd-light .pd-setdata{color:#166534;}
+.pd-light .pd-check{background:#16A34A;box-shadow:none;}
+.pd-light .pd-check-empty{border:2px solid #BBF7D0;}
+.pd-light .pd-input{background:#F7FFF9;border:2px solid #16A34A;color:#166534;}
+.pd-light .pd-input-label{color:#86EFAC;}
+.pd-light .pd-cal-day{border:1px solid #DCFCE7;color:#86EFAC;}
+.pd-light .pd-cal-day.done{background:#16A34A;color:#FFFFFF;}
+.pd-light .pd-cal-day.planned{background:#DCFCE7;color:#16A34A;border:1px dashed #86EFAC;}
+.pd-light .pd-cal-day.rest{background:#F0FFF4;color:#BBF7D0;}
+.pd-light .pd-cal-day.today{border:2px solid #16A34A;color:#16A34A;box-shadow:none;}
+.pd-light .pd-cal-dow{color:#86EFAC;}
+.pd-light .pd-stat{background:#F0FFF4;border:2px solid #BBF7D0;}
+.pd-light .pd-stat-num{color:#16A34A;}
+.pd-light .pd-stat-lbl{color:#86EFAC;}
+.pd-light .pd-xpbar-track{background:#F0FFF4;border:2px solid #16A34A;box-shadow:none;}
+.pd-light .pd-xpbar-fill{background:repeating-linear-gradient(90deg,#16A34A 0,#16A34A 8px,#4ADE80 8px,#4ADE80 16px);box-shadow:none;}
+.pd-light .pd-xpbar-label{color:#16A34A;}
+.pd-light .pd-prrow{border-bottom:1px solid #DCFCE7;}
+.pd-light .pd-prname{color:#166534;}
+.pd-light .pd-prval{color:#16A34A;}
+.pd-light .pd-energy .pd-pip{border:2px solid #BBF7D0;}
+.pd-light .pd-energy .pd-pip.on{background:#16A34A;border-color:#16A34A;box-shadow:none;}
+.pd-light .pd-timer{background:#F0FFF4;border-bottom:3px solid #BBF7D0;}
+.pd-light .pd-timer-time{color:#16A34A;text-shadow:none;}
+.pd-light .pd-timer-btn{border:2px solid #BBF7D0;background:#DCFCE7;}
+.pd-light .pd-streak{background:#FFF7ED;border:2px solid #F97316;box-shadow:none;}
+.pd-light .pd-level{background:#16A34A;border:3px solid #15803D;box-shadow:2px 2px 0 0 #166534;}
+.pd-light .pd-muscle{background:#DCFCE7;color:#16A34A;border:1px solid #16A34A;}
+.pd-light .pd-slider{background:repeating-linear-gradient(90deg,#BBF7D0 0,#BBF7D0 2px,#F0FFF4 2px,#F0FFF4 8px);border:2px solid #BBF7D0;}
+.pd-light .pd-prval{color:#16A34A;}
+.pd-light .pd-hpbar-track{background:#F0FFF4;border:2px solid #BBF7D0;}
+.pd-light .pd-hpbar-fill{background:linear-gradient(90deg,#16A34A,#4ADE80);box-shadow:none;}
+.pd-light .pd-hpbar-label{color:#166534;}
+
+/* ════════════════════════════════════════════════════════
+   CONCEPT B — NATURE CRAFT (Light Mode)
+════════════════════════════════════════════════════════ */
+.nc-light .phone-shell{
+  background:#EDE5D8;
+  border:4px solid #8B5E3C;
+  box-shadow:0 24px 64px rgba(0,0,0,.3),inset 0 2px 0 rgba(255,255,255,.3);
+}
+.nc-light .phone-notch{background:#8B5E3C;}
+.nc-light .phone-screen{background:#F5F0E8;}
+
+/* Screen bg with parchment texture */
+.nc-screen-bg{
+  background:#F5F0E8;
+  background-image:
+    radial-gradient(ellipse at 20% 30%,rgba(196,162,48,.08) 0,transparent 60%),
+    radial-gradient(ellipse at 80% 70%,rgba(45,106,45,.06) 0,transparent 50%);
+  flex:1;overflow:hidden;display:flex;flex-direction:column;
+}
+
+/* Status bar */
+.nc-statusbar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:6px 12px 4px;
+  background:rgba(245,240,232,.9);
+}
+.nc-statusbar-time{font-family:'Cinzel',serif;font-size:10px;color:#1A2E1A;font-weight:600;}
+.nc-statusbar-icons{display:flex;gap:4px;align-items:center;}
+.nc-bar{width:16px;height:6px;background:#2D6A2D;border-radius:1px;}
+
+/* Wood card */
+.nc-card{
+  background:#FAF6EF;
+  border:3px solid #8B5E3C;
+  border-radius:4px;
+  box-shadow:0 2px 0 0 #6B4A2E,inset 0 1px 0 rgba(255,255,255,.6);
+  padding:10px;margin:6px;
+  position:relative;
+}
+.nc-card::before{
+  content:'';position:absolute;inset:3px;
+  border:1px solid rgba(196,168,130,.4);
+  border-radius:2px;pointer-events:none;
+}
+.nc-card-dim{
+  background:#F0EAE0;
+  border:2px solid #C4A882;
+  border-radius:4px;
+  padding:8px;margin:4px 6px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4);
+}
+
+/* Tab bar */
+.nc-tabbar{
+  display:flex;
+  background:#EDE5D8;
+  border-top:3px solid #8B5E3C;
+  box-shadow:0 -2px 0 #C4A882;
+  margin-top:auto;flex-shrink:0;
+}
+.nc-tab{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  padding:6px 0 8px;gap:2px;
+}
+.nc-tab-icon{font-size:14px;}
+.nc-tab-label{font-family:'Cinzel',serif;font-size:6px;color:#8B7355;letter-spacing:.5px;}
+.nc-tab.active .nc-tab-label{color:#2D6A2D;}
+.nc-tab.active .nc-tab-icon{filter:drop-shadow(0 0 3px #2D6A2D80);}
+
+/* Typography */
+.nc-heading{font-family:'Cinzel',serif;font-size:11px;color:#1A2E1A;font-weight:700;letter-spacing:1px;}
+.nc-subheading{font-family:'Crimson Text',serif;font-size:17px;color:#2D4A2D;margin-top:2px;}
+.nc-text{font-family:'Crimson Text',serif;font-size:13px;color:#4A6741;line-height:1.3;}
+.nc-text-sm{font-family:'Crimson Text',serif;font-size:11px;color:#8B7355;}
+
+/* Chips */
+.nc-chips{display:flex;flex-wrap:wrap;gap:4px;padding:0 6px;}
+.nc-chip{
+  font-family:'Cinzel',serif;font-size:7px;
+  padding:4px 7px;
+  border:2px solid #C4A882;
+  border-radius:3px;
+  color:#8B7355;background:#F0EAE0;
+  box-shadow:0 1px 0 #8B5E3C80;cursor:pointer;
+}
+.nc-chip.sel{
+  border-color:#2D6A2D;color:#2D6A2D;background:#DFF0DF;
+  box-shadow:0 1px 0 #1A4A1A80;
+}
+
+/* Button */
+.nc-btn{
+  display:block;
+  font-family:'Cinzel',serif;font-size:8px;font-weight:700;
+  background:linear-gradient(180deg,#52A852,#2D6A2D);
+  color:#E8FFE8;
+  border:2px solid #1A4A1A;
+  border-radius:6px;
+  box-shadow:0 3px 0 #1A4A1A,inset 0 1px 0 rgba(255,255,255,.3);
+  padding:9px 12px;margin:6px;cursor:pointer;
+  letter-spacing:1px;text-align:center;
+  text-shadow:0 1px 0 #1A4A1A;
+}
+.nc-btn-sm{
+  font-family:'Cinzel',serif;font-size:6px;font-weight:700;
+  background:#DFF0DF;color:#2D6A2D;
+  border:1px solid #2D6A2D;border-radius:3px;
+  padding:4px 7px;cursor:pointer;
+  box-shadow:0 1px 0 #1A4A1A40;
+}
+
+/* Set rows */
+.nc-setrow{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 6px;border-bottom:1px solid rgba(196,168,130,.3);
+}
+.nc-setnum{font-family:'Cinzel',serif;font-size:7px;color:#8B7355;width:26px;}
+.nc-setdata{font-family:'Crimson Text',serif;font-size:14px;color:#2D4A2D;flex:1;}
+.nc-check{width:14px;height:14px;background:#2D6A2D;border-radius:2px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;}
+.nc-check-empty{width:14px;height:14px;border:2px solid #C4A882;border-radius:2px;}
+
+/* Inputs */
+.nc-input-row{display:flex;gap:4px;padding:4px 6px;}
+.nc-input{
+  flex:1;background:#F0EAE0;
+  border:2px solid #C4A882;border-radius:4px;
+  font-family:'Crimson Text',serif;font-size:14px;color:#1A2E1A;
+  padding:4px;text-align:center;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.08);
+}
+.nc-input-label{font-family:'Cinzel',serif;font-size:8px;color:#8B7355;text-align:center;margin-top:1px;}
+
+/* Calendar */
+.nc-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 4px;}
+.nc-cal-day{
+  aspect-ratio:1;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Cinzel',serif;font-size:6px;color:#C4A882;
+  border:1px solid rgba(196,168,130,.2);border-radius:2px;cursor:pointer;
+}
+.nc-cal-day.done{background:#2D6A2D;color:#E8FFE8;border-color:#1A4A1A;}
+.nc-cal-day.planned{background:#DFF0DF;color:#2D6A2D;border:1px dashed #52A852;}
+.nc-cal-day.rest{background:#F0EAE0;color:#C4A882;}
+.nc-cal-day.today{border:2px solid #2D6A2D;color:#2D6A2D;background:#EAF5EA;}
+.nc-cal-day.empty{opacity:0;}
+.nc-cal-header{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 4px 4px;}
+.nc-cal-dow{font-family:'Cinzel',serif;font-size:5px;color:#C4A882;text-align:center;padding:2px 0;}
+
+/* Stats */
+.nc-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px 6px;}
+.nc-stat{
+  background:#FAF6EF;border:2px solid #C4A882;border-radius:4px;
+  padding:6px 4px;text-align:center;
+  box-shadow:0 1px 0 #8B5E3C40;
+}
+.nc-stat-num{font-family:'Cinzel',serif;font-size:10px;color:#2D6A2D;font-weight:700;}
+.nc-stat-lbl{font-family:'Crimson Text',serif;font-size:11px;color:#8B7355;margin-top:2px;}
+
+/* HP bar */
+.nc-hpbar-wrap{margin:4px 6px;}
+.nc-hpbar-label{font-family:'Cinzel',serif;font-size:7px;color:#4A6741;margin-bottom:2px;display:flex;justify-content:space-between;}
+.nc-hpbar-track{height:12px;background:#F0EAE0;border:2px solid #C4A882;border-radius:2px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.1);}
+.nc-hpbar-fill{height:100%;background:linear-gradient(180deg,#52A852,#2D6A2D);box-shadow:inset 0 1px 0 rgba(255,255,255,.3);}
+
+/* XP bar */
+.nc-xpbar-wrap{padding:4px 6px;}
+.nc-xpbar-label{font-family:'Cinzel',serif;font-size:7px;color:#4A6741;margin-bottom:3px;display:flex;justify-content:space-between;}
+.nc-xpbar-track{height:14px;background:#F0EAE0;border:2px solid #8B5E3C;border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.12);}
+.nc-xpbar-fill{height:100%;width:68%;background:linear-gradient(90deg,#2D6A2D,#52A852);border-radius:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.3);}
+
+/* PR row */
+.nc-prrow{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;border-bottom:1px solid rgba(196,168,130,.25);}
+.nc-prname{font-family:'Crimson Text',serif;font-size:14px;color:#2D4A2D;}
+.nc-prval{font-family:'Cinzel',serif;font-size:8px;color:#2D6A2D;font-weight:700;}
+
+/* Energy */
+.nc-energy{display:flex;gap:3px;padding:0 6px;}
+.nc-pip{width:14px;height:14px;border:2px solid #C4A882;border-radius:2px;}
+.nc-pip.on{background:#2D6A2D;border-color:#1A4A1A;box-shadow:inset 0 1px 0 rgba(255,255,255,.2);}
+
+/* Timer */
+.nc-timer{
+  display:flex;align-items:center;justify-content:space-between;
+  background:#EDE5D8;border-bottom:3px solid #8B5E3C;
+  padding:6px 10px;flex-shrink:0;
+  box-shadow:0 2px 0 #C4A882;
+}
+.nc-timer-time{font-family:'Cinzel',serif;font-size:12px;color:#1A2E1A;font-weight:700;}
+.nc-timer-btns{display:flex;gap:6px;}
+.nc-timer-btn{width:22px;height:22px;border:2px solid #C4A882;background:#F5F0E8;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;cursor:pointer;}
+
+/* Streak */
+.nc-streak{
+  display:flex;align-items:center;gap:4px;
+  background:#FFF7ED;border:2px solid #F97316;border-radius:4px;
+  padding:3px 8px;box-shadow:0 1px 0 #C4670040;
+}
+.nc-streak-num{font-family:'Cinzel',serif;font-size:9px;color:#EA580C;font-weight:700;}
+
+/* Level */
+.nc-level{
+  font-family:'Cinzel',serif;font-size:8px;font-weight:700;
+  background:linear-gradient(135deg,#C4A230,#E8C84A);
+  color:#1A2E1A;border:2px solid #8B6A18;border-radius:4px;
+  padding:3px 8px;display:inline-block;
+  box-shadow:0 2px 0 #8B6A18,inset 0 1px 0 rgba(255,255,255,.4);
+}
+
+/* Muscle badge */
+.nc-muscle{
+  font-family:'Cinzel',serif;font-size:7px;
+  background:#DFF0DF;color:#2D6A2D;
+  border:1px solid #52A852;border-radius:3px;padding:2px 5px;
+}
+
+/* Slider */
+.nc-slider-wrap{padding:0 8px;}
+.nc-slider-label{font-family:'Crimson Text',serif;font-size:13px;color:#4A6741;display:flex;justify-content:space-between;margin-bottom:3px;}
+.nc-slider{width:100%;height:10px;border-radius:5px;background:#E0D5C5;border:2px solid #C4A882;appearance:none;cursor:pointer;}
+
+/* ════════════════════════════════════════════════════════
+   CONCEPT B — DARK MODE (Ancient Forest)
+════════════════════════════════════════════════════════ */
+.nc-dark .phone-shell{background:#0A1A0A;border:4px solid #2D6A2D;box-shadow:0 24px 64px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05);}
+.nc-dark .phone-notch{background:#2D6A2D;}
+.nc-dark .phone-screen{background:#0D1F0D;}
+.nc-dark .nc-screen-bg{background:#0D1F0D;background-image:radial-gradient(ellipse at 30% 20%,rgba(212,168,83,.06) 0,transparent 60%),radial-gradient(ellipse at 70% 80%,rgba(45,106,45,.08) 0,transparent 50%);}
+.nc-dark .nc-statusbar{background:rgba(13,31,13,.9);}
+.nc-dark .nc-statusbar-time{color:#D4A853;}
+.nc-dark .nc-bar{background:#D4A853;}
+.nc-dark .nc-card{background:#122212;border:3px solid #2D6A2D;box-shadow:0 2px 0 0 #1A4A1A,inset 0 1px 0 rgba(255,255,255,.04);}
+.nc-dark .nc-card::before{border:1px solid rgba(45,106,45,.3);}
+.nc-dark .nc-card-dim{background:#0F1C0F;border:2px solid #1A4A1A;box-shadow:none;}
+.nc-dark .nc-tabbar{background:#0A1A0A;border-top:3px solid #2D6A2D;box-shadow:0 -1px 0 #1A4A1A;}
+.nc-dark .nc-tab-label{color:#4A6741;}
+.nc-dark .nc-tab.active .nc-tab-label{color:#D4A853;}
+.nc-dark .nc-heading{color:#D4A853;}
+.nc-dark .nc-subheading{color:#A3C49B;}
+.nc-dark .nc-text{color:#7A9B72;}
+.nc-dark .nc-text-sm{color:#4A6741;}
+.nc-dark .nc-chip{border:2px solid #1A4A1A;color:#4A6741;background:#0F1C0F;box-shadow:none;}
+.nc-dark .nc-chip.sel{border-color:#D4A853;color:#D4A853;background:#1A2E0A;box-shadow:none;}
+.nc-dark .nc-btn{background:linear-gradient(180deg,#3A7A3A,#1A4A1A);border:2px solid #D4A853;box-shadow:0 3px 0 #8B6A18;}
+.nc-dark .nc-btn-sm{background:#0F1C0F;color:#D4A853;border:1px solid #D4A853;}
+.nc-dark .nc-setrow{border-bottom:1px solid rgba(45,106,45,.2);}
+.nc-dark .nc-setnum{color:#4A6741;}
+.nc-dark .nc-setdata{color:#A3C49B;}
+.nc-dark .nc-check{background:#D4A853;}
+.nc-dark .nc-check-empty{border:2px solid #2D6A2D;}
+.nc-dark .nc-input{background:#0A1A0A;border:2px solid #2D6A2D;color:#D4A853;}
+.nc-dark .nc-input-label{color:#4A6741;}
+.nc-dark .nc-cal-day{border:1px solid rgba(45,106,45,.2);color:#2D6A2D;}
+.nc-dark .nc-cal-day.done{background:#2D6A2D;color:#E8FFE8;}
+.nc-dark .nc-cal-day.planned{background:#0F1C0F;color:#D4A853;border:1px dashed #2D6A2D;}
+.nc-dark .nc-cal-day.rest{background:#0A1A0A;color:#1A4A1A;}
+.nc-dark .nc-cal-day.today{border:2px solid #D4A853;color:#D4A853;}
+.nc-dark .nc-cal-dow{color:#2D6A2D;}
+.nc-dark .nc-stat{background:#0F1C0F;border:2px solid #2D6A2D;box-shadow:none;}
+.nc-dark .nc-stat-num{color:#D4A853;}
+.nc-dark .nc-stat-lbl{color:#4A6741;}
+.nc-dark .nc-hpbar-track{background:#0A1A0A;border:2px solid #2D6A2D;box-shadow:none;}
+.nc-dark .nc-hpbar-fill{background:linear-gradient(180deg,#D4A853,#8B6A18);}
+.nc-dark .nc-hpbar-label{color:#A3C49B;}
+.nc-dark .nc-xpbar-track{background:#0A1A0A;border:2px solid #2D6A2D;box-shadow:none;}
+.nc-dark .nc-xpbar-fill{background:linear-gradient(90deg,#8B6A18,#D4A853);}
+.nc-dark .nc-xpbar-label{color:#A3C49B;}
+.nc-dark .nc-prrow{border-bottom:1px solid rgba(45,106,45,.2);}
+.nc-dark .nc-prname{color:#A3C49B;}
+.nc-dark .nc-prval{color:#D4A853;}
+.nc-dark .nc-pip{border:2px solid #2D6A2D;}
+.nc-dark .nc-pip.on{background:#D4A853;border-color:#8B6A18;}
+.nc-dark .nc-timer{background:#0A1A0A;border-bottom:3px solid #2D6A2D;box-shadow:0 1px 0 #1A4A1A;}
+.nc-dark .nc-timer-time{color:#D4A853;}
+.nc-dark .nc-timer-btn{border:2px solid #2D6A2D;background:#0F1C0F;}
+.nc-dark .nc-streak{background:#1A0E00;border:2px solid #F97316;}
+.nc-dark .nc-level{background:linear-gradient(135deg,#6B4A10,#A8780C);box-shadow:0 2px 0 #3A2808;}
+.nc-dark .nc-muscle{background:#0F1C0F;color:#D4A853;border:1px solid #2D6A2D;}
+.nc-dark .nc-slider{background:#0A1A0A;border:2px solid #2D6A2D;}
+
+/* ─── DIVIDER ────────────────────────────────────────── */
+.divider{
+  border:none;
+  border-top:2px solid #1A5C1A;
+  margin:60px 20px;
+  position:relative;
+}
+.divider::after{
+  content:'◆ ◆ ◆';
+  font-family:'VT323',monospace;font-size:20px;color:#1E5C1E;
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:#080C08;padding:0 12px;
+}
+
+/* ─── LEGEND ─────────────────────────────────────────── */
+.legend{
+  display:flex;gap:16px;flex-wrap:wrap;padding:0 6px;margin-bottom:12px;
+}
+.legend-item{display:flex;align-items:center;gap:5px;font-family:'VT323',monospace;font-size:13px;}
+.legend-dot{width:10px;height:10px;}
+
+.scroll-hint{
+  text-align:center;font-family:'VT323',monospace;font-size:18px;
+  color:#1E5C1E;padding:20px;letter-spacing:2px;
+  animation:blink 1.2s step-end infinite;
+}
+@keyframes blink{50%{opacity:0}}
+
+/* scrollbar */
+::-webkit-scrollbar{width:8px;}
+::-webkit-scrollbar-track{background:#080C08;}
+::-webkit-scrollbar-thumb{background:#1E5C1E;}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     PAGE HEADER
+══════════════════════════════════════════════════════ -->
+<div class="page-header">
+  <h1>LIGHTSTACK V2<br>UI CONCEPTS</h1>
+  <p>▶ TWO CONCEPTS · FOUR SCREENS EACH · DARK + LIGHT MODES ◀</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     CONCEPT A — PIXEL DUNGEON
+══════════════════════════════════════════════════════ -->
+<div class="concept-section">
+  <div class="concept-label" style="color:#4ADE80">// CONCEPT A</div>
+  <div class="concept-title" style="color:#E0FFE0">PIXEL DUNGEON</div>
+  <div class="concept-desc" style="color:#86EFAC">
+    Terraria meets fitness tracker. Sharp pixel borders, grid-paper backgrounds, HP-style bars, and a retro monochrome green glow. Every element feels like it belongs in a game inventory. Stats become loot. Workouts become quests.
+  </div>
+
+  <!-- Palette -->
+  <div class="palette">
+    <div class="swatch"><div class="swatch-color" style="background:#0A140A;border-color:#4ADE80"></div><div class="swatch-label" style="color:#4ADE80">#0A140A</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#4ADE80"></div><div class="swatch-label" style="color:#4ADE80">#4ADE80</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#22C55E"></div><div class="swatch-label" style="color:#4ADE80">#22C55E</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#86EFAC"></div><div class="swatch-label" style="color:#4ADE80">#86EFAC</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#1E5C1E"></div><div class="swatch-label" style="color:#4ADE80">#1E5C1E</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#F97316"></div><div class="swatch-label" style="color:#4ADE80">#F97316</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#ECFDF5"></div><div class="swatch-label" style="color:#4ADE80">#ECFDF5</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#16A34A"></div><div class="swatch-label" style="color:#4ADE80">#16A34A</div></div>
+  </div>
+
+  <!-- DARK MODE -->
+  <div class="mode-row">
+    <div class="mode-group">
+      <div class="mode-tag" style="background:#0F1F0F;color:#4ADE80;border:2px solid #4ADE80">◼ DARK MODE</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#16A34A"></div><span style="color:#86EFAC">= done</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0C180C;border:1px dashed #4ADE80"></div><span style="color:#86EFAC">= planned</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:#0A140A;border:1px solid #1E5C1E"></div><span style="color:#86EFAC">= rest</span></div>
+      </div>
+      <div class="phones-row">
+
+        <!-- Phone 1: Today / Setup -->
+        <div class="phone pd-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-screen-bg">
+                <div class="pd-statusbar">
+                  <span class="pd-statusbar-time">9:41</span>
+                  <div class="pd-statusbar-icons">
+                    <div class="pd-statusbar-icon"></div>
+                    <div class="pd-statusbar-icon" style="clip-path:none;width:18px;height:8px;background:transparent;border:1px solid #4ADE80;border-radius:1px;padding:1px;"><div style="width:70%;height:100%;background:#4ADE80;"></div></div>
+                  </div>
+                </div>
+                <!-- Content -->
+                <div class="pd-card" style="margin-top:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div>
+                      <div class="pd-text-sm">GOOD MORNING</div>
+                      <div class="pd-subheading">MUHAMMAD</div>
+                    </div>
+                    <div class="pd-streak"><span class="pd-streak-icon">🔥</span><span class="pd-streak-num">12</span></div>
+                  </div>
+                  <div class="pd-hpbar-wrap" style="margin-top:6px">
+                    <div class="pd-hpbar-label"><span>WEEKLY QUEST</span><span>4/5</span></div>
+                    <div class="pd-hpbar-track"><div class="pd-hpbar-fill" style="width:80%"></div></div>
+                  </div>
+                </div>
+                <div class="pd-card-dim"><div class="pd-heading">▸ WORKOUT TYPE</div></div>
+                <div class="pd-chips" style="margin-bottom:6px">
+                  <div class="pd-chip sel">PUSH</div>
+                  <div class="pd-chip">PULL</div>
+                  <div class="pd-chip">LEGS</div>
+                  <div class="pd-chip">UPPER</div>
+                  <div class="pd-chip">FULL</div>
+                </div>
+                <div class="pd-card-dim">
+                  <div class="pd-heading">▸ TIME AVAILABLE</div>
+                  <div class="pd-slider-wrap" style="margin-top:4px">
+                    <div class="pd-slider-label"><span>45 MIN</span><span style="color:#4ADE80">━━━━━━━━●━━━</span></div>
+                  </div>
+                </div>
+                <div class="pd-card-dim" style="margin-top:4px">
+                  <div class="pd-heading">▸ ENERGY LEVEL</div>
+                  <div class="pd-energy" style="margin-top:5px">
+                    <div class="pd-pip on"></div><div class="pd-pip on"></div><div class="pd-pip on"></div>
+                    <div class="pd-pip on"></div><div class="pd-pip on"></div><div class="pd-pip on"></div>
+                    <div class="pd-pip on"></div><div class="pd-pip"></div><div class="pd-pip"></div><div class="pd-pip"></div>
+                  </div>
+                </div>
+                <div class="pd-btn" style="margin-top:6px">⚔ GENERATE PLAN</div>
+              </div>
+              <div class="pd-tabbar">
+                <div class="pd-tab active"><span class="pd-tab-icon">⚔</span><span class="pd-tab-label">TODAY</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📅</span><span class="pd-tab-label">MONTH</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📜</span><span class="pd-tab-label">HIST</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">👤</span><span class="pd-tab-label">CHAR</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#4ADE80">TODAY · SETUP</div>
+        </div>
+
+        <!-- Phone 2: Active Workout -->
+        <div class="phone pd-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-timer">
+                <div class="pd-timer-time">0:22:41</div>
+                <div class="pd-timer-btns">
+                  <div class="pd-timer-btn">⏸</div>
+                  <div class="pd-timer-btn" style="border-color:#EF4444;color:#EF4444">✕</div>
+                </div>
+              </div>
+              <div class="pd-screen-bg" style="overflow-y:auto">
+                <div class="pd-card" style="margin-top:4px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <div>
+                      <div class="pd-heading">BARBELL SQUAT</div>
+                      <div class="pd-muscle">LEGS</div>
+                    </div>
+                    <div style="text-align:right">
+                      <div class="pd-text-sm">TARGET</div>
+                      <div class="pd-text" style="font-size:12px">4×8 @ RIR 2</div>
+                    </div>
+                  </div>
+                  <div class="pd-hpbar-wrap">
+                    <div class="pd-hpbar-label"><span>SETS</span><span>2/4</span></div>
+                    <div class="pd-hpbar-track"><div class="pd-hpbar-fill" style="width:50%"></div></div>
+                  </div>
+                </div>
+                <!-- Logged sets -->
+                <div class="pd-card-dim">
+                  <div class="pd-setrow"><span class="pd-setnum">SET 1</span><span class="pd-setdata">225 lbs × 8 @ RIR 2</span><div class="pd-check">✓</div></div>
+                  <div class="pd-setrow"><span class="pd-setnum">SET 2</span><span class="pd-setdata">225 lbs × 7 @ RIR 1</span><div class="pd-check">✓</div></div>
+                  <!-- Pending sets -->
+                  <div style="padding:4px 6px 2px"><div class="pd-text-sm">▸ PENDING</div></div>
+                  <div class="pd-setrow"><span class="pd-setnum">SET 3</span>
+                    <div class="pd-input-row" style="padding:0;flex:1;gap:3px">
+                      <div><div class="pd-input">225</div><div class="pd-input-label">LBS</div></div>
+                      <div><div class="pd-input">8</div><div class="pd-input-label">REPS</div></div>
+                      <div><div class="pd-input">2</div><div class="pd-input-label">RIR</div></div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:3px">
+                      <div class="pd-check" style="background:#4ADE80">✓</div>
+                      <div class="pd-check-empty" style="cursor:pointer">✕</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="pd-btn-sm" style="margin:6px;display:block;text-align:center">+ ADD SET</div>
+              </div>
+              <div style="background:#081208;border-top:2px solid #1A5C1A;padding:8px 10px">
+                <div class="pd-btn" style="margin:0;font-size:6px;padding:8px">✔ FINISH QUEST</div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#4ADE80">ACTIVE WORKOUT</div>
+        </div>
+
+        <!-- Phone 3: Month Calendar -->
+        <div class="phone pd-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-screen-bg">
+                <div class="pd-statusbar"><span class="pd-statusbar-time">9:41</span><div class="pd-statusbar-icons"><div class="pd-statusbar-icon"></div></div></div>
+                <div style="padding:6px 10px 4px;display:flex;justify-content:space-between;align-items:center">
+                  <div class="pd-heading">◀ APRIL 2026 ▶</div>
+                  <div class="pd-level">LV 12</div>
+                </div>
+                <div class="pd-cal-header">
+                  <div class="pd-cal-dow">SUN</div><div class="pd-cal-dow">MON</div><div class="pd-cal-dow">TUE</div>
+                  <div class="pd-cal-dow">WED</div><div class="pd-cal-dow">THU</div><div class="pd-cal-dow">FRI</div><div class="pd-cal-dow">SAT</div>
+                </div>
+                <div class="pd-cal-grid">
+                  <div class="pd-cal-day empty"></div><div class="pd-cal-day empty"></div><div class="pd-cal-day done">1</div>
+                  <div class="pd-cal-day rest">2</div><div class="pd-cal-day done">3</div><div class="pd-cal-day done">4</div><div class="pd-cal-day rest">5</div>
+                  <div class="pd-cal-day done">6</div><div class="pd-cal-day rest">7</div><div class="pd-cal-day done">8</div>
+                  <div class="pd-cal-day done">9</div><div class="pd-cal-day rest">10</div><div class="pd-cal-day done">11</div><div class="pd-cal-day rest">12</div>
+                  <div class="pd-cal-day planned">13</div><div class="pd-cal-day done">14</div><div class="pd-cal-day rest">15</div>
+                  <div class="pd-cal-day planned">16</div><div class="pd-cal-day planned">17</div><div class="pd-cal-day rest">18</div><div class="pd-cal-day planned">19</div>
+                  <div class="pd-cal-day today">20</div><div class="pd-cal-day planned">21</div><div class="pd-cal-day planned">22</div>
+                  <div class="pd-cal-day planned">23</div><div class="pd-cal-day rest">24</div><div class="pd-cal-day planned">25</div><div class="pd-cal-day planned">26</div>
+                </div>
+                <div class="pd-card-dim" style="margin-top:6px">
+                  <div class="pd-heading">▸ TODAY — APR 20</div>
+                  <div class="pd-text" style="margin-top:2px">PUSH DAY (CHEST/SHOULDERS)</div>
+                  <div class="pd-text-sm" style="margin-top:2px">60 MIN · 5 EXERCISES</div>
+                  <div style="display:flex;gap:4px;margin-top:6px">
+                    <div class="pd-btn-sm">⚔ START</div>
+                    <div class="pd-btn-sm">✎ EDIT</div>
+                  </div>
+                </div>
+              </div>
+              <div class="pd-tabbar">
+                <div class="pd-tab"><span class="pd-tab-icon">⚔</span><span class="pd-tab-label">TODAY</span></div>
+                <div class="pd-tab active"><span class="pd-tab-icon">📅</span><span class="pd-tab-label">MONTH</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📜</span><span class="pd-tab-label">HIST</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">👤</span><span class="pd-tab-label">CHAR</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#4ADE80">MONTH PLAN</div>
+        </div>
+
+        <!-- Phone 4: Profile -->
+        <div class="phone pd-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-screen-bg">
+                <div class="pd-statusbar"><span class="pd-statusbar-time">9:41</span></div>
+                <div class="pd-card" style="margin-top:4px">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                      <div class="pd-heading">CHARACTER</div>
+                      <div class="pd-subheading">MUHAMMAD</div>
+                    </div>
+                    <div class="pd-level">LVL 12<br><span style="font-size:5px">LIFTER</span></div>
+                  </div>
+                  <div class="pd-xpbar-wrap" style="margin:6px 0 0;padding:0">
+                    <div class="pd-xpbar-label"><span>XP</span><span>6,840 / 10,000</span></div>
+                    <div class="pd-xpbar-track"><div class="pd-xpbar-fill"></div></div>
+                  </div>
+                </div>
+                <div class="pd-stats">
+                  <div class="pd-stat"><div class="pd-stat-num">12</div><div class="pd-stat-lbl">STREAK</div></div>
+                  <div class="pd-stat"><div class="pd-stat-num">148</div><div class="pd-stat-lbl">SESSIONS</div></div>
+                  <div class="pd-stat"><div class="pd-stat-num">2.1M</div><div class="pd-stat-lbl">LBS</div></div>
+                </div>
+                <div class="pd-card-dim" style="margin-top:4px">
+                  <div class="pd-heading" style="margin-bottom:4px">▸ PERSONAL RECORDS</div>
+                  <div class="pd-prrow"><span class="pd-prname">Barbell Squat</span><span class="pd-prval">315 LBS</span></div>
+                  <div class="pd-prrow"><span class="pd-prname">Bench Press</span><span class="pd-prval">225 LBS</span></div>
+                  <div class="pd-prrow"><span class="pd-prname">Deadlift</span><span class="pd-prval">405 LBS</span></div>
+                  <div class="pd-prrow"><span class="pd-prname">OHP</span><span class="pd-prval">145 LBS</span></div>
+                </div>
+              </div>
+              <div class="pd-tabbar">
+                <div class="pd-tab"><span class="pd-tab-icon">⚔</span><span class="pd-tab-label">TODAY</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📅</span><span class="pd-tab-label">MONTH</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📜</span><span class="pd-tab-label">HIST</span></div>
+                <div class="pd-tab active"><span class="pd-tab-icon">👤</span><span class="pd-tab-label">CHAR</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#4ADE80">PROFILE / CHAR</div>
+        </div>
+
+      </div><!-- /phones-row dark -->
+    </div><!-- /mode-group dark -->
+
+    <!-- LIGHT MODE -->
+    <div class="mode-group">
+      <div class="mode-tag" style="background:#DCFCE7;color:#16A34A;border:2px solid #16A34A">◻ LIGHT MODE</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#16A34A"></div><span style="color:#86EFAC">= done</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:#DCFCE7;border:1px dashed #16A34A"></div><span style="color:#86EFAC">= planned</span></div>
+      </div>
+      <div class="phones-row">
+
+        <!-- Light Phone 1: Today -->
+        <div class="phone pd-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-screen-bg">
+                <div class="pd-statusbar"><span class="pd-statusbar-time">9:41</span><div class="pd-statusbar-icons"><div class="pd-statusbar-icon"></div></div></div>
+                <div class="pd-card">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div><div class="pd-text-sm">GOOD MORNING</div><div class="pd-subheading">MUHAMMAD</div></div>
+                    <div class="pd-streak"><span class="pd-streak-icon">🔥</span><span class="pd-streak-num">12</span></div>
+                  </div>
+                  <div class="pd-hpbar-wrap" style="margin-top:6px">
+                    <div class="pd-hpbar-label"><span>WEEKLY QUEST</span><span>4/5</span></div>
+                    <div class="pd-hpbar-track"><div class="pd-hpbar-fill" style="width:80%"></div></div>
+                  </div>
+                </div>
+                <div class="pd-card-dim"><div class="pd-heading">▸ WORKOUT TYPE</div></div>
+                <div class="pd-chips" style="margin-bottom:6px">
+                  <div class="pd-chip sel">PUSH</div><div class="pd-chip">PULL</div>
+                  <div class="pd-chip">LEGS</div><div class="pd-chip">UPPER</div><div class="pd-chip">FULL</div>
+                </div>
+                <div class="pd-card-dim">
+                  <div class="pd-heading">▸ TIME</div>
+                  <div class="pd-slider-wrap" style="margin-top:4px">
+                    <div class="pd-slider-label"><span>45 MIN</span><span style="color:#16A34A">━━━━━━━━●━━━</span></div>
+                  </div>
+                </div>
+                <div class="pd-card-dim" style="margin-top:4px">
+                  <div class="pd-heading">▸ ENERGY</div>
+                  <div class="pd-energy" style="margin-top:5px">
+                    <div class="pd-pip on"></div><div class="pd-pip on"></div><div class="pd-pip on"></div>
+                    <div class="pd-pip on"></div><div class="pd-pip on"></div><div class="pd-pip on"></div>
+                    <div class="pd-pip on"></div><div class="pd-pip"></div><div class="pd-pip"></div><div class="pd-pip"></div>
+                  </div>
+                </div>
+                <div class="pd-btn" style="margin-top:6px">⚔ GENERATE PLAN</div>
+              </div>
+              <div class="pd-tabbar">
+                <div class="pd-tab active"><span class="pd-tab-icon">⚔</span><span class="pd-tab-label">TODAY</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📅</span><span class="pd-tab-label">MONTH</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📜</span><span class="pd-tab-label">HIST</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">👤</span><span class="pd-tab-label">CHAR</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#16A34A">TODAY · SETUP</div>
+        </div>
+
+        <!-- Light Phone 2: Active Workout -->
+        <div class="phone pd-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-timer">
+                <div class="pd-timer-time">0:22:41</div>
+                <div class="pd-timer-btns">
+                  <div class="pd-timer-btn">⏸</div>
+                  <div class="pd-timer-btn" style="border-color:#EF4444;color:#EF4444">✕</div>
+                </div>
+              </div>
+              <div class="pd-screen-bg" style="overflow-y:auto">
+                <div class="pd-card" style="margin-top:4px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                    <div><div class="pd-heading">BARBELL SQUAT</div><div class="pd-muscle">LEGS</div></div>
+                    <div style="text-align:right"><div class="pd-text-sm">TARGET</div><div class="pd-text" style="font-size:12px">4×8 @ RIR 2</div></div>
+                  </div>
+                  <div class="pd-hpbar-wrap"><div class="pd-hpbar-label"><span>SETS</span><span>2/4</span></div><div class="pd-hpbar-track"><div class="pd-hpbar-fill" style="width:50%"></div></div></div>
+                </div>
+                <div class="pd-card-dim">
+                  <div class="pd-setrow"><span class="pd-setnum">SET 1</span><span class="pd-setdata">225 lbs × 8</span><div class="pd-check">✓</div></div>
+                  <div class="pd-setrow"><span class="pd-setnum">SET 2</span><span class="pd-setdata">225 lbs × 7</span><div class="pd-check">✓</div></div>
+                  <div class="pd-setrow"><span class="pd-setnum">SET 3</span>
+                    <div class="pd-input-row" style="padding:0;flex:1;gap:3px">
+                      <div><div class="pd-input">225</div><div class="pd-input-label">LBS</div></div>
+                      <div><div class="pd-input">8</div><div class="pd-input-label">REPS</div></div>
+                      <div><div class="pd-input">2</div><div class="pd-input-label">RIR</div></div>
+                    </div>
+                    <div class="pd-check">✓</div>
+                  </div>
+                </div>
+              </div>
+              <div style="background:#ECFDF5;border-top:2px solid #BBF7D0;padding:8px 10px">
+                <div class="pd-btn" style="margin:0;font-size:6px;padding:8px">✔ FINISH QUEST</div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#16A34A">ACTIVE WORKOUT</div>
+        </div>
+
+        <!-- Light Phone 3: Month -->
+        <div class="phone pd-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-screen-bg">
+                <div class="pd-statusbar"><span class="pd-statusbar-time">9:41</span></div>
+                <div style="padding:6px 10px 4px;display:flex;justify-content:space-between;align-items:center">
+                  <div class="pd-heading">◀ APRIL 2026 ▶</div>
+                  <div class="pd-level">LV 12</div>
+                </div>
+                <div class="pd-cal-header">
+                  <div class="pd-cal-dow">S</div><div class="pd-cal-dow">M</div><div class="pd-cal-dow">T</div>
+                  <div class="pd-cal-dow">W</div><div class="pd-cal-dow">T</div><div class="pd-cal-dow">F</div><div class="pd-cal-dow">S</div>
+                </div>
+                <div class="pd-cal-grid">
+                  <div class="pd-cal-day empty"></div><div class="pd-cal-day empty"></div><div class="pd-cal-day done">1</div>
+                  <div class="pd-cal-day rest">2</div><div class="pd-cal-day done">3</div><div class="pd-cal-day done">4</div><div class="pd-cal-day rest">5</div>
+                  <div class="pd-cal-day done">6</div><div class="pd-cal-day rest">7</div><div class="pd-cal-day done">8</div>
+                  <div class="pd-cal-day done">9</div><div class="pd-cal-day rest">10</div><div class="pd-cal-day done">11</div><div class="pd-cal-day rest">12</div>
+                  <div class="pd-cal-day planned">13</div><div class="pd-cal-day done">14</div><div class="pd-cal-day rest">15</div>
+                  <div class="pd-cal-day planned">16</div><div class="pd-cal-day planned">17</div><div class="pd-cal-day rest">18</div><div class="pd-cal-day planned">19</div>
+                  <div class="pd-cal-day today">20</div><div class="pd-cal-day planned">21</div><div class="pd-cal-day planned">22</div>
+                  <div class="pd-cal-day planned">23</div><div class="pd-cal-day rest">24</div><div class="pd-cal-day planned">25</div><div class="pd-cal-day planned">26</div>
+                </div>
+                <div class="pd-card-dim" style="margin-top:6px">
+                  <div class="pd-heading">▸ TODAY — APR 20</div>
+                  <div class="pd-text" style="margin-top:2px">PUSH DAY · 60 MIN</div>
+                  <div style="display:flex;gap:4px;margin-top:6px">
+                    <div class="pd-btn-sm">⚔ START</div>
+                    <div class="pd-btn-sm">✎ EDIT</div>
+                  </div>
+                </div>
+              </div>
+              <div class="pd-tabbar">
+                <div class="pd-tab"><span class="pd-tab-icon">⚔</span><span class="pd-tab-label">TODAY</span></div>
+                <div class="pd-tab active"><span class="pd-tab-icon">📅</span><span class="pd-tab-label">MONTH</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📜</span><span class="pd-tab-label">HIST</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">👤</span><span class="pd-tab-label">CHAR</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#16A34A">MONTH PLAN</div>
+        </div>
+
+        <!-- Light Phone 4: Profile -->
+        <div class="phone pd-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="pd-screen-bg">
+                <div class="pd-statusbar"><span class="pd-statusbar-time">9:41</span></div>
+                <div class="pd-card" style="margin-top:4px">
+                  <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div><div class="pd-heading">CHARACTER</div><div class="pd-subheading">MUHAMMAD</div></div>
+                    <div class="pd-level">LVL 12</div>
+                  </div>
+                  <div class="pd-xpbar-wrap" style="margin:6px 0 0;padding:0">
+                    <div class="pd-xpbar-label"><span>XP</span><span>6,840 / 10,000</span></div>
+                    <div class="pd-xpbar-track"><div class="pd-xpbar-fill"></div></div>
+                  </div>
+                </div>
+                <div class="pd-stats">
+                  <div class="pd-stat"><div class="pd-stat-num">12</div><div class="pd-stat-lbl">STREAK</div></div>
+                  <div class="pd-stat"><div class="pd-stat-num">148</div><div class="pd-stat-lbl">SESSIONS</div></div>
+                  <div class="pd-stat"><div class="pd-stat-num">2.1M</div><div class="pd-stat-lbl">LBS</div></div>
+                </div>
+                <div class="pd-card-dim" style="margin-top:4px">
+                  <div class="pd-heading" style="margin-bottom:4px">▸ RECORDS</div>
+                  <div class="pd-prrow"><span class="pd-prname">Squat</span><span class="pd-prval">315 LBS</span></div>
+                  <div class="pd-prrow"><span class="pd-prname">Bench</span><span class="pd-prval">225 LBS</span></div>
+                  <div class="pd-prrow"><span class="pd-prname">Deadlift</span><span class="pd-prval">405 LBS</span></div>
+                  <div class="pd-prrow"><span class="pd-prname">OHP</span><span class="pd-prval">145 LBS</span></div>
+                </div>
+              </div>
+              <div class="pd-tabbar">
+                <div class="pd-tab"><span class="pd-tab-icon">⚔</span><span class="pd-tab-label">TODAY</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📅</span><span class="pd-tab-label">MONTH</span></div>
+                <div class="pd-tab"><span class="pd-tab-icon">📜</span><span class="pd-tab-label">HIST</span></div>
+                <div class="pd-tab active"><span class="pd-tab-icon">👤</span><span class="pd-tab-label">CHAR</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#16A34A">PROFILE / CHAR</div>
+        </div>
+
+      </div><!-- /phones-row light -->
+    </div>
+  </div><!-- /mode-row -->
+</div><!-- /concept-section A -->
+
+<hr class="divider">
+
+<!-- ══════════════════════════════════════════════════════
+     CONCEPT B — NATURE CRAFT
+══════════════════════════════════════════════════════ -->
+<div class="concept-section">
+  <div class="concept-label" style="color:#52A852">// CONCEPT B</div>
+  <div class="concept-title" style="color:#E8F5E8;font-family:'Cinzel',serif;font-size:38px;letter-spacing:2px">Nature Craft</div>
+  <div class="concept-desc" style="color:#A3C49B;font-family:'Crimson Text',serif;font-size:16px">
+    Ancient scrolls meet modern fitness. Parchment textures, wood-grain borders, Cinzel serif for headings, and gold accents that feel like earned achievements. Workouts feel like rituals. PRs feel like trophies. Dark mode transforms the forest into a torchlit sanctuary.
+  </div>
+
+  <!-- Palette -->
+  <div class="palette">
+    <div class="swatch"><div class="swatch-color" style="background:#F5F0E8;border-color:#8B5E3C"></div><div class="swatch-label" style="color:#86EFAC">#F5F0E8</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#2D6A2D"></div><div class="swatch-label" style="color:#86EFAC">#2D6A2D</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#52A852"></div><div class="swatch-label" style="color:#86EFAC">#52A852</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#8B5E3C"></div><div class="swatch-label" style="color:#86EFAC">#8B5E3C</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#C4A230"></div><div class="swatch-label" style="color:#86EFAC">#C4A230</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#0D1F0D"></div><div class="swatch-label" style="color:#86EFAC">#0D1F0D</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#D4A853"></div><div class="swatch-label" style="color:#86EFAC">#D4A853</div></div>
+    <div class="swatch"><div class="swatch-color" style="background:#1A2E1A"></div><div class="swatch-label" style="color:#86EFAC">#1A2E1A</div></div>
+  </div>
+
+  <div class="mode-row">
+    <!-- LIGHT MODE -->
+    <div class="mode-group">
+      <div class="mode-tag" style="background:#FAF6EF;color:#2D6A2D;border:2px solid #8B5E3C;font-family:'Cinzel',serif">☀ LIGHT MODE</div>
+      <div class="phones-row">
+
+        <!-- NC Light Phone 1: Today -->
+        <div class="phone nc-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-screen-bg">
+                <div class="nc-statusbar"><span class="nc-statusbar-time">9:41</span><div class="nc-statusbar-icons"><div class="nc-bar"></div></div></div>
+                <div class="nc-card" style="margin-top:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div>
+                      <div class="nc-text-sm">Good morning,</div>
+                      <div class="nc-heading">MUHAMMAD</div>
+                    </div>
+                    <div class="nc-streak"><span>🔥</span><span class="nc-streak-num">12</span></div>
+                  </div>
+                  <div class="nc-hpbar-wrap" style="margin-top:8px">
+                    <div class="nc-hpbar-label"><span>Weekly Progress</span><span>4 / 5</span></div>
+                    <div class="nc-hpbar-track"><div class="nc-hpbar-fill" style="width:80%"></div></div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-heading" style="margin-bottom:6px">Choose Your Training</div>
+                  <div class="nc-chips">
+                    <div class="nc-chip sel">Push Day</div><div class="nc-chip">Pull Day</div>
+                    <div class="nc-chip">Leg Day</div><div class="nc-chip">Upper</div><div class="nc-chip">Full Body</div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-heading" style="margin-bottom:4px">Session Details</div>
+                  <div class="nc-slider-label"><span class="nc-text-sm">Time Available</span><span class="nc-text-sm" style="color:#2D6A2D">45 min</span></div>
+                  <div class="nc-slider" style="margin-bottom:6px"></div>
+                  <div class="nc-text-sm" style="margin-bottom:3px">Energy Today</div>
+                  <div class="nc-energy">
+                    <div class="nc-pip on"></div><div class="nc-pip on"></div><div class="nc-pip on"></div>
+                    <div class="nc-pip on"></div><div class="nc-pip on"></div><div class="nc-pip on"></div>
+                    <div class="nc-pip on"></div><div class="nc-pip"></div><div class="nc-pip"></div><div class="nc-pip"></div>
+                  </div>
+                </div>
+                <div class="nc-btn">⚔ Summon AI Coach</div>
+              </div>
+              <div class="nc-tabbar">
+                <div class="nc-tab active"><span class="nc-tab-icon">🗡️</span><span class="nc-tab-label">Today</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📜</span><span class="nc-tab-label">Month</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📖</span><span class="nc-tab-label">History</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">🌿</span><span class="nc-tab-label">Profile</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#2D6A2D;font-family:'Cinzel',serif">Today · Setup</div>
+        </div>
+
+        <!-- NC Light Phone 2: Active Workout -->
+        <div class="phone nc-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-timer">
+                <div class="nc-timer-time">0:22:41</div>
+                <div class="nc-timer-btns">
+                  <div class="nc-timer-btn">⏸</div>
+                  <div class="nc-timer-btn" style="border-color:#EF4444;color:#EF4444">✕</div>
+                </div>
+              </div>
+              <div class="nc-screen-bg" style="overflow-y:auto">
+                <div class="nc-card" style="margin-top:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <div><div class="nc-heading">Barbell Squat</div><div class="nc-muscle">Legs</div></div>
+                    <div style="text-align:right"><div class="nc-text-sm">Target: 4×8 @ RIR 2</div></div>
+                  </div>
+                  <div class="nc-hpbar-wrap" style="margin:0">
+                    <div class="nc-hpbar-label"><span>Sets Complete</span><span>2 / 4</span></div>
+                    <div class="nc-hpbar-track"><div class="nc-hpbar-fill" style="width:50%"></div></div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-setrow"><span class="nc-setnum">Set I</span><span class="nc-setdata">225 lbs × 8 @ RIR 2</span><div class="nc-check">✓</div></div>
+                  <div class="nc-setrow"><span class="nc-setnum">Set II</span><span class="nc-setdata">225 lbs × 7 @ RIR 1</span><div class="nc-check">✓</div></div>
+                  <div class="nc-setrow"><span class="nc-setnum">Set III</span>
+                    <div class="nc-input-row" style="padding:0;flex:1;gap:3px">
+                      <div><div class="nc-input">225</div><div class="nc-input-label">Lbs</div></div>
+                      <div><div class="nc-input">8</div><div class="nc-input-label">Reps</div></div>
+                      <div><div class="nc-input">2</div><div class="nc-input-label">RIR</div></div>
+                    </div>
+                    <div class="nc-check-empty"></div>
+                  </div>
+                </div>
+                <div class="nc-btn-sm" style="margin:4px 6px;display:block;text-align:center">+ Add Set</div>
+              </div>
+              <div style="background:#EDE5D8;border-top:3px solid #8B5E3C;padding:8px 10px">
+                <div class="nc-btn" style="margin:0">Complete Session ✓</div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#2D6A2D;font-family:'Cinzel',serif">Active Workout</div>
+        </div>
+
+        <!-- NC Light Phone 3: Month -->
+        <div class="phone nc-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-screen-bg">
+                <div class="nc-statusbar"><span class="nc-statusbar-time">9:41</span></div>
+                <div class="nc-card" style="margin-top:4px;padding:8px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <span style="font-size:12px">◀</span>
+                    <div class="nc-heading" style="font-size:9px">April 2026</div>
+                    <span style="font-size:12px">▶</span>
+                  </div>
+                  <div class="nc-cal-header">
+                    <div class="nc-cal-dow">S</div><div class="nc-cal-dow">M</div><div class="nc-cal-dow">T</div>
+                    <div class="nc-cal-dow">W</div><div class="nc-cal-dow">T</div><div class="nc-cal-dow">F</div><div class="nc-cal-dow">S</div>
+                  </div>
+                  <div class="nc-cal-grid">
+                    <div class="nc-cal-day empty"></div><div class="nc-cal-day empty"></div><div class="nc-cal-day done">1</div>
+                    <div class="nc-cal-day rest">2</div><div class="nc-cal-day done">3</div><div class="nc-cal-day done">4</div><div class="nc-cal-day rest">5</div>
+                    <div class="nc-cal-day done">6</div><div class="nc-cal-day rest">7</div><div class="nc-cal-day done">8</div>
+                    <div class="nc-cal-day done">9</div><div class="nc-cal-day rest">10</div><div class="nc-cal-day done">11</div><div class="nc-cal-day rest">12</div>
+                    <div class="nc-cal-day planned">13</div><div class="nc-cal-day done">14</div><div class="nc-cal-day rest">15</div>
+                    <div class="nc-cal-day planned">16</div><div class="nc-cal-day planned">17</div><div class="nc-cal-day rest">18</div><div class="nc-cal-day planned">19</div>
+                    <div class="nc-cal-day today">20</div><div class="nc-cal-day planned">21</div><div class="nc-cal-day planned">22</div>
+                    <div class="nc-cal-day planned">23</div><div class="nc-cal-day rest">24</div><div class="nc-cal-day planned">25</div><div class="nc-cal-day planned">26</div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-heading" style="font-size:9px;margin-bottom:4px">April 20 — Today</div>
+                  <div class="nc-subheading" style="font-size:14px">Push Day</div>
+                  <div class="nc-text-sm">Chest · Shoulders · Triceps · 60 min</div>
+                  <div style="display:flex;gap:6px;margin-top:8px">
+                    <div class="nc-btn" style="margin:0;flex:1;font-size:7px;padding:7px">Begin</div>
+                    <div class="nc-btn-sm" style="padding:7px 10px">Edit</div>
+                  </div>
+                </div>
+              </div>
+              <div class="nc-tabbar">
+                <div class="nc-tab"><span class="nc-tab-icon">🗡️</span><span class="nc-tab-label">Today</span></div>
+                <div class="nc-tab active"><span class="nc-tab-icon">📜</span><span class="nc-tab-label">Month</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📖</span><span class="nc-tab-label">History</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">🌿</span><span class="nc-tab-label">Profile</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#2D6A2D;font-family:'Cinzel',serif">Month Plan</div>
+        </div>
+
+        <!-- NC Light Phone 4: Profile -->
+        <div class="phone nc-light">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-screen-bg">
+                <div class="nc-statusbar"><span class="nc-statusbar-time">9:41</span></div>
+                <div class="nc-card" style="margin-top:4px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div><div class="nc-text-sm">The Champion</div><div class="nc-heading">MUHAMMAD</div></div>
+                    <div class="nc-level">⚜ Level 12</div>
+                  </div>
+                  <div class="nc-xpbar-wrap" style="padding:0;margin-top:8px">
+                    <div class="nc-xpbar-label"><span>Experience</span><span>6,840 / 10,000</span></div>
+                    <div class="nc-xpbar-track"><div class="nc-xpbar-fill"></div></div>
+                  </div>
+                </div>
+                <div class="nc-stats">
+                  <div class="nc-stat"><div class="nc-stat-num">12</div><div class="nc-stat-lbl">Day Streak</div></div>
+                  <div class="nc-stat"><div class="nc-stat-num">148</div><div class="nc-stat-lbl">Sessions</div></div>
+                  <div class="nc-stat"><div class="nc-stat-num">2.1M</div><div class="nc-stat-lbl">Lbs Lifted</div></div>
+                </div>
+                <div class="nc-card" style="margin-top:4px">
+                  <div class="nc-heading" style="font-size:9px;margin-bottom:6px">⚜ Personal Records</div>
+                  <div class="nc-prrow"><span class="nc-prname">Barbell Squat</span><span class="nc-prval">315 lbs</span></div>
+                  <div class="nc-prrow"><span class="nc-prname">Bench Press</span><span class="nc-prval">225 lbs</span></div>
+                  <div class="nc-prrow"><span class="nc-prname">Deadlift</span><span class="nc-prval">405 lbs</span></div>
+                  <div class="nc-prrow"><span class="nc-prname">Overhead Press</span><span class="nc-prval">145 lbs</span></div>
+                </div>
+              </div>
+              <div class="nc-tabbar">
+                <div class="nc-tab"><span class="nc-tab-icon">🗡️</span><span class="nc-tab-label">Today</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📜</span><span class="nc-tab-label">Month</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📖</span><span class="nc-tab-label">History</span></div>
+                <div class="nc-tab active"><span class="nc-tab-icon">🌿</span><span class="nc-tab-label">Profile</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#2D6A2D;font-family:'Cinzel',serif">Profile / Stats</div>
+        </div>
+
+      </div>
+    </div><!-- /light mode group -->
+
+    <!-- DARK MODE -->
+    <div class="mode-group">
+      <div class="mode-tag" style="background:#0D1F0D;color:#D4A853;border:2px solid #2D6A2D;font-family:'Cinzel',serif">🌙 DARK MODE</div>
+      <div class="phones-row">
+
+        <!-- NC Dark Phone 1: Today -->
+        <div class="phone nc-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-screen-bg">
+                <div class="nc-statusbar"><span class="nc-statusbar-time">9:41</span><div class="nc-statusbar-icons"><div class="nc-bar"></div></div></div>
+                <div class="nc-card" style="margin-top:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div><div class="nc-text-sm">Good morning,</div><div class="nc-heading">MUHAMMAD</div></div>
+                    <div class="nc-streak"><span>🔥</span><span class="nc-streak-num">12</span></div>
+                  </div>
+                  <div class="nc-hpbar-wrap" style="margin-top:8px">
+                    <div class="nc-hpbar-label"><span>Weekly Progress</span><span>4 / 5</span></div>
+                    <div class="nc-hpbar-track"><div class="nc-hpbar-fill" style="width:80%"></div></div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-heading" style="margin-bottom:6px">Choose Your Training</div>
+                  <div class="nc-chips">
+                    <div class="nc-chip sel">Push Day</div><div class="nc-chip">Pull Day</div>
+                    <div class="nc-chip">Leg Day</div><div class="nc-chip">Upper</div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-heading" style="margin-bottom:4px">Session Details</div>
+                  <div class="nc-text-sm" style="margin-bottom:3px">Energy Today</div>
+                  <div class="nc-energy">
+                    <div class="nc-pip on"></div><div class="nc-pip on"></div><div class="nc-pip on"></div>
+                    <div class="nc-pip on"></div><div class="nc-pip on"></div><div class="nc-pip on"></div>
+                    <div class="nc-pip on"></div><div class="nc-pip"></div><div class="nc-pip"></div><div class="nc-pip"></div>
+                  </div>
+                </div>
+                <div class="nc-btn">⚔ Summon AI Coach</div>
+              </div>
+              <div class="nc-tabbar">
+                <div class="nc-tab active"><span class="nc-tab-icon">🗡️</span><span class="nc-tab-label">Today</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📜</span><span class="nc-tab-label">Month</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📖</span><span class="nc-tab-label">History</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">🌿</span><span class="nc-tab-label">Profile</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#D4A853;font-family:'Cinzel',serif">Today · Setup</div>
+        </div>
+
+        <!-- NC Dark Phone 2: Active Workout -->
+        <div class="phone nc-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-timer">
+                <div class="nc-timer-time">0:22:41</div>
+                <div class="nc-timer-btns">
+                  <div class="nc-timer-btn">⏸</div>
+                  <div class="nc-timer-btn" style="border-color:#EF4444;color:#EF4444">✕</div>
+                </div>
+              </div>
+              <div class="nc-screen-bg" style="overflow-y:auto">
+                <div class="nc-card" style="margin-top:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <div><div class="nc-heading">Barbell Squat</div><div class="nc-muscle">Legs</div></div>
+                    <div style="text-align:right"><div class="nc-text-sm">4 sets · 8 reps</div></div>
+                  </div>
+                  <div class="nc-hpbar-wrap" style="margin:0">
+                    <div class="nc-hpbar-label"><span>Progress</span><span>2 / 4</span></div>
+                    <div class="nc-hpbar-track"><div class="nc-hpbar-fill" style="width:50%"></div></div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-setrow"><span class="nc-setnum">Set I</span><span class="nc-setdata">225 lbs × 8</span><div class="nc-check">✓</div></div>
+                  <div class="nc-setrow"><span class="nc-setnum">Set II</span><span class="nc-setdata">225 lbs × 7</span><div class="nc-check">✓</div></div>
+                  <div class="nc-setrow"><span class="nc-setnum">Set III</span>
+                    <div class="nc-input-row" style="padding:0;flex:1;gap:3px">
+                      <div><div class="nc-input">225</div><div class="nc-input-label">Lbs</div></div>
+                      <div><div class="nc-input">8</div><div class="nc-input-label">Reps</div></div>
+                      <div><div class="nc-input">2</div><div class="nc-input-label">RIR</div></div>
+                    </div>
+                    <div class="nc-check-empty"></div>
+                  </div>
+                </div>
+              </div>
+              <div style="background:#0A1A0A;border-top:3px solid #2D6A2D;padding:8px 10px">
+                <div class="nc-btn" style="margin:0">Complete Session ✓</div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#D4A853;font-family:'Cinzel',serif">Active Workout</div>
+        </div>
+
+        <!-- NC Dark Phone 3: Month -->
+        <div class="phone nc-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-screen-bg">
+                <div class="nc-statusbar"><span class="nc-statusbar-time">9:41</span></div>
+                <div class="nc-card" style="margin-top:4px;padding:8px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <span style="color:#D4A853;font-size:12px">◀</span>
+                    <div class="nc-heading" style="font-size:9px">April 2026</div>
+                    <span style="color:#D4A853;font-size:12px">▶</span>
+                  </div>
+                  <div class="nc-cal-header">
+                    <div class="nc-cal-dow">S</div><div class="nc-cal-dow">M</div><div class="nc-cal-dow">T</div>
+                    <div class="nc-cal-dow">W</div><div class="nc-cal-dow">T</div><div class="nc-cal-dow">F</div><div class="nc-cal-dow">S</div>
+                  </div>
+                  <div class="nc-cal-grid">
+                    <div class="nc-cal-day empty"></div><div class="nc-cal-day empty"></div><div class="nc-cal-day done">1</div>
+                    <div class="nc-cal-day rest">2</div><div class="nc-cal-day done">3</div><div class="nc-cal-day done">4</div><div class="nc-cal-day rest">5</div>
+                    <div class="nc-cal-day done">6</div><div class="nc-cal-day rest">7</div><div class="nc-cal-day done">8</div>
+                    <div class="nc-cal-day done">9</div><div class="nc-cal-day rest">10</div><div class="nc-cal-day done">11</div><div class="nc-cal-day rest">12</div>
+                    <div class="nc-cal-day planned">13</div><div class="nc-cal-day done">14</div><div class="nc-cal-day rest">15</div>
+                    <div class="nc-cal-day planned">16</div><div class="nc-cal-day planned">17</div><div class="nc-cal-day rest">18</div><div class="nc-cal-day planned">19</div>
+                    <div class="nc-cal-day today">20</div><div class="nc-cal-day planned">21</div><div class="nc-cal-day planned">22</div>
+                    <div class="nc-cal-day planned">23</div><div class="nc-cal-day rest">24</div><div class="nc-cal-day planned">25</div><div class="nc-cal-day planned">26</div>
+                  </div>
+                </div>
+                <div class="nc-card" style="margin-top:0">
+                  <div class="nc-heading" style="font-size:9px;margin-bottom:4px">April 20 — Today</div>
+                  <div class="nc-subheading" style="font-size:14px">Push Day</div>
+                  <div class="nc-text-sm">60 min · 5 exercises</div>
+                  <div style="display:flex;gap:6px;margin-top:8px">
+                    <div class="nc-btn" style="margin:0;flex:1;font-size:7px;padding:7px">Begin</div>
+                    <div class="nc-btn-sm" style="padding:7px 10px">Edit</div>
+                  </div>
+                </div>
+              </div>
+              <div class="nc-tabbar">
+                <div class="nc-tab"><span class="nc-tab-icon">🗡️</span><span class="nc-tab-label">Today</span></div>
+                <div class="nc-tab active"><span class="nc-tab-icon">📜</span><span class="nc-tab-label">Month</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📖</span><span class="nc-tab-label">History</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">🌿</span><span class="nc-tab-label">Profile</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#D4A853;font-family:'Cinzel',serif">Month Plan</div>
+        </div>
+
+        <!-- NC Dark Phone 4: Profile -->
+        <div class="phone nc-dark">
+          <div class="phone-shell">
+            <div class="phone-notch"></div>
+            <div class="phone-screen">
+              <div class="nc-screen-bg">
+                <div class="nc-statusbar"><span class="nc-statusbar-time">9:41</span></div>
+                <div class="nc-card" style="margin-top:4px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                    <div><div class="nc-text-sm">The Champion</div><div class="nc-heading">MUHAMMAD</div></div>
+                    <div class="nc-level">⚜ Level 12</div>
+                  </div>
+                  <div class="nc-xpbar-wrap" style="padding:0;margin-top:8px">
+                    <div class="nc-xpbar-label"><span>Experience</span><span>6,840 / 10,000</span></div>
+                    <div class="nc-xpbar-track"><div class="nc-xpbar-fill"></div></div>
+                  </div>
+                </div>
+                <div class="nc-stats">
+                  <div class="nc-stat"><div class="nc-stat-num">12</div><div class="nc-stat-lbl">Streak</div></div>
+                  <div class="nc-stat"><div class="nc-stat-num">148</div><div class="nc-stat-lbl">Sessions</div></div>
+                  <div class="nc-stat"><div class="nc-stat-num">2.1M</div><div class="nc-stat-lbl">Lbs</div></div>
+                </div>
+                <div class="nc-card" style="margin-top:4px">
+                  <div class="nc-heading" style="font-size:9px;margin-bottom:6px">⚜ Personal Records</div>
+                  <div class="nc-prrow"><span class="nc-prname">Barbell Squat</span><span class="nc-prval">315 lbs</span></div>
+                  <div class="nc-prrow"><span class="nc-prname">Bench Press</span><span class="nc-prval">225 lbs</span></div>
+                  <div class="nc-prrow"><span class="nc-prname">Deadlift</span><span class="nc-prval">405 lbs</span></div>
+                  <div class="nc-prrow"><span class="nc-prname">Overhead Press</span><span class="nc-prval">145 lbs</span></div>
+                </div>
+              </div>
+              <div class="nc-tabbar">
+                <div class="nc-tab"><span class="nc-tab-icon">🗡️</span><span class="nc-tab-label">Today</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📜</span><span class="nc-tab-label">Month</span></div>
+                <div class="nc-tab"><span class="nc-tab-icon">📖</span><span class="nc-tab-label">History</span></div>
+                <div class="nc-tab active"><span class="nc-tab-icon">🌿</span><span class="nc-tab-label">Profile</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-label" style="color:#D4A853;font-family:'Cinzel',serif">Profile / Stats</div>
+        </div>
+
+      </div>
+    </div><!-- /dark mode group -->
+  </div><!-- /mode-row -->
+</div><!-- /concept-section B -->
+
+<!-- Footer -->
+<div style="text-align:center;padding:40px 20px 60px;border-top:1px solid #1A5C1A;margin-top:20px">
+  <div class="scroll-hint" style="animation:none;color:#4ADE80">◆ LIGHTSTACK V2 CONCEPT REVIEW ◆</div>
+  <div style="font-family:'VT323',monospace;font-size:18px;color:#1E5C1E;margin-top:12px;letter-spacing:2px">
+    CONCEPT A: PIXEL DUNGEON — Gamified · Retro · High-contrast<br>
+    CONCEPT B: NATURE CRAFT — Crafted · Organic · Timeless<br><br>
+    Select a concept (or blend elements from both) to proceed with V2 implementation
+  </div>
+</div>
+
+</body>
+</html>
