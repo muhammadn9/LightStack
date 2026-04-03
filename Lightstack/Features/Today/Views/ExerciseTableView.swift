@@ -169,7 +169,7 @@ struct ExerciseTableView: View {
                         .foregroundStyle(AppTheme.accent)
                         .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
                 }
-                .disabled(editingWeight.isEmpty || editingReps.isEmpty)
+                .disabled(editingReps.isEmpty)
             }
             TextField("Set note (optional)...", text: $editingNote)
                 .font(.caption)

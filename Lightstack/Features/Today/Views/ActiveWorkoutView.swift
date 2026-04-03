@@ -8,6 +8,7 @@ struct ActiveWorkoutView: View {
     @ObservedObject var chatViewModel: CoachChatViewModel
     @State private var userNote: String = ""
     @State private var showChat = false
+    @State private var showCancelAlert = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -33,12 +34,25 @@ struct ActiveWorkoutView: View {
         .sheet(isPresented: $showChat) {
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
         }
+        .alert("Discard Workout?", isPresented: $showCancelAlert) {
+            Button("Discard", role: .destructive) {
+                todayViewModel.resetToSetup()
+            }
+            Button("Keep Going", role: .cancel) {}
+        } message: {
+            Text("All logged sets will be lost.")
+        }
     }
 
     // MARK: - Timer Bar
 
     private var timerBar: some View {
         HStack {
+            Button(action: { showCancelAlert = true }) {
+                Image(systemName: "xmark.circle")
+                    .font(.body)
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
             Image(systemName: "timer")
                 .foregroundStyle(AppTheme.accentSecondary)
             Text(viewModel.formattedElapsedTime)
@@ -98,6 +112,12 @@ struct ActiveWorkoutView: View {
             .padding(.bottom, 60) // Extra space for floating chat button
         }
         .onAppear {
+            for exercise in todayViewModel.exercises {
+                viewModel.prefillTargets(for: exercise)
+            }
+        }
+        .onChange(of: todayViewModel.exercises.count) { _, _ in
+            // Prefill targets for any exercises added via AI chat modifications
             for exercise in todayViewModel.exercises {
                 viewModel.prefillTargets(for: exercise)
             }

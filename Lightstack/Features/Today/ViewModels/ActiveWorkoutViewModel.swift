@@ -60,13 +60,18 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     /// Parse editing fields, create WorkoutSet, return it for logging.
     func buildSet(exerciseId: UUID) -> WorkoutSet? {
-        guard let weightStr = editingWeight[exerciseId],
-              let weight = Double(weightStr),
-              weight > 0,
-              let repsStr = editingReps[exerciseId],
+        guard let repsStr = editingReps[exerciseId],
               let reps = Int(repsStr),
               reps > 0
-        else {
+        else { return nil }
+
+        let weightStr = editingWeight[exerciseId] ?? ""
+        let weight: Double
+        if weightStr.isEmpty || weightStr.uppercased() == "BW" {
+            weight = 0.0
+        } else if let w = Double(weightStr), w >= 0 {
+            weight = w
+        } else {
             return nil
         }
 
@@ -102,10 +107,16 @@ final class ActiveWorkoutViewModel: ObservableObject {
     func prefillTargets(for exercise: Exercise) {
         if editingWeight[exercise.id]?.isEmpty ?? true {
             if let note = exercise.coachNote {
-                // coachNote format: "Target: 135 lbs" or "Target: 135"
-                let parts = note.replacingOccurrences(of: "Target: ", with: "").components(separatedBy: " ")
-                if let first = parts.first, Double(first) != nil {
-                    editingWeight[exercise.id] = first
+                // coachNote format: "Target: 135 lbs", "Target: BW", or "Bodyweight"
+                let cleaned = note.replacingOccurrences(of: "Target: ", with: "")
+                let upper = cleaned.uppercased()
+                if upper.contains("BW") || upper.contains("BODYWEIGHT") {
+                    editingWeight[exercise.id] = "BW"
+                } else {
+                    let parts = cleaned.components(separatedBy: " ")
+                    if let first = parts.first, Double(first) != nil {
+                        editingWeight[exercise.id] = first
+                    }
                 }
             }
         }

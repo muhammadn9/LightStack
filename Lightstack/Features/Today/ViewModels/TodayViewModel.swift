@@ -52,6 +52,12 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         }
     }
 
+    /// Sets userId without restoring a saved session (for inline/embedded workout flows).
+    func setUserIdSkipRestore(_ id: UUID) {
+        self.userId = id
+        self.streak = workoutRepository.fetchStreak(userId: id)
+    }
+
     private func restoreSessionState(_ state: WorkoutSessionPersistence.SessionState) {
         // Restore all workout state
         exercises = state.exercises

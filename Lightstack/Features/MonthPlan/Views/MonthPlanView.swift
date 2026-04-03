@@ -10,6 +10,7 @@ struct MonthPlanView: View {
     @State private var selectedSession: PlannedSession?
     @State private var showPlanBuilder = false
     @State private var showInlineWorkout = false
+    @State private var pendingInlineWorkout = false
     @State private var inlineWorkoutState: (viewModel: TodayViewModel, workoutType: String)?
 
     var body: some View {
@@ -69,23 +70,31 @@ struct MonthPlanView: View {
             .padding(16)
         }
         .themedBackground()
-        .sheet(item: $selectedSession) { session in
+        .sheet(item: $selectedSession, onDismiss: {
+            if pendingInlineWorkout {
+                pendingInlineWorkout = false
+                showInlineWorkout = true
+            }
+        }) { session in
             NavigationStack {
                 PlannedSessionView(
                     session: session,
                     onStartWorkout: {
                         let vm = environment.makeInlineTodayViewModel()
+                        // Use setUserIdSkipRestore so we don't restore the Today tab's
+                        // saved session into this inline workout VM.
                         if let userId = environment.authService.currentUser()?.userId {
-                            vm.setUserId(userId)
+                            vm.setUserIdSkipRestore(userId)
                         }
                         inlineWorkoutState = (viewModel: vm, workoutType: session.workoutType)
+                        // Dismiss the sheet first; onDismiss will set showInlineWorkout = true
+                        // once the sheet has fully dismissed (avoids black screen from
+                        // concurrent sheet-dismiss + fullScreenCover-present).
+                        pendingInlineWorkout = true
                         selectedSession = nil
-                        showInlineWorkout = true
                     },
                     onConfigureWithAI: {
                         selectedSession = nil
-                        // For now, just dismiss the session sheet
-                        // Full AI configure feature is future scope
                     }
                 )
                 .toolbar {
@@ -328,6 +337,11 @@ private struct InlineWorkoutSheet: View {
                 }
                 if !hasTriggeredGeneration {
                     hasTriggeredGeneration = true
+                    // Ensure userId is set without restoring an old saved session
+                    if todayViewModel.userId == nil,
+                       let userId = environment.authService.currentUser()?.userId {
+                        todayViewModel.setUserIdSkipRestore(userId)
+                    }
                     todayViewModel.generatePlan(
                         workoutType: workoutType,
                         time: 60,
