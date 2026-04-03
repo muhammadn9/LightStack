@@ -10,12 +10,14 @@ struct ExerciseTableView: View {
     @Binding var editingNote: String
     let restTimeRemaining: String?
     let onLogSet: () -> Void
+    let onDeleteSet: ((WorkoutSet) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             headerRow
             targetInfoRow
             loggedSetsList
+            pendingSetRows
             if let restTime = restTimeRemaining {
                 restTimerBanner(restTime)
             }
@@ -81,8 +83,53 @@ struct ExerciseTableView: View {
 
     private var loggedSetsList: some View {
         ForEach(Array(loggedSets.enumerated()), id: \.element.id) { index, workoutSet in
-            SetRowView(workoutSet: workoutSet)
-                .opacity(index.isMultiple(of: 2) ? 1.0 : 0.9)
+            HStack(spacing: 8) {
+                Text("Set \(index + 1)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: 40, alignment: .leading)
+                SetRowView(workoutSet: workoutSet)
+                Spacer()
+                if let onDelete = onDeleteSet {
+                    Button(action: { onDelete(workoutSet) }) {
+                        Image(systemName: "minus.circle.fill")
+                            .foregroundStyle(AppTheme.warning.opacity(0.7))
+                            .font(.body)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Pending Set Rows
+
+    @ViewBuilder
+    private var pendingSetRows: some View {
+        let target = exercise.targetSets ?? 0
+        let logged = loggedSets.count
+        if target > logged {
+            ForEach((logged + 1)...target, id: \.self) { setNumber in
+                HStack(spacing: 8) {
+                    Text("Set \(setNumber)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
+                        .frame(width: 40, alignment: .leading)
+                    HStack(spacing: 6) {
+                        if let note = exercise.coachNote {
+                            Text(note.replacingOccurrences(of: "Target: ", with: ""))
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
+                        }
+                        if let reps = exercise.targetReps {
+                            Text("× \(reps)")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 2)
+            }
         }
     }
 

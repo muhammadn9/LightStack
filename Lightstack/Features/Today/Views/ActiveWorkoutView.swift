@@ -87,7 +87,10 @@ struct ActiveWorkoutView: View {
                         editingRir: binding(for: exercise.id, in: \.editingRir),
                         editingNote: noteBinding(for: exercise.id),
                         restTimeRemaining: viewModel.formattedRestTime(for: exercise.id),
-                        onLogSet: { logSetForExercise(exercise.id) }
+                        onLogSet: { logSetForExercise(exercise.id) },
+                        onDeleteSet: { workoutSet in
+                            viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
+                        }
                     )
                 }
             }

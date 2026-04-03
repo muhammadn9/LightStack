@@ -125,11 +125,22 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     /// Reset fields to AI targets after logging a set (ready for next set).
     func resetToTargets(for exercise: Exercise) {
-        editingWeight[exercise.id] = nil
-        editingReps[exercise.id] = nil
-        editingRir[exercise.id] = nil
-        editingNote[exercise.id] = nil
-        prefillTargets(for: exercise)
+        if let lastSet = loggedSets[exercise.id]?.last {
+            editingWeight[exercise.id] = String(format: "%g", lastSet.weightLbs)
+            editingReps[exercise.id] = String(lastSet.reps)
+            editingRir[exercise.id] = String(lastSet.rir)
+            editingNote[exercise.id] = nil
+        } else {
+            editingWeight[exercise.id] = nil
+            editingReps[exercise.id] = nil
+            editingRir[exercise.id] = nil
+            editingNote[exercise.id] = nil
+            prefillTargets(for: exercise)
+        }
+    }
+
+    func deleteSet(_ workoutSet: WorkoutSet, exerciseId: UUID) {
+        loggedSets[exerciseId]?.removeAll { $0.id == workoutSet.id }
     }
 
     // MARK: - Rest Timer
