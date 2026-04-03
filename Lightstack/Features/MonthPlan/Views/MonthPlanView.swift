@@ -9,9 +9,8 @@ struct MonthPlanView: View {
     @Binding var selectedTab: Int
     @State private var selectedSession: PlannedSession?
     @State private var showPlanBuilder = false
-    @State private var showInlineWorkout = false
-    @State private var pendingInlineWorkout = false
-    @State private var inlineWorkoutState: (viewModel: TodayViewModel, workoutType: String)?
+    @State private var pendingWorkoutContext: InlineWorkoutContext?
+    @State private var inlineWorkoutContext: InlineWorkoutContext?
 
     var body: some View {
         NavigationStack {
@@ -71,9 +70,11 @@ struct MonthPlanView: View {
         }
         .themedBackground()
         .sheet(item: $selectedSession, onDismiss: {
-            if pendingInlineWorkout {
-                pendingInlineWorkout = false
-                showInlineWorkout = true
+            // Present the inline workout AFTER the sheet fully dismisses to avoid
+            // a black screen from concurrent sheet-dismiss + fullScreenCover-present.
+            if let pending = pendingWorkoutContext {
+                inlineWorkoutContext = pending
+                pendingWorkoutContext = nil
             }
         }) { session in
             NavigationStack {
@@ -81,16 +82,14 @@ struct MonthPlanView: View {
                     session: session,
                     onStartWorkout: {
                         let vm = environment.makeInlineTodayViewModel()
-                        // Use setUserIdSkipRestore so we don't restore the Today tab's
-                        // saved session into this inline workout VM.
+                        // Skip session restoration so we don't replay the Today tab's workout.
                         if let userId = environment.authService.currentUser()?.userId {
                             vm.setUserIdSkipRestore(userId)
                         }
-                        inlineWorkoutState = (viewModel: vm, workoutType: session.workoutType)
-                        // Dismiss the sheet first; onDismiss will set showInlineWorkout = true
-                        // once the sheet has fully dismissed (avoids black screen from
-                        // concurrent sheet-dismiss + fullScreenCover-present).
-                        pendingInlineWorkout = true
+                        pendingWorkoutContext = InlineWorkoutContext(
+                            viewModel: vm,
+                            workoutType: session.workoutType
+                        )
                         selectedSession = nil
                     },
                     onConfigureWithAI: {
@@ -105,18 +104,15 @@ struct MonthPlanView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showInlineWorkout) {
-            if let state = inlineWorkoutState {
-                InlineWorkoutSheet(
-                    todayViewModel: state.viewModel,
-                    workoutType: state.workoutType,
-                    onDismiss: {
-                        showInlineWorkout = false
-                        inlineWorkoutState = nil
-                    }
-                )
-                .environmentObject(environment)
-            }
+        // fullScreenCover(item:) guarantees the context is non-nil when the view renders,
+        // eliminating the empty-view → black screen race condition.
+        .fullScreenCover(item: $inlineWorkoutContext) { context in
+            InlineWorkoutSheet(
+                todayViewModel: context.viewModel,
+                workoutType: context.workoutType,
+                onDismiss: { inlineWorkoutContext = nil }
+            )
+            .environmentObject(environment)
         }
     }
 
@@ -308,7 +304,11 @@ private struct InlineWorkoutSheet: View {
                     case .setup, .generating:
                         generatingView
                     case .confirmation:
-                        ConfirmWorkoutView(todayViewModel: todayViewModel)
+                        ConfirmWorkoutView(
+                            todayViewModel: todayViewModel,
+                            chatViewModel: chatViewModel,
+                            workoutType: workoutType
+                        )
                     case .active:
                         if let activeVM = activeWorkoutViewModel {
                             ActiveWorkoutView(
@@ -419,6 +419,16 @@ private struct PlanBuilderWrapper: View {
             }
         }
     }
+}
+
+// MARK: - Inline Workout Context
+
+/// Identifiable wrapper for the inline workout flow so fullScreenCover(item:)
+/// guarantees a non-nil context when the cover renders.
+private struct InlineWorkoutContext: Identifiable {
+    let id = UUID()
+    let viewModel: TodayViewModel
+    let workoutType: String
 }
 
 // MARK: - PlannedSession + Hashable (for sheet)

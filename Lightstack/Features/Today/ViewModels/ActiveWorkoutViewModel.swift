@@ -1,10 +1,21 @@
 import Foundation
 
+/// One pending (not-yet-logged) set for an exercise, with editable fields.
+struct PendingSetInput: Identifiable {
+    var id = UUID()
+    var weight: String
+    var reps: String
+    var rir: String
+}
+
 /// Manages active workout state: current exercises, set logging,
 /// timer tracking, and workout completion.
 final class ActiveWorkoutViewModel: ObservableObject {
 
     @Published var loggedSets: [UUID: [WorkoutSet]] = [:]
+    /// Per-exercise array of pending sets (shown as individual editable rows).
+    @Published var pendingSets: [UUID: [PendingSetInput]] = [:]
+    // Legacy single-set editing fields kept for any remaining callers.
     @Published var editingWeight: [UUID: String] = [:]
     @Published var editingReps: [UUID: String] = [:]
     @Published var editingRir: [UUID: String] = [:]
@@ -104,40 +115,24 @@ final class ActiveWorkoutViewModel: ObservableObject {
     // MARK: - Prefill Targets
 
     /// Pre-fill input fields with AI-suggested targets for an exercise (only if empty).
+    /// Also initialises the per-set pending rows via syncPendingSets.
     func prefillTargets(for exercise: Exercise) {
         if editingWeight[exercise.id]?.isEmpty ?? true {
-            if let note = exercise.coachNote {
-                // coachNote format: "Target: 135 lbs", "Target: BW", or "Bodyweight"
-                let cleaned = note.replacingOccurrences(of: "Target: ", with: "")
-                let upper = cleaned.uppercased()
-                if upper.contains("BW") || upper.contains("BODYWEIGHT") {
-                    editingWeight[exercise.id] = "BW"
-                } else {
-                    let parts = cleaned.components(separatedBy: " ")
-                    if let first = parts.first, Double(first) != nil {
-                        editingWeight[exercise.id] = first
-                    }
-                }
-            }
+            editingWeight[exercise.id] = prefillWeightValue(from: exercise)
         }
         if editingReps[exercise.id]?.isEmpty ?? true {
-            if let reps = exercise.targetReps,
-               let range = reps.range(of: #"\d+"#, options: .regularExpression) {
-                editingReps[exercise.id] = String(reps[range])
-            }
+            editingReps[exercise.id] = prefillRepsValue(from: exercise)
         }
         if editingRir[exercise.id]?.isEmpty ?? true {
-            if let rir = exercise.targetRir,
-               let range = rir.range(of: #"\d+"#, options: .regularExpression) {
-                editingRir[exercise.id] = String(rir[range])
-            }
+            editingRir[exercise.id] = prefillRirValue(from: exercise)
         }
+        syncPendingSets(for: exercise)
     }
 
-    /// Reset fields to AI targets after logging a set (ready for next set).
+    /// Reset legacy single-set fields after logging (carries forward last logged values).
     func resetToTargets(for exercise: Exercise) {
         if let lastSet = loggedSets[exercise.id]?.last {
-            editingWeight[exercise.id] = String(format: "%g", lastSet.weightLbs)
+            editingWeight[exercise.id] = lastSet.weightLbs == 0 ? "BW" : String(format: "%g", lastSet.weightLbs)
             editingReps[exercise.id] = String(lastSet.reps)
             editingRir[exercise.id] = String(lastSet.rir)
             editingNote[exercise.id] = ""
@@ -152,6 +147,107 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     func deleteSet(_ workoutSet: WorkoutSet, exerciseId: UUID) {
         loggedSets[exerciseId]?.removeAll { $0.id == workoutSet.id }
+    }
+
+    // MARK: - Pending Sets (all-sets-visible model)
+
+    /// Ensures pendingSets[exercise.id] has exactly (targetSets - loggedSets) entries,
+    /// pre-filled with AI targets or last-logged values.
+    func syncPendingSets(for exercise: Exercise) {
+        let loggedCount = loggedSets[exercise.id]?.count ?? 0
+        let targetCount = exercise.targetSets ?? 0
+        let needed = max(0, targetCount - loggedCount)
+
+        var current = pendingSets[exercise.id] ?? []
+
+        while current.count < needed {
+            let last = loggedSets[exercise.id]?.last
+            current.append(PendingSetInput(
+                weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
+                    ?? prefillWeightValue(from: exercise),
+                reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
+                rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+            ))
+        }
+        if current.count > needed {
+            current = Array(current.prefix(needed))
+        }
+        pendingSets[exercise.id] = current
+    }
+
+    /// Log the pending set at `index`, add it to loggedSets, and remove it from pendingSets.
+    func logPendingSet(at index: Int, exerciseId: UUID) -> WorkoutSet? {
+        guard var pending = pendingSets[exerciseId], index < pending.count else { return nil }
+
+        let entry = pending[index]
+        let weight: Double
+        if entry.weight.isEmpty || entry.weight.uppercased() == "BW" {
+            weight = 0.0
+        } else if let w = Double(entry.weight), w >= 0 {
+            weight = w
+        } else {
+            return nil
+        }
+        guard let reps = Int(entry.reps), reps > 0 else { return nil }
+        let rir = Int(entry.rir) ?? 2
+
+        let existingSets = loggedSets[exerciseId] ?? []
+        let setNumber = existingSets.count + 1
+
+        let workoutSet = WorkoutSet.create(
+            exerciseId: exerciseId,
+            setNumber: setNumber,
+            weightLbs: weight,
+            reps: reps,
+            rir: rir
+        )
+
+        var logged = existingSets
+        logged.append(workoutSet)
+        loggedSets[exerciseId] = logged
+
+        pending.remove(at: index)
+        pendingSets[exerciseId] = pending
+
+        return workoutSet
+    }
+
+    /// Add one extra pending set pre-filled from the last logged set (or AI target).
+    func addPendingSet(for exercise: Exercise) {
+        let last = loggedSets[exercise.id]?.last
+        let entry = PendingSetInput(
+            weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
+                ?? prefillWeightValue(from: exercise),
+            reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
+            rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+        )
+        pendingSets[exercise.id, default: []].append(entry)
+    }
+
+    // MARK: - Private prefill helpers
+
+    private func prefillWeightValue(from exercise: Exercise) -> String {
+        guard let note = exercise.coachNote else { return "" }
+        let cleaned = note.replacingOccurrences(of: "Target: ", with: "")
+        let upper = cleaned.uppercased()
+        if upper.contains("BW") || upper.contains("BODYWEIGHT") { return "BW" }
+        let parts = cleaned.components(separatedBy: " ")
+        if let first = parts.first, Double(first) != nil { return first }
+        return ""
+    }
+
+    private func prefillRepsValue(from exercise: Exercise) -> String {
+        guard let reps = exercise.targetReps,
+              let range = reps.range(of: #"\d+"#, options: .regularExpression)
+        else { return "" }
+        return String(reps[range])
+    }
+
+    private func prefillRirValue(from exercise: Exercise) -> String {
+        guard let rir = exercise.targetRir,
+              let range = rir.range(of: #"\d+"#, options: .regularExpression)
+        else { return "2" }
+        return String(rir[range])
     }
 
     // MARK: - Rest Timer

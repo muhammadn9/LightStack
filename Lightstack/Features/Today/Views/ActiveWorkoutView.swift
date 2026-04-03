@@ -6,7 +6,6 @@ struct ActiveWorkoutView: View {
     @ObservedObject var viewModel: ActiveWorkoutViewModel
     @ObservedObject var todayViewModel: TodayViewModel
     @ObservedObject var chatViewModel: CoachChatViewModel
-    @State private var userNote: String = ""
     @State private var showChat = false
     @State private var showCancelAlert = false
 
@@ -96,20 +95,19 @@ struct ActiveWorkoutView: View {
                     ExerciseTableView(
                         exercise: exercise,
                         loggedSets: viewModel.loggedSets[exercise.id] ?? [],
-                        editingWeight: binding(for: exercise.id, in: \.editingWeight),
-                        editingReps: binding(for: exercise.id, in: \.editingReps),
-                        editingRir: binding(for: exercise.id, in: \.editingRir),
-                        editingNote: noteBinding(for: exercise.id),
+                        pendingSets: pendingSetsBinding(for: exercise.id),
                         restTimeRemaining: viewModel.formattedRestTime(for: exercise.id),
-                        onLogSet: { logSetForExercise(exercise.id) },
+                        onLogSet: { index in logSetForExercise(at: index, exerciseId: exercise.id) },
                         onDeleteSet: { workoutSet in
                             viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
-                        }
+                            viewModel.syncPendingSets(for: exercise)
+                        },
+                        onAddSet: { viewModel.addPendingSet(for: exercise) }
                     )
                 }
             }
             .padding(16)
-            .padding(.bottom, 60) // Extra space for floating chat button
+            .padding(.bottom, 60)
         }
         .onAppear {
             for exercise in todayViewModel.exercises {
@@ -117,7 +115,6 @@ struct ActiveWorkoutView: View {
             }
         }
         .onChange(of: todayViewModel.exercises.count) { _, _ in
-            // Prefill targets for any exercises added via AI chat modifications
             for exercise in todayViewModel.exercises {
                 viewModel.prefillTargets(for: exercise)
             }
@@ -195,11 +192,17 @@ struct ActiveWorkoutView: View {
         return volume
     }
 
-    private func logSetForExercise(_ exerciseId: UUID) {
-        guard let workoutSet = viewModel.buildSet(exerciseId: exerciseId) else { return }
+    private func pendingSetsBinding(for exerciseId: UUID) -> Binding<[PendingSetInput]> {
+        Binding(
+            get: { viewModel.pendingSets[exerciseId] ?? [] },
+            set: { viewModel.pendingSets[exerciseId] = $0 }
+        )
+    }
+
+    private func logSetForExercise(at index: Int, exerciseId: UUID) {
+        guard let workoutSet = viewModel.logPendingSet(at: index, exerciseId: exerciseId) else { return }
         let isPR = todayViewModel.logSet(workoutSet, exerciseId: exerciseId)
 
-        // If PR detected, update the set in ActiveWorkoutViewModel's loggedSets
         if isPR {
             var sets = viewModel.loggedSets[exerciseId] ?? []
             if var lastSet = sets.last {
@@ -209,15 +212,9 @@ struct ActiveWorkoutView: View {
             }
         }
 
-        // Start rest timer if exercise has a rest interval
         if let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }),
            let rest = exercise.restSeconds, rest > 0 {
             viewModel.startRestTimer(for: exerciseId, seconds: rest, exerciseName: exercise.name)
-        }
-
-        // Reset fields to AI targets for next set
-        if let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }) {
-            viewModel.resetToTargets(for: exercise)
         }
     }
 
@@ -251,22 +248,5 @@ struct ActiveWorkoutView: View {
         .padding(.top, 60)
         .transition(.move(edge: .top).combined(with: .opacity))
         .animation(.spring(response: 0.6, dampingFraction: 0.7), value: todayViewModel.lastPR != nil)
-    }
-
-    private func binding(
-        for exerciseId: UUID,
-        in keyPath: ReferenceWritableKeyPath<ActiveWorkoutViewModel, [UUID: String]>
-    ) -> Binding<String> {
-        Binding(
-            get: { viewModel[keyPath: keyPath][exerciseId] ?? "" },
-            set: { viewModel[keyPath: keyPath][exerciseId] = $0 }
-        )
-    }
-
-    private func noteBinding(for exerciseId: UUID) -> Binding<String> {
-        Binding(
-            get: { viewModel.editingNote[exerciseId] ?? "" },
-            set: { viewModel.editingNote[exerciseId] = $0 }
-        )
     }
 }

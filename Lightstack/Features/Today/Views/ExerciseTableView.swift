@@ -1,27 +1,26 @@
 import SwiftUI
 
-/// Exercise card showing name, targets, logged sets, and inline input row.
+/// Exercise card showing name, targets, logged sets, and one editable input row
+/// per pending set so the user can see and fill all sets at once.
 struct ExerciseTableView: View {
     let exercise: Exercise
     let loggedSets: [WorkoutSet]
-    @Binding var editingWeight: String
-    @Binding var editingReps: String
-    @Binding var editingRir: String
-    @Binding var editingNote: String
+    @Binding var pendingSets: [PendingSetInput]
     let restTimeRemaining: String?
-    let onLogSet: () -> Void
+    let onLogSet: (Int) -> Void     // index into pendingSets
     let onDeleteSet: ((WorkoutSet) -> Void)?
+    let onAddSet: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             headerRow
-            targetInfoRow
+            if hasTargetInfo { targetInfoRow }
             loggedSetsList
-            pendingSetRows
+            pendingSetInputRows
+            addSetButton
             if let restTime = restTimeRemaining {
                 restTimerBanner(restTime)
             }
-            inputRow
         }
         .glowingCard()
     }
@@ -51,21 +50,16 @@ struct ExerciseTableView: View {
         }
     }
 
-    // MARK: - Target Info
+    // MARK: - Target Info (rest seconds only — weight/reps/rir shown in set rows)
+
+    private var hasTargetInfo: Bool {
+        (exercise.restSeconds ?? 0) > 0
+    }
 
     private var targetInfoRow: some View {
         HStack(spacing: 12) {
-            if let reps = exercise.targetReps {
-                targetBadge("Reps", value: reps)
-            }
-            if let rir = exercise.targetRir {
-                targetBadge("RIR", value: rir)
-            }
             if let rest = exercise.restSeconds, rest > 0 {
                 targetBadge("Rest", value: "\(rest)s")
-            }
-            if let note = exercise.coachNote {
-                targetBadge("Weight", value: note.replacingOccurrences(of: "Target: ", with: ""))
             }
         }
     }
@@ -107,36 +101,48 @@ struct ExerciseTableView: View {
         }
     }
 
-    // MARK: - Pending Set Rows
+    // MARK: - Pending Set Input Rows
 
     @ViewBuilder
-    private var pendingSetRows: some View {
-        let target = exercise.targetSets ?? 0
-        let logged = loggedSets.count
-        if target > logged {
-            ForEach((logged + 1)...target, id: \.self) { setNumber in
-                HStack(spacing: 8) {
-                    Text("Set \(setNumber)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-                        .frame(width: 40, alignment: .leading)
-                    HStack(spacing: 6) {
-                        if let note = exercise.coachNote {
-                            Text(note.replacingOccurrences(of: "Target: ", with: ""))
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-                        }
-                        if let reps = exercise.targetReps {
-                            Text("× \(reps)")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-                        }
-                    }
-                    Spacer()
+    private var pendingSetInputRows: some View {
+        ForEach(Array(pendingSets.enumerated()), id: \.element.id) { index, _ in
+            HStack(spacing: 8) {
+                Text("Set \(loggedSets.count + index + 1)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: 40, alignment: .leading)
+
+                inputField("lbs", text: $pendingSets[index].weight, width: 70, keyboard: .decimalPad)
+                inputField("reps", text: $pendingSets[index].reps, width: 60, keyboard: .numberPad)
+                inputField("RIR", text: $pendingSets[index].rir, width: 50, keyboard: .numberPad)
+
+                Button(action: { onLogSet(index) }) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(
+                            pendingSets[index].reps.isEmpty
+                                ? AppTheme.textSecondary
+                                : AppTheme.accent
+                        )
+                        .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
                 }
-                .padding(.vertical, 2)
+                .disabled(pendingSets[index].reps.isEmpty)
             }
         }
+    }
+
+    // MARK: - Add Set Button
+
+    private var addSetButton: some View {
+        Button(action: { onAddSet?() }) {
+            HStack(spacing: 4) {
+                Image(systemName: "plus.circle")
+                Text("Add Set")
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(AppTheme.textSecondary)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Rest Timer Banner
@@ -155,30 +161,7 @@ struct ExerciseTableView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    // MARK: - Input Row
-
-    private var inputRow: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                inputField("lbs", text: $editingWeight, width: 70, keyboard: .decimalPad)
-                inputField("reps", text: $editingReps, width: 60, keyboard: .numberPad)
-                inputField("RIR", text: $editingRir, width: 50, keyboard: .numberPad)
-                Button(action: onLogSet) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(AppTheme.accent)
-                        .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
-                }
-                .disabled(editingReps.isEmpty)
-            }
-            TextField("Set note (optional)...", text: $editingNote)
-                .font(.caption)
-                .padding(8)
-                .background(AppTheme.surfaceElevated)
-                .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-    }
+    // MARK: - Input Field
 
     private func inputField(_ placeholder: String, text: Binding<String>, width: CGFloat, keyboard: UIKeyboardType) -> some View {
         TextField(placeholder, text: text)

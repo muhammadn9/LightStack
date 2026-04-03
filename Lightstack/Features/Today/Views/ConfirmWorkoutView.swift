@@ -1,20 +1,35 @@
 import SwiftUI
 
 /// Shows the AI-generated workout plan for user confirmation before starting.
+/// Each exercise lists its individual sets so the user can review volume,
+/// remove exercises, or chat with the coach before committing.
 struct ConfirmWorkoutView: View {
     @ObservedObject var todayViewModel: TodayViewModel
+    /// Optional — when provided, a "Chat with Coach" button appears.
+    var chatViewModel: CoachChatViewModel? = nil
+    /// Workout type label used when configuring the chat context.
+    var workoutType: String = ""
+
+    @State private var showChat = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 headerSection
                 exerciseList
-                confirmButton
+                actionButtons
             }
             .padding(16)
         }
         .themedBackground()
+        .sheet(isPresented: $showChat) {
+            if let chatVM = chatViewModel {
+                CoachChatView(viewModel: chatVM, todayViewModel: todayViewModel)
+            }
+        }
     }
+
+    // MARK: - Header
 
     private var headerSection: some View {
         VStack(spacing: 8) {
@@ -33,6 +48,8 @@ struct ConfirmWorkoutView: View {
         .cardStyle()
     }
 
+    // MARK: - Exercise List
+
     private var exerciseList: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -46,90 +63,136 @@ struct ConfirmWorkoutView: View {
             }
 
             ForEach(todayViewModel.exercises) { exercise in
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(exercise.name)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text(exercise.muscleGroup)
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.accentSecondary)
-
-                        // Badge pills row
-                        let weightText: String? = {
-                            guard let note = exercise.coachNote else { return nil }
-                            let prefix = "Target: "
-                            if note.hasPrefix(prefix) {
-                                return String(note.dropFirst(prefix.count))
-                            }
-                            return note
-                        }()
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                if let sets = exercise.targetSets, sets > 0 {
-                                    confirmBadge("\(sets) sets", color: AppTheme.accent)
-                                }
-                                if let reps = exercise.targetReps, !reps.isEmpty {
-                                    confirmBadge(reps + " reps", color: AppTheme.accentSecondary)
-                                }
-                                if let weight = weightText, !weight.isEmpty {
-                                    confirmBadge(weight, color: .orange)
-                                }
-                                if let rir = exercise.targetRir, !rir.isEmpty {
-                                    confirmBadge("RIR \(rir)", color: .purple)
-                                }
-                                if let rest = exercise.restSeconds, rest > 0 {
-                                    confirmBadge("\(rest)s rest", color: .teal)
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer()
-
-                    Button(action: {
-                        todayViewModel.applyModification(
-                            .removeExercise(name: exercise.name),
-                            preserveLoggedSets: false
-                        )
-                    }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(AppTheme.warning)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(12)
-                .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                exerciseCard(exercise)
             }
         }
         .cardStyle()
     }
 
-    private func confirmBadge(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.15))
-            .clipShape(Capsule())
+    private func exerciseCard(_ exercise: Exercise) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                // Name + muscle group
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(exercise.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(exercise.muscleGroup)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.accentSecondary)
+                }
+
+                // Per-set rows
+                setRows(for: exercise)
+            }
+
+            Spacer()
+
+            Button(action: {
+                todayViewModel.applyModification(
+                    .removeExercise(name: exercise.name),
+                    preserveLoggedSets: false
+                )
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(AppTheme.warning)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(AppTheme.surfaceElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private var confirmButton: some View {
-        Button(action: { todayViewModel.confirmAndStartWorkout() }) {
-            HStack {
-                Image(systemName: "play.fill")
-                Text("Start Workout")
+    /// Renders one row per target set showing weight × reps @ RIR.
+    @ViewBuilder
+    private func setRows(for exercise: Exercise) -> some View {
+        let count = max(1, exercise.targetSets ?? 1)
+        let weight = extractWeight(from: exercise.coachNote)
+        let reps = exercise.targetReps ?? "—"
+        let rir: String = {
+            guard let r = exercise.targetRir,
+                  let range = r.range(of: #"\d+"#, options: .regularExpression)
+            else { return "—" }
+            return String(r[range])
+        }()
+
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(1...count, id: \.self) { setNum in
+                HStack(spacing: 6) {
+                    Text("Set \(setNum)")
+                        .frame(width: 38, alignment: .leading)
+                        .foregroundStyle(AppTheme.textSecondary)
+                    Spacer()
+                    if !weight.isEmpty {
+                        Text(weight)
+                    }
+                    Text("×")
+                    Text("\(reps) reps")
+                    if rir != "—" {
+                        Text("@ RIR \(rir)")
+                            .foregroundStyle(AppTheme.accent.opacity(0.8))
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(AppTheme.textPrimary)
             }
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.accentGradient)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        }
+    }
+
+    private func extractWeight(from coachNote: String?) -> String {
+        guard let note = coachNote else { return "" }
+        let prefix = "Target: "
+        return note.hasPrefix(prefix) ? String(note.dropFirst(prefix.count)) : note
+    }
+
+    // MARK: - Action Buttons
+
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            // Chat with Coach button (only shown when chatViewModel is provided)
+            if let chatVM = chatViewModel {
+                Button(action: {
+                    if let userId = todayViewModel.userId {
+                        let wt = workoutType.isEmpty
+                            ? (todayViewModel.sessionService.currentWorkoutType ?? "")
+                            : workoutType
+                        chatVM.configure(
+                            userId: userId,
+                            workoutType: wt,
+                            exercises: todayViewModel.exercises,
+                            loggedSets: [:]
+                        )
+                    }
+                    showChat = true
+                }) {
+                    HStack {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                        Text("Chat with Coach")
+                    }
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(AppTheme.accent.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
+            }
+
+            // Start Workout button
+            Button(action: { todayViewModel.confirmAndStartWorkout() }) {
+                HStack {
+                    Image(systemName: "play.fill")
+                    Text("Start Workout")
+                }
+                .font(.headline)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(AppTheme.accentGradient)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            }
         }
         .padding(.horizontal, 4)
     }

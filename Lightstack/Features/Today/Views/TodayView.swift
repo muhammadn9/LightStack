@@ -28,7 +28,11 @@ struct TodayView: View {
                         generatingView
 
                     case .confirmation:
-                        ConfirmWorkoutView(todayViewModel: viewModel)
+                        ConfirmWorkoutView(
+                            todayViewModel: viewModel,
+                            chatViewModel: chatViewModel,
+                            workoutType: viewModel.sessionService.currentWorkoutType ?? ""
+                        )
 
                     case .active:
                         if let activeVM = activeWorkoutViewModel {
