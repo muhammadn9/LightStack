@@ -87,6 +87,22 @@ final class PRRepository {
         return newPR
     }
 
+    // MARK: - Orphan Cleanup
+
+    /// Removes any PR entries that no longer have any corresponding sets in the
+    /// local workout database. Called on profile load to handle edge cases where
+    /// workouts were deleted before per-exercise recalculation was in place.
+    func cleanOrphanedPRs(userId: UUID) {
+        let allPRs = localStorage.fetchPersonalRecords(userId: userId)
+        for pr in allPRs {
+            guard let name = pr.exerciseName else { continue }
+            let sets = localStorage.fetchAllSetsForExerciseName(userId: userId, exerciseName: name)
+            if sets.isEmpty {
+                localStorage.deletePersonalRecord(userId: userId, exerciseName: name)
+            }
+        }
+    }
+
     // MARK: - Recalculation after deletion
 
     /// Deletes the stored PR for an exercise and rebuilds it from all remaining sets.

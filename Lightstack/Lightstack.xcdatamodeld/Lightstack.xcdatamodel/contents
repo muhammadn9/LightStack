@@ -27,6 +27,7 @@
         <attribute name="energyLevel" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="timeAvailableMinutes" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="userNote" optional="YES" attributeType="String"/>
+        <attribute name="setupNote" optional="YES" attributeType="String"/>
         <attribute name="aiProgressionNote" optional="YES" attributeType="String"/>
         <attribute name="plannedSessionId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="syncStatus" attributeType="String" defaultValueString="pending"/>

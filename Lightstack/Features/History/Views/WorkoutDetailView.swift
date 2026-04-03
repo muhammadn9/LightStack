@@ -14,11 +14,14 @@ struct WorkoutDetailView: View {
                 VStack(spacing: AppTheme.sectionSpacing) {
                     headerSection
                     exercisesSection
-                    if workout.aiProgressionNote != nil {
-                        aiNoteSection
+                    if workout.setupNote != nil {
+                        setupNoteSection
                     }
                     if workout.userNote != nil {
                         userNoteSection
+                    }
+                    if workout.aiProgressionNote != nil {
+                        aiNoteSection
                     }
                 }
                 .padding(20)
@@ -89,6 +92,26 @@ struct WorkoutDetailView: View {
                     }
                 }
             }
+        }
+        .cardStyle()
+    }
+
+    // MARK: - Setup Note Section
+
+    private var setupNoteSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "pencil.and.list.clipboard")
+                    .foregroundStyle(AppTheme.accent)
+                Text("Pre-Workout Notes")
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.textPrimary)
+            }
+
+            Text(workout.setupNote ?? "")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .cardStyle()
     }

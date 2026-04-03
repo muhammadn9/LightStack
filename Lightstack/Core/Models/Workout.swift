@@ -12,6 +12,7 @@ struct Workout: Codable, Identifiable {
     var energyLevel: Int?
     var timeAvailableMinutes: Int?
     var userNote: String?
+    var setupNote: String?
     var aiProgressionNote: String?
     var plannedSessionId: UUID?
     var syncStatus: SyncStatus
@@ -84,6 +85,7 @@ struct Workout: Codable, Identifiable {
         self.energyLevel = cdEntity.energyLevel == 0 ? nil : Int(cdEntity.energyLevel)
         self.timeAvailableMinutes = cdEntity.timeAvailableMinutes == 0 ? nil : Int(cdEntity.timeAvailableMinutes)
         self.userNote = cdEntity.userNote
+        self.setupNote = cdEntity.setupNote
         self.aiProgressionNote = cdEntity.aiProgressionNote
         self.plannedSessionId = cdEntity.plannedSessionId
         self.syncStatus = SyncStatus(rawValue: cdEntity.syncStatus ?? "pending") ?? .pending
@@ -100,6 +102,7 @@ struct Workout: Codable, Identifiable {
         entity.energyLevel = Int32(energyLevel ?? 0)
         entity.timeAvailableMinutes = Int32(timeAvailableMinutes ?? 0)
         entity.userNote = userNote
+        entity.setupNote = setupNote
         entity.aiProgressionNote = aiProgressionNote
         entity.plannedSessionId = plannedSessionId
         entity.syncStatus = syncStatus.rawValue
@@ -112,7 +115,8 @@ struct Workout: Codable, Identifiable {
         userId: UUID,
         workoutType: String,
         energyLevel: Int?,
-        timeAvailableMinutes: Int?
+        timeAvailableMinutes: Int?,
+        setupNote: String? = nil
     ) -> Workout {
         let localId = UUID().uuidString
         return Workout(
@@ -125,6 +129,7 @@ struct Workout: Codable, Identifiable {
             energyLevel: energyLevel,
             timeAvailableMinutes: timeAvailableMinutes,
             userNote: nil,
+            setupNote: setupNote,
             aiProgressionNote: nil,
             plannedSessionId: nil,
             syncStatus: .pending,
@@ -137,7 +142,7 @@ struct Workout: Codable, Identifiable {
     init(
         id: UUID, userId: UUID, localId: String?, date: Date, workoutType: String,
         durationMinutes: Int?, energyLevel: Int?, timeAvailableMinutes: Int?,
-        userNote: String?, aiProgressionNote: String?, plannedSessionId: UUID?,
+        userNote: String?, setupNote: String?, aiProgressionNote: String?, plannedSessionId: UUID?,
         syncStatus: SyncStatus, createdAt: Date
     ) {
         self.id = id
@@ -149,6 +154,7 @@ struct Workout: Codable, Identifiable {
         self.energyLevel = energyLevel
         self.timeAvailableMinutes = timeAvailableMinutes
         self.userNote = userNote
+        self.setupNote = setupNote
         self.aiProgressionNote = aiProgressionNote
         self.plannedSessionId = plannedSessionId
         self.syncStatus = syncStatus

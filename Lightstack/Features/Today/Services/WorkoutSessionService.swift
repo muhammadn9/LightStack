@@ -80,7 +80,8 @@ final class WorkoutSessionService {
             userId: userId,
             workoutType: sanitizedType,
             energyLevel: energy,
-            timeAvailableMinutes: time
+            timeAvailableMinutes: time,
+            setupNote: sanitizedNotes?.isEmpty == false ? sanitizedNotes : nil
         )
 
         Task { @MainActor in
@@ -339,6 +340,9 @@ final class WorkoutSessionService {
             let restStr = columns.count > 5 ? columns[5] : ""
 
             let targetSets = parseFirstInt(setsStr)
+            // Skip rows that have no valid set count — these are section headers
+            // (e.g. "Quads/Glutes (form focus)") not actual exercises
+            guard let targetSets = targetSets, targetSets > 0 else { continue }
             let restSeconds = parseRestSeconds(restStr)
 
             let exercise = Exercise.create(

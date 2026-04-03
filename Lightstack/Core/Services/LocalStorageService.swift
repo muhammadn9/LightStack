@@ -10,6 +10,10 @@ final class LocalStorageService {
 
     init() {
         container = NSPersistentContainer(name: "Lightstack")
+        if let description = container.persistentStoreDescriptions.first {
+            description.shouldMigrateStoreAutomatically = true
+            description.shouldInferMappingModelAutomatically = true
+        }
         container.loadPersistentStores { _, error in
             if let error = error {
                 fatalError("Core Data failed to load: \(error.localizedDescription)")
