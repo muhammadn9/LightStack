@@ -103,34 +103,59 @@ struct EditProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            // Custom goals added by the user
+            let customGoals = viewModel.editGoals.filter { !goalOptions.contains($0) }.sorted()
+            if !customGoals.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(customGoals, id: \.self) { goal in
+                        customGoalChip(goal)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack {
                 TextField("Add custom goal", text: $newCustomGoal)
                     .padding(12)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .onSubmit {
-                        let trimmed = newCustomGoal.trimmingCharacters(in: .whitespaces)
-                        if !trimmed.isEmpty {
-                            viewModel.editGoals.insert(trimmed)
-                            newCustomGoal = ""
-                        }
-                    }
-                Button(action: {
-                    let trimmed = newCustomGoal.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty {
-                        viewModel.editGoals.insert(trimmed)
-                        newCustomGoal = ""
-                    }
-                }) {
+                    .onSubmit { addCustomGoal() }
+                Button(action: addCustomGoal) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(newCustomGoal.trimmingCharacters(in: .whitespaces).isEmpty ? AppTheme.textSecondary : AppTheme.accent)
+                        .foregroundStyle(
+                            newCustomGoal.trimmingCharacters(in: .whitespaces).isEmpty
+                                ? AppTheme.textSecondary : AppTheme.accent
+                        )
                 }
                 .disabled(newCustomGoal.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .cardStyle()
+    }
+
+    private func addCustomGoal() {
+        let trimmed = newCustomGoal.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        viewModel.editGoals.insert(trimmed)
+        newCustomGoal = ""
+    }
+
+    private func customGoalChip(_ goal: String) -> some View {
+        HStack(spacing: 4) {
+            Text(goal)
+                .font(.subheadline)
+            Button(action: { viewModel.editGoals.remove(goal) }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(AppTheme.accent)
+        .foregroundStyle(.white)
+        .clipShape(Capsule())
     }
 
     private func goalChip(_ goal: String) -> some View {
