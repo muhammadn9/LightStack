@@ -8,6 +8,7 @@ struct ExerciseTableView: View {
     @Binding var pendingSets: [PendingSetInput]
     let restTimeRemaining: String?
     let onLogSet: (Int) -> Void     // index into pendingSets
+    let onDeletePendingSet: ((Int) -> Void)?
     let onDeleteSet: ((WorkoutSet) -> Void)?
     let onAddSet: (() -> Void)?
 
@@ -128,27 +129,47 @@ struct ExerciseTableView: View {
             pendingSetColumnHeaders
         }
         ForEach(Array(pendingSets.enumerated()), id: \.element.id) { index, _ in
-            HStack(spacing: 8) {
-                Text("Set \(loggedSets.count + index + 1)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .frame(width: 40, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("Set \(loggedSets.count + index + 1)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 40, alignment: .leading)
 
-                inputField("lbs", text: $pendingSets[index].weight, width: 70, keyboard: .decimalPad)
-                inputField("reps", text: $pendingSets[index].reps, width: 60, keyboard: .numberPad)
-                inputField("RIR", text: $pendingSets[index].rir, width: 50, keyboard: .numberPad)
+                    inputField("lbs", text: $pendingSets[index].weight, width: 70, keyboard: .decimalPad)
+                    inputField("reps", text: $pendingSets[index].reps, width: 60, keyboard: .numberPad)
+                    inputField("RIR", text: $pendingSets[index].rir, width: 50, keyboard: .numberPad)
 
-                Button(action: { onLogSet(index) }) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(
-                            pendingSets[index].reps.isEmpty
-                                ? AppTheme.textSecondary
-                                : AppTheme.accent
-                        )
-                        .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
+                    Button(action: { onLogSet(index) }) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(
+                                pendingSets[index].reps.isEmpty
+                                    ? AppTheme.textSecondary
+                                    : AppTheme.accent
+                            )
+                            .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
+                    }
+                    .disabled(pendingSets[index].reps.isEmpty)
+
+                    if let onDelete = onDeletePendingSet {
+                        Button(action: { onDelete(index) }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(AppTheme.warning.opacity(0.7))
+                                .font(.body)
+                        }
+                    }
                 }
-                .disabled(pendingSets[index].reps.isEmpty)
+
+                // Optional per-set note
+                TextField("Note (optional)", text: $pendingSets[index].note)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AppTheme.surfaceElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.leading, 48)
             }
         }
     }

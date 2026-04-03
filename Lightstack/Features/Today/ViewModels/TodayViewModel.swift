@@ -206,6 +206,31 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         phase = .active
     }
 
+    /// Load a previous workout's exercises as a new workout plan, skipping AI generation.
+    /// Creates a fresh workout record and jumps straight to the confirmation screen.
+    func loadExistingWorkout(exercises: [Exercise], workoutType: String) {
+        guard let userId = userId else { return }
+        let newWorkout = Workout.create(userId: userId, workoutType: workoutType, energyLevel: nil, timeAvailableMinutes: nil)
+        // Re-create exercises bound to the new workout id, preserving targets
+        let newExercises = exercises.enumerated().map { index, ex in
+            Exercise.create(
+                workoutId: newWorkout.id,
+                name: ex.name,
+                muscleGroup: ex.muscleGroup,
+                orderIndex: index,
+                targetSets: ex.targetSets,
+                targetReps: ex.targetReps,
+                targetRir: ex.targetRir,
+                restSeconds: ex.restSeconds,
+                coachNote: ex.coachNote
+            )
+        }
+        workoutRepository.createWorkout(newWorkout)
+        sessionService.startSession(workout: newWorkout, exercises: newExercises)
+        self.exercises = newExercises
+        phase = .confirmation
+    }
+
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String) {
         self.aiProgressionNote = note
         self.isLoadingNote = false

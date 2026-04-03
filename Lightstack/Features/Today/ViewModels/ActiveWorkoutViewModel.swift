@@ -6,6 +6,7 @@ struct PendingSetInput: Identifiable {
     var weight: String
     var reps: String
     var rir: String
+    var note: String = ""
 }
 
 /// Manages active workout state: current exercises, set logging,
@@ -199,7 +200,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
             setNumber: setNumber,
             weightLbs: weight,
             reps: reps,
-            rir: rir
+            rir: rir,
+            userFeedback: entry.note.isEmpty ? nil : entry.note
         )
 
         var logged = existingSets
@@ -210,6 +212,13 @@ final class ActiveWorkoutViewModel: ObservableObject {
         pendingSets[exerciseId] = pending
 
         return workoutSet
+    }
+
+    /// Delete the pending set at `index` without logging it (user skipped this set).
+    func deletePendingSet(at index: Int, exerciseId: UUID) {
+        guard var pending = pendingSets[exerciseId], index < pending.count else { return }
+        pending.remove(at: index)
+        pendingSets[exerciseId] = pending
     }
 
     /// Add one extra pending set pre-filled from the last logged set (or AI target).

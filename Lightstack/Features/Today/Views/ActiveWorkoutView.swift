@@ -98,6 +98,9 @@ struct ActiveWorkoutView: View {
                         pendingSets: pendingSetsBinding(for: exercise.id),
                         restTimeRemaining: viewModel.formattedRestTime(for: exercise.id),
                         onLogSet: { index in logSetForExercise(at: index, exerciseId: exercise.id) },
+                        onDeletePendingSet: { index in
+                            viewModel.deletePendingSet(at: index, exerciseId: exercise.id)
+                        },
                         onDeleteSet: { workoutSet in
                             viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
                             viewModel.syncPendingSets(for: exercise)

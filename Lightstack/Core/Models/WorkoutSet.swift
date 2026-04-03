@@ -100,7 +100,8 @@ struct WorkoutSet: Codable, Identifiable {
         setNumber: Int,
         weightLbs: Double,
         reps: Int,
-        rir: Int
+        rir: Int,
+        userFeedback: String? = nil
     ) -> WorkoutSet {
         WorkoutSet(
             id: UUID(),
@@ -110,7 +111,7 @@ struct WorkoutSet: Codable, Identifiable {
             weightLbs: weightLbs,
             reps: reps,
             rir: rir,
-            userFeedback: nil,
+            userFeedback: userFeedback,
             isPR: false,
             syncStatus: .pending,
             recordedAt: Date()
