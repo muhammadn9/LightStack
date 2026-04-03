@@ -129,12 +129,12 @@ final class ActiveWorkoutViewModel: ObservableObject {
             editingWeight[exercise.id] = String(format: "%g", lastSet.weightLbs)
             editingReps[exercise.id] = String(lastSet.reps)
             editingRir[exercise.id] = String(lastSet.rir)
-            editingNote[exercise.id] = nil
+            editingNote[exercise.id] = ""
         } else {
             editingWeight[exercise.id] = nil
             editingReps[exercise.id] = nil
             editingRir[exercise.id] = nil
-            editingNote[exercise.id] = nil
+            editingNote[exercise.id] = ""
             prefillTargets(for: exercise)
         }
     }

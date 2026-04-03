@@ -39,9 +39,15 @@ struct ExerciseTableView: View {
                     .foregroundStyle(AppTheme.accentSecondary)
             }
             Spacer()
-            Text("\(loggedSets.count)/\(exercise.targetSets ?? 0) sets")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppTheme.accent)
+            if let target = exercise.targetSets {
+                Text("\(loggedSets.count)/\(target) sets")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppTheme.accent)
+            } else {
+                Text("\(loggedSets.count) sets")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(AppTheme.accent)
+            }
         }
     }
 
