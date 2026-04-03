@@ -168,6 +168,29 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         )
     }
 
+    /// Creates a TodayViewModel with its own WorkoutSessionService instance,
+    /// used for inline workout flows (e.g., Month tab) to avoid delegate collision
+    /// with the main Today tab's shared service.
+    func makeInlineTodayViewModel() -> TodayViewModel {
+        let freshService = WorkoutSessionService(
+            aiServiceManager: aiServiceManager,
+            coachPromptService: coachPromptService,
+            coachContextBuilder: coachContextBuilder,
+            workoutRepository: workoutRepository,
+            monthPlanRepository: monthPlanRepository,
+            localStorage: localStorageService,
+            supabaseService: supabaseService,
+            validationService: validationService,
+            offlineQueueManager: offlineQueueManager
+        )
+        return TodayViewModel(
+            sessionService: freshService,
+            workoutRepository: workoutRepository,
+            prRepository: prRepository,
+            sessionPersistence: sessionPersistence
+        )
+    }
+
     func makeWorkoutSetupViewModel() -> WorkoutSetupViewModel {
         WorkoutSetupViewModel(
             profileRepository: profileRepository,

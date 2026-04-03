@@ -74,7 +74,7 @@ struct MonthPlanView: View {
                 PlannedSessionView(
                     session: session,
                     onStartWorkout: {
-                        let vm = environment.makeTodayViewModel()
+                        let vm = environment.makeInlineTodayViewModel()
                         if let userId = environment.authService.currentUser()?.userId {
                             vm.setUserId(userId)
                         }
