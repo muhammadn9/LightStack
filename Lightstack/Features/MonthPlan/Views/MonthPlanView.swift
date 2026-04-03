@@ -9,6 +9,8 @@ struct MonthPlanView: View {
     @Binding var selectedTab: Int
     @State private var selectedSession: PlannedSession?
     @State private var showPlanBuilder = false
+    @State private var showInlineWorkout = false
+    @State private var inlineWorkoutState: (viewModel: TodayViewModel, workoutType: String)?
 
     var body: some View {
         NavigationStack {
@@ -72,8 +74,13 @@ struct MonthPlanView: View {
                 PlannedSessionView(
                     session: session,
                     onStartWorkout: {
+                        let vm = environment.makeTodayViewModel()
+                        if let userId = environment.authService.currentUser()?.userId {
+                            vm.setUserId(userId)
+                        }
+                        inlineWorkoutState = (viewModel: vm, workoutType: session.workoutType)
                         selectedSession = nil
-                        selectedTab = 0
+                        showInlineWorkout = true
                     },
                     onConfigureWithAI: {
                         selectedSession = nil
@@ -87,6 +94,19 @@ struct MonthPlanView: View {
                             .foregroundStyle(AppTheme.accent)
                     }
                 }
+            }
+        }
+        .fullScreenCover(isPresented: $showInlineWorkout) {
+            if let state = inlineWorkoutState {
+                InlineWorkoutSheet(
+                    todayViewModel: state.viewModel,
+                    workoutType: state.workoutType,
+                    onDismiss: {
+                        showInlineWorkout = false
+                        inlineWorkoutState = nil
+                    }
+                )
+                .environmentObject(environment)
             }
         }
     }
@@ -254,6 +274,110 @@ struct MonthPlanView: View {
         return stride(from: 0, to: allSlots.count, by: 7).map {
             Array(allSlots[$0..<min($0 + 7, allSlots.count)])
         }
+    }
+}
+
+// MARK: - Inline Workout Sheet
+
+private struct InlineWorkoutSheet: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @ObservedObject var todayViewModel: TodayViewModel
+    let workoutType: String
+    let onDismiss: () -> Void
+
+    @State private var activeWorkoutViewModel: ActiveWorkoutViewModel?
+    @State private var chatViewModel: CoachChatViewModel?
+    @State private var hasTriggeredGeneration = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AppTheme.backgroundGradient.ignoresSafeArea()
+
+                Group {
+                    switch todayViewModel.phase {
+                    case .setup, .generating:
+                        generatingView
+                    case .confirmation:
+                        ConfirmWorkoutView(todayViewModel: todayViewModel)
+                    case .active:
+                        if let activeVM = activeWorkoutViewModel {
+                            ActiveWorkoutView(
+                                viewModel: activeVM,
+                                todayViewModel: todayViewModel,
+                                chatViewModel: chatViewModel ?? environment.makeCoachChatViewModel()
+                            )
+                        }
+                    case .postWorkout:
+                        PostWorkoutView(todayViewModel: todayViewModel)
+                    }
+                }
+            }
+            .navigationTitle(workoutType)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") { onDismiss() }
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+            }
+            .onAppear {
+                if chatViewModel == nil {
+                    chatViewModel = environment.makeCoachChatViewModel()
+                }
+                if !hasTriggeredGeneration {
+                    hasTriggeredGeneration = true
+                    todayViewModel.generatePlan(
+                        workoutType: workoutType,
+                        time: 60,
+                        energy: 3,
+                        notes: nil
+                    )
+                }
+            }
+            .onChange(of: todayViewModel.phase) { _, newPhase in
+                if newPhase == .active, activeWorkoutViewModel == nil {
+                    let vm = environment.makeActiveWorkoutViewModel()
+                    vm.onRestTimerStart = { name, seconds in
+                        environment.notificationService.scheduleRestTimerAlert(
+                            exerciseName: name, totalRestSeconds: seconds
+                        )
+                    }
+                    vm.onRestTimerCancel = {
+                        environment.notificationService.cancelPendingRestAlerts()
+                    }
+                    activeWorkoutViewModel = vm
+                } else if newPhase == .setup {
+                    // Workout was saved — auto-dismiss
+                    onDismiss()
+                }
+            }
+            .alert("Error", isPresented: .init(
+                get: { todayViewModel.errorMessage != nil },
+                set: { if !$0 { todayViewModel.errorMessage = nil } }
+            )) {
+                Button("OK") { todayViewModel.errorMessage = nil }
+            } message: {
+                Text(todayViewModel.errorMessage ?? "")
+            }
+        }
+    }
+
+    private var generatingView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 40))
+                .foregroundStyle(AppTheme.accent)
+                .symbolEffect(.pulse, options: .repeating)
+            Text("Generating \(workoutType) workout...")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("Your AI coach is building a plan")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
