@@ -12,11 +12,7 @@ struct HistoryListView: View {
                 AppTheme.backgroundGradient.ignoresSafeArea()
 
                 if let vm = viewModel {
-                    if vm.workouts.isEmpty && !vm.isLoading {
-                        emptyState
-                    } else {
-                        HistoryContentView(viewModel: vm)
-                    }
+                    HistoryContentView(viewModel: vm)
                 } else {
                     ProgressView()
                         .tint(AppTheme.accent)
@@ -26,24 +22,6 @@ struct HistoryListView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear { loadHistory() }
         }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 60))
-                .foregroundStyle(AppTheme.accent.opacity(0.5))
-            Text("No workout history yet")
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
-            Text("Complete your first workout to see it here")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.textSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(40)
     }
 
     // MARK: - Helpers
@@ -65,30 +43,50 @@ private struct HistoryContentView: View {
     @ObservedObject var viewModel: HistoryViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            filterChips
-                .padding(.top, 16)
-            List {
-                ForEach(viewModel.workouts) { workout in
-                    NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: viewModel)) {
-                        workoutCard(workout: workout)
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            viewModel.deleteWorkout(workout)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+        if viewModel.workouts.isEmpty && !viewModel.isLoading {
+            emptyState
+        } else {
+            VStack(spacing: 0) {
+                filterChips
+                    .padding(.top, 16)
+                List {
+                    ForEach(viewModel.workouts) { workout in
+                        NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: viewModel)) {
+                            workoutCard(workout: workout)
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                viewModel.deleteWorkout(workout)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 60))
+                .foregroundStyle(AppTheme.accent.opacity(0.5))
+            Text("No workout history yet")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("Complete your first workout to see it here")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(40)
     }
 
     private var filterChips: some View {
