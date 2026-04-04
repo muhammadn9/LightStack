@@ -49,8 +49,8 @@ struct PlanBuilderChatView: View {
                 .foregroundStyle(AppTheme.textPrimary)
                 .padding(12)
                 .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .lineLimit(3)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .lineLimit(3...8)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Training days per week")
@@ -65,7 +65,7 @@ struct PlanBuilderChatView: View {
                                 .foregroundStyle(viewModel.daysPerWeek == days ? .white : AppTheme.textSecondary)
                                 .frame(width: 44, height: 36)
                                 .background(viewModel.daysPerWeek == days ? AppTheme.accent : AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                         }
                     }
                 }

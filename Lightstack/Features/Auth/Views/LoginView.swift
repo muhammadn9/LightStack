@@ -77,14 +77,14 @@ struct LoginView: View {
                 .padding(14)
                 .background(AppTheme.surfaceElevated)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
 
             SecureField("Password", text: $password)
                 .textContentType(isSignUp ? .newPassword : .password)
                 .padding(14)
                 .background(AppTheme.surfaceElevated)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
 
             if !isSignUp {
                 HStack {
@@ -149,9 +149,9 @@ struct LoginView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.surfaceElevated, lineWidth: 1)
                 )
             }
@@ -164,7 +164,7 @@ struct LoginView: View {
             )
             .frame(height: 50)
             .signInWithAppleButtonStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }
 

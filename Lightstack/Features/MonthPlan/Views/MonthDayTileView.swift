@@ -43,9 +43,9 @@ struct MonthDayTileView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 48)
             .background(backgroundColor)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .stroke(borderColor, lineWidth: state == .today ? 2 : 0)
             )
         }

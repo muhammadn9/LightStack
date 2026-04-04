@@ -118,9 +118,10 @@ struct OnboardingView: View {
                 .padding(.vertical, 8)
                 .background(isSelected ? AppTheme.accent : AppTheme.surface)
                 .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    Capsule().stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .stroke(isSelected ? Color.clear : AppTheme.border, lineWidth: 1)
                 )
         }
     }

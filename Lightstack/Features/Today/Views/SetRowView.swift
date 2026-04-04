@@ -49,6 +49,6 @@ struct SetRowView: View {
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .background(AppTheme.surfaceElevated.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 }
