@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LightStack V2 — UI Concepts</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Share+Tech+Mono&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,600&family=Caveat:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ─── RESET & PAGE ─────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1581,13 +1581,1007 @@ body::before{
   </div><!-- /mode-row -->
 </div><!-- /concept-section B -->
 
+<!-- ═══════════════════════════════════════════════════════
+     CONCEPT C — COACH'S NOTEBOOK
+═══════════════════════════════════════════════════════ -->
+<style>
+/* ─── CONCEPT C — NOTEBOOK BASE ──────────────────────── */
+.cn-section{
+  padding:60px 20px;
+  background:linear-gradient(180deg,#1C1108 0%,#100C05 100%);
+  position:relative;
+  overflow:hidden;
+}
+.cn-section::before{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent,transparent 60px,rgba(200,134,10,.03) 60px,rgba(200,134,10,.03) 61px);
+  pointer-events:none;
+}
+.cn-header{text-align:center;padding-bottom:48px}
+.cn-badge{
+  display:inline-block;
+  background:#C8860A;color:#1C1108;
+  font-family:'Playfair Display',serif;font-style:italic;font-size:13px;font-weight:700;
+  padding:4px 18px;border-radius:2px;
+  margin-bottom:16px;letter-spacing:.5px;
+  box-shadow:2px 2px 0 #7A500A;
+}
+.cn-title{
+  font-family:'Playfair Display',serif;font-style:italic;font-weight:700;
+  font-size:clamp(28px,5vw,48px);
+  color:#EDE0C4;letter-spacing:1px;
+  text-shadow:0 2px 20px rgba(200,134,10,.3);
+}
+.cn-subtitle{
+  font-family:'Caveat',cursive;font-size:20px;
+  color:#A0896A;margin-top:10px;letter-spacing:.5px;
+}
+.cn-mode-label{
+  font-family:'Playfair Display',serif;font-style:italic;
+  font-size:15px;color:#C8860A;
+  text-align:center;margin-bottom:24px;letter-spacing:.5px;
+}
+.cn-phones-row{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:28px;
+  margin-bottom:48px;
+}
+.cn-phone-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
+.cn-phone-label{
+  font-family:'Caveat',cursive;font-size:17px;color:#7A6040;letter-spacing:.5px;
+}
+.cn-phone{
+  width:260px;height:520px;
+  border-radius:28px;
+  overflow:hidden;
+  position:relative;
+  box-shadow:0 20px 60px rgba(0,0,0,.7),0 4px 20px rgba(200,134,10,.15),inset 0 0 0 1px rgba(200,134,10,.2);
+}
+
+/* ─── LIGHT PHONE SHELL ──────────────────────────────── */
+.cn-phone.light{background:#FBF8F1}
+.cn-phone.dark{background:#1C1510}
+
+/* ─── RULED PAPER TEXTURE ────────────────────────────── */
+.ruled{
+  background-image:repeating-linear-gradient(transparent,transparent 23px,rgba(180,160,120,.25) 23px,rgba(180,160,120,.25) 24px);
+  background-size:100% 24px;
+}
+.ruled-dark{
+  background-image:repeating-linear-gradient(transparent,transparent 23px,rgba(80,60,30,.5) 23px,rgba(80,60,30,.5) 24px);
+  background-size:100% 24px;
+}
+
+/* ─── SPIRAL BINDING STRIP ──────────────────────────── */
+.binding{
+  position:absolute;left:0;top:0;bottom:0;width:18px;
+  background:#E8E0D0;
+  border-right:1px solid #C8B898;
+  z-index:5;
+}
+.binding.dark-bind{background:#2A1F14;border-right-color:#3A2A1A}
+.binding::before{
+  content:'';
+  position:absolute;inset:0;
+  background:radial-gradient(circle 4px at 9px 32px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 80px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 128px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 176px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 224px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 272px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 320px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 368px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 416px,#B8A880 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 464px,#B8A880 60%,transparent 60%);
+}
+.binding.dark-bind::before{
+  background:radial-gradient(circle 4px at 9px 32px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 80px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 128px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 176px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 224px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 272px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 320px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 368px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 416px,#5A4020 60%,transparent 60%),
+             radial-gradient(circle 4px at 9px 464px,#5A4020 60%,transparent 60%);
+}
+
+/* ─── NOTEBOOK CONTENT WRAPPER ──────────────────────── */
+.nb-content{
+  position:absolute;left:18px;right:0;top:0;bottom:0;
+  overflow:hidden;display:flex;flex-direction:column;
+}
+
+/* ─── STATUS BAR ─────────────────────────────────────── */
+.nb-status{
+  height:24px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 10px;
+  font-family:'IBM Plex Mono',monospace;font-size:8px;
+  color:#8A7060;flex-shrink:0;
+}
+.nb-status.dk{color:#6A5040}
+
+/* ─── NAV TABS (top edge) ────────────────────────────── */
+.nb-tabs{
+  display:flex;align-items:flex-end;
+  padding:0 8px;gap:2px;flex-shrink:0;
+  height:30px;
+}
+.nb-tab{
+  flex:1;height:22px;display:flex;align-items:center;justify-content:center;
+  border-radius:4px 4px 0 0;
+  font-family:'Caveat',cursive;font-size:10px;font-weight:600;
+  background:#EDE4D4;color:#9A8060;
+  border:1px solid #D4C4A4;border-bottom:none;
+  cursor:pointer;transition:all .2s;
+}
+.nb-tab.active-tab{
+  background:#FBF8F1;color:#1B3A6B;
+  border-color:#B8A880;
+  height:26px;font-size:11px;
+  box-shadow:0 -2px 8px rgba(0,0,0,.08);
+}
+.nb-tab.dk-tab{background:#2A2015;color:#6A5A3A;border-color:#3A2E1A}
+.nb-tab.dk-tab.active-tab{background:#1C1510;color:#D4920A;border-color:#5A4020}
+
+/* ─── PAGE BODY ──────────────────────────────────────── */
+.nb-page{
+  flex:1;overflow:hidden;
+  background:#FBF8F1;
+  border-top:2px solid #B8A880;
+  position:relative;
+  padding:10px 10px 10px 12px;
+  display:flex;flex-direction:column;gap:8px;
+}
+.nb-page.dark-page{background:#1C1510;border-top-color:#3A2A1A}
+.nb-page.ruled{background-color:#FBF8F1}
+.nb-page.ruled.dark-page{background-color:#1C1510}
+
+/* ─── PAGE CORNER FOLD ──────────────────────────────── */
+.nb-page::after{
+  content:'';
+  position:absolute;right:0;bottom:0;
+  width:20px;height:20px;
+  background:linear-gradient(225deg,#E8E0CC 50%,transparent 50%);
+  border-top-left-radius:3px;
+}
+.nb-page.dark-page::after{
+  background:linear-gradient(225deg,#2A2015 50%,transparent 50%);
+}
+
+/* ─── NOTEBOOK TYPOGRAPHY ────────────────────────────── */
+.nb-h1{font-family:'Playfair Display',serif;font-weight:700;font-size:16px;color:#1B3A6B;line-height:1.2}
+.nb-h1.dk{color:#EDE0C4}
+.nb-h2{font-family:'Playfair Display',serif;font-style:italic;font-size:12px;color:#4A6090;line-height:1.3}
+.nb-h2.dk{color:#A09070}
+.nb-hand{font-family:'Caveat',cursive;font-size:13px;color:#3A5080;line-height:1.4}
+.nb-hand.dk{color:#C4A878}
+.nb-mono{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#3A3020;line-height:1.5}
+.nb-mono.dk{color:#A09070}
+.nb-date{font-family:'Caveat',cursive;font-size:11px;color:#9A8060;font-style:italic}
+.nb-date.dk{color:#6A5A3A}
+
+/* ─── INK DIVIDER ───────────────────────────────────── */
+.ink-rule{height:1px;background:linear-gradient(90deg,transparent,#B8A880 20%,#B8A880 80%,transparent);margin:2px 0}
+.ink-rule.dk{background:linear-gradient(90deg,transparent,#3A2A1A 20%,#3A2A1A 80%,transparent)}
+
+/* ─── WORKOUT TYPE CHIPS ─────────────────────────────── */
+.nb-type-grid{display:flex;flex-wrap:wrap;gap:4px}
+.nb-type-chip{
+  padding:4px 10px;
+  border:1px solid #B8A880;border-radius:2px;
+  font-family:'Caveat',cursive;font-size:12px;color:#4A3820;
+  background:#F4EDD8;
+  position:relative;
+}
+.nb-type-chip.selected{
+  background:#1B3A6B;color:#EDE0C4;
+  border-color:#1B3A6B;
+  box-shadow:2px 2px 0 #0A1E40;
+}
+.nb-type-chip.dk-chip{background:#2A2015;color:#9A8060;border-color:#3A2A1A}
+.nb-type-chip.dk-chip.selected{background:#C8860A;color:#1C1108;border-color:#A06808}
+
+/* ─── INK DOT RATING ─────────────────────────────────── */
+.ink-dots{display:flex;gap:5px;align-items:center}
+.ink-dot{
+  width:12px;height:12px;border-radius:50%;
+  border:1.5px solid #B8A880;
+  background:transparent;
+}
+.ink-dot.filled{background:#1B3A6B;border-color:#1B3A6B}
+.ink-dot.filled.dk-dot{background:#C8860A;border-color:#C8860A}
+.ink-dot.dk-empty{border-color:#3A2A1A}
+
+/* ─── WAX SEAL BUTTON ────────────────────────────────── */
+.wax-seal{
+  display:flex;align-items:center;justify-content:center;
+  gap:6px;
+  padding:9px 16px;border-radius:3px;
+  font-family:'Playfair Display',serif;font-style:italic;font-size:12px;font-weight:700;
+  background:#1B3A6B;color:#EDE0C4;
+  border:none;cursor:pointer;
+  box-shadow:2px 3px 0 #0A1E40,inset 0 1px 0 rgba(255,255,255,.1);
+  letter-spacing:.3px;
+}
+.wax-seal.amber{background:#C8860A;color:#1C1108;box-shadow:2px 3px 0 #7A500A}
+.wax-seal.dk-seal{background:#C8860A;color:#1C1108;box-shadow:2px 3px 0 #7A500A}
+
+/* ─── SET LOG ROW ────────────────────────────────────── */
+.set-row{
+  display:flex;align-items:center;gap:6px;
+  padding:4px 6px;
+  border-bottom:1px solid rgba(180,160,120,.2);
+}
+.set-num{
+  width:16px;height:16px;border-radius:50%;
+  border:1.5px solid #B8A880;
+  font-family:'Caveat',cursive;font-size:10px;
+  display:flex;align-items:center;justify-content:center;
+  color:#6A5A3A;flex-shrink:0;
+}
+.set-num.logged{background:#1B3A6B;border-color:#1B3A6B;color:#EDE0C4}
+.set-num.logged.dk-logged{background:#C8860A;border-color:#C8860A;color:#1C1108}
+.set-val{font-family:'Caveat',cursive;font-size:13px;color:#2A3A60}
+.set-val.dk-val{color:#D4B880}
+.set-unit{font-family:'Caveat',cursive;font-size:10px;color:#9A8060}
+
+/* ─── INK FILL BAR ───────────────────────────────────── */
+.ink-bar-wrap{height:5px;background:#E8E0CC;border-radius:0;overflow:hidden;border:1px solid #C8B898}
+.ink-bar-fill{height:100%;background:#1B3A6B;transition:width .4s}
+.ink-bar-fill.amber{background:#C8860A}
+.ink-bar-wrap.dk-bar{background:#2A2015;border-color:#3A2A1A}
+
+/* ─── CALENDAR GRID ──────────────────────────────────── */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-family:'IBM Plex Mono',monospace}
+.cal-day-hdr{font-size:8px;color:#9A8060;text-align:center;padding:2px 0;font-family:'Caveat',cursive}
+.cal-day{
+  aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:9px;border-radius:1px;color:#4A3820;
+  position:relative;font-family:'IBM Plex Mono',monospace;
+}
+.cal-day.today-day{background:#1B3A6B;color:#EDE0C4;font-weight:700}
+.cal-day.done-day{background:#E8F4E8;color:#2A6A2A}
+.cal-day.rest-d{color:#B8A880}
+.cal-day.dk-day{color:#A09070}
+.cal-day.dk-today{background:#C8860A;color:#1C1108}
+.cal-day.dk-done{background:#1E3010;color:#6AB040}
+.cal-day .day-dot{width:4px;height:4px;border-radius:50%;background:#2A6A2A;margin-top:1px}
+.cal-day .rest-mark{font-family:'Caveat',cursive;font-size:7px;color:#B8A880;margin-top:1px}
+
+/* ─── STAT ENTRY ROW ─────────────────────────────────── */
+.stat-entry{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:4px 0;border-bottom:1px solid rgba(180,160,120,.2);
+}
+.stat-label{font-family:'Caveat',cursive;font-size:12px;color:#6A5A3A}
+.stat-label.dk{color:#7A6A4A}
+.stat-val{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#1B3A6B;font-weight:500}
+.stat-val.dk{color:#C8860A}
+
+/* ─── REST TIMER CIRCLE ──────────────────────────────── */
+.rest-ring{
+  width:40px;height:40px;
+  border-radius:50%;
+  border:3px solid #E8E0CC;
+  border-top-color:#1B3A6B;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+  animation:spin 4s linear infinite;
+  position:relative;
+}
+.rest-ring.dk-ring{border-color:#3A2A1A;border-top-color:#C8860A}
+@keyframes spin{to{transform:rotate(360deg)}}
+.rest-inner{
+  position:absolute;
+  font-family:'IBM Plex Mono',monospace;font-size:8px;color:#1B3A6B;font-weight:500;
+  animation:spin-reverse 4s linear infinite;
+}
+.rest-inner.dk{color:#C8860A}
+@keyframes spin-reverse{to{transform:rotate(-360deg)}}
+
+/* ─── PR STAMP ──────────────────────────────────────── */
+.pr-stamp{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;
+  border:2px solid #B91C1C;
+  font-family:'Playfair Display',serif;font-size:7px;font-weight:700;
+  color:#B91C1C;letter-spacing:.5px;
+  transform:rotate(-12deg);
+  text-shadow:none;opacity:.9;
+  flex-shrink:0;
+}
+
+/* ─── UNDERLINE HEADER ──────────────────────────────── */
+.nb-section-head{
+  font-family:'Playfair Display',serif;font-style:italic;font-size:11px;
+  color:#8A7060;border-bottom:1px solid #D4C4A4;
+  padding-bottom:2px;margin-bottom:4px;letter-spacing:.5px;
+}
+.nb-section-head.dk{color:#6A5A3A;border-bottom-color:#3A2A1A}
+
+/* ─── EXERCISE INPUT ROW ────────────────────────────── */
+.nb-input-row{
+  display:flex;align-items:center;gap:5px;
+  padding:5px 6px;
+  background:#F4EDD8;border:1px solid #D4C4A4;border-radius:2px;
+}
+.nb-input-row.dk-input{background:#211810;border-color:#3A2A1A}
+.nb-field{
+  flex:1;padding:2px 5px;
+  background:transparent;border:none;border-bottom:1px dashed #B8A880;
+  font-family:'Caveat',cursive;font-size:12px;color:#2A3A60;
+  text-align:center;outline:none;
+}
+.nb-field.dk-field{color:#D4B880;border-bottom-color:#3A2A1A}
+.nb-field-label{font-family:'Caveat',cursive;font-size:9px;color:#9A8060;text-align:center}
+</style>
+
+<div class="cn-section">
+  <div class="cn-header">
+    <div class="cn-badge">Concept C</div>
+    <h2 class="cn-title">Coach's Notebook</h2>
+    <p class="cn-subtitle">Paper journal feel · Fountain pen details · Modern smoothness · Handcrafted warmth</p>
+  </div>
+
+  <!-- LIGHT MODE -->
+  <div class="cn-mode-label">☀ Day Mode — Open Notebook</div>
+  <div class="cn-phones-row">
+
+    <!-- Screen 1: Today Setup Light -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone light">
+        <div class="binding"></div>
+        <div class="nb-content">
+          <div class="nb-status">
+            <span>9:41</span><span>●●● 100%</span>
+          </div>
+          <div class="nb-tabs">
+            <div class="nb-tab active-tab">Today</div>
+            <div class="nb-tab">Month</div>
+            <div class="nb-tab">History</div>
+            <div class="nb-tab">Profile</div>
+          </div>
+          <div class="nb-page ruled" style="gap:7px">
+            <div>
+              <div class="nb-date">Friday, April 3 — Training Log</div>
+              <div class="nb-h1">What are we<br><em style="font-style:italic;color:#C8860A">training today?</em></div>
+            </div>
+            <div class="ink-rule"></div>
+            <div>
+              <div class="nb-section-head">Workout Type</div>
+              <div class="nb-type-grid">
+                <div class="nb-type-chip selected">Push</div>
+                <div class="nb-type-chip">Pull</div>
+                <div class="nb-type-chip">Legs</div>
+                <div class="nb-type-chip">Upper</div>
+                <div class="nb-type-chip">Full Body</div>
+                <div class="nb-type-chip">Core</div>
+              </div>
+            </div>
+            <div>
+              <div class="nb-section-head">Energy Level</div>
+              <div class="ink-dots">
+                <div class="ink-dot filled"></div>
+                <div class="ink-dot filled"></div>
+                <div class="ink-dot filled"></div>
+                <div class="ink-dot filled"></div>
+                <div class="ink-dot"></div>
+                <div class="nb-hand" style="margin-left:4px;font-size:11px;color:#6A5A3A">4 / 5</div>
+              </div>
+            </div>
+            <div>
+              <div class="nb-section-head">Time Available</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#1B3A6B">60</div>
+                <div class="nb-hand" style="font-size:11px;color:#6A5A3A">minutes</div>
+                <div style="margin-left:auto;display:flex;gap:5px">
+                  <div style="width:22px;height:22px;border:1.5px solid #B8A880;border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:'Caveat',cursive;font-size:14px;color:#3A3020;cursor:pointer">−</div>
+                  <div style="width:22px;height:22px;border:1.5px solid #B8A880;border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:'Caveat',cursive;font-size:14px;color:#3A3020;cursor:pointer">+</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="nb-section-head">Notes for Coach</div>
+              <div style="padding:5px 7px;border:1px dashed #C8B898;border-radius:2px;background:#F4EDD8;min-height:30px">
+                <div class="nb-hand" style="font-size:11px;color:#9A8060;font-style:italic">Feeling strong today, focus on chest...</div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <button class="wax-seal" style="width:100%;justify-content:center;font-size:11px">
+                ✦ Generate My Workout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label">Today — Setup</div>
+    </div>
+
+    <!-- Screen 2: Active Workout Light -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone light">
+        <div class="binding"></div>
+        <div class="nb-content">
+          <div class="nb-status"><span>9:58</span><span>●●● 100%</span></div>
+          <div style="background:#1B3A6B;padding:7px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+            <div>
+              <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:10px;color:#8AAAD4">Push Day</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:#EDE0C4;font-weight:500;letter-spacing:1px">18:42</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-family:'Caveat',cursive;font-size:11px;color:#8AAAD4">Volume</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#C8860A;font-weight:500">4,850 lbs</div>
+            </div>
+          </div>
+          <div class="nb-page ruled" style="padding:8px 8px 8px 10px;gap:6px">
+            <!-- Exercise 1 -->
+            <div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <div class="nb-h2" style="font-size:13px">Bench Press</div>
+                <div style="font-family:'Caveat',cursive;font-size:10px;color:#9A8060">Chest · 4×8</div>
+              </div>
+              <div style="margin-top:4px;display:flex;flex-direction:column;gap:2px">
+                <div class="set-row">
+                  <div class="set-num logged">1</div>
+                  <div class="set-val">185</div><div class="set-unit">lbs</div>
+                  <div style="flex:1;text-align:center;font-family:'Caveat',cursive;font-size:12px;color:#2A3A60">×8</div>
+                  <div style="font-family:'Caveat',cursive;font-size:10px;color:#2A6A2A">✓ RIR 2</div>
+                </div>
+                <div class="set-row">
+                  <div class="set-num logged">2</div>
+                  <div class="set-val">185</div><div class="set-unit">lbs</div>
+                  <div style="flex:1;text-align:center;font-family:'Caveat',cursive;font-size:12px;color:#2A3A60">×8</div>
+                  <div class="pr-stamp">PR</div>
+                </div>
+                <div class="set-row">
+                  <div class="set-num" style="border-color:#1B3A6B">3</div>
+                  <div class="set-val" style="color:#9A8060">—</div><div class="set-unit"></div>
+                  <div style="flex:1"></div>
+                </div>
+              </div>
+            </div>
+            <div class="ink-rule"></div>
+            <!-- Input Row -->
+            <div class="nb-input-row">
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1">
+                <div class="nb-field" style="font-size:14px;font-weight:700;color:#1B3A6B;border-bottom:1.5px solid #1B3A6B">185</div>
+                <div class="nb-field-label">lbs</div>
+              </div>
+              <div style="color:#B8A880;font-family:'Caveat',cursive;font-size:16px">×</div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1">
+                <div class="nb-field" style="font-size:14px;font-weight:700;color:#1B3A6B;border-bottom:1.5px solid #1B3A6B">8</div>
+                <div class="nb-field-label">reps</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1">
+                <div class="nb-field" style="font-size:14px">2</div>
+                <div class="nb-field-label">RIR</div>
+              </div>
+              <div style="width:28px;height:28px;background:#1B3A6B;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#EDE0C4;box-shadow:2px 2px 0 #0A1E40;cursor:pointer">+</div>
+            </div>
+            <!-- Rest Timer -->
+            <div style="display:flex;align-items:center;gap:8px;padding:5px 6px;background:#F4EDD8;border:1px solid #D4C4A4;border-radius:2px">
+              <div class="rest-ring"><div class="rest-inner">90s</div></div>
+              <div>
+                <div class="nb-hand" style="font-size:12px;color:#1B3A6B;font-weight:600">Rest Period</div>
+                <div class="nb-mono" style="font-size:9px;color:#6A5A3A">Next: Incline DB Press</div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <button class="wax-seal amber" style="width:100%;justify-content:center;font-size:11px">
+                ✦ Finish Workout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label">Active Workout</div>
+    </div>
+
+    <!-- Screen 3: Month Calendar Light -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone light">
+        <div class="binding"></div>
+        <div class="nb-content">
+          <div class="nb-status"><span>9:41</span><span>●●● 100%</span></div>
+          <div class="nb-tabs">
+            <div class="nb-tab">Today</div>
+            <div class="nb-tab active-tab">Month</div>
+            <div class="nb-tab">History</div>
+            <div class="nb-tab">Profile</div>
+          </div>
+          <div class="nb-page" style="padding:8px 8px 8px 10px;gap:6px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div class="nb-h1" style="font-size:15px">April <em style="color:#C8860A">2026</em></div>
+              <div style="font-family:'Caveat',cursive;font-size:11px;color:#9A8060">4-day split</div>
+            </div>
+            <div class="ink-rule"></div>
+            <div class="cal-grid">
+              <div class="cal-day-hdr">M</div><div class="cal-day-hdr">T</div><div class="cal-day-hdr">W</div>
+              <div class="cal-day-hdr">T</div><div class="cal-day-hdr">F</div><div class="cal-day-hdr">S</div><div class="cal-day-hdr">S</div>
+              <!-- Row 1 -->
+              <div class="cal-day done-day"><div>1</div><div class="day-dot"></div></div>
+              <div class="cal-day done-day"><div>2</div><div class="day-dot"></div></div>
+              <div class="cal-day done-day"><div>3</div><div class="day-dot"></div></div>
+              <div class="cal-day rest-d"><div>4</div><div class="rest-mark">rest</div></div>
+              <div class="cal-day done-day"><div>5</div><div class="day-dot"></div></div>
+              <div class="cal-day rest-d"><div>6</div><div class="rest-mark">rest</div></div>
+              <div class="cal-day rest-d"><div>7</div><div class="rest-mark">rest</div></div>
+              <!-- Row 2 -->
+              <div class="cal-day done-day"><div>8</div><div class="day-dot"></div></div>
+              <div class="cal-day done-day"><div>9</div><div class="day-dot"></div></div>
+              <div class="cal-day done-day"><div>10</div><div class="day-dot"></div></div>
+              <div class="cal-day rest-d"><div>11</div></div>
+              <div class="cal-day done-day"><div>12</div><div class="day-dot"></div></div>
+              <div class="cal-day rest-d"><div>13</div></div>
+              <div class="cal-day rest-d"><div>14</div></div>
+              <!-- Row 3 -->
+              <div class="cal-day done-day"><div>15</div><div class="day-dot"></div></div>
+              <div class="cal-day done-day"><div>16</div><div class="day-dot"></div></div>
+              <div class="cal-day"><div style="color:#6A5A3A">17</div></div>
+              <div class="cal-day rest-d"><div>18</div></div>
+              <div class="cal-day"><div style="color:#6A5A3A">19</div></div>
+              <div class="cal-day rest-d"><div>20</div></div>
+              <div class="cal-day rest-d"><div>21</div></div>
+              <!-- Row 4 -->
+              <div class="cal-day today-day"><div>22</div></div>
+              <div class="cal-day"><div style="color:#9A8060">23</div></div>
+              <div class="cal-day"><div style="color:#9A8060">24</div></div>
+              <div class="cal-day rest-d"><div style="color:#9A8060">25</div></div>
+              <div class="cal-day"><div style="color:#9A8060">26</div></div>
+              <div class="cal-day rest-d"><div style="color:#9A8060">27</div></div>
+              <div class="cal-day rest-d"><div style="color:#9A8060">28</div></div>
+            </div>
+            <div class="ink-rule"></div>
+            <!-- Plan overview -->
+            <div>
+              <div class="nb-section-head">This Week's Plan</div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#2A6A2A;flex-shrink:0"></div>
+                  <div class="nb-hand" style="font-size:11px;flex:1;color:#3A5020">Mon · Push Day</div>
+                  <div style="font-family:'Caveat',cursive;font-size:10px;color:#2A6A2A">Done ✓</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#2A6A2A;flex-shrink:0"></div>
+                  <div class="nb-hand" style="font-size:11px;flex:1;color:#3A5020">Tue · Pull Day</div>
+                  <div style="font-family:'Caveat',cursive;font-size:10px;color:#2A6A2A">Done ✓</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#1B3A6B;flex-shrink:0"></div>
+                  <div class="nb-hand" style="font-size:11px;flex:1;color:#1B3A6B;font-weight:600">Today · Legs</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#C8860A">▶ Now</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#E8E0CC;border:1px solid #B8A880;flex-shrink:0"></div>
+                  <div class="nb-hand" style="font-size:11px;flex:1;color:#9A8060">Thu · Rest</div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <button class="wax-seal" style="width:100%;justify-content:center;font-size:10px">
+                ✦ Start Today's Workout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label">Month Plan</div>
+    </div>
+
+    <!-- Screen 4: Profile Light -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone light">
+        <div class="binding"></div>
+        <div class="nb-content">
+          <div class="nb-status"><span>9:41</span><span>●●● 100%</span></div>
+          <div class="nb-tabs">
+            <div class="nb-tab">Today</div>
+            <div class="nb-tab">Month</div>
+            <div class="nb-tab">History</div>
+            <div class="nb-tab active-tab">Profile</div>
+          </div>
+          <div class="nb-page" style="padding:8px 8px 8px 10px;gap:6px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:40px;height:40px;border-radius:50%;background:#1B3A6B;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:18px;color:#EDE0C4;font-weight:700;border:2px solid #C8860A">M</div>
+              <div>
+                <div class="nb-h1" style="font-size:14px">Muhammad</div>
+                <div class="nb-hand" style="font-size:11px;color:#9A8060">Intermediate · 3 yrs</div>
+              </div>
+              <div style="margin-left:auto;display:flex;flex-direction:column;align-items:center">
+                <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#C8860A">12</div>
+                <div style="font-family:'Caveat',cursive;font-size:9px;color:#9A8060">day streak</div>
+              </div>
+            </div>
+            <div class="ink-rule"></div>
+            <div class="nb-section-head">Training Stats</div>
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <div class="stat-entry"><div class="stat-label">Total Workouts</div><div class="stat-val">147</div></div>
+              <div class="stat-entry"><div class="stat-label">This Month</div><div class="stat-val">14</div></div>
+              <div class="stat-entry"><div class="stat-label">Volume (Month)</div><div class="stat-val">284K lbs</div></div>
+              <div class="stat-entry"><div class="stat-label">Avg Duration</div><div class="stat-val">62 min</div></div>
+            </div>
+            <div class="nb-section-head" style="margin-top:4px">Personal Records</div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:center;gap:4px">
+                <div class="pr-stamp" style="width:20px;height:20px;font-size:6px">PR</div>
+                <div class="nb-hand" style="font-size:11px;flex:1">Bench Press</div>
+                <div class="nb-mono" style="font-size:10px;color:#B91C1C">225 lbs × 5</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <div class="pr-stamp" style="width:20px;height:20px;font-size:6px">PR</div>
+                <div class="nb-hand" style="font-size:11px;flex:1">Squat</div>
+                <div class="nb-mono" style="font-size:10px;color:#B91C1C">275 lbs × 3</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <div class="pr-stamp" style="width:20px;height:20px;font-size:6px">PR</div>
+                <div class="nb-hand" style="font-size:11px;flex:1">Deadlift</div>
+                <div class="nb-mono" style="font-size:10px;color:#B91C1C">315 lbs × 1</div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <div class="nb-section-head">Volume Progress</div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                    <div class="nb-hand" style="font-size:10px;color:#6A5A3A">Push</div>
+                    <div class="nb-hand" style="font-size:10px;color:#1B3A6B">78%</div>
+                  </div>
+                  <div class="ink-bar-wrap"><div class="ink-bar-fill" style="width:78%"></div></div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                    <div class="nb-hand" style="font-size:10px;color:#6A5A3A">Pull</div>
+                    <div class="nb-hand" style="font-size:10px;color:#1B3A6B">65%</div>
+                  </div>
+                  <div class="ink-bar-wrap"><div class="ink-bar-fill" style="width:65%"></div></div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                    <div class="nb-hand" style="font-size:10px;color:#6A5A3A">Legs</div>
+                    <div class="nb-hand" style="font-size:10px;color:#C8860A">52%</div>
+                  </div>
+                  <div class="ink-bar-wrap"><div class="ink-bar-fill amber" style="width:52%"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label">Profile / Stats</div>
+    </div>
+
+  </div><!-- /light phones row -->
+
+  <!-- DARK MODE -->
+  <div class="cn-mode-label">🕯 Night Mode — Reading Lamp</div>
+  <div class="cn-phones-row">
+
+    <!-- Screen 1: Today Setup Dark -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone dark">
+        <div class="binding dark-bind"></div>
+        <div class="nb-content">
+          <div class="nb-status dk"><span>9:41</span><span>●●● 100%</span></div>
+          <div class="nb-tabs">
+            <div class="nb-tab dk-tab active-tab">Today</div>
+            <div class="nb-tab dk-tab">Month</div>
+            <div class="nb-tab dk-tab">History</div>
+            <div class="nb-tab dk-tab">Profile</div>
+          </div>
+          <div class="nb-page dark-page ruled-dark" style="gap:7px">
+            <div>
+              <div class="nb-date dk">Friday, April 3 — Training Log</div>
+              <div class="nb-h1 dk">What are we<br><em style="font-style:italic;color:#D4920A">training today?</em></div>
+            </div>
+            <div class="ink-rule dk"></div>
+            <div>
+              <div class="nb-section-head dk">Workout Type</div>
+              <div class="nb-type-grid">
+                <div class="nb-type-chip dk-chip selected">Push</div>
+                <div class="nb-type-chip dk-chip">Pull</div>
+                <div class="nb-type-chip dk-chip">Legs</div>
+                <div class="nb-type-chip dk-chip">Upper</div>
+                <div class="nb-type-chip dk-chip">Full Body</div>
+                <div class="nb-type-chip dk-chip">Core</div>
+              </div>
+            </div>
+            <div>
+              <div class="nb-section-head dk">Energy Level</div>
+              <div class="ink-dots">
+                <div class="ink-dot filled dk-dot"></div>
+                <div class="ink-dot filled dk-dot"></div>
+                <div class="ink-dot filled dk-dot"></div>
+                <div class="ink-dot filled dk-dot"></div>
+                <div class="ink-dot dk-empty"></div>
+                <div class="nb-hand dk" style="margin-left:4px;font-size:11px">4 / 5</div>
+              </div>
+            </div>
+            <div>
+              <div class="nb-section-head dk">Time Available</div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#D4920A">60</div>
+                <div class="nb-hand dk" style="font-size:11px">minutes</div>
+                <div style="margin-left:auto;display:flex;gap:5px">
+                  <div style="width:22px;height:22px;border:1.5px solid #3A2A1A;border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:'Caveat',cursive;font-size:14px;color:#A09070;cursor:pointer">−</div>
+                  <div style="width:22px;height:22px;border:1.5px solid #3A2A1A;border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:'Caveat',cursive;font-size:14px;color:#A09070;cursor:pointer">+</div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="nb-section-head dk">Notes for Coach</div>
+              <div style="padding:5px 7px;border:1px dashed #3A2A1A;border-radius:2px;background:#211810;min-height:30px">
+                <div class="nb-hand dk" style="font-size:11px;font-style:italic;color:#5A4A2A">Feeling strong today, focus on chest...</div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <button class="wax-seal dk-seal" style="width:100%;justify-content:center;font-size:11px">
+                ✦ Generate My Workout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label" style="color:#6A5A3A">Today — Setup</div>
+    </div>
+
+    <!-- Screen 2: Active Workout Dark -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone dark">
+        <div class="binding dark-bind"></div>
+        <div class="nb-content">
+          <div class="nb-status dk"><span>9:58</span><span>●●● 100%</span></div>
+          <div style="background:#100C05;padding:7px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid #3A2A1A">
+            <div>
+              <div style="font-family:'Playfair Display',serif;font-style:italic;font-size:10px;color:#6A5A3A">Push Day</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:#EDE0C4;font-weight:500;letter-spacing:1px">18:42</div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-family:'Caveat',cursive;font-size:11px;color:#6A5A3A">Volume</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#D4920A;font-weight:500">4,850 lbs</div>
+            </div>
+          </div>
+          <div class="nb-page dark-page ruled-dark" style="padding:8px 8px 8px 10px;gap:6px">
+            <div>
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <div class="nb-h2 dk" style="font-size:13px;color:#C4A878">Bench Press</div>
+                <div style="font-family:'Caveat',cursive;font-size:10px;color:#6A5A3A">Chest · 4×8</div>
+              </div>
+              <div style="margin-top:4px;display:flex;flex-direction:column;gap:2px">
+                <div class="set-row" style="border-bottom-color:rgba(80,60,30,.4)">
+                  <div class="set-num logged dk-logged">1</div>
+                  <div class="set-val dk-val">185</div><div class="set-unit" style="color:#6A5A3A">lbs</div>
+                  <div style="flex:1;text-align:center;font-family:'Caveat',cursive;font-size:12px;color:#D4B880">×8</div>
+                  <div style="font-family:'Caveat',cursive;font-size:10px;color:#6AB040">✓ RIR 2</div>
+                </div>
+                <div class="set-row" style="border-bottom-color:rgba(80,60,30,.4)">
+                  <div class="set-num logged dk-logged">2</div>
+                  <div class="set-val dk-val">185</div><div class="set-unit" style="color:#6A5A3A">lbs</div>
+                  <div style="flex:1;text-align:center;font-family:'Caveat',cursive;font-size:12px;color:#D4B880">×8</div>
+                  <div class="pr-stamp" style="border-color:#C8860A;color:#C8860A">PR</div>
+                </div>
+                <div class="set-row" style="border-bottom-color:rgba(80,60,30,.4)">
+                  <div class="set-num" style="border-color:#D4920A">3</div>
+                  <div class="set-val" style="color:#5A4A2A">—</div>
+                </div>
+              </div>
+            </div>
+            <div class="ink-rule dk"></div>
+            <div class="nb-input-row dk-input">
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1">
+                <div class="nb-field dk-field" style="font-size:14px;font-weight:700;border-bottom:1.5px solid #D4920A">185</div>
+                <div class="nb-field-label" style="color:#6A5A3A">lbs</div>
+              </div>
+              <div style="color:#3A2A1A;font-family:'Caveat',cursive;font-size:16px">×</div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1">
+                <div class="nb-field dk-field" style="font-size:14px;font-weight:700;border-bottom:1.5px solid #D4920A">8</div>
+                <div class="nb-field-label" style="color:#6A5A3A">reps</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1">
+                <div class="nb-field dk-field" style="font-size:14px">2</div>
+                <div class="nb-field-label" style="color:#6A5A3A">RIR</div>
+              </div>
+              <div style="width:28px;height:28px;background:#C8860A;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:16px;color:#1C1108;box-shadow:2px 2px 0 #7A500A;cursor:pointer">+</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;padding:5px 6px;background:#211810;border:1px solid #3A2A1A;border-radius:2px">
+              <div class="rest-ring dk-ring"><div class="rest-inner dk">90s</div></div>
+              <div>
+                <div class="nb-hand dk" style="font-size:12px;font-weight:600">Rest Period</div>
+                <div class="nb-mono dk" style="font-size:9px;color:#5A4A2A">Next: Incline DB Press</div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <button class="wax-seal dk-seal" style="width:100%;justify-content:center;font-size:11px">
+                ✦ Finish Workout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label" style="color:#6A5A3A">Active Workout</div>
+    </div>
+
+    <!-- Screen 3: Month Calendar Dark -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone dark">
+        <div class="binding dark-bind"></div>
+        <div class="nb-content">
+          <div class="nb-status dk"><span>9:41</span><span>●●● 100%</span></div>
+          <div class="nb-tabs">
+            <div class="nb-tab dk-tab">Today</div>
+            <div class="nb-tab dk-tab active-tab">Month</div>
+            <div class="nb-tab dk-tab">History</div>
+            <div class="nb-tab dk-tab">Profile</div>
+          </div>
+          <div class="nb-page dark-page" style="padding:8px 8px 8px 10px;gap:6px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between">
+              <div class="nb-h1 dk" style="font-size:15px">April <em style="color:#D4920A">2026</em></div>
+              <div style="font-family:'Caveat',cursive;font-size:11px;color:#5A4A2A">4-day split</div>
+            </div>
+            <div class="ink-rule dk"></div>
+            <div class="cal-grid">
+              <div class="cal-day-hdr" style="color:#5A4A2A">M</div><div class="cal-day-hdr" style="color:#5A4A2A">T</div>
+              <div class="cal-day-hdr" style="color:#5A4A2A">W</div><div class="cal-day-hdr" style="color:#5A4A2A">T</div>
+              <div class="cal-day-hdr" style="color:#5A4A2A">F</div><div class="cal-day-hdr" style="color:#5A4A2A">S</div>
+              <div class="cal-day-hdr" style="color:#5A4A2A">S</div>
+              <div class="cal-day dk-done"><div>1</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-done"><div>2</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-done"><div>3</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-day"><div>4</div><div class="rest-mark" style="color:#3A2A1A">rest</div></div>
+              <div class="cal-day dk-done"><div>5</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-day"><div>6</div></div>
+              <div class="cal-day dk-day"><div>7</div></div>
+              <div class="cal-day dk-done"><div>8</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-done"><div>9</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-done"><div>10</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-day"><div>11</div></div>
+              <div class="cal-day dk-done"><div>12</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-day"><div>13</div></div>
+              <div class="cal-day dk-day"><div>14</div></div>
+              <div class="cal-day dk-done"><div>15</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-done"><div>16</div><div class="day-dot" style="background:#6AB040"></div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">17</div></div>
+              <div class="cal-day dk-day"><div>18</div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">19</div></div>
+              <div class="cal-day dk-day"><div>20</div></div>
+              <div class="cal-day dk-day"><div>21</div></div>
+              <div class="cal-day dk-today"><div>22</div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">23</div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">24</div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">25</div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">26</div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">27</div></div>
+              <div class="cal-day dk-day"><div style="color:#3A2A1A">28</div></div>
+            </div>
+            <div class="ink-rule dk"></div>
+            <div>
+              <div class="nb-section-head dk">This Week's Plan</div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#6AB040;flex-shrink:0"></div>
+                  <div class="nb-hand dk" style="font-size:11px;flex:1">Mon · Push Day</div>
+                  <div style="font-family:'Caveat',cursive;font-size:10px;color:#6AB040">Done ✓</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#6AB040;flex-shrink:0"></div>
+                  <div class="nb-hand dk" style="font-size:11px;flex:1">Tue · Pull Day</div>
+                  <div style="font-family:'Caveat',cursive;font-size:10px;color:#6AB040">Done ✓</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#D4920A;flex-shrink:0"></div>
+                  <div class="nb-hand" style="font-size:11px;flex:1;color:#D4920A;font-weight:600">Today · Legs</div>
+                  <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#D4920A">▶ Now</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="width:8px;height:8px;border-radius:1px;background:#2A2015;border:1px solid #3A2A1A;flex-shrink:0"></div>
+                  <div class="nb-hand dk" style="font-size:11px;flex:1;color:#3A2A1A">Thu · Rest</div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <button class="wax-seal dk-seal" style="width:100%;justify-content:center;font-size:10px">
+                ✦ Start Today's Workout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label" style="color:#6A5A3A">Month Plan</div>
+    </div>
+
+    <!-- Screen 4: Profile Dark -->
+    <div class="cn-phone-wrap">
+      <div class="cn-phone dark">
+        <div class="binding dark-bind"></div>
+        <div class="nb-content">
+          <div class="nb-status dk"><span>9:41</span><span>●●● 100%</span></div>
+          <div class="nb-tabs">
+            <div class="nb-tab dk-tab">Today</div>
+            <div class="nb-tab dk-tab">Month</div>
+            <div class="nb-tab dk-tab">History</div>
+            <div class="nb-tab dk-tab active-tab">Profile</div>
+          </div>
+          <div class="nb-page dark-page" style="padding:8px 8px 8px 10px;gap:6px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="width:40px;height:40px;border-radius:50%;background:#2A1F14;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:18px;color:#EDE0C4;font-weight:700;border:2px solid #D4920A">M</div>
+              <div>
+                <div class="nb-h1 dk" style="font-size:14px">Muhammad</div>
+                <div class="nb-hand dk" style="font-size:11px;color:#5A4A2A">Intermediate · 3 yrs</div>
+              </div>
+              <div style="margin-left:auto;display:flex;flex-direction:column;align-items:center">
+                <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#D4920A">12</div>
+                <div style="font-family:'Caveat',cursive;font-size:9px;color:#5A4A2A">day streak</div>
+              </div>
+            </div>
+            <div class="ink-rule dk"></div>
+            <div class="nb-section-head dk">Training Stats</div>
+            <div style="display:flex;flex-direction:column;gap:1px">
+              <div class="stat-entry" style="border-bottom-color:rgba(80,60,30,.4)"><div class="stat-label dk">Total Workouts</div><div class="stat-val dk">147</div></div>
+              <div class="stat-entry" style="border-bottom-color:rgba(80,60,30,.4)"><div class="stat-label dk">This Month</div><div class="stat-val dk">14</div></div>
+              <div class="stat-entry" style="border-bottom-color:rgba(80,60,30,.4)"><div class="stat-label dk">Volume (Month)</div><div class="stat-val dk">284K lbs</div></div>
+              <div class="stat-entry" style="border-bottom-color:rgba(80,60,30,.4)"><div class="stat-label dk">Avg Duration</div><div class="stat-val dk">62 min</div></div>
+            </div>
+            <div class="nb-section-head dk" style="margin-top:4px">Personal Records</div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:center;gap:4px">
+                <div class="pr-stamp" style="width:20px;height:20px;font-size:6px;border-color:#D4920A;color:#D4920A">PR</div>
+                <div class="nb-hand dk" style="font-size:11px;flex:1">Bench Press</div>
+                <div class="nb-mono dk" style="font-size:10px;color:#D4920A">225 lbs × 5</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <div class="pr-stamp" style="width:20px;height:20px;font-size:6px;border-color:#D4920A;color:#D4920A">PR</div>
+                <div class="nb-hand dk" style="font-size:11px;flex:1">Squat</div>
+                <div class="nb-mono dk" style="font-size:10px;color:#D4920A">275 lbs × 3</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px">
+                <div class="pr-stamp" style="width:20px;height:20px;font-size:6px;border-color:#D4920A;color:#D4920A">PR</div>
+                <div class="nb-hand dk" style="font-size:11px;flex:1">Deadlift</div>
+                <div class="nb-mono dk" style="font-size:10px;color:#D4920A">315 lbs × 1</div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <div class="nb-section-head dk">Volume Progress</div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                    <div class="nb-hand" style="font-size:10px;color:#5A4A2A">Push</div>
+                    <div class="nb-hand" style="font-size:10px;color:#D4920A">78%</div>
+                  </div>
+                  <div class="ink-bar-wrap dk-bar"><div class="ink-bar-fill amber" style="width:78%"></div></div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                    <div class="nb-hand" style="font-size:10px;color:#5A4A2A">Pull</div>
+                    <div class="nb-hand" style="font-size:10px;color:#D4920A">65%</div>
+                  </div>
+                  <div class="ink-bar-wrap dk-bar"><div class="ink-bar-fill amber" style="width:65%"></div></div>
+                </div>
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+                    <div class="nb-hand" style="font-size:10px;color:#5A4A2A">Legs</div>
+                    <div class="nb-hand" style="font-size:10px;color:#6AB040">52%</div>
+                  </div>
+                  <div class="ink-bar-wrap dk-bar"><div class="ink-bar-fill" style="width:52%;background:#6AB040"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cn-phone-label" style="color:#6A5A3A">Profile / Stats</div>
+    </div>
+
+  </div><!-- /dark phones row -->
+</div><!-- /concept C section -->
+
 <!-- Footer -->
 <div style="text-align:center;padding:40px 20px 60px;border-top:1px solid #1A5C1A;margin-top:20px">
   <div class="scroll-hint" style="animation:none;color:#4ADE80">◆ LIGHTSTACK V2 CONCEPT REVIEW ◆</div>
   <div style="font-family:'VT323',monospace;font-size:18px;color:#1E5C1E;margin-top:12px;letter-spacing:2px">
     CONCEPT A: PIXEL DUNGEON — Gamified · Retro · High-contrast<br>
-    CONCEPT B: NATURE CRAFT — Crafted · Organic · Timeless<br><br>
-    Select a concept (or blend elements from both) to proceed with V2 implementation
+    CONCEPT B: NATURE CRAFT — Crafted · Organic · Timeless<br>
+    CONCEPT C: COACH'S NOTEBOOK — Journal · Handcrafted · Warm modern<br><br>
+    Select a concept (or blend elements) to proceed with V2 implementation
   </div>
 </div>
 
