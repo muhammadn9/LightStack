@@ -110,21 +110,21 @@ struct CardStyle: ViewModifier {
 /// Accented card: amber/blue left strip + warm fill + hairline border.
 struct GlowingCardStyle: ViewModifier {
     func body(content: Content) -> some View {
-        HStack(spacing: 0) {
-            Rectangle()
-                .fill(AppTheme.accent.opacity(0.7))
-                .frame(width: 3)
-            content
-                .padding(AppTheme.cardPadding)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                .stroke(AppTheme.border, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.14), radius: 4, x: 0, y: 2)
+        content
+            .padding(AppTheme.cardPadding)
+            .background(AppTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(AppTheme.accent.opacity(0.8))
+                    .frame(width: 3)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .stroke(AppTheme.border, lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.14), radius: 4, x: 0, y: 2)
     }
 }
 
@@ -140,11 +140,12 @@ struct ThemedBackground: ViewModifier {
         content
             .background(
                 ZStack {
-                    AppTheme.background.ignoresSafeArea()
+                    AppTheme.background
                     RuledLinesView()
-                        .ignoresSafeArea()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .allowsHitTesting(false)
                 }
+                .ignoresSafeArea()
             )
     }
 }
@@ -174,6 +175,72 @@ struct RuledLinesView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
+    }
+}
+
+// MARK: - Notebook Section Header
+
+/// Notebook section label style — serif italic + amber underline rule.
+struct NotebookSectionHeader: ViewModifier {
+    func body(content: Content) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            content
+                .font(.system(size: 11, weight: .medium, design: .serif))
+                .italic()
+                .foregroundStyle(AppTheme.textSecondary)
+            Rectangle()
+                .fill(AppTheme.border)
+                .frame(height: 0.5)
+        }
+    }
+}
+
+// MARK: - Ink Dot Rating
+
+/// Filled ink-dot rating control (replaces slider for energy level).
+struct InkDotRating: View {
+    let value: Int
+    let max: Int
+    let onChange: (Int) -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(1...max, id: \.self) { i in
+                Button(action: { onChange(i) }) {
+                    Circle()
+                        .fill(i <= value ? AppTheme.accent : Color.clear)
+                        .frame(width: 14, height: 14)
+                        .overlay(Circle().stroke(AppTheme.accent.opacity(0.6), lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+// MARK: - Journal Chip
+
+/// Rectangular journal-tab chip (replaces capsule pills).
+struct JournalChip: View {
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1) : AppTheme.textSecondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(isSelected ? AppTheme.accent : AppTheme.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isSelected ? AppTheme.accent.opacity(0.5) : AppTheme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -225,5 +292,9 @@ extension View {
 
     func themedBackground() -> some View {
         modifier(ThemedBackground())
+    }
+
+    func notebookSectionHeader() -> some View {
+        modifier(NotebookSectionHeader())
     }
 }

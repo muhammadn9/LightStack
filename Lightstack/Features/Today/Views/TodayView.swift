@@ -12,8 +12,6 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
-
                 Group {
                     switch viewModel.phase {
                     case .setup:
@@ -48,6 +46,7 @@ struct TodayView: View {
                     }
                 }
             }
+            .themedBackground()
             .onAppear {
                 if chatViewModel == nil {
                     chatViewModel = environment.makeCoachChatViewModel()

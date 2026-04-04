@@ -1,24 +1,134 @@
 import SwiftUI
 
-/// Pre-workout setup: day label selector, time available, energy level picker.
+/// Pre-workout setup: training-log journal form style.
 struct WorkoutSetupView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: WorkoutSetupViewModel
     @ObservedObject var todayViewModel: TodayViewModel
     @State private var showManualEntry = false
 
+    private var todayHeader: String {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM d, yyyy"
+        return "\(f.string(from: Date())) — Training Log"
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppTheme.sectionSpacing) {
-                splitDaySection
-                timeSection
-                energySection
-                notesSection
-                generateButton
-                manualEntryButton
+            VStack(alignment: .leading, spacing: 22) {
+                // Date header
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(todayHeader)
+                        .font(.system(size: 13, weight: .regular, design: .serif))
+                        .italic()
+                        .foregroundStyle(AppTheme.textSecondary)
+                    Text("What are we training today?")
+                        .font(.system(size: 22, weight: .bold, design: .serif))
+                        .foregroundStyle(AppTheme.textPrimary)
+                }
+                .padding(.top, 4)
+
+                // Workout Type
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Workout Type")
+                        .notebookSectionHeader()
+                    if viewModel.splitDays.isEmpty {
+                        Text("No split days configured. Add them in your profile.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.textSecondary)
+                    } else {
+                        FlowLayout(spacing: 6) {
+                            ForEach(viewModel.splitDays, id: \.self) { day in
+                                JournalChip(
+                                    label: day,
+                                    isSelected: viewModel.selectedWorkoutType == day,
+                                    action: { viewModel.selectedWorkoutType = day }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Time Available
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Time Available")
+                        .notebookSectionHeader()
+                    HStack(spacing: 6) {
+                        ForEach(WorkoutSetupViewModel.timePresets, id: \.self) { mins in
+                            JournalChip(
+                                label: "\(mins)m",
+                                isSelected: viewModel.timeAvailable == mins,
+                                action: { viewModel.timeAvailable = mins }
+                            )
+                        }
+                    }
+                }
+
+                // Energy Level
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Energy Level")
+                            .notebookSectionHeader()
+                        Spacer()
+                        Text("\(viewModel.energyLevel) / 10")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                    InkDotRating(value: viewModel.energyLevel, max: 10) { viewModel.energyLevel = $0 }
+                }
+
+                // Notes
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Notes for Coach")
+                        .notebookSectionHeader()
+                    TextField("e.g. Focus on bench, skip isolation...",
+                              text: $viewModel.additionalNotes,
+                              axis: .vertical)
+                        .font(.system(size: 14).italic())
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .padding(12)
+                        .background(AppTheme.surfaceElevated)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 3]))
+                                .foregroundStyle(AppTheme.border)
+                        )
+                        .lineLimit(2...5)
+                        .toolbar {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Spacer()
+                                Button("Done") { hideKeyboard() }
+                                    .foregroundStyle(AppTheme.accent)
+                            }
+                        }
+                }
+
+                // Buttons
+                VStack(spacing: 10) {
+                    Button(action: submitWorkout) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text("Generate Workout")
+                        }
+                    }
+                    .buttonStyle(WaxSealButtonStyle(isSecondary: false))
+                    .disabled(viewModel.selectedWorkoutType.isEmpty)
+                    .opacity(viewModel.selectedWorkoutType.isEmpty ? 0.55 : 1)
+
+                    Button(action: { showManualEntry = true }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "pencil.and.list.clipboard")
+                            Text("Log Manually")
+                        }
+                    }
+                    .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+                }
             }
             .padding(20)
         }
+        .themedBackground()
         .scrollDismissesKeyboard(.interactively)
         .onAppear {
             if let userId = environment.authService.currentUser()?.userId {
@@ -28,186 +138,8 @@ struct WorkoutSetupView: View {
         }
         .sheet(isPresented: $showManualEntry) {
             if let userId = environment.authService.currentUser()?.userId {
-                ManualWorkoutEntryView(
-                    todayViewModel: todayViewModel,
-                    userId: userId
-                )
+                ManualWorkoutEntryView(todayViewModel: todayViewModel, userId: userId)
             }
-        }
-    }
-
-    // MARK: - Split Day Selection
-
-    private var splitDaySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Workout Type")
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
-
-            if viewModel.splitDays.isEmpty {
-                Text("No split days configured. Add them in your profile.")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.textSecondary)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(viewModel.splitDays, id: \.self) { day in
-                            splitDayChip(day)
-                        }
-                    }
-                    .padding(.horizontal, 4)
-                }
-                .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    private func splitDayChip(_ day: String) -> some View {
-        let isSelected = viewModel.selectedWorkoutType == day
-        return Button(action: { viewModel.selectedWorkoutType = day }) {
-            Text(day)
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(isSelected ? AppTheme.accent : AppTheme.surface)
-                .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule().stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Time Presets
-
-    private var timeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Time Available")
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
-
-            HStack(spacing: 10) {
-                ForEach(WorkoutSetupViewModel.timePresets, id: \.self) { mins in
-                    timeChip(mins)
-                }
-            }
-        }
-    }
-
-    private func timeChip(_ minutes: Int) -> some View {
-        let isSelected = viewModel.timeAvailable == minutes
-        return Button(action: { viewModel.timeAvailable = minutes }) {
-            Text("\(minutes)m")
-                .font(.subheadline.weight(.medium))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(isSelected ? AppTheme.accent : AppTheme.surface)
-                .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule().stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Energy Slider
-
-    private var energySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Energy Level")
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Spacer()
-                Text("\(viewModel.energyLevel)/10")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.accentSecondary)
-            }
-
-            Slider(
-                value: .init(
-                    get: { Double(viewModel.energyLevel) },
-                    set: { viewModel.energyLevel = Int($0) }
-                ),
-                in: 1...10,
-                step: 1
-            )
-            .tint(AppTheme.accent)
-
-            HStack {
-                Text("Low").font(.caption).foregroundStyle(AppTheme.textSecondary)
-                Spacer()
-                Text("High").font(.caption).foregroundStyle(AppTheme.textSecondary)
-            }
-        }
-    }
-
-    // MARK: - Notes
-
-    private var notesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Notes (optional)")
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
-
-            TextField("e.g. Focus on bench today, skip isolation",
-                      text: $viewModel.additionalNotes,
-                      axis: .vertical)
-                .padding(14)
-                .background(AppTheme.surface)
-                .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .lineLimit(2...4)
-                .submitLabel(.done)
-                .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") {
-                            hideKeyboard()
-                        }
-                    }
-                }
-        }
-    }
-
-    // MARK: - Generate Button
-
-    private var generateButton: some View {
-        Button(action: submitWorkout) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                Text("Generate Workout")
-            }
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(AppTheme.accentGradient)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .shadow(color: AppTheme.accent.opacity(0.3), radius: 12, x: 0, y: 4)
-        }
-        .disabled(viewModel.selectedWorkoutType.isEmpty)
-        .opacity(viewModel.selectedWorkoutType.isEmpty ? 0.6 : 1)
-    }
-
-    private var manualEntryButton: some View {
-        Button(action: { showManualEntry = true }) {
-            HStack(spacing: 8) {
-                Image(systemName: "pencil.and.list.clipboard")
-                Text("Manual Entry")
-            }
-            .font(.subheadline.bold())
-            .foregroundStyle(AppTheme.accent)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.accent.opacity(0.5), lineWidth: 1)
-            )
         }
     }
 
