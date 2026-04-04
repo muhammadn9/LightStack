@@ -232,7 +232,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     }
 
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String) {
-        self.aiProgressionNote = note
+        self.aiProgressionNote = note.isEmpty ? nil : note
         self.isLoadingNote = false
     }
 
