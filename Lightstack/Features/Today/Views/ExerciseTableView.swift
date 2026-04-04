@@ -13,11 +13,15 @@ struct ExerciseTableView: View {
     let onAddSet: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             headerRow
             if hasTargetInfo { targetInfoRow }
+            if !loggedSets.isEmpty {
+                Divider().overlay(AppTheme.border)
+            }
             loggedSetsList
             pendingSetInputRows
+            Divider().overlay(AppTheme.border.opacity(0.5))
             addSetButton
             if let restTime = restTimeRemaining {
                 restTimerBanner(restTime)
@@ -32,7 +36,7 @@ struct ExerciseTableView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(exercise.name)
-                    .font(.headline)
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text(exercise.muscleGroup)
                     .font(.caption)
@@ -41,11 +45,11 @@ struct ExerciseTableView: View {
             Spacer()
             if let target = exercise.targetSets {
                 Text("\(loggedSets.count)/\(target) sets")
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(AppTheme.accent)
             } else {
                 Text("\(loggedSets.count) sets")
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(AppTheme.accent)
             }
         }
@@ -162,13 +166,16 @@ struct ExerciseTableView: View {
                 }
 
                 // Optional per-set note
-                TextField("Note (optional)", text: $pendingSets[index].note)
-                    .font(.caption)
+                TextField("Add a note…", text: $pendingSets[index].note)
+                    .font(.caption.italic())
                     .foregroundStyle(AppTheme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
                     .background(AppTheme.surfaceElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(AppTheme.border, lineWidth: 1)
+                    )
                     .padding(.leading, 48)
             }
         }
@@ -192,28 +199,36 @@ struct ExerciseTableView: View {
 
     private func restTimerBanner(_ time: String) -> some View {
         HStack {
-            Image(systemName: "timer")
-                .foregroundStyle(AppTheme.warning)
-            Text("Rest: \(time)")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppTheme.warning)
+            Image(systemName: "hourglass")
+                .font(.caption)
+                .foregroundStyle(AppTheme.accent)
+            Text("Rest — \(time) remaining")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(AppTheme.accent)
             Spacer()
         }
-        .padding(10)
-        .background(AppTheme.warning.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(AppTheme.accent.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+        )
     }
 
     // MARK: - Input Field
 
     private func inputField(_ placeholder: String, text: Binding<String>, width: CGFloat, keyboard: UIKeyboardType) -> some View {
-        TextField(placeholder, text: text)
-            .keyboardType(keyboard)
-            .font(.subheadline)
-            .padding(10)
-            .frame(width: width)
-            .background(AppTheme.surfaceElevated)
-            .foregroundStyle(AppTheme.textPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+        VStack(spacing: 2) {
+            TextField(placeholder, text: text)
+                .keyboardType(keyboard)
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .multilineTextAlignment(.center)
+                .frame(width: width)
+                .foregroundStyle(AppTheme.textPrimary)
+            Rectangle()
+                .fill(text.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                .frame(width: width, height: 1)
+        }
     }
 }

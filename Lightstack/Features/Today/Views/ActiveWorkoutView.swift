@@ -46,44 +46,59 @@ struct ActiveWorkoutView: View {
     // MARK: - Timer Bar
 
     private var timerBar: some View {
-        HStack {
+        HStack(spacing: 10) {
             Button(action: { showCancelAlert = true }) {
-                Image(systemName: "xmark.circle")
-                    .font(.body)
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(AppTheme.textSecondary)
+                    .padding(6)
+                    .background(AppTheme.surfaceElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
             }
-            Image(systemName: "timer")
-                .foregroundStyle(AppTheme.accentSecondary)
-            Text(viewModel.formattedElapsedTime)
-                .font(.title3.monospacedDigit().bold())
+
+            Image(systemName: "hourglass")
+                .font(.caption)
                 .foregroundStyle(AppTheme.accent)
+
+            Text(viewModel.formattedElapsedTime)
+                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppTheme.textPrimary)
+
             Button(action: { viewModel.togglePause() }) {
                 Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(AppTheme.accent)
                     .padding(6)
                     .background(AppTheme.surfaceElevated)
-                    .clipShape(Circle())
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
             }
+
             Spacer()
 
             let volume = runningVolume
             if volume > 0 {
                 Text(String(format: "%.0f lbs", volume))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(AppTheme.accentSecondary)
-
-                Divider().frame(height: 16)
-                    .background(AppTheme.surfaceElevated)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(AppTheme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AppTheme.accent.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.accent.opacity(0.3), lineWidth: 1))
             }
 
-            Text("\(todayViewModel.exercises.count) exercises")
-                .font(.subheadline)
+            Text("\(todayViewModel.exercises.count) ex")
+                .font(.caption)
                 .foregroundStyle(AppTheme.textSecondary)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(AppTheme.surfaceElevated)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(AppTheme.surface)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AppTheme.border).frame(height: 1)
+        }
     }
 
     // MARK: - Exercise List
@@ -162,20 +177,29 @@ struct ActiveWorkoutView: View {
             autoLogAllPendingSets()
             todayViewModel.finishWorkout(userNote: nil)
         }) {
-            HStack {
-                Image(systemName: "checkmark.circle.fill")
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 13, weight: .bold))
                 Text("Finish Workout")
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
             }
-            .font(.headline)
-            .foregroundStyle(.white)
+            .foregroundStyle(Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(AppTheme.successGradient)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .stroke(Color(hex: 0x2A6A2A).opacity(0.5), lineWidth: 1)
+            )
+            .shadow(color: Color(hex: 0x2A6A2A).opacity(0.3), radius: 2, x: 1, y: 2)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .background(AppTheme.background)
+        .overlay(alignment: .top) {
+            Rectangle().fill(AppTheme.border).frame(height: 1)
+        }
     }
 
     // MARK: - Chat Button
@@ -193,13 +217,17 @@ struct ActiveWorkoutView: View {
             }
             showChat = true
         }) {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.title3)
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
+            Image(systemName: "text.bubble")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+                .frame(width: 52, height: 52)
                 .background(AppTheme.accentGradient)
-                .clipShape(Circle())
-                .shadow(color: AppTheme.accent.opacity(0.4), radius: 12, x: 0, y: 4)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.accent.opacity(0.4), lineWidth: 1)
+                )
+                .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, x: 2, y: 4)
         }
         .padding(.trailing, 20)
         .padding(.bottom, 80)

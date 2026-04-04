@@ -21,27 +21,30 @@ struct PostWorkoutView: View {
     // MARK: - Completion Header
 
     private var completionHeader: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             ZStack {
-                Circle()
-                    .fill(AppTheme.success.opacity(0.15))
-                    .frame(width: 100, height: 100)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56))
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(AppTheme.success.opacity(0.1))
+                    .frame(width: 88, height: 88)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(AppTheme.success.opacity(0.3), lineWidth: 1)
+                    )
+                Image(systemName: "checkmark")
+                    .font(.system(size: 40, weight: .light))
                     .foregroundStyle(AppTheme.success)
-                    .shadow(color: AppTheme.success.opacity(0.3), radius: 8)
             }
 
-            Text("Workout Complete")
-                .font(.title2.bold())
+            Text("Session Complete")
+                .font(.system(size: 22, weight: .bold, design: .serif))
                 .foregroundStyle(AppTheme.textPrimary)
 
-            Text("Great session! Here's your coach's feedback.")
+            Text("Logged to your training journal")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.top, 20)
+        .padding(.top, 16)
     }
 
     // MARK: - Session Stats
@@ -147,18 +150,13 @@ struct PostWorkoutView: View {
 
     private var saveButton: some View {
         Button(action: { todayViewModel.saveWorkout(userNote: userNote.isEmpty ? nil : userNote) }) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "square.and.arrow.down")
-                Text("Save Workout")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Save to Training Log")
             }
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.accentGradient)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .shadow(color: AppTheme.accent.opacity(0.3), radius: 8, x: 0, y: 4)
         }
+        .buttonStyle(WaxSealButtonStyle(isSecondary: false))
         .disabled(todayViewModel.isLoadingNote)
         .opacity(todayViewModel.isLoadingNote ? 0.6 : 1)
     }

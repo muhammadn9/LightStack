@@ -1,81 +1,99 @@
 import SwiftUI
 
-/// Central design token system for the purple radiant dark theme.
+/// Coach's Notebook design system for LightStack V2.
+/// Colors adapt automatically to light / dark mode.
 enum AppTheme {
 
-    // MARK: - Colors
+    // MARK: - Adaptive Colors
 
-    static let background = Color(hex: 0x0D0D12)
-    static let surface = Color(hex: 0x1A1A24)
-    static let surfaceElevated = Color(hex: 0x242432)
+    /// Deep leather (dark) / warm parchment (light)
+    static let background = Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1)
+    static let surface     = Color(adaptiveDark: 0x221810, light: 0xF0E8D8)
+    static let surfaceElevated = Color(adaptiveDark: 0x2A2015, light: 0xF4EDD8)
 
-    static let accent = Color(hex: 0x8B5CF6)
-    static let accentGradientStart = Color(hex: 0x7C3AED)
-    static let accentGradientEnd = Color(hex: 0xC084FC)
-    static let accentSecondary = Color(hex: 0xA78BFA)
+    /// Amber gold (dark) / fountain-pen blue (light)
+    static let accent              = Color(adaptiveDark: 0xC8860A, light: 0x1B3A6B)
+    static let accentGradientStart = Color(adaptiveDark: 0xA06808, light: 0x1B3A6B)
+    static let accentGradientEnd   = Color(adaptiveDark: 0xE09818, light: 0x3A6AB0)
+    static let accentSecondary     = Color(adaptiveDark: 0xD4A040, light: 0x3A6AB0)
 
-    static let textPrimary = Color(hex: 0xF8F8FF)
-    static let textSecondary = Color(hex: 0x9CA3AF)
+    /// Warm cream (dark) / deep navy (light)
+    static let textPrimary   = Color(adaptiveDark: 0xEDE0C4, light: 0x1B2A40)
+    static let textSecondary = Color(adaptiveDark: 0xA09070, light: 0x6A5840)
 
-    static let success = Color(hex: 0x22C55E)
-    static let warning = Color(hex: 0xF59E0B)
-    static let destructive = Color(hex: 0xEF4444)
-    static let streakFlame = Color(hex: 0xF97316)
+    /// Ruled-line / card border
+    static let border = Color(adaptiveDark: 0x3A2A1A, light: 0xC8B898)
+
+    // Semantic
+    static let success      = Color(adaptiveDark: 0x6AB040, light: 0x2A6A2A)
+    static let warning      = Color(adaptiveDark: 0xD4920A, light: 0xC8860A)
+    static let destructive  = Color(hex: 0xC04030)
+    static let streakFlame  = Color(adaptiveDark: 0xD4920A, light: 0xC8860A)
 
     // MARK: - Gradients
 
     static let accentGradient = LinearGradient(
         colors: [accentGradientStart, accentGradientEnd],
-        startPoint: .leading,
-        endPoint: .trailing
+        startPoint: .leading, endPoint: .trailing
     )
 
     static let backgroundGradient = LinearGradient(
-        colors: [Color(hex: 0x0D0D12), Color(hex: 0x12121A)],
-        startPoint: .top,
-        endPoint: .bottom
+        colors: [background, surface],
+        startPoint: .top, endPoint: .bottom
     )
 
     static let successGradient = LinearGradient(
-        colors: [Color(hex: 0x16A34A), success],
-        startPoint: .leading,
-        endPoint: .trailing
+        colors: [Color(hex: 0x2A6A2A), Color(hex: 0x6AB040)],
+        startPoint: .leading, endPoint: .trailing
     )
 
     // MARK: - Dimensions
 
-    static let cornerRadius: CGFloat = 16
-    static let cardPadding: CGFloat = 16
-    static let sectionSpacing: CGFloat = 24
+    /// Small radius — paper / journal feel
+    static let cornerRadius: CGFloat = 6
+    static let cardPadding: CGFloat  = 14
+    static let sectionSpacing: CGFloat = 20
 }
 
-// MARK: - Color Hex Extension
+// MARK: - Color Hex Extensions
 
 extension Color {
+    /// Fixed hex colour (no dark/light adaptation).
     init(hex: UInt, opacity: Double = 1.0) {
         self.init(
             .sRGB,
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255,
+            red:   Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8)  & 0xFF) / 255,
+            blue:  Double(hex & 0xFF)          / 255,
             opacity: opacity
+        )
+    }
+
+    /// Adaptive colour: one value in dark mode, another in light mode.
+    init(adaptiveDark dark: UInt, light: UInt) {
+        self.init(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(netHex: dark)
+                : UIColor(netHex: light)
+        })
+    }
+}
+
+extension UIColor {
+    convenience init(netHex hex: UInt, alpha: CGFloat = 1) {
+        self.init(
+            red:   CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8)  & 0xFF) / 255,
+            blue:  CGFloat(hex & 0xFF)          / 255,
+            alpha: alpha
         )
     }
 }
 
 // MARK: - View Modifiers
 
+/// Plain notebook page card: warm fill + hairline border + small radius.
 struct CardStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(AppTheme.cardPadding)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .shadow(color: Color.purple.opacity(0.15), radius: 12, x: 0, y: 4)
-    }
-}
-
-struct GlowingCardStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(AppTheme.cardPadding)
@@ -83,18 +101,114 @@ struct GlowingCardStyle: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+                    .stroke(AppTheme.border, lineWidth: 1)
             )
-            .shadow(color: Color.purple.opacity(0.2), radius: 16, x: 0, y: 4)
+            .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+    }
+}
+
+/// Accented card: amber/blue left strip + warm fill + hairline border.
+struct GlowingCardStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(AppTheme.accent.opacity(0.7))
+                .frame(width: 3)
+            content
+                .padding(AppTheme.cardPadding)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                .stroke(AppTheme.border, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.14), radius: 4, x: 0, y: 2)
     }
 }
 
 struct AccentGradientBackground: ViewModifier {
     func body(content: Content) -> some View {
-        content
-            .background(AppTheme.accentGradient)
+        content.background(AppTheme.accentGradient)
     }
 }
+
+/// Full-screen background with very subtle ruled-line texture.
+struct ThemedBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(
+                ZStack {
+                    AppTheme.background.ignoresSafeArea()
+                    RuledLinesView()
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                }
+            )
+    }
+}
+
+// MARK: - Ruled Lines
+
+/// Draws faint horizontal lines over a full-screen background,
+/// like a premium training-log notebook.
+struct RuledLinesView: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        GeometryReader { geo in
+            Canvas { ctx, size in
+                let lineColor: Color = scheme == .dark
+                    ? Color.white.opacity(0.035)
+                    : Color.black.opacity(0.055)
+                let spacing: CGFloat = 38
+                var y: CGFloat = spacing
+                while y < size.height {
+                    var path = Path()
+                    path.move(to: CGPoint(x: 20, y: y))
+                    path.addLine(to: CGPoint(x: size.width - 20, y: y))
+                    ctx.stroke(path, with: .color(lineColor), lineWidth: 0.5)
+                    y += spacing
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+}
+
+// MARK: - Button Styles
+
+/// Primary action button: wax-seal style with offset ink shadow.
+struct WaxSealButtonStyle: ButtonStyle {
+    var isSecondary: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 15, weight: .semibold, design: .serif))
+            .foregroundStyle(isSecondary ? AppTheme.accent : Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                isSecondary
+                    ? AppTheme.accent.opacity(0.12)
+                    : AppTheme.accent
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .stroke(AppTheme.accent.opacity(isSecondary ? 0.5 : 0.3), lineWidth: 1)
+            )
+            .shadow(
+                color: AppTheme.accent.opacity(isSecondary ? 0 : 0.35),
+                radius: 2, x: 2, y: 3
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - View Extensions
 
 extension View {
     func cardStyle() -> some View {
@@ -110,6 +224,6 @@ extension View {
     }
 
     func themedBackground() -> some View {
-        self.background(AppTheme.backgroundGradient.ignoresSafeArea())
+        modifier(ThemedBackground())
     }
 }
