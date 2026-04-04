@@ -104,6 +104,10 @@ final class WorkoutRepository {
 
     // MARK: - Delete
 
+    func deleteExercise(_ exerciseId: UUID) {
+        localStorage.deleteExercise(exerciseId: exerciseId)
+    }
+
     func deleteWorkout(_ workout: Workout) {
         localStorage.deleteWorkout(workoutId: workout.id)
         Task {
