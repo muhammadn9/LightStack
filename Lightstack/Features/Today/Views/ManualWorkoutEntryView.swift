@@ -57,9 +57,9 @@ struct ManualWorkoutEntryView: View {
             TextField("e.g., Upper Body, Legs, Push", text: $workoutType)
                 .padding(14)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
         }
@@ -109,7 +109,7 @@ struct ManualWorkoutEntryView: View {
         }
         .padding(12)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private var addExerciseButton: some View {
@@ -126,7 +126,7 @@ struct ManualWorkoutEntryView: View {
                         endPoint: .trailing
                     )
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }
 
@@ -232,9 +232,9 @@ struct AddExerciseSheet: View {
             TextField("e.g., Bench Press, Squat", text: $exerciseName)
                 .padding(14)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
         }
@@ -255,9 +255,9 @@ struct AddExerciseSheet: View {
             .pickerStyle(.menu)
             .padding(14)
             .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
             )
         }
@@ -276,7 +276,7 @@ struct AddExerciseSheet: View {
             }
             .padding(14)
             .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
         .cardStyle()
     }

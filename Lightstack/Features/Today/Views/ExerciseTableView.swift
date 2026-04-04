@@ -81,7 +81,7 @@ struct ExerciseTableView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(AppTheme.accent.opacity(0.12))
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     // MARK: - Logged Sets

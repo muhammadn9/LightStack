@@ -139,7 +139,7 @@ struct ProfileView: View {
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)
                 .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
         .cardStyle()
@@ -168,7 +168,7 @@ struct ProfileView: View {
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)
                 .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
         .cardStyle()

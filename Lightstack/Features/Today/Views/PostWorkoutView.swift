@@ -23,11 +23,11 @@ struct PostWorkoutView: View {
     private var completionHeader: some View {
         VStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .fill(AppTheme.success.opacity(0.1))
                     .frame(width: 88, height: 88)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                             .stroke(AppTheme.success.opacity(0.3), lineWidth: 1)
                     )
                 Image(systemName: "checkmark")
@@ -74,7 +74,7 @@ struct PostWorkoutView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private var sessionVolume: Double {
@@ -122,7 +122,7 @@ struct PostWorkoutView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
     }
@@ -141,7 +141,7 @@ struct PostWorkoutView: View {
                 .padding(14)
                 .background(AppTheme.surface)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .lineLimit(3...6)
         }
     }

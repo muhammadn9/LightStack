@@ -71,7 +71,7 @@ struct EditProfileView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
 
             HStack(spacing: 12) {
@@ -119,7 +119,7 @@ struct EditProfileView: View {
                     .padding(12)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     .onSubmit { addCustomGoal() }
                 Button(action: addCustomGoal) {
                     Image(systemName: "plus.circle.fill")
@@ -155,7 +155,7 @@ struct EditProfileView: View {
         .padding(.vertical, 8)
         .background(AppTheme.accent)
         .foregroundStyle(.white)
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private func goalChip(_ goal: String) -> some View {
@@ -167,9 +167,9 @@ struct EditProfileView: View {
                 .padding(.vertical, 8)
                 .background(isSelected ? AppTheme.accent : AppTheme.surface)
                 .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    Capsule().stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius).stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
                 )
         }
     }
@@ -201,7 +201,7 @@ struct EditProfileView: View {
                     .padding(12)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     .onSubmit {
                         let trimmed = newSplitDay.trimmingCharacters(in: .whitespaces)
                         if !trimmed.isEmpty {
@@ -237,7 +237,7 @@ struct EditProfileView: View {
         }
         .padding(10)
         .background(AppTheme.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     // MARK: - Equipment Section
@@ -273,9 +273,9 @@ struct EditProfileView: View {
                 .lineLimit(3...6)
                 .padding(12)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
                 .toolbar {
@@ -309,9 +309,9 @@ struct EditProfileView: View {
             }
             .padding(12)
             .background(isSelected ? AppTheme.accent.opacity(0.12) : AppTheme.surfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .stroke(isSelected ? AppTheme.accent.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
@@ -336,7 +336,7 @@ struct EditProfileView: View {
                 .padding(12)
                 .background(AppTheme.surfaceElevated)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
         .cardStyle()
     }
@@ -348,7 +348,7 @@ struct EditProfileView: View {
             .padding(14)
             .background(AppTheme.surfaceElevated)
             .foregroundStyle(AppTheme.textPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private func labeledField(
@@ -363,7 +363,7 @@ struct EditProfileView: View {
                 .padding(12)
                 .background(AppTheme.surfaceElevated)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }
 }

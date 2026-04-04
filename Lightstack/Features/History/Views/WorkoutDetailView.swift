@@ -61,7 +61,7 @@ struct WorkoutDetailView: View {
             .padding(.vertical, 16)
             .background(AppTheme.accentGradient)
             .foregroundStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }
 
@@ -104,7 +104,7 @@ struct WorkoutDetailView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(AppTheme.surfaceElevated)
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     // MARK: - Exercises Section
@@ -124,7 +124,7 @@ struct WorkoutDetailView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(AppTheme.accent.opacity(0.2))
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     }
 
                     VStack(spacing: 4) {

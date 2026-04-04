@@ -151,7 +151,7 @@ struct MonthPlanView: View {
                             .padding(.vertical, 6)
                             .background(viewModel.activePlan?.id == plan.id ? AppTheme.accent : AppTheme.surfaceElevated)
                             .foregroundStyle(viewModel.activePlan?.id == plan.id ? Color.white : AppTheme.textPrimary)
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     }
                 }
             }

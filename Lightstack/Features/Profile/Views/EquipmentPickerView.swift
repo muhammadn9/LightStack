@@ -53,9 +53,9 @@ struct EquipmentPickerView: View {
             }
             .padding(12)
             .background(isSelected ? AppTheme.accent.opacity(0.12) : AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .stroke(isSelected ? AppTheme.accent.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
@@ -81,9 +81,9 @@ struct EquipmentPickerView: View {
                 .lineLimit(3...6)
                 .padding(12)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
         }

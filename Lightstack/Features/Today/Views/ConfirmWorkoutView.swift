@@ -102,7 +102,7 @@ struct ConfirmWorkoutView: View {
         }
         .padding(12)
         .background(AppTheme.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     /// Renders one row per target set showing weight × reps @ RIR.

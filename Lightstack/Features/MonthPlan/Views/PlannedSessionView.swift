@@ -124,7 +124,7 @@ struct PlannedSessionView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(AppTheme.success.opacity(0.15))
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             } else if isToday {
                 Text("Today")
                     .font(.caption.weight(.semibold))
@@ -132,7 +132,7 @@ struct PlannedSessionView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(AppTheme.accent.opacity(0.15))
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             } else if isPast {
                 Text("Missed")
                     .font(.caption.weight(.semibold))
@@ -140,7 +140,7 @@ struct PlannedSessionView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(AppTheme.warning.opacity(0.15))
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
     }
@@ -176,6 +176,6 @@ private struct DetailPill: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(AppTheme.surfaceElevated)
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 }

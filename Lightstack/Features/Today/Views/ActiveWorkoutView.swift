@@ -222,9 +222,9 @@ struct ActiveWorkoutView: View {
                 .foregroundStyle(Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
                 .frame(width: 52, height: 52)
                 .background(AppTheme.accentGradient)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.4), lineWidth: 1)
                 )
                 .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, x: 2, y: 4)
