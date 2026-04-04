@@ -169,13 +169,8 @@ final class WorkoutSessionService {
             do {
                 let allowed = try await supabaseService.checkRateLimit(userId: userId)
                 if !allowed {
-                    // Rate-limited — save workout without AI note and move on silently
-                    self.saveCompletedWorkout(
-                        userNote: userNote.map { self.validationService.sanitize($0) },
-                        aiNote: nil,
-                        exercises: exercises,
-                        sets: allSets
-                    )
+                    // Rate-limited — let user stay on PostWorkoutView without an AI note
+                    self.handleProgressionNoteResponse("")
                     return
                 }
             } catch {
@@ -198,13 +193,8 @@ final class WorkoutSessionService {
                 case .success(let responseText):
                     self.handleProgressionNoteResponse(responseText)
                 case .failure:
-                    // AI call failed — save workout without a progression note
-                    self.saveCompletedWorkout(
-                        userNote: userNote.map { self.validationService.sanitize($0) },
-                        aiNote: nil,
-                        exercises: exercises,
-                        sets: allSets
-                    )
+                    // AI call failed — let user stay on PostWorkoutView without an AI note
+                    self.handleProgressionNoteResponse("")
                 }
             }
         }
@@ -224,6 +214,13 @@ final class WorkoutSessionService {
         workout.syncStatus = .pending
         currentWorkout = workout
         workoutRepository.updateWorkout(workout)
+
+        // Reconcile: delete any Core Data exercises that were removed by the user
+        let storedExercises = workoutRepository.fetchExercises(workoutId: workout.id)
+        let finalIds = Set(exercises.map { $0.id })
+        for ex in storedExercises where !finalIds.contains(ex.id) {
+            workoutRepository.deleteExercise(ex.id)
+        }
 
         markMatchingPlannedSessionCompleted(workout: workout)
 
