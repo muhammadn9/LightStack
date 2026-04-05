@@ -22,8 +22,7 @@ struct ProfileView: View {
                 .padding(16)
             }
             .themedBackground()
-            .navigationTitle("Profile")
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationBarHidden(true)
             .onAppear { loadProfileData() }
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
@@ -241,7 +240,11 @@ struct ProfileView: View {
     }
 
     private var displayName: String {
-        environment.authService.currentUser()?.displayName ?? "Athlete"
+        if let name = viewModel?.profile?.displayName, !name.isEmpty { return name }
+        if let email = environment.supabaseClient.auth.currentUser?.email {
+            return email.components(separatedBy: "@").first?.capitalized ?? email
+        }
+        return "Athlete"
     }
 
     private var initials: String {

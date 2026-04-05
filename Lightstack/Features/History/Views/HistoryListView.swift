@@ -18,8 +18,7 @@ struct HistoryListView: View {
                         .tint(AppTheme.accent)
                 }
             }
-            .navigationTitle("History")
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationBarHidden(true)
             .onAppear { loadHistory() }
         }
     }

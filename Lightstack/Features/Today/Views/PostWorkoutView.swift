@@ -143,6 +143,15 @@ struct PostWorkoutView: View {
                 .foregroundStyle(AppTheme.textPrimary)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .lineLimit(3...6)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") {
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        }
+                        .foregroundStyle(AppTheme.accent)
+                    }
+                }
         }
     }
 

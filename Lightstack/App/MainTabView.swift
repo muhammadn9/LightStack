@@ -1,106 +1,226 @@
 import SwiftUI
 
-/// Main tab bar with 4 tabs: Today, Month Plan, History, Profile.
+/// Main app container: notebook-style tab row at top + content area below.
+/// Replaces the native iOS tab bar with an inline horizontal tab strip.
 struct MainTabView: View {
     @EnvironmentObject var environment: AppEnvironment
     @State private var selectedTab: Int = 0
+    @State private var todayViewModel: TodayViewModel?
     @State private var monthPlanViewModel: MonthPlanViewModel?
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            TodayView(viewModel: environment.makeTodayViewModel())
-                .tabItem {
-                    Label("Today", systemImage: "figure.strengthtraining.traditional")
-                }
-                .tag(0)
+        VStack(spacing: 0) {
+            // Notebook tab row
+            NotebookTabRow(selectedTab: $selectedTab)
 
-            Group {
-                if let vm = monthPlanViewModel {
-                    MonthPlanView(viewModel: vm, selectedTab: $selectedTab)
-                } else {
-                    ProgressView()
-                        .tint(AppTheme.accent)
+            // Content
+            ZStack {
+                if let todayVM = todayViewModel {
+                    TodayTabContent(viewModel: todayVM)
+                        .opacity(selectedTab == 0 ? 1 : 0)
+                        .allowsHitTesting(selectedTab == 0)
                 }
+
+                Group {
+                    if let monthVM = monthPlanViewModel {
+                        MonthPlanView(viewModel: monthVM, selectedTab: $selectedTab)
+                    } else {
+                        AppTheme.background.ignoresSafeArea()
+                    }
+                }
+                .opacity(selectedTab == 1 ? 1 : 0)
+                .allowsHitTesting(selectedTab == 1)
+
+                HistoryListView()
+                    .opacity(selectedTab == 2 ? 1 : 0)
+                    .allowsHitTesting(selectedTab == 2)
+
+                ProfileView()
+                    .opacity(selectedTab == 3 ? 1 : 0)
+                    .allowsHitTesting(selectedTab == 3)
             }
-            .tabItem {
-                Label("Month Plan", systemImage: "calendar")
-            }
-            .tag(1)
-
-            HistoryListView()
-                .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
-                }
-                .tag(2)
-
-            ProfileView()
-                .tabItem {
-                    Label("Profile", systemImage: "person.crop.circle")
-                }
-                .tag(3)
         }
-        .tint(AppTheme.accent)
+        .ignoresSafeArea(edges: .bottom)
+        .themedBackground()
         .onAppear {
+            setupAppearance()
+            if todayViewModel == nil {
+                todayViewModel = environment.makeTodayViewModel()
+            }
             if monthPlanViewModel == nil {
                 monthPlanViewModel = environment.makeMonthPlanViewModel()
             }
-            // Notebook-styled tab bar
-            let tabBarBgColor = UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? UIColor(netHex: 0x1C1510)
-                    : UIColor(netHex: 0xFBF8F1)
-            }
-            let tabSelectedColor = UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? UIColor(netHex: 0xC8860A)
-                    : UIColor(netHex: 0x1B3A6B)
-            }
-            let tabUnselectedColor = UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? UIColor(netHex: 0x6A5840)
-                    : UIColor(netHex: 0x6A5840)
-            }
-            let appearance = UITabBarAppearance()
-            appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = tabBarBgColor
-            appearance.stackedLayoutAppearance.selected.iconColor = tabSelectedColor
-            appearance.stackedLayoutAppearance.selected.titleTextAttributes = [
-                .foregroundColor: tabSelectedColor,
-                .font: AppTheme.uiCaveat(11)
-            ]
-            appearance.stackedLayoutAppearance.normal.iconColor = tabUnselectedColor
-            appearance.stackedLayoutAppearance.normal.titleTextAttributes = [
-                .foregroundColor: tabUnselectedColor,
-                .font: AppTheme.uiCaveat(10)
-            ]
-            UITabBar.appearance().standardAppearance = appearance
-            UITabBar.appearance().scrollEdgeAppearance = appearance
-
-            // Notebook-styled navigation bar
-            let navBarBgColor = UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? UIColor(netHex: 0x1C1510)
-                    : UIColor(netHex: 0xFBF8F1)
-            }
-            let navTitleColor = UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? UIColor(netHex: 0xEDE0C4)
-                    : UIColor(netHex: 0x1B2A40)
-            }
-            let navAppearance = UINavigationBarAppearance()
-            navAppearance.configureWithOpaqueBackground()
-            navAppearance.backgroundColor = navBarBgColor
-            navAppearance.titleTextAttributes = [
-                .foregroundColor: navTitleColor,
-                .font: AppTheme.uiPlayfairBoldItalic(17)
-            ]
-            navAppearance.largeTitleTextAttributes = [
-                .foregroundColor: navTitleColor,
-                .font: AppTheme.uiPlayfairBoldItalic(34)
-            ]
-            UINavigationBar.appearance().standardAppearance = navAppearance
-            UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
-            UINavigationBar.appearance().compactAppearance = navAppearance
         }
+    }
+
+    // MARK: - UIKit Appearance
+
+    private func setupAppearance() {
+        // Hide native tab bar entirely
+        UITabBar.appearance().isHidden = true
+
+        // Navigation bar styling
+        let navBgColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(netHex: 0x1C1510)
+                : UIColor(netHex: 0xFBF8F1)
+        }
+        let navTitleColor = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(netHex: 0xEDE0C4)
+                : UIColor(netHex: 0x1B2A40)
+        }
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithOpaqueBackground()
+        navAppearance.backgroundColor = navBgColor
+        navAppearance.titleTextAttributes = [
+            .foregroundColor: navTitleColor,
+            .font: AppTheme.uiPlayfairBoldItalic(17)
+        ]
+        navAppearance.largeTitleTextAttributes = [
+            .foregroundColor: navTitleColor,
+            .font: AppTheme.uiPlayfairBoldItalic(34)
+        ]
+        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+        UINavigationBar.appearance().compactAppearance = navAppearance
+    }
+}
+
+// MARK: - Notebook Tab Row
+
+struct NotebookTabRow: View {
+    @Binding var selectedTab: Int
+    private let tabs = ["Today", "Month", "History", "Profile"]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(tabs.indices, id: \.self) { i in
+                    Button(action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = i } }) {
+                        VStack(spacing: 0) {
+                            Text(tabs[i])
+                                .font(AppTheme.caveat(15, weight: i == selectedTab ? .bold : .regular))
+                                .foregroundStyle(i == selectedTab ? AppTheme.accent : AppTheme.textSecondary)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity)
+
+                            // Active indicator
+                            Rectangle()
+                                .fill(i == selectedTab ? AppTheme.accent : Color.clear)
+                                .frame(height: 2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            InkDivider()
+        }
+        .background(AppTheme.background)
+    }
+}
+
+// MARK: - Today Tab Content
+
+/// Wraps TodayViewModel lifecycle within the custom tab architecture.
+private struct TodayTabContent: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @ObservedObject var viewModel: TodayViewModel
+    @State private var chatViewModel: CoachChatViewModel?
+    @State private var setupViewModel: WorkoutSetupViewModel?
+    @State private var activeWorkoutViewModel: ActiveWorkoutViewModel?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Group {
+                    switch viewModel.phase {
+                    case .setup:
+                        if let setupVM = setupViewModel {
+                            WorkoutSetupView(viewModel: setupVM, todayViewModel: viewModel)
+                        }
+                    case .generating:
+                        generatingView
+                    case .confirmation:
+                        ConfirmWorkoutView(
+                            todayViewModel: viewModel,
+                            chatViewModel: chatViewModel,
+                            workoutType: viewModel.sessionService.currentWorkoutType ?? ""
+                        )
+                    case .active:
+                        if let activeVM = activeWorkoutViewModel {
+                            ActiveWorkoutView(
+                                viewModel: activeVM,
+                                todayViewModel: viewModel,
+                                chatViewModel: chatViewModel ?? environment.makeCoachChatViewModel()
+                            )
+                        }
+                    case .postWorkout:
+                        PostWorkoutView(todayViewModel: viewModel)
+                    }
+                }
+            }
+            .themedBackground()
+            .navigationBarHidden(true)
+            .onAppear {
+                if chatViewModel == nil {
+                    chatViewModel = environment.makeCoachChatViewModel()
+                }
+                if setupViewModel == nil {
+                    setupViewModel = environment.makeWorkoutSetupViewModel()
+                }
+                if let userId = environment.authService.currentUser()?.userId {
+                    viewModel.setUserId(userId)
+                }
+            }
+            .onChange(of: viewModel.phase) { _, newPhase in
+                if newPhase == .setup {
+                    chatViewModel?.clearChat()
+                    activeWorkoutViewModel = nil
+                } else if newPhase == .active, activeWorkoutViewModel == nil {
+                    let vm = environment.makeActiveWorkoutViewModel()
+                    vm.onRestTimerStart = { name, seconds in
+                        environment.notificationService.scheduleRestTimerAlert(exerciseName: name, totalRestSeconds: seconds)
+                    }
+                    vm.onRestTimerCancel = {
+                        environment.notificationService.cancelPendingRestAlerts()
+                    }
+                    activeWorkoutViewModel = vm
+                }
+            }
+            .alert("Error", isPresented: .init(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
+                Button("OK") { viewModel.errorMessage = nil }
+            } message: {
+                Text(viewModel.errorMessage ?? "")
+            }
+        }
+    }
+
+    private var generatingView: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                ForEach(0..<3, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(AppTheme.accent.opacity(0.18 - Double(i) * 0.05), lineWidth: 1.5)
+                        .frame(width: CGFloat(56 + i * 24), height: CGFloat(56 + i * 24))
+                }
+                Image(systemName: "pencil.and.list.clipboard")
+                    .font(.system(size: 28, weight: .light))
+                    .foregroundStyle(AppTheme.accent)
+                    .symbolEffect(.pulse, options: .repeating)
+            }
+            VStack(spacing: 6) {
+                Text("Writing your plan…")
+                    .font(AppTheme.playfairItalic(17, weight: .bold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text("Your coach is preparing the workout")
+                    .font(AppTheme.caveat(15))
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

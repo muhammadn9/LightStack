@@ -62,6 +62,10 @@ struct ManualWorkoutEntryView: View {
                     RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
+                .submitLabel(.done)
+                .onSubmit {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
         }
         .cardStyle()
     }
@@ -158,6 +162,8 @@ struct ManualWorkoutEntryView: View {
             )
         }
 
+        // Create the workout record before starting session so it appears in history
+        todayViewModel.workoutRepository.createWorkout(workout)
         todayViewModel.sessionService.startSession(workout: workout, exercises: exerciseModels)
         todayViewModel.exercises = exerciseModels
         todayViewModel.phase = .active
@@ -237,6 +243,10 @@ struct AddExerciseSheet: View {
                     RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
+                .submitLabel(.done)
+                .onSubmit {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
         }
         .cardStyle()
     }

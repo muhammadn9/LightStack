@@ -13,8 +13,7 @@ struct MonthPlanView: View {
     var body: some View {
         NavigationStack {
             calendarContent
-                .navigationTitle("Month Plan")
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .navigationBarHidden(true)
                 .toolbar {
                     if viewModel.canCreateNewPlan {
                         ToolbarItem(placement: .navigationBarTrailing) {
@@ -165,10 +164,12 @@ struct MonthPlanView: View {
 
                 Spacer()
 
-                if let title = plan.title {
-                    Text(title)
-                        .font(AppTheme.caveat(12))
-                        .foregroundStyle(AppTheme.textSecondary)
+                if viewModel.canCreateNewPlan {
+                    Button(action: { showPlanBuilder = true }) {
+                        Image(systemName: "plus.circle")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.accent)
+                    }
                 }
             }
 
