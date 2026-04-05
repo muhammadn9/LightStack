@@ -45,33 +45,58 @@ struct MainTabView: View {
                 monthPlanViewModel = environment.makeMonthPlanViewModel()
             }
             // Notebook-styled tab bar
+            let tabBarBgColor = UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(netHex: 0x1C1510)
+                    : UIColor(netHex: 0xFBF8F1)
+            }
+            let tabSelectedColor = UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(netHex: 0xC8860A)
+                    : UIColor(netHex: 0x1B3A6B)
+            }
+            let tabUnselectedColor = UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(netHex: 0x6A5840)
+                    : UIColor(netHex: 0x6A5840)
+            }
             let appearance = UITabBarAppearance()
             appearance.configureWithOpaqueBackground()
-            appearance.backgroundColor = UIColor(netHex: 0x1C1510)
-            appearance.stackedLayoutAppearance.selected.iconColor = UIColor(netHex: 0xC8860A)
+            appearance.backgroundColor = tabBarBgColor
+            appearance.stackedLayoutAppearance.selected.iconColor = tabSelectedColor
             appearance.stackedLayoutAppearance.selected.titleTextAttributes = [
-                .foregroundColor: UIColor(netHex: 0xC8860A),
-                .font: UIFont.systemFont(ofSize: 10, weight: .medium)
+                .foregroundColor: tabSelectedColor,
+                .font: AppTheme.uiCaveat(11)
             ]
-            appearance.stackedLayoutAppearance.normal.iconColor = UIColor(netHex: 0x6A5840)
+            appearance.stackedLayoutAppearance.normal.iconColor = tabUnselectedColor
             appearance.stackedLayoutAppearance.normal.titleTextAttributes = [
-                .foregroundColor: UIColor(netHex: 0x6A5840),
-                .font: UIFont.systemFont(ofSize: 10)
+                .foregroundColor: tabUnselectedColor,
+                .font: AppTheme.uiCaveat(10)
             ]
             UITabBar.appearance().standardAppearance = appearance
             UITabBar.appearance().scrollEdgeAppearance = appearance
 
             // Notebook-styled navigation bar
+            let navBarBgColor = UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(netHex: 0x1C1510)
+                    : UIColor(netHex: 0xFBF8F1)
+            }
+            let navTitleColor = UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(netHex: 0xEDE0C4)
+                    : UIColor(netHex: 0x1B2A40)
+            }
             let navAppearance = UINavigationBarAppearance()
             navAppearance.configureWithOpaqueBackground()
-            navAppearance.backgroundColor = UIColor(netHex: 0x1C1510)
+            navAppearance.backgroundColor = navBarBgColor
             navAppearance.titleTextAttributes = [
-                .foregroundColor: UIColor(netHex: 0xEDE0C4),
-                .font: UIFont(name: "Georgia-Bold", size: 17) ?? UIFont.systemFont(ofSize: 17, weight: .bold)
+                .foregroundColor: navTitleColor,
+                .font: AppTheme.uiPlayfairBoldItalic(17)
             ]
             navAppearance.largeTitleTextAttributes = [
-                .foregroundColor: UIColor(netHex: 0xEDE0C4),
-                .font: UIFont(name: "Georgia-Bold", size: 34) ?? UIFont.systemFont(ofSize: 34, weight: .bold)
+                .foregroundColor: navTitleColor,
+                .font: AppTheme.uiPlayfairBoldItalic(34)
             ]
             UINavigationBar.appearance().standardAppearance = navAppearance
             UINavigationBar.appearance().scrollEdgeAppearance = navAppearance

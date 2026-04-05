@@ -37,10 +37,10 @@ struct ConfirmWorkoutView: View {
                 .font(.system(size: 30, weight: .light))
                 .foregroundStyle(AppTheme.accent)
             Text("Workout Ready")
-                .font(.system(size: 20, weight: .bold, design: .serif))
+                .font(AppTheme.playfairItalic(20, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("Your coach prepared \(todayViewModel.exercises.count) exercises")
-                .font(.subheadline)
+                .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -54,11 +54,11 @@ struct ConfirmWorkoutView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Exercise Plan")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Spacer()
                 Text("Tap × to remove")
-                    .font(.caption)
+                    .font(AppTheme.caveat(10))
                     .foregroundStyle(AppTheme.textSecondary)
             }
 
@@ -75,10 +75,10 @@ struct ConfirmWorkoutView: View {
                 // Name + muscle group
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppTheme.playfair(14, weight: .bold))
                         .foregroundStyle(AppTheme.textPrimary)
                     Text(exercise.muscleGroup)
-                        .font(.caption)
+                        .font(AppTheme.caveat(11))
                         .foregroundStyle(AppTheme.accentSecondary)
                 }
 
@@ -135,7 +135,7 @@ struct ConfirmWorkoutView: View {
                             .foregroundStyle(AppTheme.accent.opacity(0.8))
                     }
                 }
-                .font(.caption)
+                .font(AppTheme.caveat(12))
                 .foregroundStyle(AppTheme.textPrimary)
             }
         }

@@ -15,10 +15,10 @@ struct EquipmentPickerView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Your Equipment")
-                    .font(.title2.bold())
+                    .font(AppTheme.playfair(22, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("Select what's available at your gym.")
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(15))
                     .foregroundStyle(AppTheme.textSecondary)
 
                 equipmentGrid
@@ -47,7 +47,7 @@ struct EquipmentPickerView: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textSecondary)
                 Text(item)
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(14))
                     .foregroundStyle(AppTheme.textPrimary)
                 Spacer()
             }
@@ -70,11 +70,11 @@ struct EquipmentPickerView: View {
     private var customEquipmentSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Other Equipment")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Text("List any other equipment you have access to (e.g., TRX, battle ropes, sandbags)")
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
             TextField("Type custom equipment here...", text: $customEquipment, axis: .vertical)

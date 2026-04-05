@@ -59,13 +59,13 @@ struct EditProfileView: View {
     private var profileSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Profile Info")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             themedField("Display Name", text: $viewModel.editDisplayName)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Email").font(.caption).foregroundStyle(AppTheme.textSecondary)
+                Text("Email").font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
                 Text(userEmail)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -93,7 +93,7 @@ struct EditProfileView: View {
     private var goalsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Goals")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             FlowLayout(spacing: 8) {
@@ -145,10 +145,10 @@ struct EditProfileView: View {
     private func customGoalChip(_ goal: String) -> some View {
         HStack(spacing: 4) {
             Text(goal)
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
             Button(action: { viewModel.editGoals.remove(goal) }) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
+                    .font(AppTheme.caveat(11))
             }
         }
         .padding(.horizontal, 12)
@@ -162,7 +162,7 @@ struct EditProfileView: View {
         let isSelected = viewModel.editGoals.contains(goal)
         return Button(action: { toggleGoal(goal) }) {
             Text(goal)
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(isSelected ? AppTheme.accent : AppTheme.surface)
@@ -187,7 +187,7 @@ struct EditProfileView: View {
     private var splitDaysSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Split Days")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             if !viewModel.editSplitDays.isEmpty {
@@ -245,7 +245,7 @@ struct EditProfileView: View {
     private var equipmentSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Equipment")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             LazyVGrid(
@@ -257,16 +257,15 @@ struct EditProfileView: View {
                 }
             }
 
-            Divider()
-                .background(AppTheme.textSecondary.opacity(0.3))
+            InkDivider()
                 .padding(.vertical, 8)
 
             Text("Other Equipment")
-                .font(.subheadline.bold())
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Text("List any other equipment you have access to")
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
             TextField("Type custom equipment here...", text: $viewModel.editCustomEquipment, axis: .vertical)
@@ -303,7 +302,7 @@ struct EditProfileView: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textSecondary)
                 Text(item)
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(14))
                     .foregroundStyle(AppTheme.textPrimary)
                 Spacer()
             }
@@ -328,7 +327,7 @@ struct EditProfileView: View {
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Notes to Coach")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             TextField("e.g., recovering from shoulder injury", text: $viewModel.editNotesToCoach, axis: .vertical)
@@ -357,7 +356,7 @@ struct EditProfileView: View {
         keyboard: UIKeyboardType
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(AppTheme.textSecondary)
+            Text(label).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
             TextField(label, text: text)
                 .keyboardType(keyboard)
                 .padding(12)

@@ -47,12 +47,78 @@ enum AppTheme {
         startPoint: .leading, endPoint: .trailing
     )
 
+    // MARK: - Notebook-specific Colors
+
+    static let bindingStrip    = Color(adaptiveDark: 0x2A1F14, light: 0xE8E0D0)
+    static let bindingHole     = Color(adaptiveDark: 0x5A4020, light: 0xB8A880)
+    static let cornerFold      = Color(adaptiveDark: 0x2A2015, light: 0xE8E0CC)
+    static let timerTrack      = Color(adaptiveDark: 0x3A2A1A, light: 0xE8E0CC)
+    static let textHand        = Color(adaptiveDark: 0xC4A878, light: 0x3A5080)
+    static let prStamp         = Color(hex: 0xB91C1C)
+
     // MARK: - Dimensions
 
     /// Small radius — paper / journal feel
     static let cornerRadius: CGFloat = 6
     static let cardPadding: CGFloat  = 14
     static let sectionSpacing: CGFloat = 20
+
+    // MARK: - Custom Fonts
+
+    /// Playfair Display — page headers, section labels, buttons
+    static func playfair(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        switch weight {
+        case .bold, .semibold, .heavy, .black:
+            return Font.custom("PlayfairDisplay-Bold", size: size)
+        default:
+            return Font.custom("PlayfairDisplay-Regular", size: size)
+        }
+    }
+
+    /// Playfair Display Italic — elegant headings, wax-seal labels
+    static func playfairItalic(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        switch weight {
+        case .bold, .semibold, .heavy, .black:
+            return Font.custom("PlayfairDisplay-BoldItalic", size: size)
+        default:
+            return Font.custom("PlayfairDisplay-Italic", size: size)
+        }
+    }
+
+    /// Caveat — handwritten subtitles, labels, notes, tab text
+    static func caveat(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        weight == .bold
+            ? Font.custom("Caveat-Bold", size: size)
+            : Font.custom("Caveat-Regular", size: size)
+    }
+
+    /// IBM Plex Mono — data display, stats, calendar numbers
+    static func plexMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        switch weight {
+        case .bold, .semibold, .heavy, .black:
+            return Font.custom("IBMPlexMono-Bold", size: size)
+        case .medium:
+            return Font.custom("IBMPlexMono-Medium", size: size)
+        default:
+            return Font.custom("IBMPlexMono-Regular", size: size)
+        }
+    }
+
+    // MARK: - UIFont versions (for UIKit appearance APIs)
+
+    static func uiPlayfairBoldItalic(_ size: CGFloat) -> UIFont {
+        UIFont(name: "PlayfairDisplay-BoldItalic", size: size)
+            ?? UIFont(name: "PlayfairDisplay-Italic", size: size)
+            ?? .italicSystemFont(ofSize: size)
+    }
+
+    static func uiCaveat(_ size: CGFloat) -> UIFont {
+        UIFont(name: "Caveat-Regular", size: size) ?? .systemFont(ofSize: size)
+    }
+
+    static func uiPlexMono(_ size: CGFloat) -> UIFont {
+        UIFont(name: "IBMPlexMono-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+    }
 }
 
 // MARK: - Color Hex Extensions
@@ -185,12 +251,9 @@ struct NotebookSectionHeader: ViewModifier {
     func body(content: Content) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             content
-                .font(.system(size: 11, weight: .medium, design: .serif))
-                .italic()
+                .font(AppTheme.playfairItalic(11))
                 .foregroundStyle(AppTheme.textSecondary)
-            Rectangle()
-                .fill(AppTheme.border)
-                .frame(height: 0.5)
+            InkDivider()
         }
     }
 }
@@ -229,7 +292,7 @@ struct JournalChip: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                .font(AppTheme.caveat(13, weight: isSelected ? .bold : .regular))
                 .foregroundStyle(isSelected ? Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1) : AppTheme.textSecondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
@@ -252,7 +315,7 @@ struct WaxSealButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .semibold, design: .serif))
+            .font(AppTheme.playfairItalic(12, weight: .bold))
             .foregroundStyle(isSecondary ? AppTheme.accent : Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)

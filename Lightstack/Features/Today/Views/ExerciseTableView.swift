@@ -17,11 +17,11 @@ struct ExerciseTableView: View {
             headerRow
             if hasTargetInfo { targetInfoRow }
             if !loggedSets.isEmpty {
-                Divider().overlay(AppTheme.border)
+                InkDivider()
             }
             loggedSetsList
             pendingSetInputRows
-            Divider().overlay(AppTheme.border.opacity(0.5))
+            InkDivider()
             addSetButton
             if let restTime = restTimeRemaining {
                 restTimerBanner(restTime)
@@ -36,20 +36,20 @@ struct ExerciseTableView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(exercise.name)
-                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .font(AppTheme.playfair(15, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text(exercise.muscleGroup)
-                    .font(.caption)
+                    .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.accentSecondary)
             }
             Spacer()
             if let target = exercise.targetSets {
                 Text("\(loggedSets.count)/\(target) sets")
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(AppTheme.plexMono(13, weight: .medium))
                     .foregroundStyle(AppTheme.accent)
             } else {
                 Text("\(loggedSets.count) sets")
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .font(AppTheme.plexMono(13, weight: .medium))
                     .foregroundStyle(AppTheme.accent)
             }
         }
@@ -72,10 +72,10 @@ struct ExerciseTableView: View {
     private func targetBadge(_ label: String, value: String) -> some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
             Text(value)
-                .font(.caption.weight(.semibold))
+                .font(AppTheme.plexMono(11, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
         }
         .padding(.horizontal, 10)
@@ -90,7 +90,7 @@ struct ExerciseTableView: View {
         ForEach(Array(loggedSets.enumerated()), id: \.element.id) { index, workoutSet in
             HStack(spacing: 8) {
                 Text("Set \(index + 1)")
-                    .font(.caption.weight(.semibold))
+                    .font(AppTheme.caveat(11, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(width: 40, alignment: .leading)
                 SetRowView(workoutSet: workoutSet)
@@ -113,15 +113,15 @@ struct ExerciseTableView: View {
             Text("")
                 .frame(width: 40)
             Text("Lbs")
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 70)
             Text("Reps")
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 60)
             Text("RIR")
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 50)
         }
@@ -136,7 +136,7 @@ struct ExerciseTableView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text("Set \(loggedSets.count + index + 1)")
-                        .font(.caption.weight(.semibold))
+                        .font(AppTheme.caveat(11, weight: .bold))
                         .foregroundStyle(AppTheme.textSecondary)
                         .frame(width: 40, alignment: .leading)
 
@@ -167,7 +167,7 @@ struct ExerciseTableView: View {
 
                 // Optional per-set note
                 TextField("Add a note…", text: $pendingSets[index].note)
-                    .font(.caption.italic())
+                    .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.textSecondary)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
@@ -189,7 +189,7 @@ struct ExerciseTableView: View {
                 Image(systemName: "plus.circle")
                 Text("Add Set")
             }
-            .font(.caption.weight(.medium))
+            .font(AppTheme.caveat(11, weight: .bold))
             .foregroundStyle(AppTheme.textSecondary)
         }
         .buttonStyle(.plain)
@@ -203,7 +203,7 @@ struct ExerciseTableView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.accent)
             Text("Rest — \(time) remaining")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(AppTheme.plexMono(12, weight: .medium))
                 .foregroundStyle(AppTheme.accent)
             Spacer()
         }
@@ -222,7 +222,7 @@ struct ExerciseTableView: View {
         VStack(spacing: 2) {
             TextField(placeholder, text: text)
                 .keyboardType(keyboard)
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .font(AppTheme.plexMono(14, weight: .medium))
                 .multilineTextAlignment(.center)
                 .frame(width: width)
                 .foregroundStyle(AppTheme.textPrimary)

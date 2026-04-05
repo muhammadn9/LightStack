@@ -59,11 +59,11 @@ struct LoginView: View {
             }
 
             Text("Lightstack")
-                .font(.largeTitle.bold())
+                .font(AppTheme.playfairItalic(40, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Text("Your AI Strength Coach")
-                .font(.subheadline)
+                .font(AppTheme.caveat(18))
                 .foregroundStyle(AppTheme.textSecondary)
         }
     }
@@ -92,7 +92,7 @@ struct LoginView: View {
                     Button("Forgot password?") {
                         handleForgotPassword()
                     }
-                    .font(.footnote)
+                    .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.accentSecondary)
                 }
             }
@@ -102,7 +102,7 @@ struct LoginView: View {
                     Image(systemName: "checkmark.circle.fill")
                     Text("Check your email for a password reset link")
                 }
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.accent)
             }
 
@@ -111,13 +111,13 @@ struct LoginView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                     Text(errorMessage)
                 }
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.destructive)
             }
 
             Button(action: handleEmailAuth) {
                 Text(isSignUp ? "Sign Up" : "Sign In")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -143,7 +143,7 @@ struct LoginView: View {
                     Image(systemName: "g.circle.fill")
                         .font(.title2)
                     Text("Sign in with Google")
-                        .font(.headline)
+                        .font(AppTheme.playfairItalic(16, weight: .bold))
                 }
                 .foregroundStyle(AppTheme.textPrimary)
                 .frame(maxWidth: .infinity)
@@ -175,7 +175,7 @@ struct LoginView: View {
             Text(isSignUp
                  ? "Already have an account? Sign In"
                  : "Don't have an account? Sign Up")
-                .font(.footnote)
+                .font(AppTheme.caveat(12))
                 .foregroundStyle(AppTheme.accentSecondary)
         }
     }
@@ -226,9 +226,9 @@ struct LoginView: View {
 
     private func dividerWithText(_ text: String) -> some View {
         HStack {
-            Rectangle().frame(height: 1).foregroundStyle(AppTheme.surfaceElevated)
-            Text(text).font(.caption).foregroundStyle(AppTheme.textSecondary)
-            Rectangle().frame(height: 1).foregroundStyle(AppTheme.surfaceElevated)
+            InkDivider()
+            Text(text).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
+            InkDivider()
         }
     }
 }

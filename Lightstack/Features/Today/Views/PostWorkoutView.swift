@@ -36,11 +36,11 @@ struct PostWorkoutView: View {
             }
 
             Text("Session Complete")
-                .font(.system(size: 22, weight: .bold, design: .serif))
+                .font(AppTheme.playfairItalic(22, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Text("Logged to your training journal")
-                .font(.subheadline)
+                .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -65,10 +65,10 @@ struct PostWorkoutView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.accentSecondary)
             Text(value)
-                .font(.headline)
+                .font(AppTheme.plexMono(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text(unit)
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -96,7 +96,7 @@ struct PostWorkoutView: View {
                     .foregroundStyle(AppTheme.accent)
                     .symbolEffect(.pulse, options: .repeating)
                 Text("Coach's Progression Note")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
@@ -105,7 +105,7 @@ struct PostWorkoutView: View {
                     ProgressView()
                         .tint(AppTheme.accent)
                     Text("Analyzing your session...")
-                        .font(.subheadline)
+                        .font(AppTheme.caveat(14))
                         .foregroundStyle(AppTheme.textSecondary)
                 }
                 .padding()
@@ -116,7 +116,7 @@ struct PostWorkoutView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 2))
 
                     Text(note)
-                        .font(.body)
+                        .font(AppTheme.caveat(15))
                         .foregroundStyle(AppTheme.textPrimary)
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -132,7 +132,7 @@ struct PostWorkoutView: View {
     private var userNoteSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Your Notes (optional)")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             TextField("How did it feel? Anything to remember?",

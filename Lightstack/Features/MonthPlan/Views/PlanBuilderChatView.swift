@@ -40,7 +40,7 @@ struct PlanBuilderChatView: View {
                 Image(systemName: "target")
                     .foregroundStyle(AppTheme.accent)
                 Text("Tell the coach your training goal")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
@@ -54,14 +54,14 @@ struct PlanBuilderChatView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Training days per week")
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(15))
                     .foregroundStyle(AppTheme.textSecondary)
 
                 HStack(spacing: 8) {
                     ForEach(2...6, id: \.self) { days in
                         Button(action: { viewModel.daysPerWeek = days }) {
                             Text("\(days)")
-                                .font(.subheadline.weight(.semibold))
+                                .font(AppTheme.plexMono(14, weight: .medium))
                                 .foregroundStyle(viewModel.daysPerWeek == days ? .white : AppTheme.textSecondary)
                                 .frame(width: 44, height: 36)
                                 .background(viewModel.daysPerWeek == days ? AppTheme.accent : AppTheme.surfaceElevated)
@@ -87,7 +87,7 @@ struct PlanBuilderChatView: View {
                     ProgressView()
                         .tint(AppTheme.accent)
                     Text("Generating your plan...")
-                        .font(.caption)
+                        .font(AppTheme.caveat(11))
                         .foregroundStyle(AppTheme.textSecondary)
                     Spacer()
                 }
@@ -108,7 +108,7 @@ struct PlanBuilderChatView: View {
                 Image(systemName: "calendar")
                 Text("View Your Plan")
             }
-            .font(.headline)
+            .font(AppTheme.playfairItalic(16, weight: .bold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
@@ -123,7 +123,7 @@ struct PlanBuilderChatView: View {
         VStack(spacing: 0) {
             if let error = viewModel.errorMessage {
                 Text(error)
-                    .font(.caption)
+                    .font(AppTheme.caveat(11))
                     .foregroundStyle(AppTheme.destructive)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
@@ -139,7 +139,7 @@ struct PlanBuilderChatView: View {
                     }
                     Text(viewModel.isGenerating ? "Generating..." : "Generate Plan")
                 }
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)

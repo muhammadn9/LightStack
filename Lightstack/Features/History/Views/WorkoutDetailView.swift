@@ -79,7 +79,7 @@ struct WorkoutDetailView: View {
     private var headerSection: some View {
         VStack(spacing: 12) {
             Text(formatDate(workout.date))
-                .font(.title3.bold())
+                .font(AppTheme.playfair(18, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             HStack(spacing: 16) {
@@ -95,10 +95,10 @@ struct WorkoutDetailView: View {
     private func statPill(icon: String, value: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.accentSecondary)
             Text(value)
-                .font(.caption.weight(.medium))
+                .font(AppTheme.plexMono(10))
                 .foregroundStyle(AppTheme.textPrimary)
         }
         .padding(.horizontal, 12)
@@ -115,11 +115,11 @@ struct WorkoutDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(exercise.name)
-                            .font(.headline)
+                            .font(AppTheme.playfairItalic(16, weight: .bold))
                             .foregroundStyle(AppTheme.textPrimary)
                         Spacer()
                         Text(exercise.muscleGroup)
-                            .font(.caption)
+                            .font(AppTheme.caveat(11))
                             .foregroundStyle(AppTheme.accentSecondary)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -146,12 +146,12 @@ struct WorkoutDetailView: View {
                 Image(systemName: "pencil.and.list.clipboard")
                     .foregroundStyle(AppTheme.accent)
                 Text("Pre-Workout Notes")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
             Text(workout.setupNote ?? "")
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -166,12 +166,12 @@ struct WorkoutDetailView: View {
                 Image(systemName: "sparkles")
                     .foregroundStyle(AppTheme.accent)
                 Text("AI Progression Note")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
             Text(workout.aiProgressionNote ?? "")
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -186,12 +186,12 @@ struct WorkoutDetailView: View {
                 Image(systemName: "note.text")
                     .foregroundStyle(AppTheme.accentSecondary)
                 Text("My Notes")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
             Text(workout.userNote ?? "")
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -8,31 +8,38 @@ struct SetRowView: View {
         HStack(spacing: 6) {
             // Set number badge
             Text("\(workoutSet.setNumber)")
-                .font(.caption2.weight(.bold))
+                .font(AppTheme.plexMono(10, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 22, height: 22)
                 .background(AppTheme.accent)
                 .clipShape(Circle())
 
             Text(String(format: "%.1f", workoutSet.weightLbs))
+                .font(AppTheme.caveat(13))
                 .fontWeight(.semibold)
                 .foregroundStyle(AppTheme.textPrimary)
             Text("lbs")
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
             Text("x")
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
             Text("\(workoutSet.reps)")
+                .font(AppTheme.caveat(13))
                 .fontWeight(.semibold)
                 .foregroundStyle(AppTheme.textPrimary)
             Text("reps")
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
             Text("@")
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
             Text("RIR \(workoutSet.rir)")
+                .font(AppTheme.caveat(13))
                 .fontWeight(.medium)
                 .foregroundStyle(AppTheme.textPrimary)
 
@@ -45,7 +52,6 @@ struct SetRowView: View {
                     .shadow(color: AppTheme.warning.opacity(0.5), radius: 4)
             }
         }
-        .font(.subheadline)
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
         .background(AppTheme.surfaceElevated.opacity(0.5))

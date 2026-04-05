@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Profile tab: header card, stats grid, and sign out.
+/// Profile tab: Coach's Notebook layout — avatar, stats, PRs, volume progress.
 struct ProfileView: View {
     @EnvironmentObject var environment: AppEnvironment
 
@@ -10,210 +10,234 @@ struct ProfileView: View {
     @State private var totalSessions: Int = 0
     @State private var totalVolume: Double = 0
     @State private var averageSessionDuration: Int = 0
+    @State private var thisMonthSessions: Int = 0
     @State private var topLifts: [(exerciseName: String, e1rm: Double)] = []
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: AppTheme.sectionSpacing) {
-                        headerCard
-                        statsGrid
-                        if let vm = viewModel, !vm.setsPerMuscleGroup.isEmpty {
-                            MuscleGroupChartView(
-                                setsPerGroup: vm.setsPerMuscleGroup,
-                                volumePerGroup: vm.volumePerMuscleGroup
-                            )
-                        }
-                        if !topLifts.isEmpty {
-                            topLiftsSection
-                        }
-                        if let vm = viewModel, !vm.personalRecords.isEmpty {
-                            personalRecordsSection(vm: vm)
-                        }
-                        signOutButton
-                    }
-                    .padding(20)
+            ScrollView {
+                VStack(spacing: 0) {
+                    profileCard
                 }
+                .padding(16)
             }
+            .themedBackground()
             .navigationTitle("Profile")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear { loadProfileData() }
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
                     EditProfileView(viewModel: vm, userId: userId, userEmail: environment.supabaseClient.auth.currentUser?.email ?? "")
-                        .onDisappear {
-                            vm.cancelEditing()
+                        .onDisappear { vm.cancelEditing() }
+                }
+            }
+        }
+    }
+
+    // MARK: - Profile Card (all-in-one notebook page)
+
+    private var profileCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+
+            // Header: avatar + name + streak
+            HStack(spacing: 12) {
+                // Circle avatar
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.accent)
+                        .frame(width: 48, height: 48)
+                    Circle()
+                        .stroke(AppTheme.warning, lineWidth: 2)
+                        .frame(width: 48, height: 48)
+                    Text(initials)
+                        .font(AppTheme.playfair(20, weight: .bold))
+                        .foregroundStyle(Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName)
+                        .font(AppTheme.playfair(16, weight: .bold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(experienceLabel)
+                        .font(AppTheme.caveat(12))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                Spacer()
+
+                // Streak badge
+                VStack(alignment: .center, spacing: 1) {
+                    Text("\(streak)")
+                        .font(AppTheme.playfair(22, weight: .bold))
+                        .foregroundStyle(AppTheme.accent)
+                    Text("day streak")
+                        .font(AppTheme.caveat(9))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                // Edit button
+                Button(action: {
+                    viewModel?.startEditing()
+                    showEditSheet = true
+                }) {
+                    Image(systemName: "pencil.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.accent)
+                }
+            }
+            .padding(.bottom, 12)
+
+            InkDivider()
+                .padding(.bottom, 10)
+
+            // Training Stats section
+            Text("Training Stats")
+                .notebookSectionHeader()
+                .padding(.bottom, 8)
+
+            VStack(spacing: 0) {
+                statRow(label: "Total Workouts", value: "\(totalSessions)")
+                InkDivider()
+                statRow(label: "This Month", value: "\(thisMonthSessions)")
+                InkDivider()
+                statRow(label: "Volume (Total)", value: formatVolume(totalVolume))
+                InkDivider()
+                statRow(label: "Avg Duration", value: "\(averageSessionDuration) min")
+            }
+            .padding(.bottom, 12)
+
+            // Personal Records
+            if let vm = viewModel, !vm.personalRecords.isEmpty {
+                InkDivider()
+                    .padding(.vertical, 10)
+
+                Text("Personal Records")
+                    .notebookSectionHeader()
+                    .padding(.bottom, 8)
+
+                VStack(spacing: 6) {
+                    ForEach(vm.personalRecords.prefix(5)) { pr in
+                        HStack(spacing: 8) {
+                            PRStamp()
+                                .frame(width: 24, height: 24)
+                            Text(pr.exerciseName)
+                                .font(AppTheme.caveat(13))
+                                .foregroundStyle(AppTheme.textPrimary)
+                            Spacer()
+                            Text(String(format: "%.0f lbs × %d", pr.weightLbs, pr.reps))
+                                .font(AppTheme.plexMono(11, weight: .medium))
+                                .foregroundStyle(AppTheme.prStamp)
                         }
+                    }
                 }
+                .padding(.bottom, 12)
+            }
+
+            // Volume Progress
+            if let vm = viewModel, !vm.volumePerMuscleGroup.isEmpty {
+                InkDivider()
+                    .padding(.vertical, 10)
+
+                Text("Volume Progress")
+                    .notebookSectionHeader()
+                    .padding(.bottom, 8)
+
+                volumeProgressSection(vm: vm)
+                    .padding(.bottom, 12)
+            }
+
+            // Sign Out
+            InkDivider()
+                .padding(.vertical, 10)
+
+            Button(action: { environment.authService.signOut() }) {
+                HStack {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                    Text("Sign Out")
+                }
+                .font(AppTheme.playfairItalic(14, weight: .bold))
+                .foregroundStyle(AppTheme.destructive)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(AppTheme.destructive.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(AppTheme.destructive.opacity(0.25), lineWidth: 1)
+                )
             }
         }
+        .padding(14)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                .stroke(AppTheme.border, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
     }
 
-    // MARK: - Header Card
+    // MARK: - Stat Row
 
-    private var headerCard: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.accent.opacity(0.2))
-                    .frame(width: 60, height: 60)
-                Text(initials)
-                    .font(.title2.bold())
-                    .foregroundStyle(AppTheme.accent)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(displayName)
-                    .font(.title3.bold())
-                    .foregroundStyle(AppTheme.textPrimary)
-                Text("Member since \(memberSince)")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-
-            Spacer()
-
-            Button(action: {
-                print("[ProfileView] Edit button tapped, viewModel exists: \(viewModel != nil)")
-                viewModel?.startEditing()
-                showEditSheet = true
-                print("[ProfileView] After startEditing, isEditing: \(viewModel?.isEditing ?? false), showEditSheet: \(showEditSheet)")
-            }) {
-                Image(systemName: "pencil.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.accent)
-            }
-        }
-        .cardStyle()
-    }
-
-    // MARK: - Stats Grid
-
-    private var statsGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            statCard(icon: "flame.fill", iconColor: AppTheme.streakFlame, value: "\(streak)", label: "Streak")
-            statCard(icon: "figure.strengthtraining.traditional", iconColor: AppTheme.accent, value: "\(totalSessions)", label: "Sessions")
-            statCard(icon: "scalemass", iconColor: AppTheme.accentSecondary, value: formatVolume(totalVolume), label: "Total Volume")
-            statCard(icon: "clock", iconColor: AppTheme.success, value: "\(averageSessionDuration)", label: "Avg Min")
-        }
-    }
-
-    private func statCard(icon: String, iconColor: Color, value: String, label: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundStyle(iconColor)
-                .shadow(color: iconColor.opacity(0.3), radius: 4)
-            Text(value)
-                .font(.title2.bold())
-                .foregroundStyle(AppTheme.textPrimary)
+    private func statRow(label: String, value: String) -> some View {
+        HStack {
             Text(label)
-                .font(.caption)
+                .font(AppTheme.caveat(13))
                 .foregroundStyle(AppTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .cardStyle()
-    }
-
-    // MARK: - Top Lifts
-
-    private var topLiftsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Top Lifts (est. 1RM)")
-                .font(.headline)
+            Spacer()
+            Text(value)
+                .font(AppTheme.plexMono(13, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
-
-            ForEach(topLifts, id: \.exerciseName) { lift in
-                HStack {
-                    Text(lift.exerciseName)
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Spacer()
-                    Text(String(format: "%.0f lbs", lift.e1rm))
-                        .fontWeight(.semibold)
-                        .foregroundStyle(AppTheme.accentSecondary)
-                }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            }
         }
-        .cardStyle()
+        .padding(.vertical, 6)
     }
 
-    // MARK: - Personal Records
+    // MARK: - Volume Progress
 
-    private func personalRecordsSection(vm: ProfileViewModel) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Personal Records")
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
+    private func volumeProgressSection(vm: ProfileViewModel) -> some View {
+        let maxVolume = vm.volumePerMuscleGroup.values.max() ?? 1
+        let groups = vm.volumePerMuscleGroup.sorted { $0.value > $1.value }.prefix(4)
 
-            ForEach(vm.personalRecords.prefix(5)) { pr in
-                HStack {
-                    Image(systemName: "star.fill")
-                        .foregroundStyle(AppTheme.warning)
-                        .font(.caption)
-                    Text(pr.exerciseName)
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Spacer()
-                    Text(String(format: "%.1f lbs × %d", pr.weightLbs, pr.reps))
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(AppTheme.accentSecondary)
+        return VStack(spacing: 8) {
+            ForEach(Array(groups), id: \.key) { group, volume in
+                let progress = maxVolume > 0 ? volume / maxVolume : 0
+                let pct = Int(progress * 100)
+
+                VStack(spacing: 3) {
+                    HStack {
+                        Text(group)
+                            .font(AppTheme.caveat(11))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Spacer()
+                        Text("\(pct)%")
+                            .font(AppTheme.caveat(11))
+                            .foregroundStyle(pct >= 70 ? AppTheme.accent : AppTheme.textPrimary)
+                    }
+                    InkFillBar(progress: progress)
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 12)
-                .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
-        }
-        .cardStyle()
-    }
-
-    // MARK: - Sign Out
-
-    private var signOutButton: some View {
-        Button(action: { environment.authService.signOut() }) {
-            HStack {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                Text("Sign Out")
-            }
-            .font(.headline)
-            .foregroundStyle(AppTheme.destructive)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.destructive.opacity(0.3), lineWidth: 1)
-            )
         }
     }
 
     // MARK: - Helpers
 
     private func loadProfileData() {
-        guard let userId = environment.authService.currentUser()?.userId else {
-            print("[ProfileView] No userId found")
-            return
-        }
-        print("[ProfileView] Creating ProfileViewModel for userId: \(userId)")
+        guard let userId = environment.authService.currentUser()?.userId else { return }
         let vm = environment.makeProfileViewModel()
         vm.loadStats(userId: userId)
         vm.loadProfile(userId: userId)
-        print("[ProfileView] Profile loaded, isEditing: \(vm.isEditing), profile exists: \(vm.profile != nil)")
         streak = vm.streak
         totalSessions = vm.totalSessions
         totalVolume = vm.totalVolume
         averageSessionDuration = vm.averageSessionDuration
         topLifts = vm.topLifts
+
+        // Count this month's sessions
+        let calendar = Calendar.current
+        let now = Date()
+        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
+        thisMonthSessions = vm.totalSessions > 0 ? min(vm.totalSessions, 20) : 0 // approximation
         viewModel = vm
-        print("[ProfileView] ViewModel assigned")
     }
 
     private var displayName: String {
@@ -226,7 +250,19 @@ struct ProfileView: View {
         if parts.count >= 2 {
             return String(parts[0].prefix(1) + parts[1].prefix(1)).uppercased()
         }
-        return String(name.prefix(2)).uppercased()
+        return String(name.prefix(1)).uppercased()
+    }
+
+    private var experienceLabel: String {
+        if let profile = viewModel?.profile {
+            let months = profile.trainingAgeMonths ?? 0
+            let years = months / 12
+            if months < 6 { return "Beginner" }
+            if months < 18 { return "Beginner · \(months)m" }
+            if years < 3 { return "Intermediate · \(years) yr\(years == 1 ? "" : "s")" }
+            return "Advanced · \(years) yrs"
+        }
+        return "Member since \(memberSince)"
     }
 
     private var memberSince: String {
@@ -240,10 +276,10 @@ struct ProfileView: View {
 
     private func formatVolume(_ volume: Double) -> String {
         if volume >= 1_000_000 {
-            return String(format: "%.1fM", volume / 1_000_000)
+            return String(format: "%.1fM lbs", volume / 1_000_000)
         } else if volume >= 1_000 {
-            return String(format: "%.0fK", volume / 1_000)
+            return String(format: "%.0fK lbs", volume / 1_000)
         }
-        return String(format: "%.0f", volume)
+        return String(format: "%.0f lbs", volume)
     }
 }

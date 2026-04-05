@@ -8,12 +8,12 @@ struct MuscleGroupChartView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Training Volume by Muscle Group")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             if sortedGroups.isEmpty {
                 Text("No data yet")
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(14))
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 20)
@@ -33,7 +33,7 @@ struct MuscleGroupChartView: View {
     private func barRow(group: String, sets: Int, volume: Double) -> some View {
         HStack(spacing: 12) {
             Text(group)
-                .font(.subheadline.weight(.medium))
+                .font(AppTheme.caveat(14, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
                 .frame(width: 80, alignment: .leading)
 
@@ -62,7 +62,7 @@ struct MuscleGroupChartView: View {
             .frame(height: 24)
 
             Text("\(sets)")
-                .font(.subheadline.bold())
+                .font(AppTheme.plexMono(14, weight: .bold))
                 .foregroundStyle(AppTheme.accentSecondary)
                 .frame(width: 30, alignment: .trailing)
         }

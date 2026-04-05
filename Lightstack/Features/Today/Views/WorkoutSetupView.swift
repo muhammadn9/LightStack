@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Pre-workout setup: training-log journal form style.
+/// Pre-workout setup: training-log journal form style matching the Coach's Notebook mockup.
 struct WorkoutSetupView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: WorkoutSetupViewModel
@@ -9,24 +9,32 @@ struct WorkoutSetupView: View {
 
     private var todayHeader: String {
         let f = DateFormatter()
-        f.dateFormat = "MMMM d, yyyy"
+        f.dateFormat = "EEEE, MMMM d"
         return "\(f.string(from: Date())) — Training Log"
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                // Date header
+            VStack(alignment: .leading, spacing: 18) {
+
+                // Date + heading
                 VStack(alignment: .leading, spacing: 2) {
                     Text(todayHeader)
-                        .font(.system(size: 13, weight: .regular, design: .serif))
-                        .italic()
+                        .font(AppTheme.playfairItalic(13))
                         .foregroundStyle(AppTheme.textSecondary)
-                    Text("What are we training today?")
-                        .font(.system(size: 22, weight: .bold, design: .serif))
-                        .foregroundStyle(AppTheme.textPrimary)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("What are we")
+                            .font(AppTheme.playfair(26, weight: .bold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("training today?")
+                            .font(AppTheme.playfairItalic(26, weight: .bold))
+                            .foregroundStyle(AppTheme.accent)
+                    }
                 }
                 .padding(.top, 4)
+
+                InkDivider()
 
                 // Workout Type
                 VStack(alignment: .leading, spacing: 8) {
@@ -34,7 +42,7 @@ struct WorkoutSetupView: View {
                         .notebookSectionHeader()
                     if viewModel.splitDays.isEmpty {
                         Text("No split days configured. Add them in your profile.")
-                            .font(.subheadline)
+                            .font(AppTheme.caveat(14))
                             .foregroundStyle(AppTheme.textSecondary)
                     } else {
                         FlowLayout(spacing: 6) {
@@ -49,44 +57,81 @@ struct WorkoutSetupView: View {
                     }
                 }
 
-                // Time Available
+                // Energy Level (5-dot scale)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Time Available")
+                    Text("Energy Level")
                         .notebookSectionHeader()
-                    HStack(spacing: 6) {
-                        ForEach(WorkoutSetupViewModel.timePresets, id: \.self) { mins in
-                            JournalChip(
-                                label: "\(mins)m",
-                                isSelected: viewModel.timeAvailable == mins,
-                                action: { viewModel.timeAvailable = mins }
-                            )
+                    HStack(spacing: 10) {
+                        ForEach(1...5, id: \.self) { i in
+                            Button(action: { viewModel.energyLevel = i * 2 }) {
+                                Circle()
+                                    .fill(i * 2 <= viewModel.energyLevel ? AppTheme.accent : Color.clear)
+                                    .frame(width: 16, height: 16)
+                                    .overlay(Circle().stroke(AppTheme.accent.opacity(0.6), lineWidth: 1.5))
+                            }
+                            .buttonStyle(.plain)
                         }
+                        let displayDots = min(5, max(1, (viewModel.energyLevel + 1) / 2))
+                        Text("\(displayDots) / 5")
+                            .font(AppTheme.caveat(13))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .padding(.leading, 4)
                     }
                 }
 
-                // Energy Level
+                // Time Available — stepper style
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Energy Level")
-                            .notebookSectionHeader()
+                    Text("Time Available")
+                        .notebookSectionHeader()
+                    HStack(spacing: 10) {
+                        Text("\(viewModel.timeAvailable)")
+                            .font(AppTheme.playfair(26, weight: .bold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("minutes")
+                            .font(AppTheme.caveat(13))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .padding(.top, 4)
                         Spacer()
-                        Text("\(viewModel.energyLevel) / 10")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(AppTheme.accent)
+                        HStack(spacing: 6) {
+                            Button(action: { if viewModel.timeAvailable > 15 { viewModel.timeAvailable -= 15 } }) {
+                                Text("−")
+                                    .font(AppTheme.caveat(18, weight: .bold))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.clear)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .stroke(AppTheme.border, lineWidth: 1.5)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+
+                            Button(action: { if viewModel.timeAvailable < 120 { viewModel.timeAvailable += 15 } }) {
+                                Text("+")
+                                    .font(AppTheme.caveat(18, weight: .bold))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.clear)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .stroke(AppTheme.border, lineWidth: 1.5)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    InkDotRating(value: viewModel.energyLevel, max: 10) { viewModel.energyLevel = $0 }
                 }
 
                 // Notes
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Notes for Coach")
                         .notebookSectionHeader()
-                    TextField("e.g. Focus on bench, skip isolation...",
+                    TextField("Feeling strong today, focus on chest...",
                               text: $viewModel.additionalNotes,
                               axis: .vertical)
-                        .font(.system(size: 14).italic())
+                        .font(AppTheme.caveat(14))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .padding(12)
+                        .padding(10)
                         .background(AppTheme.surfaceElevated)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                         .overlay(
@@ -108,9 +153,8 @@ struct WorkoutSetupView: View {
                 VStack(spacing: 10) {
                     Button(action: submitWorkout) {
                         HStack(spacing: 8) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Generate Workout")
+                            Text("✦")
+                            Text("Generate My Workout")
                         }
                     }
                     .buttonStyle(WaxSealButtonStyle(isSecondary: false))
@@ -125,6 +169,7 @@ struct WorkoutSetupView: View {
                     }
                     .buttonStyle(WaxSealButtonStyle(isSecondary: true))
                 }
+                .padding(.top, 4)
             }
             .padding(20)
         }

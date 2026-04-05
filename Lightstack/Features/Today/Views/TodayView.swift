@@ -113,10 +113,10 @@ struct TodayView: View {
 
             VStack(spacing: 6) {
                 Text("Writing your plan…")
-                    .font(.system(size: 17, weight: .semibold, design: .serif))
+                    .font(AppTheme.playfairItalic(17, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("Your coach is preparing the workout")
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(15))
                     .foregroundStyle(AppTheme.textSecondary)
             }
         }

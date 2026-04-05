@@ -81,10 +81,10 @@ private struct HistoryContentView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(AppTheme.accent.opacity(0.5))
             Text("No workout history yet")
-                .font(.headline)
+                .font(AppTheme.playfair(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("Complete your first workout to see it here")
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -117,16 +117,16 @@ private struct HistoryContentView: View {
             HStack {
                 VStack(spacing: 2) {
                     Text(DateFormatter.dayAbbreviation.string(from: workout.date).uppercased())
-                        .font(.caption.weight(.bold))
+                        .font(AppTheme.caveat(10, weight: .bold))
                         .foregroundStyle(AppTheme.textSecondary)
                     Text(DateFormatter.dayNumber.string(from: workout.date))
-                        .font(.title2.bold())
+                        .font(AppTheme.plexMono(20, weight: .bold))
                         .foregroundStyle(AppTheme.accent)
                 }
                 .frame(width: 50)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workout.workoutType)
-                        .font(.system(size: 15, weight: .semibold, design: .serif))
+                        .font(AppTheme.playfair(15, weight: .bold))
                         .foregroundStyle(AppTheme.textPrimary)
                     HStack(spacing: 12) {
                         Label("\(summary.exerciseCount) exercises", systemImage: "figure.strengthtraining.traditional")
@@ -135,7 +135,7 @@ private struct HistoryContentView: View {
                         }
                         Label(formatVolume(summary.totalVolume), systemImage: "scalemass")
                     }
-                    .font(.caption)
+                    .font(AppTheme.plexMono(10))
                     .foregroundStyle(AppTheme.textSecondary)
                 }
                 Spacer()

@@ -33,7 +33,7 @@ struct PlannedSessionView: View {
                     .foregroundStyle(session.isRestDay ? AppTheme.textSecondary : AppTheme.accent)
 
                 Text(session.workoutType)
-                    .font(.title2.bold())
+                    .font(AppTheme.playfair(20, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
 
                 Spacer()
@@ -43,7 +43,7 @@ struct PlannedSessionView: View {
 
             if let note = session.focusNote, !note.isEmpty {
                 Text(note)
-                    .font(.body)
+                    .font(AppTheme.caveat(14))
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -56,7 +56,7 @@ struct PlannedSessionView: View {
     private var detailsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Session Details")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             HStack {
@@ -70,7 +70,7 @@ struct PlannedSessionView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(AppTheme.success)
                     Text("Completed")
-                        .font(.subheadline.weight(.medium))
+                        .font(AppTheme.caveat(15))
                         .foregroundStyle(AppTheme.success)
                 }
                 .padding(.top, 4)
@@ -89,7 +89,7 @@ struct PlannedSessionView: View {
                         Image(systemName: "play.fill")
                         Text("Start This Workout")
                     }
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -103,7 +103,7 @@ struct PlannedSessionView: View {
                     Image(systemName: "sparkles")
                     Text("Configure with AI")
                 }
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.accent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
@@ -119,7 +119,7 @@ struct PlannedSessionView: View {
         Group {
             if session.completed {
                 Text("Done")
-                    .font(.caption.weight(.semibold))
+                    .font(AppTheme.caveat(11, weight: .bold))
                     .foregroundStyle(AppTheme.success)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -127,7 +127,7 @@ struct PlannedSessionView: View {
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             } else if isToday {
                 Text("Today")
-                    .font(.caption.weight(.semibold))
+                    .font(AppTheme.caveat(11, weight: .bold))
                     .foregroundStyle(AppTheme.accent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -135,7 +135,7 @@ struct PlannedSessionView: View {
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             } else if isPast {
                 Text("Missed")
-                    .font(.caption.weight(.semibold))
+                    .font(AppTheme.caveat(11, weight: .bold))
                     .foregroundStyle(AppTheme.warning)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -167,10 +167,10 @@ private struct DetailPill: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.accent)
             Text(label)
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(.horizontal, 10)

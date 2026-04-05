@@ -84,6 +84,13 @@
 		c10da7ffb6164e359d117a76 /* MuscleGroupChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7229867bd5514613903794d3 /* MuscleGroupChartView.swift */; };
 		c59faa99015446129af0654c /* EditProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = d8b743b28d3549cda23bbb79 /* EditProfileView.swift */; };
 		db64ac83ca0546ab94e6abec /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64231a22773d45c3850456c1 /* KeychainService.swift */; };
+		F0A1B2C3D4E5F6A700000001 /* PlayfairDisplay.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F6A700000011 /* PlayfairDisplay.ttf */; };
+		F0A1B2C3D4E5F6A700000002 /* PlayfairDisplay-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F6A700000012 /* PlayfairDisplay-Italic.ttf */; };
+		F0A1B2C3D4E5F6A700000003 /* Caveat.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F6A700000013 /* Caveat.ttf */; };
+		F0A1B2C3D4E5F6A700000004 /* IBMPlexMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F6A700000014 /* IBMPlexMono-Regular.ttf */; };
+		F0A1B2C3D4E5F6A700000005 /* IBMPlexMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F6A700000015 /* IBMPlexMono-Medium.ttf */; };
+		F0A1B2C3D4E5F6A700000006 /* IBMPlexMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F6A700000016 /* IBMPlexMono-Bold.ttf */; };
+		F0A1B2C3D4E5F6A700000007 /* NotebookComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0A1B2C3D4E5F6A700000017 /* NotebookComponents.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -167,6 +174,13 @@
 		FD7FAD3D73C29C60902B298C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		d4f1049e7fe14415938e63cf /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		d8b743b28d3549cda23bbb79 /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F6A700000011 /* PlayfairDisplay.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = PlayfairDisplay.ttf; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F6A700000012 /* PlayfairDisplay-Italic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PlayfairDisplay-Italic.ttf"; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F6A700000013 /* Caveat.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = Caveat.ttf; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F6A700000014 /* IBMPlexMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Regular.ttf"; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F6A700000015 /* IBMPlexMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Medium.ttf"; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F6A700000016 /* IBMPlexMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexMono-Bold.ttf"; sourceTree = "<group>"; };
+		F0A1B2C3D4E5F6A700000017 /* NotebookComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookComponents.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -251,14 +265,29 @@
 			isa = PBXGroup;
 			children = (
 				5289433B1ABC3A4B839BAFC0 /* Assets.xcassets */,
+				F0A1B2C3D4E5F6A700000020 /* Fonts */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		F0A1B2C3D4E5F6A700000020 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				F0A1B2C3D4E5F6A700000011 /* PlayfairDisplay.ttf */,
+				F0A1B2C3D4E5F6A700000012 /* PlayfairDisplay-Italic.ttf */,
+				F0A1B2C3D4E5F6A700000013 /* Caveat.ttf */,
+				F0A1B2C3D4E5F6A700000014 /* IBMPlexMono-Regular.ttf */,
+				F0A1B2C3D4E5F6A700000015 /* IBMPlexMono-Medium.ttf */,
+				F0A1B2C3D4E5F6A700000016 /* IBMPlexMono-Bold.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 		2C0925FB43B9C8C33490AA77 /* Theme */ = {
 			isa = PBXGroup;
 			children = (
 				267186236ACFFCD04827C356 /* AppTheme.swift */,
+				F0A1B2C3D4E5F6A700000017 /* NotebookComponents.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -592,6 +621,12 @@
 			files = (
 				8EC798942990E391044114D2 /* Assets.xcassets in Resources */,
 				5F7CD083D9356E41ACD6F1CD /* Secrets.xcconfig.template in Resources */,
+				F0A1B2C3D4E5F6A700000001 /* PlayfairDisplay.ttf in Resources */,
+				F0A1B2C3D4E5F6A700000002 /* PlayfairDisplay-Italic.ttf in Resources */,
+				F0A1B2C3D4E5F6A700000003 /* Caveat.ttf in Resources */,
+				F0A1B2C3D4E5F6A700000004 /* IBMPlexMono-Regular.ttf in Resources */,
+				F0A1B2C3D4E5F6A700000005 /* IBMPlexMono-Medium.ttf in Resources */,
+				F0A1B2C3D4E5F6A700000006 /* IBMPlexMono-Bold.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -676,6 +711,7 @@
 				2779E5C0E0798AE34DD76031 /* WorkoutSessionPersistence.swift in Sources */,
 				6F1603A80F30A5B8FCF1852F /* WorkoutModification.swift in Sources */,
 				BB1A2B3C4D5E6F7A8B9C0D1F /* NotificationService.swift in Sources */,
+				F0A1B2C3D4E5F6A700000007 /* NotebookComponents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -36,8 +36,15 @@
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		</dict>
 	</array>
-	<key>UIUserInterfaceStyle</key>
-	<string>Dark</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>PlayfairDisplay.ttf</string>
+		<string>PlayfairDisplay-Italic.ttf</string>
+		<string>Caveat.ttf</string>
+		<string>IBMPlexMono-Regular.ttf</string>
+		<string>IBMPlexMono-Medium.ttf</string>
+		<string>IBMPlexMono-Bold.ttf</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
