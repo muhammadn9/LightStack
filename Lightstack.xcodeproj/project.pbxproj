@@ -7,6 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FA330000000000000000CC01 /* BodyPose.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB01 /* BodyPose.swift */; };
+		FA330000000000000000CC02 /* RepQuality.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB02 /* RepQuality.swift */; };
+		FA330000000000000000CC03 /* FormAnalysisResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB03 /* FormAnalysisResult.swift */; };
+		FA330000000000000000CC04 /* PoseEstimationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB04 /* PoseEstimationService.swift */; };
+		FA330000000000000000CC05 /* RepCounterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB05 /* RepCounterService.swift */; };
+		FA330000000000000000CC06 /* FormFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB06 /* FormFeedbackService.swift */; };
+		FA330000000000000000CC07 /* FormAnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB07 /* FormAnalysisViewModel.swift */; };
+		FA330000000000000000CC08 /* SkeletonOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB08 /* SkeletonOverlayView.swift */; };
+		FA330000000000000000CC09 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB09 /* CameraPreviewView.swift */; };
+		FA330000000000000000CC0A /* FormCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0A /* FormCaptureView.swift */; };
+		FA330000000000000000CC0B /* FormFeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0B /* FormFeedbackView.swift */; };
 		013383C23AAFD428C65A00A4 /* Lightstack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = D3FD60834E9DEE694B6C5A1E /* Lightstack.xcdatamodeld */; };
 		031B0782D6BF4C1CADF77369 /* AIServiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58132967449B403EAA331A20 /* AIServiceManager.swift */; };
 		0394F953EECCF5B52F98E4FB /* SetRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBEF4BBBE0A525AA2C190BD /* SetRowView.swift */; };
@@ -169,6 +180,17 @@
 		FD7FAD3D73C29C60902B298C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		d4f1049e7fe14415938e63cf /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		d8b743b28d3549cda23bbb79 /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB01 /* BodyPose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyPose.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB02 /* RepQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepQuality.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB03 /* FormAnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormAnalysisResult.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB04 /* PoseEstimationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseEstimationService.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB05 /* RepCounterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepCounterService.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB06 /* FormFeedbackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormFeedbackService.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB07 /* FormAnalysisViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormAnalysisViewModel.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB08 /* SkeletonOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonOverlayView.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB09 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB0A /* FormCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormCaptureView.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB0B /* FormFeedbackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormFeedbackView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -512,11 +534,62 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		FA110000000000000000AA01 /* FormAnalysis */ = {
+			isa = PBXGroup;
+			children = (
+				FA110000000000000000AA02 /* Models */,
+				FA110000000000000000AA03 /* Services */,
+				FA110000000000000000AA04 /* ViewModels */,
+				FA110000000000000000AA05 /* Views */,
+			);
+			path = FormAnalysis;
+			sourceTree = "<group>";
+		};
+		FA110000000000000000AA02 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				FA220000000000000000BB01 /* BodyPose.swift */,
+				FA220000000000000000BB02 /* RepQuality.swift */,
+				FA220000000000000000BB03 /* FormAnalysisResult.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		FA110000000000000000AA03 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				FA220000000000000000BB04 /* PoseEstimationService.swift */,
+				FA220000000000000000BB05 /* RepCounterService.swift */,
+				FA220000000000000000BB06 /* FormFeedbackService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		FA110000000000000000AA04 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				FA220000000000000000BB07 /* FormAnalysisViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		FA110000000000000000AA05 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				FA220000000000000000BB08 /* SkeletonOverlayView.swift */,
+				FA220000000000000000BB09 /* CameraPreviewView.swift */,
+				FA220000000000000000BB0A /* FormCaptureView.swift */,
+				FA220000000000000000BB0B /* FormFeedbackView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 		E5FF84819A46032400E6C799 /* Features */ = {
 			isa = PBXGroup;
 			children = (
 				BC64868EC9B6E39CADC76555 /* AICoach */,
 				157C5E9F8614A49B4F4E9BDD /* Auth */,
+				FA110000000000000000AA01 /* FormAnalysis */,
 				4918AA3164ED8BCAA881D58A /* History */,
 				1FFEF5141B955331B3A58993 /* MonthPlan */,
 				F82D7FDECDE34F8C18CA1E9E /* Profile */,
@@ -680,6 +753,17 @@
 				2779E5C0E0798AE34DD76031 /* WorkoutSessionPersistence.swift in Sources */,
 				6F1603A80F30A5B8FCF1852F /* WorkoutModification.swift in Sources */,
 				BB1A2B3C4D5E6F7A8B9C0D1F /* NotificationService.swift in Sources */,
+				FA330000000000000000CC01 /* BodyPose.swift in Sources */,
+				FA330000000000000000CC02 /* RepQuality.swift in Sources */,
+				FA330000000000000000CC03 /* FormAnalysisResult.swift in Sources */,
+				FA330000000000000000CC04 /* PoseEstimationService.swift in Sources */,
+				FA330000000000000000CC05 /* RepCounterService.swift in Sources */,
+				FA330000000000000000CC06 /* FormFeedbackService.swift in Sources */,
+				FA330000000000000000CC07 /* FormAnalysisViewModel.swift in Sources */,
+				FA330000000000000000CC08 /* SkeletonOverlayView.swift in Sources */,
+				FA330000000000000000CC09 /* CameraPreviewView.swift in Sources */,
+				FA330000000000000000CC0A /* FormCaptureView.swift in Sources */,
+				FA330000000000000000CC0B /* FormFeedbackView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

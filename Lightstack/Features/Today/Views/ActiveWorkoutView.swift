@@ -6,8 +6,12 @@ struct ActiveWorkoutView: View {
     @ObservedObject var viewModel: ActiveWorkoutViewModel
     @ObservedObject var todayViewModel: TodayViewModel
     @ObservedObject var chatViewModel: CoachChatViewModel
+    @EnvironmentObject var environment: AppEnvironment
     @State private var showChat = false
     @State private var showCancelAlert = false
+    @State private var formCaptureExercise: Exercise?
+    @State private var formFeedbackResult: FormAnalysisResult?
+    @State private var formViewModel: FormAnalysisViewModel?
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -24,7 +28,16 @@ struct ActiveWorkoutView: View {
                 prToast(pr: pr)
             }
         }
-        .onAppear { viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed) }
+        .onAppear {
+            viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
+            if formViewModel == nil {
+                formViewModel = FormAnalysisViewModel(
+                    poseService: PoseEstimationService(),
+                    repCounter: RepCounterService(),
+                    feedbackService: FormFeedbackService(aiServiceManager: environment.aiServiceManager)
+                )
+            }
+        }
         .onDisappear {
             todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
             viewModel.stopTimer()
@@ -32,6 +45,19 @@ struct ActiveWorkoutView: View {
         }
         .sheet(isPresented: $showChat) {
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
+        }
+        .fullScreenCover(item: $formCaptureExercise) { exercise in
+            if let vm = formViewModel {
+                FormCaptureView(
+                    viewModel: vm,
+                    exerciseName: exercise.name
+                ) { result in
+                    formFeedbackResult = result
+                }
+            }
+        }
+        .sheet(item: $formFeedbackResult) { result in
+            FormFeedbackView(result: result)
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
@@ -105,7 +131,8 @@ struct ActiveWorkoutView: View {
                             viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
                             viewModel.syncPendingSets(for: exercise)
                         },
-                        onAddSet: { viewModel.addPendingSet(for: exercise) }
+                        onAddSet: { viewModel.addPendingSet(for: exercise) },
+                        onWatchForm: { formCaptureExercise = exercise }
                     )
                 }
             }

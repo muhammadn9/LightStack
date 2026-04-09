@@ -11,6 +11,7 @@ struct ExerciseTableView: View {
     let onDeletePendingSet: ((Int) -> Void)?
     let onDeleteSet: ((WorkoutSet) -> Void)?
     let onAddSet: (() -> Void)?
+    var onWatchForm: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -39,6 +40,18 @@ struct ExerciseTableView: View {
                     .foregroundStyle(AppTheme.accentSecondary)
             }
             Spacer()
+            if let watchForm = onWatchForm {
+                Button(action: watchForm) {
+                    Label("Watch Form", systemImage: "camera.fill")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.accentSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(AppTheme.accentSecondary.opacity(0.12))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
             if let target = exercise.targetSets {
                 Text("\(loggedSets.count)/\(target) sets")
                     .font(.subheadline.weight(.medium))
