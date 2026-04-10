@@ -161,19 +161,19 @@ extension PoseEstimationService: AVCaptureVideoDataOutputSampleBufferDelegate {
     @available(iOS 17.0, *)
     private func buildBodyPose3D(from observation: VNHumanBodyPose3DObservation) -> BodyPose3D {
         let mapping: [(String, VNHumanBodyPose3DObservation.JointName)] = [
-            ("neck",          .neck1),
+            ("neck",          .centerShoulder),
             ("leftShoulder",  .leftShoulder),
             ("rightShoulder", .rightShoulder),
-            ("leftElbow",     .leftForearm),
-            ("rightElbow",    .rightForearm),
-            ("leftWrist",     .leftHand),
-            ("rightWrist",    .rightHand),
-            ("leftHip",       .leftUpLeg),
-            ("rightHip",      .rightUpLeg),
-            ("leftKnee",      .leftLeg),
-            ("rightKnee",     .rightLeg),
-            ("leftAnkle",     .leftFoot),
-            ("rightAnkle",    .rightFoot),
+            ("leftElbow",     .leftElbow),
+            ("rightElbow",    .rightElbow),
+            ("leftWrist",     .leftWrist),
+            ("rightWrist",    .rightWrist),
+            ("leftHip",       .leftHip),
+            ("rightHip",      .rightHip),
+            ("leftKnee",      .leftKnee),
+            ("rightKnee",     .rightKnee),
+            ("leftAnkle",     .leftAnkle),
+            ("rightAnkle",    .rightAnkle),
         ]
 
         var joints: [String: simd_float3] = [:]
