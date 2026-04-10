@@ -1,4 +1,5 @@
 import SwiftUI
+import SceneKit
 
 /// Post-set results sheet showing rep-by-rep quality breakdown and AI coaching text.
 struct FormFeedbackView: View {
@@ -12,6 +13,7 @@ struct FormFeedbackView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     summaryHeader
                     repBreakdownSection
+                    replay3DSection
                     if let aiText = result.aiCoachText {
                         aiCoachSection(aiText)
                     }
@@ -137,6 +139,58 @@ struct FormFeedbackView: View {
         .padding(12)
         .background(AppTheme.surface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - 3D Replay Section
+
+    private var replay3DSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("3D Form Replay")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+
+            HStack(alignment: .top, spacing: 12) {
+                VStack(spacing: 6) {
+                    Text("Your Form")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.accentSecondary)
+                    if result.poses3D.isEmpty {
+                        unavailableBox("No 3D data\n(iOS 17+ required)")
+                    } else {
+                        SkeletonSceneView(
+                            frames: result.poses3D.map { $0.joints },
+                            tintColor: UIColor(.green)
+                        )
+                        .frame(height: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+
+                VStack(spacing: 6) {
+                    Text("Ideal Form")
+                        .font(.caption.bold())
+                        .foregroundStyle(AppTheme.accent)
+                    SkeletonSceneView(
+                        frames: IdealFormData.keyframes(for: result.exerciseName),
+                        tintColor: UIColor(.blue)
+                    )
+                    .frame(height: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
+        .cardStyle()
+    }
+
+    private func unavailableBox(_ message: String) -> some View {
+        Text(message)
+            .font(.caption)
+            .foregroundStyle(AppTheme.textSecondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .frame(height: 220)
+            .background(AppTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - AI Coach Section

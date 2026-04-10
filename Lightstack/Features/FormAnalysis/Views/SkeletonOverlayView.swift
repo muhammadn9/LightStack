@@ -53,7 +53,8 @@ struct SkeletonOverlayView: View {
     // MARK: - Coordinate Conversion
 
     /// Vision: x=0 left, y=0 bottom, normalized. SwiftUI: x=0 left, y=0 top.
-    /// Mirror X for front camera.
+    /// .leftMirrored orientation passed to VNImageRequestHandler already corrects for
+    /// front camera landscape buffers, so no X-mirror needed here.
     private func convert(
         joint: VNHumanBodyPoseObservation.JointName,
         pose: BodyPose,
@@ -61,8 +62,8 @@ struct SkeletonOverlayView: View {
     ) -> CGPoint? {
         guard let p = pose.joints[joint] else { return nil }
         return CGPoint(
-            x: (1 - p.x) * size.width,   // mirror X
-            y: (1 - p.y) * size.height    // flip Y
+            x: p.x * size.width,          // no mirror — .leftMirrored handles it
+            y: (1 - p.y) * size.height    // flip Y (Vision y=0=bottom, SwiftUI y=0=top)
         )
     }
 }

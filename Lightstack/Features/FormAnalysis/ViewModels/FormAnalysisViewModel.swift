@@ -26,6 +26,8 @@ final class FormAnalysisViewModel: ObservableObject {
     private let feedbackService: FormFeedbackService
 
     private var collectedPoses: [BodyPose] = []
+    private var collectedPoses3D: [BodyPose3D] = []
+    private var pose3DFrameCount = 0
     private var exerciseName: String = ""
     private var cancellables = Set<AnyCancellable>()
 
@@ -51,6 +53,18 @@ final class FormAnalysisViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        poseService.$latestPose3D
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] pose3D in
+                guard let self, let pose3D, case .capturing = self.captureState else { return }
+                self.pose3DFrameCount += 1
+                // Subsample to every 3rd frame (~10fps instead of 30fps)
+                if self.pose3DFrameCount % 3 == 0 {
+                    self.collectedPoses3D.append(pose3D)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Public API
@@ -58,6 +72,8 @@ final class FormAnalysisViewModel: ObservableObject {
     func startCapture(exerciseName: String) {
         self.exerciseName = exerciseName
         collectedPoses = []
+        collectedPoses3D = []
+        pose3DFrameCount = 0
         repCount = 0
         captureState = .capturing
         poseService.requestPermissionAndStart()
@@ -70,8 +86,11 @@ final class FormAnalysisViewModel: ObservableObject {
         let poses = collectedPoses
         let name = exerciseName
 
+        let poses3D = collectedPoses3D
+
         Task {
             var result = repCounter.analyze(poses: poses, exerciseName: name)
+            result.poses3D = poses3D
 
             await withCheckedContinuation { continuation in
                 feedbackService.generateFeedback(for: result) { aiResult in
@@ -89,6 +108,8 @@ final class FormAnalysisViewModel: ObservableObject {
     func reset() {
         poseService.stop()
         collectedPoses = []
+        collectedPoses3D = []
+        pose3DFrameCount = 0
         repCount = 0
         captureState = .idle
     }

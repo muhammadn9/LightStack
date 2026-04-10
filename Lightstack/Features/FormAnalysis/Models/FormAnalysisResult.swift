@@ -5,7 +5,8 @@ struct FormAnalysisResult: Identifiable {
     let exerciseName: String
     let repCount: Int
     let repQualities: [RepQuality]
-    var aiCoachText: String?       // filled in asynchronously by FormFeedbackService
+    var poses3D: [BodyPose3D] = []  // collected from VNDetectHumanBodyPose3DRequest (iOS 17+)
+    var aiCoachText: String?        // filled in asynchronously by FormFeedbackService
 
     var id: String { exerciseName + String(repCount) }
     var goodRepCount: Int { repQualities.filter { $0.isGood }.count }

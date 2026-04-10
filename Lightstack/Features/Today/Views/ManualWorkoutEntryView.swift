@@ -158,6 +158,7 @@ struct ManualWorkoutEntryView: View {
             )
         }
 
+        todayViewModel.workoutRepository.createWorkout(workout)
         todayViewModel.sessionService.startSession(workout: workout, exercises: exerciseModels)
         todayViewModel.exercises = exerciseModels
         todayViewModel.phase = .active

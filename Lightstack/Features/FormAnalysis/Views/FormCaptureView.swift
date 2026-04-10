@@ -33,6 +33,7 @@ struct FormCaptureView: View {
             }
         }
         .onAppear {
+            viewModel.reset()
             viewModel.startCapture(exerciseName: exerciseName)
         }
         .onChange(of: captureIsDone) { _, done in
