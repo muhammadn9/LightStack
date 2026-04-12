@@ -23,6 +23,9 @@ final class PoseEstimationService: NSObject, ObservableObject {
     private lazy var bodyPoseRequest = VNDetectHumanBodyPoseRequest()
     private var isConfigured = false
 
+    @available(iOS 17.0, *)
+    private lazy var bodyPose3DRequest = VNDetectHumanBodyPose3DRequest()
+
     // MARK: - Public API
 
     func requestPermissionAndStart() {
@@ -101,21 +104,34 @@ extension PoseEstimationService: AVCaptureVideoDataOutputSampleBufferDelegate {
             options: [:]
         )
 
+        // Batch 2D and 3D requests in a single perform() call to avoid double-perform failures
+        var requests: [VNRequest] = [bodyPoseRequest]
+        if #available(iOS 17.0, *) {
+            requests.append(bodyPose3DRequest)
+        }
+
         do {
-            try handler.perform([bodyPoseRequest])
+            try handler.perform(requests)
         } catch {
             return
         }
 
-        guard let observation = bodyPoseRequest.results?.first else { return }
-        let pose = buildBodyPose(from: observation)
-
-        DispatchQueue.main.async { [weak self] in
-            self?.latestPose = pose
+        // Process 2D result
+        if let observation = bodyPoseRequest.results?.first {
+            let pose = buildBodyPose(from: observation)
+            DispatchQueue.main.async { [weak self] in
+                self?.latestPose = pose
+            }
         }
 
+        // Process 3D result
         if #available(iOS 17.0, *) {
-            collectPose3D(handler: handler)
+            if let obs3D = bodyPose3DRequest.results?.first {
+                let pose3D = buildBodyPose3D(from: obs3D)
+                DispatchQueue.main.async { [weak self] in
+                    self?.latestPose3D = pose3D
+                }
+            }
         }
     }
 
@@ -145,17 +161,6 @@ extension PoseEstimationService: AVCaptureVideoDataOutputSampleBufferDelegate {
             joints: joints,
             confidences: confidences
         )
-    }
-
-    @available(iOS 17.0, *)
-    private func collectPose3D(handler: VNImageRequestHandler) {
-        let request = VNDetectHumanBodyPose3DRequest()
-        try? handler.perform([request])
-        guard let observation = request.results?.first else { return }
-        let pose3D = buildBodyPose3D(from: observation)
-        DispatchQueue.main.async { [weak self] in
-            self?.latestPose3D = pose3D
-        }
     }
 
     @available(iOS 17.0, *)

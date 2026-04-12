@@ -10,15 +10,15 @@ struct StreakView: View {
                 .foregroundStyle(count > 0 ? AppTheme.streakFlame : AppTheme.textSecondary)
                 .shadow(color: count > 0 ? AppTheme.streakFlame.opacity(0.5) : .clear, radius: 4)
             Text("\(count)")
-                .font(.subheadline.weight(.bold))
+                .font(AppTheme.plexMono(14, weight: .bold))
                 .foregroundStyle(count > 0 ? AppTheme.textPrimary : AppTheme.textSecondary)
             if count != 1 {
                 Text("days")
-                    .font(.caption2)
+                    .font(AppTheme.caveat(10))
                     .foregroundStyle(AppTheme.textSecondary)
             } else {
                 Text("day")
-                    .font(.caption2)
+                    .font(AppTheme.caveat(10))
                     .foregroundStyle(AppTheme.textSecondary)
             }
         }

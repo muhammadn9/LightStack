@@ -11,7 +11,7 @@ struct MessageBubbleView: View {
 
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
-                    .font(.body)
+                    .font(AppTheme.caveat(15))
                     .foregroundStyle(message.role == .user ? .white : AppTheme.textPrimary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -20,10 +20,10 @@ struct MessageBubbleView: View {
                             ? AnyShapeStyle(AppTheme.accentGradient)
                             : AnyShapeStyle(AppTheme.surface)
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
 
                 Text(formattedTime)
-                    .font(.caption2)
+                    .font(AppTheme.plexMono(8))
                     .foregroundStyle(AppTheme.textSecondary)
             }
 

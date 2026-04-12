@@ -10,11 +10,14 @@ struct FormFeedbackView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 20) {
                     summaryHeader
+                    InkDivider()
                     repBreakdownSection
+                    InkDivider()
                     replay3DSection
                     if let aiText = result.aiCoachText {
+                        InkDivider()
                         aiCoachSection(aiText)
                     }
                 }
@@ -55,16 +58,16 @@ struct FormFeedbackView: View {
                 .font(.title3)
                 .foregroundStyle(AppTheme.accent)
             Text(value)
-                .font(.title2.bold().monospacedDigit())
+                .font(AppTheme.plexMono(18, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text(label)
-                .font(.caption2)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private var avgROM: String {
@@ -78,12 +81,12 @@ struct FormFeedbackView: View {
     private var repBreakdownSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Rep Breakdown")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             if result.repQualities.isEmpty {
                 Text("No reps detected. Ensure your full body is visible to the camera and try again.")
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(14))
                     .foregroundStyle(AppTheme.textSecondary)
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -146,13 +149,13 @@ struct FormFeedbackView: View {
     private var replay3DSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("3D Form Replay")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 6) {
                     Text("Your Form")
-                        .font(.caption.bold())
+                        .font(AppTheme.caveat(12, weight: .bold))
                         .foregroundStyle(AppTheme.accentSecondary)
                     if result.poses3D.isEmpty {
                         unavailableBox("No 3D data\n(iOS 17+ required)")
@@ -162,20 +165,21 @@ struct FormFeedbackView: View {
                             tintColor: UIColor(.green)
                         )
                         .frame(height: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     }
                 }
 
                 VStack(spacing: 6) {
                     Text("Ideal Form")
-                        .font(.caption.bold())
+                        .font(AppTheme.caveat(12, weight: .bold))
                         .foregroundStyle(AppTheme.accent)
                     SkeletonSceneView(
                         frames: IdealFormData.keyframes(for: result.exerciseName),
-                        tintColor: UIColor(.blue)
+                        tintColor: UIColor(AppTheme.accent),
+                        equipmentType: EquipmentType.equipment(for: result.exerciseName)
                     )
                     .frame(height: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 }
             }
         }
@@ -202,16 +206,18 @@ struct FormFeedbackView: View {
                     .foregroundStyle(AppTheme.accent)
                     .symbolEffect(.pulse, options: .repeating)
                 Text("Coach's Form Notes")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
+            InkDivider()
             Text(text)
-                .font(.body)
+                .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textPrimary)
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
+        .cardStyle()
     }
 }

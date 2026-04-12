@@ -11,14 +11,17 @@ struct ExerciseTableView: View {
     let onDeletePendingSet: ((Int) -> Void)?
     let onDeleteSet: ((WorkoutSet) -> Void)?
     let onAddSet: (() -> Void)?
-    var onWatchForm: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             headerRow
             if hasTargetInfo { targetInfoRow }
+            if !loggedSets.isEmpty {
+                InkDivider()
+            }
             loggedSetsList
             pendingSetInputRows
+            InkDivider()
             addSetButton
             if let restTime = restTimeRemaining {
                 restTimerBanner(restTime)
@@ -33,32 +36,20 @@ struct ExerciseTableView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(exercise.name)
-                    .font(.headline)
+                    .font(AppTheme.playfair(15, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text(exercise.muscleGroup)
-                    .font(.caption)
+                    .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.accentSecondary)
             }
             Spacer()
-            if let watchForm = onWatchForm {
-                Button(action: watchForm) {
-                    Label("Watch Form", systemImage: "camera.fill")
-                        .font(.caption.bold())
-                        .foregroundStyle(AppTheme.accentSecondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(AppTheme.accentSecondary.opacity(0.12))
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
             if let target = exercise.targetSets {
                 Text("\(loggedSets.count)/\(target) sets")
-                    .font(.subheadline.weight(.medium))
+                    .font(AppTheme.plexMono(13, weight: .medium))
                     .foregroundStyle(AppTheme.accent)
             } else {
                 Text("\(loggedSets.count) sets")
-                    .font(.subheadline.weight(.medium))
+                    .font(AppTheme.plexMono(13, weight: .medium))
                     .foregroundStyle(AppTheme.accent)
             }
         }
@@ -81,16 +72,16 @@ struct ExerciseTableView: View {
     private func targetBadge(_ label: String, value: String) -> some View {
         VStack(spacing: 2) {
             Text(label)
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
             Text(value)
-                .font(.caption.weight(.semibold))
+                .font(AppTheme.plexMono(11, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(AppTheme.accent.opacity(0.12))
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     // MARK: - Logged Sets
@@ -99,7 +90,7 @@ struct ExerciseTableView: View {
         ForEach(Array(loggedSets.enumerated()), id: \.element.id) { index, workoutSet in
             HStack(spacing: 8) {
                 Text("Set \(index + 1)")
-                    .font(.caption.weight(.semibold))
+                    .font(AppTheme.caveat(11, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(width: 40, alignment: .leading)
                 SetRowView(workoutSet: workoutSet)
@@ -122,15 +113,15 @@ struct ExerciseTableView: View {
             Text("")
                 .frame(width: 40)
             Text("Lbs")
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 70)
             Text("Reps")
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 60)
             Text("RIR")
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 50)
         }
@@ -145,7 +136,7 @@ struct ExerciseTableView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text("Set \(loggedSets.count + index + 1)")
-                        .font(.caption.weight(.semibold))
+                        .font(AppTheme.caveat(11, weight: .bold))
                         .foregroundStyle(AppTheme.textSecondary)
                         .frame(width: 40, alignment: .leading)
 
@@ -175,13 +166,16 @@ struct ExerciseTableView: View {
                 }
 
                 // Optional per-set note
-                TextField("Note (optional)", text: $pendingSets[index].note)
-                    .font(.caption)
+                TextField("Add a note…", text: $pendingSets[index].note)
+                    .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
                     .background(AppTheme.surfaceElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(AppTheme.border, lineWidth: 1)
+                    )
                     .padding(.leading, 48)
             }
         }
@@ -195,7 +189,7 @@ struct ExerciseTableView: View {
                 Image(systemName: "plus.circle")
                 Text("Add Set")
             }
-            .font(.caption.weight(.medium))
+            .font(AppTheme.caveat(11, weight: .bold))
             .foregroundStyle(AppTheme.textSecondary)
         }
         .buttonStyle(.plain)
@@ -205,28 +199,36 @@ struct ExerciseTableView: View {
 
     private func restTimerBanner(_ time: String) -> some View {
         HStack {
-            Image(systemName: "timer")
-                .foregroundStyle(AppTheme.warning)
-            Text("Rest: \(time)")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(AppTheme.warning)
+            Image(systemName: "hourglass")
+                .font(.caption)
+                .foregroundStyle(AppTheme.accent)
+            Text("Rest — \(time) remaining")
+                .font(AppTheme.plexMono(12, weight: .medium))
+                .foregroundStyle(AppTheme.accent)
             Spacer()
         }
-        .padding(10)
-        .background(AppTheme.warning.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(AppTheme.accent.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
+        )
     }
 
     // MARK: - Input Field
 
     private func inputField(_ placeholder: String, text: Binding<String>, width: CGFloat, keyboard: UIKeyboardType) -> some View {
-        TextField(placeholder, text: text)
-            .keyboardType(keyboard)
-            .font(.subheadline)
-            .padding(10)
-            .frame(width: width)
-            .background(AppTheme.surfaceElevated)
-            .foregroundStyle(AppTheme.textPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+        VStack(spacing: 2) {
+            TextField(placeholder, text: text)
+                .keyboardType(keyboard)
+                .font(AppTheme.plexMono(14, weight: .medium))
+                .multilineTextAlignment(.center)
+                .frame(width: width)
+                .foregroundStyle(AppTheme.textPrimary)
+            Rectangle()
+                .fill(text.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                .frame(width: width, height: 1)
+        }
     }
 }

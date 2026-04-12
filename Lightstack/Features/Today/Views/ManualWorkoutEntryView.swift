@@ -51,17 +51,21 @@ struct ManualWorkoutEntryView: View {
     private var workoutTypeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Workout Type")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             TextField("e.g., Upper Body, Legs, Push", text: $workoutType)
                 .padding(14)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
+                .submitLabel(.done)
+                .onSubmit {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
         }
         .cardStyle()
     }
@@ -69,12 +73,12 @@ struct ManualWorkoutEntryView: View {
     private var exercisesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Exercises (\(exercises.count))")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             if exercises.isEmpty {
                 Text("No exercises added yet. Tap + to add.")
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(15))
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 20)
@@ -91,10 +95,10 @@ struct ManualWorkoutEntryView: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(exercise.name)
-                    .font(.subheadline.bold())
+                    .font(AppTheme.playfair(14, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("\(exercise.muscleGroup) • \(exercise.targetSets) sets")
-                    .font(.caption)
+                    .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.textSecondary)
             }
 
@@ -109,13 +113,13 @@ struct ManualWorkoutEntryView: View {
         }
         .padding(12)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private var addExerciseButton: some View {
         Button(action: { showAddExercise = true }) {
             Label("Add Exercise", systemImage: "plus.circle.fill")
-                .font(.subheadline.bold())
+                .font(AppTheme.caveat(15, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(16)
@@ -126,7 +130,7 @@ struct ManualWorkoutEntryView: View {
                         endPoint: .trailing
                     )
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }
 
@@ -158,6 +162,7 @@ struct ManualWorkoutEntryView: View {
             )
         }
 
+        // Create the workout record before starting session so it appears in history
         todayViewModel.workoutRepository.createWorkout(workout)
         todayViewModel.sessionService.startSession(workout: workout, exercises: exerciseModels)
         todayViewModel.exercises = exerciseModels
@@ -227,17 +232,21 @@ struct AddExerciseSheet: View {
     private var exerciseNameSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Exercise Name")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             TextField("e.g., Bench Press, Squat", text: $exerciseName)
                 .padding(14)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
+                .submitLabel(.done)
+                .onSubmit {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
         }
         .cardStyle()
     }
@@ -245,7 +254,7 @@ struct AddExerciseSheet: View {
     private var muscleGroupSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Muscle Group")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Picker("Muscle Group", selection: $selectedMuscleGroup) {
@@ -256,9 +265,9 @@ struct AddExerciseSheet: View {
             .pickerStyle(.menu)
             .padding(14)
             .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
             )
         }
@@ -268,7 +277,7 @@ struct AddExerciseSheet: View {
     private var targetSetsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Target Sets: \(targetSets)")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Stepper(value: $targetSets, in: 1...10) {
@@ -277,7 +286,7 @@ struct AddExerciseSheet: View {
             }
             .padding(14)
             .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
         .cardStyle()
     }

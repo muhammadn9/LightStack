@@ -59,19 +59,19 @@ struct EditProfileView: View {
     private var profileSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Profile Info")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             themedField("Display Name", text: $viewModel.editDisplayName)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Email").font(.caption).foregroundStyle(AppTheme.textSecondary)
+                Text("Email").font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
                 Text(userEmail)
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
 
             HStack(spacing: 12) {
@@ -93,7 +93,7 @@ struct EditProfileView: View {
     private var goalsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Goals")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             FlowLayout(spacing: 8) {
@@ -119,7 +119,7 @@ struct EditProfileView: View {
                     .padding(12)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     .onSubmit { addCustomGoal() }
                 Button(action: addCustomGoal) {
                     Image(systemName: "plus.circle.fill")
@@ -145,31 +145,31 @@ struct EditProfileView: View {
     private func customGoalChip(_ goal: String) -> some View {
         HStack(spacing: 4) {
             Text(goal)
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
             Button(action: { viewModel.editGoals.remove(goal) }) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
+                    .font(AppTheme.caveat(11))
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(AppTheme.accent)
         .foregroundStyle(.white)
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private func goalChip(_ goal: String) -> some View {
         let isSelected = viewModel.editGoals.contains(goal)
         return Button(action: { toggleGoal(goal) }) {
             Text(goal)
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(isSelected ? AppTheme.accent : AppTheme.surface)
                 .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    Capsule().stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius).stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
                 )
         }
     }
@@ -187,7 +187,7 @@ struct EditProfileView: View {
     private var splitDaysSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Split Days")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             if !viewModel.editSplitDays.isEmpty {
@@ -201,7 +201,7 @@ struct EditProfileView: View {
                     .padding(12)
                     .background(AppTheme.surfaceElevated)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     .onSubmit {
                         let trimmed = newSplitDay.trimmingCharacters(in: .whitespaces)
                         if !trimmed.isEmpty {
@@ -237,7 +237,7 @@ struct EditProfileView: View {
         }
         .padding(10)
         .background(AppTheme.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     // MARK: - Equipment Section
@@ -245,7 +245,7 @@ struct EditProfileView: View {
     private var equipmentSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Equipment")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             LazyVGrid(
@@ -257,25 +257,24 @@ struct EditProfileView: View {
                 }
             }
 
-            Divider()
-                .background(AppTheme.textSecondary.opacity(0.3))
+            InkDivider()
                 .padding(.vertical, 8)
 
             Text("Other Equipment")
-                .font(.subheadline.bold())
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Text("List any other equipment you have access to")
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
             TextField("Type custom equipment here...", text: $viewModel.editCustomEquipment, axis: .vertical)
                 .lineLimit(3...6)
                 .padding(12)
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
                 .toolbar {
@@ -303,15 +302,15 @@ struct EditProfileView: View {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textSecondary)
                 Text(item)
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(14))
                     .foregroundStyle(AppTheme.textPrimary)
                 Spacer()
             }
             .padding(12)
             .background(isSelected ? AppTheme.accent.opacity(0.12) : AppTheme.surfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .stroke(isSelected ? AppTheme.accent.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
@@ -328,7 +327,7 @@ struct EditProfileView: View {
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Notes to Coach")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             TextField("e.g., recovering from shoulder injury", text: $viewModel.editNotesToCoach, axis: .vertical)
@@ -336,7 +335,7 @@ struct EditProfileView: View {
                 .padding(12)
                 .background(AppTheme.surfaceElevated)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
         .cardStyle()
     }
@@ -348,7 +347,7 @@ struct EditProfileView: View {
             .padding(14)
             .background(AppTheme.surfaceElevated)
             .foregroundStyle(AppTheme.textPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private func labeledField(
@@ -357,13 +356,13 @@ struct EditProfileView: View {
         keyboard: UIKeyboardType
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(AppTheme.textSecondary)
+            Text(label).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
             TextField(label, text: text)
                 .keyboardType(keyboard)
                 .padding(12)
                 .background(AppTheme.surfaceElevated)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }
 }

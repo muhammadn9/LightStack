@@ -8,7 +8,9 @@ enum IdealFormData {
     /// Returns keyframes for the given exercise name.
     static func keyframes(for exerciseName: String) -> [[String: simd_float3]] {
         let lower = exerciseName.lowercased()
-        if lower.contains("squat") || lower.contains("lunge") {
+        if lower.contains("push up") || lower.contains("pushup") || lower.contains("push-up") {
+            return pushupKeyframes
+        } else if lower.contains("squat") || lower.contains("lunge") {
             return squatKeyframes
         } else if lower.contains("deadlift") || lower.contains("rdl") {
             return deadliftKeyframes
@@ -16,6 +18,54 @@ enum IdealFormData {
             return upperPullKeyframes
         } else {
             return upperPushKeyframes
+        }
+    }
+
+    /// Returns 3 quick form tips for the given exercise name.
+    static func tips(for exerciseName: String) -> [String] {
+        let lower = exerciseName.lowercased()
+        if lower.contains("push up") || lower.contains("pushup") || lower.contains("push-up") {
+            return [
+                "Keep your body in a straight line from head to heels",
+                "Lower your chest to within an inch of the floor",
+                "Squeeze your core and glutes throughout the movement"
+            ]
+        } else if lower.contains("squat") || lower.contains("lunge") {
+            return [
+                "Keep your chest tall and knees tracking over your toes",
+                "Descend until thighs are at least parallel to the floor",
+                "Drive through your heels to stand — don't let knees cave in"
+            ]
+        } else if lower.contains("deadlift") || lower.contains("rdl") {
+            return [
+                "Brace your core and keep a neutral spine — no rounding",
+                "Bar stays close to your body the entire lift",
+                "Hinge at the hips, then push the floor away to lockout"
+            ]
+        } else if lower.contains("bench press") || lower.contains("chest press") {
+            return [
+                "Arch your upper back and retract your scapula before unracking",
+                "Lower the bar to your lower chest with elbows at ~75°",
+                "Drive your feet into the floor to build leg drive"
+            ]
+        } else if lower.contains("pull up") || lower.contains("chin up") || lower.contains("row") {
+            return [
+                "Start from a dead hang with fully extended arms",
+                "Drive elbows down and back — lead with your chest",
+                "Pause at the top and squeeze your lats before descending"
+            ]
+        } else if lower.contains("curl") {
+            return [
+                "Keep your elbows pinned at your sides throughout",
+                "Fully supinate your wrist at the top of the rep",
+                "Control the lowering — take 2–3 seconds to descend"
+            ]
+        } else {
+            return [
+                "Control the weight through the full range of motion",
+                "Brace your core and maintain a neutral spine",
+                "Focus on the muscle — mind-muscle connection matters"
+            ]
         }
     }
 
@@ -91,6 +141,75 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.12, 0, 0),
             "leftElbow":     simd_float3(-0.35, 1.1, 0.15),
             "rightElbow":    simd_float3( 0.35, 1.1, 0.15),
+        ],
+    ]
+
+    // MARK: - Push-up (4 keyframes: top → lowering → bottom → pushing up)
+
+    static let pushupKeyframes: [[String: simd_float3]] = [
+        // Top (arms extended — plank position)
+        [
+            "neck":          simd_float3(0,  0.75, 0.05),
+            "leftShoulder":  simd_float3(-0.22, 0.70, 0),
+            "rightShoulder": simd_float3( 0.22, 0.70, 0),
+            "leftHip":       simd_float3(-0.1,  0.45, -0.5),
+            "rightHip":      simd_float3( 0.1,  0.45, -0.5),
+            "leftKnee":      simd_float3(-0.12, 0.22, -0.9),
+            "rightKnee":     simd_float3( 0.12, 0.22, -0.9),
+            "leftAnkle":     simd_float3(-0.12, 0.08, -1.3),
+            "rightAnkle":    simd_float3( 0.12, 0.08, -1.3),
+            "leftElbow":     simd_float3(-0.22, 0.42, 0.28),
+            "rightElbow":    simd_float3( 0.22, 0.42, 0.28),
+            "leftWrist":     simd_float3(-0.22, 0.10, 0.30),
+            "rightWrist":    simd_float3( 0.22, 0.10, 0.30),
+        ],
+        // Lowering (halfway down)
+        [
+            "neck":          simd_float3(0,  0.58, 0.05),
+            "leftShoulder":  simd_float3(-0.22, 0.54, 0),
+            "rightShoulder": simd_float3( 0.22, 0.54, 0),
+            "leftHip":       simd_float3(-0.1,  0.40, -0.5),
+            "rightHip":      simd_float3( 0.1,  0.40, -0.5),
+            "leftKnee":      simd_float3(-0.12, 0.22, -0.9),
+            "rightKnee":     simd_float3( 0.12, 0.22, -0.9),
+            "leftAnkle":     simd_float3(-0.12, 0.08, -1.3),
+            "rightAnkle":    simd_float3( 0.12, 0.08, -1.3),
+            "leftElbow":     simd_float3(-0.32, 0.50, 0.15),
+            "rightElbow":    simd_float3( 0.32, 0.50, 0.15),
+            "leftWrist":     simd_float3(-0.22, 0.10, 0.30),
+            "rightWrist":    simd_float3( 0.22, 0.10, 0.30),
+        ],
+        // Bottom (chest near floor, elbows at ~90°)
+        [
+            "neck":          simd_float3(0,  0.38, 0.08),
+            "leftShoulder":  simd_float3(-0.22, 0.34, 0),
+            "rightShoulder": simd_float3( 0.22, 0.34, 0),
+            "leftHip":       simd_float3(-0.1,  0.36, -0.5),
+            "rightHip":      simd_float3( 0.1,  0.36, -0.5),
+            "leftKnee":      simd_float3(-0.12, 0.22, -0.9),
+            "rightKnee":     simd_float3( 0.12, 0.22, -0.9),
+            "leftAnkle":     simd_float3(-0.12, 0.08, -1.3),
+            "rightAnkle":    simd_float3( 0.12, 0.08, -1.3),
+            "leftElbow":     simd_float3(-0.36, 0.34, 0.05),
+            "rightElbow":    simd_float3( 0.36, 0.34, 0.05),
+            "leftWrist":     simd_float3(-0.22, 0.10, 0.30),
+            "rightWrist":    simd_float3( 0.22, 0.10, 0.30),
+        ],
+        // Return to top (same as frame 0)
+        [
+            "neck":          simd_float3(0,  0.75, 0.05),
+            "leftShoulder":  simd_float3(-0.22, 0.70, 0),
+            "rightShoulder": simd_float3( 0.22, 0.70, 0),
+            "leftHip":       simd_float3(-0.1,  0.45, -0.5),
+            "rightHip":      simd_float3( 0.1,  0.45, -0.5),
+            "leftKnee":      simd_float3(-0.12, 0.22, -0.9),
+            "rightKnee":     simd_float3( 0.12, 0.22, -0.9),
+            "leftAnkle":     simd_float3(-0.12, 0.08, -1.3),
+            "rightAnkle":    simd_float3( 0.12, 0.08, -1.3),
+            "leftElbow":     simd_float3(-0.22, 0.42, 0.28),
+            "rightElbow":    simd_float3( 0.22, 0.42, 0.28),
+            "leftWrist":     simd_float3(-0.22, 0.10, 0.30),
+            "rightWrist":    simd_float3( 0.22, 0.10, 0.30),
         ],
     ]
 

@@ -44,19 +44,19 @@ struct EmailVerificationView: View {
     private var messageSection: some View {
         VStack(spacing: 12) {
             Text("Check your email")
-                .font(.title.bold())
+                .font(AppTheme.playfair(28, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             if let email = environment.pendingVerificationEmail {
                 Text("We sent a verification link to")
                     .foregroundStyle(AppTheme.textSecondary)
                 Text(email)
-                    .fontWeight(.semibold)
+                    .font(AppTheme.plexMono(14, weight: .medium))
                     .foregroundStyle(AppTheme.accentSecondary)
             }
 
             Text("Tap the link in the email, then come back and tap the button below.")
-                .font(.subheadline)
+                .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.top, 4)
@@ -70,7 +70,7 @@ struct EmailVerificationView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                     Text(errorMessage)
                 }
-                .font(.caption)
+                .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.destructive)
             }
 
@@ -82,7 +82,7 @@ struct EmailVerificationView: View {
                     }
                     Text("I've verified my email")
                 }
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
@@ -98,7 +98,7 @@ struct EmailVerificationView: View {
                          ? "Resend in \(cooldownRemaining)s"
                          : "Resend Email")
                 }
-                .font(.subheadline.weight(.medium))
+                .font(AppTheme.caveat(14, weight: .bold))
                 .foregroundStyle(cooldownRemaining > 0 ? AppTheme.textSecondary : AppTheme.accent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -112,7 +112,7 @@ struct EmailVerificationView: View {
     private var differentEmailButton: some View {
         Button(action: useDifferentEmail) {
             Text("Use a different email")
-                .font(.footnote)
+                .font(AppTheme.caveat(12))
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(.bottom, 24)

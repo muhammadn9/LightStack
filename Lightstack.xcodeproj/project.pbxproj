@@ -21,6 +21,7 @@
 		FA330000000000000000CC0C /* BodyPose3D.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0C /* BodyPose3D.swift */; };
 		FA330000000000000000CC0D /* SkeletonSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0D /* SkeletonSceneView.swift */; };
 		FA330000000000000000CC0E /* IdealFormData.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0E /* IdealFormData.swift */; };
+		FA330000000000000000CC0F /* ExerciseFormDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0F /* ExerciseFormDemoView.swift */; };
 		013383C23AAFD428C65A00A4 /* Lightstack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = D3FD60834E9DEE694B6C5A1E /* Lightstack.xcdatamodeld */; };
 		031B0782D6BF4C1CADF77369 /* AIServiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58132967449B403EAA331A20 /* AIServiceManager.swift */; };
 		0394F953EECCF5B52F98E4FB /* SetRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBEF4BBBE0A525AA2C190BD /* SetRowView.swift */; };
@@ -81,6 +82,7 @@
 		E18B1D92BBF6E17FE581AE7F /* WorkoutSetupViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E90E58ED105E0476A795E2E /* WorkoutSetupViewModel.swift */; };
 		E18D773B912C619728FFE4C7 /* ProfileViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E258457263378E2CB56BEC14 /* ProfileViewModel.swift */; };
 		E421AC4E262ABEB2C3871D98 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 267186236ACFFCD04827C356 /* AppTheme.swift */; };
+		FA330000000000000000CC10 /* NotebookComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB10 /* NotebookComponents.swift */; };
 		E556AEF88F21825FF1D51EFF /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C48010D6E8588D794E4A142 /* SupabaseService.swift */; };
 		E65828876C6E0CCF717A9E36 /* DateFormatter+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5ABE1748E32FBB842C3F56C /* DateFormatter+Extensions.swift */; };
 		E6CF7B1646F5CAB4FC40F6C1 /* Workout.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36C0EAACD6D6D70D4F7503E /* Workout.swift */; };
@@ -116,6 +118,7 @@
 		23BC3EC52D64C159FB993891 /* Lightstack.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = Lightstack.xcdatamodel; sourceTree = "<group>"; };
 		246C661744A8F0F458CF4900 /* ValidationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationService.swift; sourceTree = "<group>"; };
 		267186236ACFFCD04827C356 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB10 /* NotebookComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookComponents.swift; sourceTree = "<group>"; };
 		312067699C57FBDCE983B2C0 /* CoachContextBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachContextBuilder.swift; sourceTree = "<group>"; };
 		31760632B5C96652ADBAC3D6 /* WorkoutSessionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSessionService.swift; sourceTree = "<group>"; };
 		35665C73925EAC4BFC6635A6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -195,6 +198,7 @@
 		FA220000000000000000BB0C /* BodyPose3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyPose3D.swift; sourceTree = "<group>"; };
 		FA220000000000000000BB0D /* SkeletonSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonSceneView.swift; sourceTree = "<group>"; };
 		FA220000000000000000BB0E /* IdealFormData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdealFormData.swift; sourceTree = "<group>"; };
+		FA220000000000000000BB0F /* ExerciseFormDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseFormDemoView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -287,6 +291,7 @@
 			isa = PBXGroup;
 			children = (
 				267186236ACFFCD04827C356 /* AppTheme.swift */,
+				FA220000000000000000BB10 /* NotebookComponents.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -586,6 +591,7 @@
 				FA220000000000000000BB0B /* FormFeedbackView.swift */,
 				FA220000000000000000BB0D /* SkeletonSceneView.swift */,
 				FA220000000000000000BB0E /* IdealFormData.swift */,
+				FA220000000000000000BB0F /* ExerciseFormDemoView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -690,6 +696,7 @@
 				A1B2C3D4E5F60718A9B0C1D2 /* AIContextSummary.swift in Sources */,
 				D0E6183062D512993C4B41FC /* AppEnvironment.swift in Sources */,
 				E421AC4E262ABEB2C3871D98 /* AppTheme.swift in Sources */,
+				FA330000000000000000CC10 /* NotebookComponents.swift in Sources */,
 				867A607F2DECF5E347F70B87 /* AuthService.swift in Sources */,
 				EE5B3C02A4B490A77D1D4F00 /* ChatMessage.swift in Sources */,
 				B0644410F3E1729FA98C69B8 /* CoachChatView.swift in Sources */,
@@ -772,6 +779,7 @@
 				FA330000000000000000CC0C /* BodyPose3D.swift in Sources */,
 				FA330000000000000000CC0D /* SkeletonSceneView.swift in Sources */,
 				FA330000000000000000CC0E /* IdealFormData.swift in Sources */,
+				FA330000000000000000CC0F /* ExerciseFormDemoView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -18,34 +18,40 @@ struct MonthDayTileView: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 Text("\(dayNumber)")
-                    .font(.caption.bold())
+                    .font(AppTheme.plexMono(9, weight: .bold))
                     .foregroundStyle(textColor)
 
                 if let session = session {
                     if session.isRestDay {
-                        Text("Rest")
-                            .font(.system(size: 8))
-                            .foregroundStyle(AppTheme.textSecondary)
+                        Text("R")
+                            .font(AppTheme.caveat(7))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                     } else if session.completed {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(AppTheme.success)
+                        // Green dot for completed days
+                        Circle()
+                            .fill(AppTheme.success)
+                            .frame(width: 5, height: 5)
+                    } else if state == .today {
+                        // Subtle pulse for today
+                        Circle()
+                            .fill(Color.white.opacity(0.9))
+                            .frame(width: 4, height: 4)
                     } else {
                         Text(shortType(session.workoutType))
-                            .font(.system(size: 8))
+                            .font(AppTheme.caveat(7))
                             .foregroundStyle(AppTheme.textSecondary)
                             .lineLimit(1)
                     }
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 48)
+            .frame(height: 44)
             .background(backgroundColor)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: 3))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 3)
                     .stroke(borderColor, lineWidth: state == .today ? 2 : 0)
             )
         }
@@ -69,20 +75,22 @@ struct MonthDayTileView: View {
 
     private var backgroundColor: Color {
         switch state {
-        case .rest: return AppTheme.surface.opacity(0.5)
+        case .rest: return Color.clear
         case .planned: return AppTheme.surface
-        case .today: return AppTheme.accent.opacity(0.15)
-        case .completed: return AppTheme.success.opacity(0.1)
-        case .missed: return AppTheme.warning.opacity(0.1)
+        case .today: return AppTheme.accent  // solid fill for today
+        case .completed: return AppTheme.success.opacity(0.12)
+        case .missed: return AppTheme.warning.opacity(0.08)
         case .empty: return Color.clear
         }
     }
 
     private var textColor: Color {
         switch state {
-        case .today: return AppTheme.accent
+        case .today: return Color.white
         case .completed: return AppTheme.success
-        case .missed: return AppTheme.warning
+        case .missed: return AppTheme.warning.opacity(0.7)
+        case .rest: return AppTheme.textSecondary.opacity(0.5)
+        case .empty: return AppTheme.textSecondary.opacity(0.4)
         default: return AppTheme.textPrimary
         }
     }
@@ -92,14 +100,13 @@ struct MonthDayTileView: View {
     }
 
     private func shortType(_ type: String) -> String {
-        // Abbreviate common workout types
         let lower = type.lowercased()
         if lower.contains("push") { return "Push" }
         if lower.contains("pull") { return "Pull" }
         if lower.contains("leg") { return "Legs" }
-        if lower.contains("upper") { return "Upper" }
-        if lower.contains("lower") { return "Lower" }
+        if lower.contains("upper") { return "Upr" }
+        if lower.contains("lower") { return "Lwr" }
         if lower.contains("full") { return "Full" }
-        return String(type.prefix(5))
+        return String(type.prefix(4))
     }
 }

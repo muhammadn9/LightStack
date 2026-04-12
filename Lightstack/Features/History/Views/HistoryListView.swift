@@ -18,8 +18,7 @@ struct HistoryListView: View {
                         .tint(AppTheme.accent)
                 }
             }
-            .navigationTitle("History")
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationBarHidden(true)
             .onAppear { loadHistory() }
         }
     }
@@ -81,10 +80,10 @@ private struct HistoryContentView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(AppTheme.accent.opacity(0.5))
             Text("No workout history yet")
-                .font(.headline)
+                .font(AppTheme.playfair(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("Complete your first workout to see it here")
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -93,14 +92,14 @@ private struct HistoryContentView: View {
 
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                filterChip(label: "All", isSelected: viewModel.filterType == nil) {
+            HStack(spacing: 6) {
+                JournalChip(label: "All", isSelected: viewModel.filterType == nil) {
                     if let userId = environment.authService.currentUser()?.userId {
                         viewModel.setFilter(nil, userId: userId)
                     }
                 }
                 ForEach(viewModel.availableTypes, id: \.self) { type in
-                    filterChip(label: type, isSelected: viewModel.filterType == type) {
+                    JournalChip(label: type, isSelected: viewModel.filterType == type) {
                         if let userId = environment.authService.currentUser()?.userId {
                             viewModel.setFilter(type, userId: userId)
                         }
@@ -111,40 +110,22 @@ private struct HistoryContentView: View {
         }
     }
 
-    private func filterChip(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(isSelected ? .white : AppTheme.textSecondary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background {
-                    if isSelected {
-                        AppTheme.accentGradient
-                    } else {
-                        AppTheme.surfaceElevated
-                    }
-                }
-                .clipShape(Capsule())
-        }
-    }
-
     private func workoutCard(workout: Workout) -> some View {
         let summary = viewModel.workoutSummary(workout)
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(spacing: 2) {
                     Text(DateFormatter.dayAbbreviation.string(from: workout.date).uppercased())
-                        .font(.caption.weight(.bold))
+                        .font(AppTheme.caveat(10, weight: .bold))
                         .foregroundStyle(AppTheme.textSecondary)
                     Text(DateFormatter.dayNumber.string(from: workout.date))
-                        .font(.title2.bold())
+                        .font(AppTheme.plexMono(20, weight: .bold))
                         .foregroundStyle(AppTheme.accent)
                 }
                 .frame(width: 50)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(workout.workoutType)
-                        .font(.headline)
+                        .font(AppTheme.playfair(15, weight: .bold))
                         .foregroundStyle(AppTheme.textPrimary)
                     HStack(spacing: 12) {
                         Label("\(summary.exerciseCount) exercises", systemImage: "figure.strengthtraining.traditional")
@@ -153,7 +134,7 @@ private struct HistoryContentView: View {
                         }
                         Label(formatVolume(summary.totalVolume), systemImage: "scalemass")
                     }
-                    .font(.caption)
+                    .font(AppTheme.plexMono(10))
                     .foregroundStyle(AppTheme.textSecondary)
                 }
                 Spacer()
