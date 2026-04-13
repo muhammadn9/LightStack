@@ -97,7 +97,11 @@ final class AIServiceManager {
         return errorString.contains("rate limit") ||
                errorString.contains("quota") ||
                errorString.contains("429") ||
-               errorString.contains("resource_exhausted")
+               errorString.contains("resource_exhausted") ||
+               errorString.contains("503") ||
+               errorString.contains("unavailable") ||
+               errorString.contains("high demand") ||
+               errorString.contains("try again")
     }
 
     private func handleRateLimitError(_ error: Error, provider: AIProvider) {

@@ -83,7 +83,7 @@ final class GeminiService {
     // MARK: - Multi-Turn Chat (Callback-based)
 
     /// Sends a multi-turn conversation to Gemini with alternating user/model roles.
-    /// Uses a completion handler instead of the delegate to support multiple concurrent calls.
+    /// Retries on HTTP 503 with exponential backoff (1s → 2s → 4s) per Google's recommendation.
     func generateChatAsync(
         systemPrompt: String,
         messages: [ChatMessage],
@@ -120,13 +120,36 @@ final class GeminiService {
             return
         }
 
-        let task = session.dataTask(with: request) { [weak self] data, _, error in
+        performWithRetry(request: request, attempt: 0, completion: completion)
+    }
+
+    /// Executes the request, retrying on 503 with exponential backoff: 1s, 2s, 4s.
+    private func performWithRetry(
+        request: URLRequest,
+        attempt: Int,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else { return }
+
             if let error = error {
                 DispatchQueue.main.async { completion(.failure(error)) }
                 return
             }
 
-            guard let data = data else {
+            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 200
+
+            // Retry on 503 with exponential backoff: 1s → 2s → 4s (max 3 retries)
+            if httpStatus == 503 && attempt < 3 {
+                let delay = pow(2.0, Double(attempt))   // 1, 2, 4 seconds
+                print("[GeminiService] 503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/3)")
+                DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.performWithRetry(request: request, attempt: attempt + 1, completion: completion)
+                }
+                return
+            }
+
+            guard let data else {
                 let error = NSError(domain: "GeminiService", code: -3,
                                     userInfo: [NSLocalizedDescriptionKey: "No response data"])
                 DispatchQueue.main.async { completion(.failure(error)) }
@@ -134,7 +157,7 @@ final class GeminiService {
             }
 
             do {
-                let text = try self?.parseResponse(data) ?? ""
+                let text = try self.parseResponse(data)
                 DispatchQueue.main.async { completion(.success(text)) }
             } catch {
                 DispatchQueue.main.async { completion(.failure(error)) }
