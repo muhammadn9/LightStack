@@ -402,16 +402,87 @@ final class WorkoutSessionService {
         return exercises
     }
 
+    // MARK: - JSON Parser
+
+    func parseWorkoutPlanJSON(_ text: String) -> [Exercise]? {
+        guard let workoutId = currentWorkoutId else { return nil }
+
+        // Strip accidental markdown code-fences some providers emit
+        var jsonString = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if jsonString.hasPrefix("```") {
+            let lines = jsonString.components(separatedBy: .newlines)
+            jsonString = lines.dropFirst().dropLast().joined(separator: "\n")
+        }
+
+        guard let data = jsonString.data(using: .utf8) else { return nil }
+
+        let decoded: WorkoutPlanResponse
+        do {
+            decoded = try JSONDecoder().decode(WorkoutPlanResponse.self, from: data)
+        } catch {
+            print("[WorkoutSessionService] JSON parse failed: \(error)")
+            return nil
+        }
+
+        guard !decoded.exercises.isEmpty else { return nil }
+
+        var exercises: [Exercise] = []
+        for (index, aiEx) in decoded.exercises.enumerated() {
+            let name = validationService.sanitizeLabel(aiEx.name)
+            guard !name.isEmpty, aiEx.sets > 0 else { continue }
+
+            // Preserve "Target: {weight}" prefix convention that
+            // ActiveWorkoutViewModel.prefillWeightValue depends on
+            let weightNote = aiEx.targetWeight.flatMap { $0.isEmpty ? nil : "Target: \($0)" }
+            let mergedNote: String?
+            switch (weightNote, aiEx.coachNote) {
+            case let (w?, c?): mergedNote = "\(w) — \(c)"
+            case let (w?, nil): mergedNote = w
+            case let (nil, c?): mergedNote = c
+            case (nil, nil):    mergedNote = nil
+            }
+
+            let muscleGroup = aiEx.muscleGroup.isEmpty ? inferMuscleGroup(name) : aiEx.muscleGroup
+
+            exercises.append(Exercise.create(
+                workoutId: workoutId,
+                name: name,
+                muscleGroup: muscleGroup,
+                orderIndex: index,
+                targetSets: aiEx.sets,
+                targetReps: aiEx.reps,
+                targetRir: aiEx.rir,
+                restSeconds: aiEx.restSeconds,
+                coachNote: mergedNote
+            ))
+        }
+        return exercises.isEmpty ? nil : exercises
+    }
+
     // MARK: - Response Handlers
 
     private func handleWorkoutPlanResponse(_ text: String) {
-        let exercises = parseExerciseTable(text)
-        if exercises.isEmpty {
-            let error = NSError(domain: "WorkoutSessionService", code: -1,
-                                userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"])
-            delegate?.sessionServiceDidFail(self, error: error)
+        // Primary path: JSON
+        if let exercises = parseWorkoutPlanJSON(text) {
+            print("[WorkoutSessionService] JSON parse succeeded: \(exercises.count) exercises")
+            finalizePlan(exercises)
             return
         }
+        // Fallback: markdown table (zero regression during rollout)
+        print("[WorkoutSessionService] JSON parse failed, attempting markdown fallback")
+        let fallback = parseExerciseTable(text)
+        guard !fallback.isEmpty else {
+            delegate?.sessionServiceDidFail(self, error: NSError(
+                domain: "WorkoutSessionService", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"]
+            ))
+            return
+        }
+        print("[WorkoutSessionService] Markdown fallback succeeded: \(fallback.count) exercises")
+        finalizePlan(fallback)
+    }
+
+    private func finalizePlan(_ exercises: [Exercise]) {
         if let workoutId = currentWorkoutId {
             workoutRepository.saveExercises(exercises, workoutId: workoutId)
         }
@@ -457,5 +528,34 @@ final class WorkoutSessionService {
             return "Chest"
         }
         return "General"
+    }
+}
+
+// MARK: - JSON Models
+
+private struct WorkoutPlanResponse: Decodable {
+    let exercises: [AIExercise]
+    let coachingNotes: String?
+    enum CodingKeys: String, CodingKey {
+        case exercises
+        case coachingNotes = "coaching_notes"
+    }
+}
+
+private struct AIExercise: Decodable {
+    let name: String
+    let muscleGroup: String
+    let sets: Int
+    let targetWeight: String?
+    let reps: String?
+    let rir: String?
+    let restSeconds: Int?
+    let coachNote: String?
+    enum CodingKeys: String, CodingKey {
+        case name, sets, reps, rir
+        case muscleGroup  = "muscle_group"
+        case targetWeight = "target_weight"
+        case restSeconds  = "rest_seconds"
+        case coachNote    = "coach_note"
     }
 }

@@ -71,9 +71,23 @@ final class CoachPromptService {
         the available time and energy level. Always respond with a workout table.
 
         WORKOUT PLAN FORMAT
-        Always present the session plan as a markdown table:
-        | Exercise | Sets | Target Weight | Reps | RIR | Rest |
-        The athlete should be able to see the entire workout at a glance.
+        Return the session plan as a JSON object matching this exact schema:
+        {
+          "exercises": [
+            {
+              "name": "string",
+              "muscle_group": "string",
+              "sets": integer,
+              "target_weight": "string or null",
+              "reps": "string or null (e.g. '8-12')",
+              "rir": "string or null (e.g. '1-2')",
+              "rest_seconds": integer or null,
+              "coach_note": "string or null"
+            }
+          ],
+          "coaching_notes": "string"
+        }
+        Return ONLY the JSON. No markdown fences, no other text.
 
         PROGRESSION NOTE
         After reviewing completed sets, write a short progression note (3-5 sentences) \
@@ -127,15 +141,10 @@ final class CoachPromptService {
             }
         }
 
-        message += """
-
-        \nGenerate a complete workout plan in table format:
-        | Exercise | Sets | Target Weight | Reps | RIR | Rest |
-
-        Include a muscle group label for each exercise. \
-        Base the weights on reasonable estimates for my profile. \
-        Keep the plan within my time constraint.
-        """
+        message += "\n\nGenerate a complete JSON workout plan. Include muscle_group for every exercise. "
+        message += "Base target_weight on reasonable estimates for my profile. "
+        message += "Keep the plan within my time constraint. "
+        message += "Return ONLY valid JSON matching the schema in the system prompt."
 
         return message
     }
