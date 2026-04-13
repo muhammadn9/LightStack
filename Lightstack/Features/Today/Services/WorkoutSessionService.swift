@@ -307,19 +307,29 @@ final class WorkoutSessionService {
     // MARK: - Parse Exercise Table
 
     /// Parse markdown table into Exercise structs.
-    /// Expected format: | Exercise | Sets | Target Weight | Reps | RIR | Rest |
+    /// Detects column positions from the header row so it handles both:
+    ///   | Exercise | Sets | Target Weight | Reps | RIR | Rest |
+    ///   | Muscle Group | Exercise | Sets | Target Weight | Reps | RIR | Rest |
     /// Defensive parsing — returns empty array on malformed output, never crashes.
     func parseExerciseTable(_ text: String) -> [Exercise] {
         guard let workoutId = currentWorkoutId else { return [] }
 
-        // Use .newlines to handle both \n and \r\n line endings from API responses
         let lines = text.components(separatedBy: .newlines)
         var exercises: [Exercise] = []
         var orderIndex = 0
 
+        // Column indices — set to defaults for old format, overridden by header detection
+        var nameCol = 0
+        var muscleCol: Int? = nil
+        var setsCol = 1
+        var weightCol = 2
+        var repsCol = 3
+        var rirCol = 4
+        var restCol = 5
+        var headerParsed = false
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-
             guard trimmed.hasPrefix("|") && trimmed.hasSuffix("|") else { continue }
 
             let columns = trimmed
@@ -327,32 +337,57 @@ final class WorkoutSessionService {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
 
             guard columns.count >= 4 else { continue }
-            if columns[0].lowercased().contains("exercise") { continue }
-            if columns[0].contains("---") { continue }
 
-            let rawName = columns[0]
+            // Skip separator rows
+            if columns.contains(where: { $0.hasPrefix("-") }) { continue }
+
+            // Header row: detect column indices once
+            if !headerParsed {
+                let lower = columns.map { $0.lowercased() }
+                if lower.contains(where: { $0.contains("exercise") || $0.contains("sets") || $0.contains("movement") }) {
+                    for (i, col) in lower.enumerated() {
+                        if col.contains("exercise") || col.contains("movement") { nameCol = i }
+                        else if col.contains("muscle") || col.contains("group")  { muscleCol = i }
+                        else if col.contains("set")                               { setsCol = i }
+                        else if col.contains("weight") || col.contains("target")  { weightCol = i }
+                        else if col.contains("rep")                               { repsCol = i }
+                        else if col.contains("rir")                               { rirCol = i }
+                        else if col.contains("rest")                              { restCol = i }
+                    }
+                    headerParsed = true
+                    continue
+                }
+            }
+
+            guard columns.count > nameCol else { continue }
+            let rawName = columns[nameCol]
             guard !rawName.isEmpty, !rawName.contains("---") else { continue }
 
-            // Sanitize AI-generated exercise names before storing
             let name = validationService.sanitizeLabel(rawName)
             guard !name.isEmpty else { continue }
 
-            let setsStr = columns.count > 1 ? columns[1] : ""
-            let weightStr = columns.count > 2 ? columns[2] : ""
-            let repsStr = columns.count > 3 ? columns[3] : ""
-            let rirStr = columns.count > 4 ? columns[4] : ""
-            let restStr = columns.count > 5 ? columns[5] : ""
+            let setsStr   = columns.count > setsCol   ? columns[setsCol]   : ""
+            let weightStr = columns.count > weightCol  ? columns[weightCol] : ""
+            let repsStr   = columns.count > repsCol    ? columns[repsCol]   : ""
+            let rirStr    = columns.count > rirCol     ? columns[rirCol]    : ""
+            let restStr   = columns.count > restCol    ? columns[restCol]   : ""
+
+            // Use Muscle Group column when present, otherwise infer from name
+            let muscleGroup: String
+            if let mc = muscleCol, columns.count > mc, !columns[mc].isEmpty {
+                muscleGroup = columns[mc]
+            } else {
+                muscleGroup = inferMuscleGroup(name)
+            }
 
             let targetSets = parseFirstInt(setsStr)
-            // Skip rows that have no valid set count — these are section headers
-            // (e.g. "Quads/Glutes (form focus)") not actual exercises
-            guard let targetSets = targetSets, targetSets > 0 else { continue }
+            guard let targetSets, targetSets > 0 else { continue }
             let restSeconds = parseRestSeconds(restStr)
 
             let exercise = Exercise.create(
                 workoutId: workoutId,
                 name: name,
-                muscleGroup: inferMuscleGroup(name),
+                muscleGroup: muscleGroup,
                 orderIndex: orderIndex,
                 targetSets: targetSets,
                 targetReps: repsStr.isEmpty ? nil : repsStr,
