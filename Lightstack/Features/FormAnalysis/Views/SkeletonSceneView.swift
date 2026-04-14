@@ -2,37 +2,66 @@ import SwiftUI
 import SceneKit
 import simd
 
-/// Renders an animated 3D stick-figure skeleton in an SCNView.
-/// Uses a Timer-driven frame loop via SCNSceneRendererDelegate so that
-/// both joint spheres AND bone cylinders update together each tick.
+// MARK: - File-private helpers
+
+private func pbrMaterial(color: UIColor, roughness: Double, metalness: Double) -> SCNMaterial {
+    let mat = SCNMaterial()
+    mat.lightingModel = .physicallyBased
+    mat.diffuse.contents = color
+    mat.roughness.contents = NSNumber(value: roughness)
+    mat.metalness.contents = NSNumber(value: metalness)
+    return mat
+}
+
+private func withVirtualJoints(_ frame: [String: simd_float3]) -> [String: simd_float3] {
+    var f = frame
+    if let ls = f["leftShoulder"], let rs = f["rightShoulder"] {
+        f["_shoulderMid"] = (ls + rs) / 2
+    }
+    if let lh = f["leftHip"], let rh = f["rightHip"] {
+        f["_hipMid"] = (lh + rh) / 2
+    }
+    if let neck = f["neck"] {
+        f["_head"] = simd_float3(neck.x, neck.y + 0.15, neck.z)
+    }
+    return f
+}
+
+// MARK: - SkeletonSceneView
+
+/// Renders an animated 3D volumetric skeleton in an SCNView.
+/// Uses Timer-driven LERP interpolation for smooth slow-motion playback.
+/// Equipment nodes track wrist positions each frame.
 struct SkeletonSceneView: UIViewRepresentable {
 
     let frames: [[String: simd_float3]]
     let tintColor: UIColor
     var equipmentType: EquipmentType = .none
+    /// Timer tick rate. Controls frameAdvance: ≤4.5fps → 0.35 frames/tick (study mode), else 0.50 (comparison mode).
+    var fps: Double = 6
 
-    // Bone connections (parent → child). Keyed "a--b" in coordinator.
+    // Virtual joints _shoulderMid / _hipMid / _head are computed per frame via withVirtualJoints.
     private let bones: [(String, String, BoneCategory)] = [
-        // Spine / torso
-        ("neck", "leftShoulder",  .torso),
-        ("neck", "rightShoulder", .torso),
-        ("leftShoulder",  "rightShoulder", .torso),
-        ("leftShoulder",  "leftHip",  .torso),
-        ("rightShoulder", "rightHip", .torso),
-        ("leftHip",  "rightHip", .torso),
-        // Arms
-        ("leftShoulder",  "leftElbow",  .arm),
-        ("leftElbow",     "leftWrist",  .arm),
-        ("rightShoulder", "rightElbow", .arm),
-        ("rightElbow",    "rightWrist", .arm),
-        // Legs
-        ("leftHip",  "leftKnee",  .leg),
-        ("leftKnee", "leftAnkle", .leg),
-        ("rightHip",  "rightKnee",  .leg),
-        ("rightKnee", "rightAnkle", .leg),
+        ("_shoulderMid", "_hipMid",        .spine),
+        ("_shoulderMid", "neck",           .neck),
+        ("leftShoulder",  "rightShoulder", .shoulderBar),
+        ("leftHip",       "rightHip",      .hipBar),
+        ("leftShoulder",  "leftHip",       .sideRib),
+        ("rightShoulder", "rightHip",      .sideRib),
+        ("leftShoulder",  "leftElbow",     .upperArm),
+        ("leftElbow",     "leftWrist",     .forearm),
+        ("rightShoulder", "rightElbow",    .upperArm),
+        ("rightElbow",    "rightWrist",    .forearm),
+        ("leftHip",       "leftKnee",      .thigh),
+        ("leftKnee",      "leftAnkle",     .shin),
+        ("rightHip",      "rightKnee",     .thigh),
+        ("rightKnee",     "rightAnkle",    .shin),
     ]
 
-    enum BoneCategory { case torso, arm, leg }
+    enum BoneCategory {
+        case spine, neck, shoulderBar, hipBar, sideRib
+        case upperArm, forearm, thigh, shin
+    }
 
     // MARK: - UIViewRepresentable
 
@@ -55,8 +84,8 @@ struct SkeletonSceneView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.frames = frames
         coordinator.buildNodes(in: scene, bones: bones, tintColor: tintColor)
-        addEquipment(to: scene, equipmentType: equipmentType)
-        coordinator.startAnimation()
+        addEquipment(to: scene, equipmentType: equipmentType, coordinator: coordinator)
+        coordinator.startAnimation(fps: fps)
 
         return scnView
     }
@@ -66,111 +95,141 @@ struct SkeletonSceneView: UIViewRepresentable {
     // MARK: - Lighting
 
     private func setupLighting(scene: SCNScene) {
-        scene.lightingEnvironment.intensity = 0
+        scene.lightingEnvironment.intensity = 0.0
 
-        let ambient = SCNLight()
-        ambient.type = .ambient
-        ambient.intensity = 600
-        ambient.color = UIColor(white: 1, alpha: 1)
-        let ambientNode = SCNNode()
-        ambientNode.light = ambient
-        scene.rootNode.addChildNode(ambientNode)
-
-        let directional = SCNLight()
-        directional.type = .directional
-        directional.intensity = 800
-        directional.color = UIColor(red: 1, green: 0.97, blue: 0.9, alpha: 1)
-        let dirNode = SCNNode()
-        dirNode.light = directional
-        dirNode.eulerAngles = SCNVector3(-Float.pi / 5, -Float.pi / 6, 0)
-        scene.rootNode.addChildNode(dirNode)
+        // Ambient — soft fill
+        addLight(to: scene, type: .ambient, intensity: 280,
+                 color: UIColor(white: 1, alpha: 1), euler: SCNVector3(0, 0, 0))
+        // Key — warm top-left
+        addLight(to: scene, type: .directional, intensity: 950,
+                 color: UIColor(red: 1.0, green: 0.95, blue: 0.80, alpha: 1),
+                 euler: SCNVector3(-Float.pi / 5, -Float.pi / 6, 0))
+        // Fill — cool right
+        addLight(to: scene, type: .directional, intensity: 380,
+                 color: UIColor(red: 0.72, green: 0.85, blue: 1.0, alpha: 1),
+                 euler: SCNVector3(-Float.pi / 8, Float.pi / 3, 0))
+        // Rim — cool back
+        addLight(to: scene, type: .directional, intensity: 180,
+                 color: UIColor(red: 0.62, green: 0.76, blue: 1.0, alpha: 1),
+                 euler: SCNVector3(Float.pi / 4, Float.pi, 0))
 
         let cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
-        cameraNode.position = SCNVector3(0, 0.8, 2.8)
+        cameraNode.position = SCNVector3(0, 0.9, 2.8)
         scene.rootNode.addChildNode(cameraNode)
+    }
+
+    private func addLight(to scene: SCNScene, type: SCNLight.LightType,
+                          intensity: CGFloat, color: UIColor, euler: SCNVector3) {
+        let light = SCNLight()
+        light.type = type
+        light.intensity = intensity
+        light.color = color
+        let node = SCNNode()
+        node.light = light
+        node.eulerAngles = euler
+        scene.rootNode.addChildNode(node)
     }
 
     // MARK: - Equipment
 
-    private func addEquipment(to scene: SCNScene, equipmentType: EquipmentType) {
+    private func addEquipment(to scene: SCNScene, equipmentType: EquipmentType, coordinator: Coordinator) {
+        let metalMat = pbrMaterial(color: UIColor(white: 0.75, alpha: 1), roughness: 0.12, metalness: 0.82)
+        let benchMat = pbrMaterial(color: UIColor(red: 0.15, green: 0.12, blue: 0.10, alpha: 1),
+                                   roughness: 0.80, metalness: 0.0)
+
         switch equipmentType {
         case .none: break
 
         case .bench:
-            let bench = SCNBox(width: 0.6, height: 0.42, length: 1.7, chamferRadius: 0.02)
-            bench.firstMaterial?.diffuse.contents = UIColor(white: 0.2, alpha: 1)
+            let bench = SCNBox(width: 0.6, height: 0.42, length: 1.7, chamferRadius: 0.03)
+            bench.materials = [benchMat]
             let benchNode = SCNNode(geometry: bench)
             benchNode.position = SCNVector3(0, 0.21, 0)
             scene.rootNode.addChildNode(benchNode)
 
         case .barbell:
-            let bar = SCNCylinder(radius: 0.015, height: 1.8)
-            bar.firstMaterial?.diffuse.contents = UIColor(white: 0.7, alpha: 1)
-            let barNode = SCNNode(geometry: bar)
-            barNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
-            barNode.position = SCNVector3(0, 1.45, 0)
-            scene.rootNode.addChildNode(barNode)
-            // Plates
-            for side: Float in [-0.85, 0.85] {
-                let plate = SCNTorus(ringRadius: 0.12, pipeRadius: 0.025)
-                plate.firstMaterial?.diffuse.contents = UIColor(white: 0.3, alpha: 1)
-                let plateNode = SCNNode(geometry: plate)
-                plateNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
-                plateNode.position = SCNVector3(side, 1.45, 0)
-                scene.rootNode.addChildNode(plateNode)
+            let bar = makeBarbellNode(metalMat: metalMat)
+            bar.eulerAngles = SCNVector3(0, 0, -Float.pi / 2)
+            if let lw = frames.first?["leftWrist"], let rw = frames.first?["rightWrist"] {
+                let mid = (lw + rw) / 2
+                bar.position = SCNVector3(mid.x, mid.y, mid.z)
+            } else {
+                bar.position = SCNVector3(0, 1.45, 0)
             }
+            scene.rootNode.addChildNode(bar)
+            coordinator.movableEquipmentNodes["barbell"] = bar
 
         case .benchAndBarbell:
-            // Bench
-            let bench = SCNBox(width: 0.6, height: 0.42, length: 1.7, chamferRadius: 0.02)
-            bench.firstMaterial?.diffuse.contents = UIColor(white: 0.2, alpha: 1)
+            let bench = SCNBox(width: 0.6, height: 0.42, length: 1.7, chamferRadius: 0.03)
+            bench.materials = [benchMat]
             let benchNode = SCNNode(geometry: bench)
             benchNode.position = SCNVector3(0, 0.21, 0)
             scene.rootNode.addChildNode(benchNode)
-            // Barbell above
-            let bar = SCNCylinder(radius: 0.015, height: 1.8)
-            bar.firstMaterial?.diffuse.contents = UIColor(white: 0.7, alpha: 1)
-            let barNode = SCNNode(geometry: bar)
-            barNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
-            barNode.position = SCNVector3(0, 1.45, -0.1)
-            scene.rootNode.addChildNode(barNode)
-            for side: Float in [-0.85, 0.85] {
-                let plate = SCNTorus(ringRadius: 0.12, pipeRadius: 0.025)
-                plate.firstMaterial?.diffuse.contents = UIColor(white: 0.3, alpha: 1)
-                let plateNode = SCNNode(geometry: plate)
-                plateNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
-                plateNode.position = SCNVector3(side, 1.45, -0.1)
-                scene.rootNode.addChildNode(plateNode)
+
+            let bar = makeBarbellNode(metalMat: metalMat)
+            bar.eulerAngles = SCNVector3(0, 0, -Float.pi / 2)
+            if let lw = frames.first?["leftWrist"], let rw = frames.first?["rightWrist"] {
+                let mid = (lw + rw) / 2
+                bar.position = SCNVector3(mid.x, mid.y, mid.z)
+            } else {
+                bar.position = SCNVector3(0, 1.15, 0.15)
             }
+            scene.rootNode.addChildNode(bar)
+            coordinator.movableEquipmentNodes["barbell"] = bar
 
         case .pullUpBar:
-            let bar = SCNCylinder(radius: 0.025, height: 1.4)
-            bar.firstMaterial?.diffuse.contents = UIColor(white: 0.6, alpha: 1)
-            let barNode = SCNNode(geometry: bar)
+            let barGeo = SCNCylinder(radius: 0.030, height: 1.4)
+            barGeo.materials = [metalMat]
+            let barNode = SCNNode(geometry: barGeo)
             barNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
             barNode.position = SCNVector3(0, 2.3, 0)
             scene.rootNode.addChildNode(barNode)
 
         case .dumbbells:
-            for (xPos, wristKey) in [(-0.25, "leftWrist"), (0.25, "rightWrist")] as [(Float, String)] {
-                let baseY: Float = frames.first?[wristKey]?.y ?? 1.3
+            for (sideSign, wristKey, dbKey) in [(-1.0, "leftWrist", "leftDumbbell"),
+                                                 (1.0, "rightWrist", "rightDumbbell")] as [(Double, String, String)] {
+                let xPos = Float(sideSign) * 0.25
+                let baseY = frames.first?[wristKey]?.y ?? 1.3
+                let container = SCNNode()
+                container.position = SCNVector3(xPos, baseY, 0)
+
                 let shaft = SCNCylinder(radius: 0.03, height: 0.25)
-                shaft.firstMaterial?.diffuse.contents = UIColor(white: 0.35, alpha: 1)
+                shaft.materials = [metalMat]
                 let shaftNode = SCNNode(geometry: shaft)
                 shaftNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
-                shaftNode.position = SCNVector3(xPos, baseY, 0)
-                scene.rootNode.addChildNode(shaftNode)
+                container.addChildNode(shaftNode)
+
                 for endX: Float in [-0.14, 0.14] {
                     let cap = SCNCylinder(radius: 0.055, height: 0.06)
-                    cap.firstMaterial?.diffuse.contents = UIColor(white: 0.25, alpha: 1)
+                    cap.materials = [metalMat]
                     let capNode = SCNNode(geometry: cap)
                     capNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
-                    capNode.position = SCNVector3(xPos + endX, baseY, 0)
-                    scene.rootNode.addChildNode(capNode)
+                    capNode.position = SCNVector3(endX, 0, 0)
+                    container.addChildNode(capNode)
                 }
+                scene.rootNode.addChildNode(container)
+                coordinator.movableEquipmentNodes[dbKey] = container
             }
         }
+    }
+
+    private func makeBarbellNode(metalMat: SCNMaterial) -> SCNNode {
+        let container = SCNNode()
+
+        let bar = SCNCylinder(radius: 0.018, height: 1.8)
+        bar.materials = [metalMat]
+        container.addChildNode(SCNNode(geometry: bar))
+
+        // Plates at ±0.85 along bar's local Y axis
+        for side: Float in [-0.85, 0.85] {
+            let plate = SCNTorus(ringRadius: 0.12, pipeRadius: 0.030)
+            plate.materials = [metalMat]
+            let plateNode = SCNNode(geometry: plate)
+            plateNode.position = SCNVector3(0, side, 0)
+            container.addChildNode(plateNode)
+        }
+        return container
     }
 
     // MARK: - Coordinator
@@ -178,9 +237,12 @@ struct SkeletonSceneView: UIViewRepresentable {
     final class Coordinator: NSObject, SCNSceneRendererDelegate {
         var frames: [[String: simd_float3]] = []
         var jointNodes: [String: SCNNode] = [:]
-        var boneNodes: [String: SCNNode] = [:]   // key: "a--b"
+        var boneNodes: [String: SCNNode] = [:]          // key: "a--b"
         var boneConnections: [(String, String)] = []
-        private var currentFrameIndex = 0
+        var movableEquipmentNodes: [String: SCNNode] = [:]
+
+        private var currentT: Double = 0
+        private var frameAdvance: Double = 0.50
         private var frameTimer: Timer?
 
         func buildNodes(
@@ -189,120 +251,132 @@ struct SkeletonSceneView: UIViewRepresentable {
             tintColor: UIColor
         ) {
             guard let firstFrame = frames.first else { return }
+            let frame = withVirtualJoints(firstFrame)
 
-            let legColor = tintColor.withAlphaComponent(0.85)
-            let torsoColor = UIColor(white: 0.92, alpha: 1)
-            let headColor = UIColor(white: 0.88, alpha: 1)
+            let torsoColor = UIColor(white: 0.88, alpha: 1)
 
-            // Joint spheres
-            for (name, pos) in firstFrame {
-                let radius: CGFloat
-                switch name {
-                case "leftShoulder", "rightShoulder", "leftHip", "rightHip": radius = 0.035
-                case "leftElbow", "rightElbow", "leftKnee", "rightKnee":     radius = 0.025
-                default:                                                       radius = 0.02
-                }
-                let sphere = SCNSphere(radius: radius)
-                sphere.firstMaterial?.diffuse.contents = tintColor
-                sphere.firstMaterial?.emission.contents = tintColor.withAlphaComponent(0.25)
+            // 4 landmark joint spheres (shoulders + hips)
+            for name in ["leftShoulder", "rightShoulder", "leftHip", "rightHip"] {
+                guard let pos = frame[name] else { continue }
+                let sphere = SCNSphere(radius: 0.028)
+                sphere.materials = [pbrMaterial(color: tintColor, roughness: 0.45, metalness: 0.05)]
                 let node = SCNNode(geometry: sphere)
                 node.position = SCNVector3(pos.x, pos.y, pos.z)
                 scene.rootNode.addChildNode(node)
                 jointNodes[name] = node
             }
 
-            // Head sphere above neck
-            if let neckPos = firstFrame["neck"] {
-                let head = SCNSphere(radius: 0.08)
-                head.firstMaterial?.diffuse.contents = headColor
+            // Head sphere
+            if let headPos = frame["_head"] {
+                let head = SCNSphere(radius: 0.09)
+                head.materials = [pbrMaterial(color: UIColor(white: 0.86, alpha: 1),
+                                              roughness: 0.60, metalness: 0.0)]
                 let headNode = SCNNode(geometry: head)
-                headNode.position = SCNVector3(neckPos.x, neckPos.y + 0.15, neckPos.z)
+                headNode.position = SCNVector3(headPos.x, headPos.y, headPos.z)
                 scene.rootNode.addChildNode(headNode)
                 jointNodes["_head"] = headNode
             }
 
-            // Bone cylinders
+            // Capsule bones
             for (aName, bName, category) in bones {
-                guard let posA = firstFrame[aName], let posB = firstFrame[bName] else { continue }
-                let boneRadius: CGFloat = (category == .arm) ? 0.014 : 0.018
-                let boneColor: UIColor
+                guard let posA = frame[aName], let posB = frame[bName] else { continue }
+                let radius = capsuleRadius(for: category)
+                let color: UIColor
                 switch category {
-                case .torso: boneColor = torsoColor
-                case .arm:   boneColor = tintColor.withAlphaComponent(0.9)
-                case .leg:   boneColor = legColor
+                case .spine, .neck, .shoulderBar, .hipBar, .sideRib:
+                    color = torsoColor
+                case .upperArm, .forearm:
+                    color = tintColor
+                case .thigh, .shin:
+                    color = tintColor.withAlphaComponent(0.85)
                 }
-                let node = makeBoneCylinder(from: posA, to: posB, radius: boneRadius, color: boneColor)
+                let node = makeBoneCapsule(from: posA, to: posB, capRadius: radius, color: color)
                 scene.rootNode.addChildNode(node)
                 boneNodes["\(aName)--\(bName)"] = node
                 boneConnections.append((aName, bName))
             }
-
-            // Head bone (neck → _head)
-            if let neckPos = firstFrame["neck"] {
-                let headPos = simd_float3(neckPos.x, neckPos.y + 0.15, neckPos.z)
-                let node = makeBoneCylinder(from: neckPos, to: headPos, radius: 0.014, color: torsoColor)
-                scene.rootNode.addChildNode(node)
-                boneNodes["neck--_head"] = node
-                boneConnections.append(("neck", "_head"))
-            }
         }
 
-        func startAnimation(fps: Double = 8) {
+        func startAnimation(fps: Double = 6) {
+            frameAdvance = fps <= 4.5 ? 0.35 : 0.50
             frameTimer?.invalidate()
             frameTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / fps, repeats: true) { [weak self] _ in
-                guard let self, !self.frames.isEmpty else { return }
-                self.currentFrameIndex = (self.currentFrameIndex + 1) % self.frames.count
-                self.applyFrame(self.frames[self.currentFrameIndex])
+                guard let self, self.frames.count > 1 else { return }
+                self.currentT += self.frameAdvance
+                if self.currentT >= Double(self.frames.count) { self.currentT = 0 }
+                let idxA = Int(self.currentT) % self.frames.count
+                let idxB = (idxA + 1) % self.frames.count
+                let t = Float(self.currentT - Double(Int(self.currentT)))
+                let blended = self.lerpFrames(self.frames[idxA], self.frames[idxB], t: t)
+                SCNTransaction.begin()
+                SCNTransaction.animationDuration = 0.06
+                self.applyFrame(blended)
+                SCNTransaction.commit()
             }
         }
 
-        private func applyFrame(_ frame: [String: simd_float3]) {
-            // Update joint spheres
+        private func lerpFrames(
+            _ a: [String: simd_float3],
+            _ b: [String: simd_float3],
+            t: Float
+        ) -> [String: simd_float3] {
+            var result: [String: simd_float3] = [:]
+            for (key, posA) in a {
+                result[key] = simd_mix(posA, b[key] ?? posA, simd_float3(repeating: t))
+            }
+            return result
+        }
+
+        private func applyFrame(_ rawFrame: [String: simd_float3]) {
+            let frame = withVirtualJoints(rawFrame)
+
+            // Landmark joint spheres + head
             for (name, node) in jointNodes {
-                if name == "_head" {
-                    if let neckPos = frame["neck"] {
-                        node.position = SCNVector3(neckPos.x, neckPos.y + 0.15, neckPos.z)
-                    }
-                } else if let pos = frame[name] {
+                if let pos = frame[name] {
                     node.position = SCNVector3(pos.x, pos.y, pos.z)
                 }
             }
 
-            // Update bone cylinders
+            // Bone capsules
             for (aName, bName) in boneConnections {
-                guard let boneNode = boneNodes["\(aName)--\(bName)"] else { continue }
-                let posA: simd_float3?
-                let posB: simd_float3?
-                if aName == "_head" {
-                    posA = frame["neck"].map { simd_float3($0.x, $0.y + 0.15, $0.z) }
-                } else {
-                    posA = frame[aName]
-                }
-                if bName == "_head" {
-                    posB = frame["neck"].map { simd_float3($0.x, $0.y + 0.15, $0.z) }
-                } else {
-                    posB = frame[bName]
-                }
-                guard let a = posA, let b = posB else { continue }
-                updateBone(node: boneNode, from: a, to: b)
+                guard let boneNode = boneNodes["\(aName)--\(bName)"],
+                      let posA = frame[aName],
+                      let posB = frame[bName] else { continue }
+                updateBone(node: boneNode, from: posA, to: posB)
+            }
+
+            // Animated equipment
+            if let barbellNode = movableEquipmentNodes["barbell"],
+               let lw = frame["leftWrist"], let rw = frame["rightWrist"] {
+                let mid = (lw + rw) / 2
+                barbellNode.position = SCNVector3(mid.x, mid.y, mid.z)
+                orient(node: barbellNode, toward: rw - lw)
+            }
+            if let leftDb = movableEquipmentNodes["leftDumbbell"],
+               let lw = frame["leftWrist"] {
+                leftDb.position = SCNVector3(lw.x, lw.y, lw.z)
+            }
+            if let rightDb = movableEquipmentNodes["rightDumbbell"],
+               let rw = frame["rightWrist"] {
+                rightDb.position = SCNVector3(rw.x, rw.y, rw.z)
             }
         }
 
         // MARK: - Bone geometry helpers
 
-        func makeBoneCylinder(
+        func makeBoneCapsule(
             from a: simd_float3, to b: simd_float3,
-            radius: CGFloat, color: UIColor
+            capRadius: CGFloat, color: UIColor
         ) -> SCNNode {
             let diff = b - a
-            let length = simd_length(diff)
+            let length = CGFloat(simd_length(diff))
             guard length > 0.001 else { return SCNNode() }
 
-            let cylinder = SCNCylinder(radius: radius, height: CGFloat(length))
-            cylinder.firstMaterial?.diffuse.contents = color
-            cylinder.firstMaterial?.specular.contents = UIColor(white: 0.4, alpha: 1)
+            let capsule = SCNCapsule(capRadius: capRadius,
+                                     height: max(0.001, length - 2 * capRadius))
+            capsule.materials = [pbrMaterial(color: color, roughness: 0.55, metalness: 0.05)]
 
-            let node = SCNNode(geometry: cylinder)
+            let node = SCNNode(geometry: capsule)
             let mid = (a + b) / 2
             node.position = SCNVector3(mid.x, mid.y, mid.z)
             orient(node: node, toward: diff)
@@ -311,14 +385,28 @@ struct SkeletonSceneView: UIViewRepresentable {
 
         func updateBone(node: SCNNode, from a: simd_float3, to b: simd_float3) {
             let diff = b - a
-            let length = simd_length(diff)
+            let length = CGFloat(simd_length(diff))
             guard length > 0.001,
-                  let cylinder = node.geometry as? SCNCylinder else { return }
+                  let capsule = node.geometry as? SCNCapsule else { return }
 
-            cylinder.height = CGFloat(length)
+            capsule.height = max(0.001, length - 2 * capsule.capRadius)
             let mid = (a + b) / 2
             node.position = SCNVector3(mid.x, mid.y, mid.z)
             orient(node: node, toward: diff)
+        }
+
+        private func capsuleRadius(for category: SkeletonSceneView.BoneCategory) -> CGFloat {
+            switch category {
+            case .spine:       return 0.075
+            case .neck:        return 0.040
+            case .shoulderBar: return 0.038
+            case .hipBar:      return 0.038
+            case .sideRib:     return 0.035
+            case .upperArm:    return 0.050
+            case .forearm:     return 0.042
+            case .thigh:       return 0.062
+            case .shin:        return 0.050
+            }
         }
 
         private func orient(node: SCNNode, toward diff: simd_float3) {
@@ -331,14 +419,12 @@ struct SkeletonSceneView: UIViewRepresentable {
             if simd_length(axis) > 0.001 {
                 node.rotation = SCNVector4(axis.x, axis.y, axis.z, angle)
             } else if dot < 0 {
-                // Anti-parallel: rotate 180° around X
                 node.rotation = SCNVector4(1, 0, 0, Float.pi)
             } else {
                 node.rotation = SCNVector4(0, 0, 0, 0)
             }
         }
 
-        // SCNSceneRendererDelegate — not used for per-frame updates (Timer handles it)
         func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {}
 
         deinit { frameTimer?.invalidate() }
@@ -357,11 +443,13 @@ enum EquipmentType {
 
     static func equipment(for exerciseName: String) -> EquipmentType {
         let lower = exerciseName.lowercased()
-        if lower.contains("bench press") || lower.contains("chest press") || lower.contains("incline press") || lower.contains("decline press") {
+        if lower.contains("bench press") || lower.contains("chest press")
+            || lower.contains("incline press") || lower.contains("decline press") {
             return .benchAndBarbell
         } else if lower.contains("deadlift") || lower.contains("rdl") || lower.contains("barbell") {
             return .barbell
-        } else if lower.contains("pull up") || lower.contains("pullup") || lower.contains("pull-up") || lower.contains("chin up") || lower.contains("chin-up") {
+        } else if lower.contains("pull up") || lower.contains("pullup") || lower.contains("pull-up")
+            || lower.contains("chin up") || lower.contains("chin-up") {
             return .pullUpBar
         } else if lower.contains("dumbbell") {
             return .dumbbells

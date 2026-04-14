@@ -1,7 +1,7 @@
 import Foundation
 import simd
 
-/// Hardcoded reference keyframes for 4 exercise categories.
+/// Hardcoded reference keyframes for exercise categories.
 /// Each keyframe is a dictionary of joint name → normalized position (y=0 floor, y=1 head height).
 enum IdealFormData {
 
@@ -14,6 +14,9 @@ enum IdealFormData {
             return squatKeyframes
         } else if lower.contains("deadlift") || lower.contains("rdl") {
             return deadliftKeyframes
+        } else if lower.contains("bench press") || lower.contains("chest press")
+                    || lower.contains("incline press") || lower.contains("decline press") {
+            return benchPressKeyframes
         } else if lower.contains("row") || lower.contains("pull") || lower.contains("curl") {
             return upperPullKeyframes
         } else {
@@ -69,10 +72,10 @@ enum IdealFormData {
         }
     }
 
-    // MARK: - Squat (5 keyframes: stand → descent → bottom → ascent → stand)
+    // MARK: - Squat (7 keyframes: stand → 1/8-down → quarter-down → bottom → hold → quarter-up → stand)
 
     static let squatKeyframes: [[String: simd_float3]] = [
-        // Standing (frame 0)
+        // Frame 0 — Standing
         [
             "neck":          simd_float3(0, 1.5, 0),
             "leftShoulder":  simd_float3(-0.2, 1.4, 0),
@@ -85,8 +88,26 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.12, 0, 0),
             "leftElbow":     simd_float3(-0.35, 1.1, 0.15),
             "rightElbow":    simd_float3( 0.35, 1.1, 0.15),
+            "leftWrist":     simd_float3(-0.40, 1.0, 0.20),
+            "rightWrist":    simd_float3( 0.40, 1.0, 0.20),
         ],
-        // Quarter descent (frame 1)
+        // Frame 1 — 1/8 descent
+        [
+            "neck":          simd_float3(0, 1.42, 0),
+            "leftShoulder":  simd_float3(-0.2, 1.32, 0),
+            "rightShoulder": simd_float3( 0.2, 1.32, 0),
+            "leftHip":       simd_float3(-0.11, 0.82, 0),
+            "rightHip":      simd_float3( 0.11, 0.82, 0),
+            "leftKnee":      simd_float3(-0.135, 0.40, 0.05),
+            "rightKnee":     simd_float3( 0.135, 0.40, 0.05),
+            "leftAnkle":     simd_float3(-0.125, 0, 0),
+            "rightAnkle":    simd_float3( 0.125, 0, 0),
+            "leftElbow":     simd_float3(-0.35, 1.05, 0.15),
+            "rightElbow":    simd_float3( 0.35, 1.05, 0.15),
+            "leftWrist":     simd_float3(-0.40, 0.95, 0.21),
+            "rightWrist":    simd_float3( 0.40, 0.95, 0.21),
+        ],
+        // Frame 2 — Quarter descent
         [
             "neck":          simd_float3(0, 1.35, 0),
             "leftShoulder":  simd_float3(-0.2, 1.25, 0),
@@ -99,8 +120,10 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.13, 0, 0),
             "leftElbow":     simd_float3(-0.35, 1.0, 0.15),
             "rightElbow":    simd_float3( 0.35, 1.0, 0.15),
+            "leftWrist":     simd_float3(-0.40, 0.90, 0.22),
+            "rightWrist":    simd_float3( 0.40, 0.90, 0.22),
         ],
-        // Bottom of squat — parallel (frame 2)
+        // Frame 3 — Bottom (parallel)
         [
             "neck":          simd_float3(0, 1.0, 0.1),
             "leftShoulder":  simd_float3(-0.2, 0.9, 0.08),
@@ -113,8 +136,26 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.17, 0, 0),
             "leftElbow":     simd_float3(-0.35, 0.75, 0.2),
             "rightElbow":    simd_float3( 0.35, 0.75, 0.2),
+            "leftWrist":     simd_float3(-0.38, 0.72, 0.25),
+            "rightWrist":    simd_float3( 0.38, 0.72, 0.25),
         ],
-        // Quarter ascent (frame 3 — mirror of frame 1)
+        // Frame 4 — Bottom hold (same as frame 3 — pause at depth)
+        [
+            "neck":          simd_float3(0, 1.0, 0.1),
+            "leftShoulder":  simd_float3(-0.2, 0.9, 0.08),
+            "rightShoulder": simd_float3( 0.2, 0.9, 0.08),
+            "leftHip":       simd_float3(-0.18, 0.42, 0.05),
+            "rightHip":      simd_float3( 0.18, 0.42, 0.05),
+            "leftKnee":      simd_float3(-0.2, 0.22, 0.2),
+            "rightKnee":     simd_float3( 0.2, 0.22, 0.2),
+            "leftAnkle":     simd_float3(-0.17, 0, 0),
+            "rightAnkle":    simd_float3( 0.17, 0, 0),
+            "leftElbow":     simd_float3(-0.35, 0.75, 0.2),
+            "rightElbow":    simd_float3( 0.35, 0.75, 0.2),
+            "leftWrist":     simd_float3(-0.38, 0.72, 0.25),
+            "rightWrist":    simd_float3( 0.38, 0.72, 0.25),
+        ],
+        // Frame 5 — Quarter ascent (mirror of frame 2)
         [
             "neck":          simd_float3(0, 1.35, 0),
             "leftShoulder":  simd_float3(-0.2, 1.25, 0),
@@ -127,8 +168,10 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.13, 0, 0),
             "leftElbow":     simd_float3(-0.35, 1.0, 0.15),
             "rightElbow":    simd_float3( 0.35, 1.0, 0.15),
+            "leftWrist":     simd_float3(-0.40, 0.90, 0.22),
+            "rightWrist":    simd_float3( 0.40, 0.90, 0.22),
         ],
-        // Standing again (frame 4 — same as frame 0)
+        // Frame 6 — Standing again (same as frame 0)
         [
             "neck":          simd_float3(0, 1.5, 0),
             "leftShoulder":  simd_float3(-0.2, 1.4, 0),
@@ -141,13 +184,15 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.12, 0, 0),
             "leftElbow":     simd_float3(-0.35, 1.1, 0.15),
             "rightElbow":    simd_float3( 0.35, 1.1, 0.15),
+            "leftWrist":     simd_float3(-0.40, 1.0, 0.20),
+            "rightWrist":    simd_float3( 0.40, 1.0, 0.20),
         ],
     ]
 
-    // MARK: - Push-up (4 keyframes: top → lowering → bottom → pushing up)
+    // MARK: - Push-up (4 keyframes: top → lowering → bottom → return)
 
     static let pushupKeyframes: [[String: simd_float3]] = [
-        // Top (arms extended — plank position)
+        // Top — arms extended (plank position)
         [
             "neck":          simd_float3(0,  0.75, 0.05),
             "leftShoulder":  simd_float3(-0.22, 0.70, 0),
@@ -163,7 +208,7 @@ enum IdealFormData {
             "leftWrist":     simd_float3(-0.22, 0.10, 0.30),
             "rightWrist":    simd_float3( 0.22, 0.10, 0.30),
         ],
-        // Lowering (halfway down)
+        // Lowering — halfway down
         [
             "neck":          simd_float3(0,  0.58, 0.05),
             "leftShoulder":  simd_float3(-0.22, 0.54, 0),
@@ -179,7 +224,7 @@ enum IdealFormData {
             "leftWrist":     simd_float3(-0.22, 0.10, 0.30),
             "rightWrist":    simd_float3( 0.22, 0.10, 0.30),
         ],
-        // Bottom (chest near floor, elbows at ~90°)
+        // Bottom — chest near floor, elbows at ~90°
         [
             "neck":          simd_float3(0,  0.38, 0.08),
             "leftShoulder":  simd_float3(-0.22, 0.34, 0),
@@ -216,7 +261,7 @@ enum IdealFormData {
     // MARK: - Deadlift (4 keyframes: standing → setup → mid-pull → lockout)
 
     static let deadliftKeyframes: [[String: simd_float3]] = [
-        // Standing (frame 0)
+        // Frame 0 — Standing
         [
             "neck":          simd_float3(0, 1.5, 0),
             "leftShoulder":  simd_float3(-0.2, 1.4, 0),
@@ -229,8 +274,10 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.12, 0, 0),
             "leftElbow":     simd_float3(-0.2, 1.1, 0.1),
             "rightElbow":    simd_float3( 0.2, 1.1, 0.1),
+            "leftWrist":     simd_float3(-0.18, 0.75, 0.05),
+            "rightWrist":    simd_float3( 0.18, 0.75, 0.05),
         ],
-        // Setup position (frame 1)
+        // Frame 1 — Setup (hips back, bar at shin)
         [
             "neck":          simd_float3(0, 1.1, 0.3),
             "leftShoulder":  simd_float3(-0.22, 1.0, 0.25),
@@ -243,8 +290,10 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.13, 0, 0),
             "leftElbow":     simd_float3(-0.22, 0.7, 0.25),
             "rightElbow":    simd_float3( 0.22, 0.7, 0.25),
+            "leftWrist":     simd_float3(-0.18, 0.22, 0.12),
+            "rightWrist":    simd_float3( 0.18, 0.22, 0.12),
         ],
-        // Mid-pull (frame 2)
+        // Frame 2 — Mid-pull (bar at knee)
         [
             "neck":          simd_float3(0, 1.25, 0.15),
             "leftShoulder":  simd_float3(-0.22, 1.15, 0.12),
@@ -257,8 +306,10 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.13, 0, 0),
             "leftElbow":     simd_float3(-0.22, 0.85, 0.12),
             "rightElbow":    simd_float3( 0.22, 0.85, 0.12),
+            "leftWrist":     simd_float3(-0.18, 0.50, 0.08),
+            "rightWrist":    simd_float3( 0.18, 0.50, 0.08),
         ],
-        // Lockout (frame 3 — same as frame 0)
+        // Frame 3 — Lockout (same as frame 0)
         [
             "neck":          simd_float3(0, 1.5, 0),
             "leftShoulder":  simd_float3(-0.2, 1.4, 0),
@@ -271,10 +322,81 @@ enum IdealFormData {
             "rightAnkle":    simd_float3( 0.12, 0, 0),
             "leftElbow":     simd_float3(-0.2, 1.1, 0.05),
             "rightElbow":    simd_float3( 0.2, 1.1, 0.05),
+            "leftWrist":     simd_float3(-0.18, 0.75, 0.02),
+            "rightWrist":    simd_float3( 0.18, 0.75, 0.02),
         ],
     ]
 
-    // MARK: - Upper Push (bench / OHP / push-up) — 3 keyframes
+    // MARK: - Bench Press (4 keyframes: lockout → descent → bar at chest → lockout)
+
+    static let benchPressKeyframes: [[String: simd_float3]] = [
+        // Frame 0 — Lockout (arms extended upward)
+        [
+            "neck":          simd_float3(0, 0.80, 0.42),
+            "leftShoulder":  simd_float3(-0.22, 0.82, 0.12),
+            "rightShoulder": simd_float3( 0.22, 0.82, 0.12),
+            "leftHip":       simd_float3(-0.10, 0.60, -0.22),
+            "rightHip":      simd_float3( 0.10, 0.60, -0.22),
+            "leftKnee":      simd_float3(-0.14, 0.52, -0.55),
+            "rightKnee":     simd_float3( 0.14, 0.52, -0.55),
+            "leftAnkle":     simd_float3(-0.16, 0.44, -0.88),
+            "rightAnkle":    simd_float3( 0.16, 0.44, -0.88),
+            "leftElbow":     simd_float3(-0.40, 1.05, 0.12),
+            "rightElbow":    simd_float3( 0.40, 1.05, 0.12),
+            "leftWrist":     simd_float3(-0.24, 1.15, 0.15),
+            "rightWrist":    simd_float3( 0.24, 1.15, 0.15),
+        ],
+        // Frame 1 — Descent (halfway, elbows ~120°)
+        [
+            "neck":          simd_float3(0, 0.80, 0.42),
+            "leftShoulder":  simd_float3(-0.22, 0.82, 0.12),
+            "rightShoulder": simd_float3( 0.22, 0.82, 0.12),
+            "leftHip":       simd_float3(-0.10, 0.60, -0.22),
+            "rightHip":      simd_float3( 0.10, 0.60, -0.22),
+            "leftKnee":      simd_float3(-0.14, 0.52, -0.55),
+            "rightKnee":     simd_float3( 0.14, 0.52, -0.55),
+            "leftAnkle":     simd_float3(-0.16, 0.44, -0.88),
+            "rightAnkle":    simd_float3( 0.16, 0.44, -0.88),
+            "leftElbow":     simd_float3(-0.44, 0.90, 0.12),
+            "rightElbow":    simd_float3( 0.44, 0.90, 0.12),
+            "leftWrist":     simd_float3(-0.24, 0.90, 0.15),
+            "rightWrist":    simd_float3( 0.24, 0.90, 0.15),
+        ],
+        // Frame 2 — Bar at lower chest
+        [
+            "neck":          simd_float3(0, 0.80, 0.42),
+            "leftShoulder":  simd_float3(-0.22, 0.82, 0.12),
+            "rightShoulder": simd_float3( 0.22, 0.82, 0.12),
+            "leftHip":       simd_float3(-0.10, 0.60, -0.22),
+            "rightHip":      simd_float3( 0.10, 0.60, -0.22),
+            "leftKnee":      simd_float3(-0.14, 0.52, -0.55),
+            "rightKnee":     simd_float3( 0.14, 0.52, -0.55),
+            "leftAnkle":     simd_float3(-0.16, 0.44, -0.88),
+            "rightAnkle":    simd_float3( 0.16, 0.44, -0.88),
+            "leftElbow":     simd_float3(-0.46, 0.78, 0.10),
+            "rightElbow":    simd_float3( 0.46, 0.78, 0.10),
+            "leftWrist":     simd_float3(-0.24, 0.62, 0.15),
+            "rightWrist":    simd_float3( 0.24, 0.62, 0.15),
+        ],
+        // Frame 3 — Lockout again (same as frame 0)
+        [
+            "neck":          simd_float3(0, 0.80, 0.42),
+            "leftShoulder":  simd_float3(-0.22, 0.82, 0.12),
+            "rightShoulder": simd_float3( 0.22, 0.82, 0.12),
+            "leftHip":       simd_float3(-0.10, 0.60, -0.22),
+            "rightHip":      simd_float3( 0.10, 0.60, -0.22),
+            "leftKnee":      simd_float3(-0.14, 0.52, -0.55),
+            "rightKnee":     simd_float3( 0.14, 0.52, -0.55),
+            "leftAnkle":     simd_float3(-0.16, 0.44, -0.88),
+            "rightAnkle":    simd_float3( 0.16, 0.44, -0.88),
+            "leftElbow":     simd_float3(-0.40, 1.05, 0.12),
+            "rightElbow":    simd_float3( 0.40, 1.05, 0.12),
+            "leftWrist":     simd_float3(-0.24, 1.15, 0.15),
+            "rightWrist":    simd_float3( 0.24, 1.15, 0.15),
+        ],
+    ]
+
+    // MARK: - Upper Push (OHP / push — 3 keyframes)
 
     static let upperPushKeyframes: [[String: simd_float3]] = [
         // Arms extended (top of press)
@@ -309,7 +431,7 @@ enum IdealFormData {
             "leftWrist":     simd_float3(-0.25, 1.45, 0.1),
             "rightWrist":    simd_float3( 0.25, 1.45, 0.1),
         ],
-        // Return to extended (frame 2 — same as frame 0)
+        // Return to extended (same as frame 0)
         [
             "neck":          simd_float3(0, 1.5, 0),
             "leftShoulder":  simd_float3(-0.2, 1.4, 0),
@@ -327,7 +449,7 @@ enum IdealFormData {
         ],
     ]
 
-    // MARK: - Upper Pull (row / curl / chin-up) — 3 keyframes
+    // MARK: - Upper Pull (row / curl / chin-up — 3 keyframes)
 
     static let upperPullKeyframes: [[String: simd_float3]] = [
         // Arms extended (start of pull)
@@ -362,7 +484,7 @@ enum IdealFormData {
             "leftWrist":     simd_float3(-0.25, 1.42, 0),
             "rightWrist":    simd_float3( 0.25, 1.42, 0),
         ],
-        // Return to extended (frame 2 — same as frame 0)
+        // Return to extended (same as frame 0)
         [
             "neck":          simd_float3(0, 1.5, 0),
             "leftShoulder":  simd_float3(-0.2, 1.4, 0),

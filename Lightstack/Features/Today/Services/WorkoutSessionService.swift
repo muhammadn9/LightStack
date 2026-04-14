@@ -484,6 +484,7 @@ final class WorkoutSessionService {
 
     private func finalizePlan(_ exercises: [Exercise]) {
         if let workoutId = currentWorkoutId {
+            workoutRepository.deleteExercises(forWorkoutId: workoutId)
             workoutRepository.saveExercises(exercises, workoutId: workoutId)
         }
         delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises)

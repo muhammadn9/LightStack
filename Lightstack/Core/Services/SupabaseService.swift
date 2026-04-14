@@ -80,6 +80,14 @@ final class SupabaseService {
             .execute()
     }
 
+    func deleteExercises(workoutId: UUID) async throws {
+        try await client
+            .from("exercises")
+            .delete()
+            .eq("workout_id", value: workoutId.uuidString)
+            .execute()
+    }
+
     func fetchExercises(workoutId: UUID) async throws -> [Exercise] {
         let response: [Exercise] = try await client
             .from("exercises")

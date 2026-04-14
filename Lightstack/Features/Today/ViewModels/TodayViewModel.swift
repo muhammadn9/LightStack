@@ -15,6 +15,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     @Published var phase: TodayPhase = .setup
     @Published var exercises: [Exercise] = []
+    @Published var exerciseListResetToken: Int = 0
     @Published var loggedSets: [UUID: [WorkoutSet]] = [:]
     @Published var aiProgressionNote: String?
     @Published var streak: Int = 0
@@ -198,6 +199,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise]) {
         self.exercises = exercises
+        self.exerciseListResetToken += 1
         self.phase = .confirmation
     }
 

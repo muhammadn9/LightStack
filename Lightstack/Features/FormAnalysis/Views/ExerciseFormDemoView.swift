@@ -47,7 +47,8 @@ struct ExerciseFormDemoView: View {
             SkeletonSceneView(
                 frames: frames,
                 tintColor: UIColor(AppTheme.accent),
-                equipmentType: equipment
+                equipmentType: equipment,
+                fps: 4
             )
             .frame(maxWidth: .infinity)
             .frame(height: 340)

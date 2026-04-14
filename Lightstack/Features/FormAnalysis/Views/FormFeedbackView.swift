@@ -162,7 +162,8 @@ struct FormFeedbackView: View {
                     } else {
                         SkeletonSceneView(
                             frames: result.poses3D.map { $0.joints },
-                            tintColor: UIColor(.green)
+                            tintColor: UIColor(.green),
+                            fps: 6
                         )
                         .frame(height: 220)
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
@@ -176,7 +177,8 @@ struct FormFeedbackView: View {
                     SkeletonSceneView(
                         frames: IdealFormData.keyframes(for: result.exerciseName),
                         tintColor: UIColor(AppTheme.accent),
-                        equipmentType: EquipmentType.equipment(for: result.exerciseName)
+                        equipmentType: EquipmentType.equipment(for: result.exerciseName),
+                        fps: 6
                     )
                     .frame(height: 220)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))

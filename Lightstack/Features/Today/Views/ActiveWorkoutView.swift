@@ -58,6 +58,9 @@ struct ActiveWorkoutView: View {
             viewModel.stopTimer()
             todayViewModel.saveSessionState()
         }
+        .onChange(of: todayViewModel.exerciseListResetToken) { _ in
+            currentExerciseIndex = 0
+        }
         .sheet(isPresented: $showChat) {
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
         }

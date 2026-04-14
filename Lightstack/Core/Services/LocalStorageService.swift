@@ -119,6 +119,14 @@ final class LocalStorageService {
         save()
     }
 
+    func deleteExercises(workoutId: UUID) {
+        let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()
+        request.predicate = NSPredicate(format: "workout.id == %@", workoutId as CVarArg)
+        let entities = (try? context.fetch(request)) ?? []
+        entities.forEach { context.delete($0) }
+        save()
+    }
+
     // MARK: - Set
 
     func fetchSets(exerciseId: UUID) -> [CDWorkoutSet] {
