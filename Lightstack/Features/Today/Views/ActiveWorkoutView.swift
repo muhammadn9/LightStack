@@ -168,9 +168,10 @@ struct ActiveWorkoutView: View {
 
     private var currentExerciseView: some View {
         let exercises = todayViewModel.exercises
-        let exercise = exercises[currentExerciseIndex]
-        let nextExercise: Exercise? = currentExerciseIndex + 1 < exercises.count
-            ? exercises[currentExerciseIndex + 1]
+        let safeIndex = min(currentExerciseIndex, max(0, exercises.count - 1))
+        let exercise = exercises[safeIndex]
+        let nextExercise: Exercise? = safeIndex + 1 < exercises.count
+            ? exercises[safeIndex + 1]
             : nil
 
         return ScrollView {
