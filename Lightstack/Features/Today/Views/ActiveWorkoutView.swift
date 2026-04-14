@@ -6,6 +6,7 @@ struct ActiveWorkoutView: View {
     @ObservedObject var todayViewModel: TodayViewModel
     @ObservedObject var chatViewModel: CoachChatViewModel
     @EnvironmentObject var environment: AppEnvironment
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showChat = false
     @State private var showCancelAlert = false
@@ -60,6 +61,11 @@ struct ActiveWorkoutView: View {
         }
         .onChange(of: todayViewModel.exerciseListResetToken) { _ in
             currentExerciseIndex = 0
+        }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .active {
+                viewModel.refreshRestTimers()
+            }
         }
         .sheet(isPresented: $showChat) {
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
@@ -569,10 +575,10 @@ struct ActiveWorkoutView: View {
     }
 
     private func restTimerProgress(for exerciseId: UUID) -> Double {
-        guard let remaining = viewModel.restTimers[exerciseId] else { return 0 }
-        let exercise = todayViewModel.exercises.first { $0.id == exerciseId }
-        let total = Double(exercise?.restSeconds ?? 90)
-        return total > 0 ? (total - Double(remaining)) / total : 0
+        guard let target = viewModel.restTimerTargetDates[exerciseId] else { return 0 }
+        let total = Double(viewModel.restTimerTotalSeconds[exerciseId] ?? 90)
+        let remaining = max(0, target.timeIntervalSinceNow)
+        return total > 0 ? (total - remaining) / total : 0
     }
 
     private func prToast(pr: PersonalRecord) -> some View {

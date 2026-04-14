@@ -21,7 +21,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
     @Published var editingReps: [UUID: String] = [:]
     @Published var editingRir: [UUID: String] = [:]
     @Published var editingNote: [UUID: String] = [:]
-    @Published var restTimers: [UUID: Int] = [:]    // exerciseId → seconds remaining
+    @Published var restTimerTargetDates: [UUID: Date] = [:]    // exerciseId → target end date
+    @Published var restTimerTotalSeconds: [UUID: Int] = [:]    // exerciseId → original duration
     @Published var activeRestExerciseId: UUID? = nil
     @Published var elapsedSeconds: Int = 0
     @Published var isPaused: Bool = false
@@ -261,26 +262,31 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     // MARK: - Rest Timer
 
-    /// Start a rest countdown timer for an exercise.
+    /// Start a rest countdown timer for an exercise using a target date for background-safe accuracy.
     func startRestTimer(for exerciseId: UUID, seconds: Int, exerciseName: String = "") {
         onRestTimerCancel?()  // cancel any existing notification
         restTimerClock?.invalidate()
         restTimerClock = nil
-        restTimers[exerciseId] = seconds
+
+        let targetDate = Date().addingTimeInterval(TimeInterval(seconds))
+        restTimerTargetDates[exerciseId] = targetDate
+        restTimerTotalSeconds[exerciseId] = seconds
         activeRestExerciseId = exerciseId
 
         restTimerClock = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] t in
             guard let self = self else { t.invalidate(); return }
             DispatchQueue.main.async {
-                let current = self.restTimers[exerciseId] ?? 0
-                if current <= 1 {
-                    self.restTimers[exerciseId] = 0
+                guard let target = self.restTimerTargetDates[exerciseId] else { t.invalidate(); return }
+                let remaining = Int(target.timeIntervalSinceNow.rounded())
+                if remaining <= 0 {
+                    self.restTimerTargetDates.removeValue(forKey: exerciseId)
+                    self.restTimerTotalSeconds.removeValue(forKey: exerciseId)
                     self.activeRestExerciseId = nil
                     t.invalidate()
                     self.restTimerClock = nil
                     self.onRestTimerCancel?()  // timer expired naturally
                 } else {
-                    self.restTimers[exerciseId] = current - 1
+                    self.objectWillChange.send()  // re-render timer display
                 }
             }
         }
@@ -289,10 +295,17 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     func formattedRestTime(for exerciseId: UUID) -> String? {
-        guard let remaining = restTimers[exerciseId], remaining > 0 else { return nil }
+        guard let target = restTimerTargetDates[exerciseId] else { return nil }
+        let remaining = max(0, Int(target.timeIntervalSinceNow.rounded()))
+        guard remaining > 0 else { return nil }
         let minutes = remaining / 60
         let seconds = remaining % 60
         return minutes > 0 ? "\(minutes):\(String(format: "%02d", seconds))" : "\(seconds)s"
+    }
+
+    /// Call on app foreground return to refresh timer display after background suspension.
+    func refreshRestTimers() {
+        objectWillChange.send()
     }
 
     deinit {
