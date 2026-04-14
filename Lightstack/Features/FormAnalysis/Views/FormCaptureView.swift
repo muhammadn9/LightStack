@@ -30,6 +30,8 @@ struct FormCaptureView: View {
 
             if viewModel.poseService.permissionDenied {
                 permissionDeniedOverlay
+            } else if lowDetectionVisible {
+                lowDetectionTip
             }
         }
         .onAppear {
@@ -146,6 +148,36 @@ struct FormCaptureView: View {
             }
             .padding(32)
         }
+    }
+
+    // MARK: - Low Detection Guidance
+
+    private var lowDetectionVisible: Bool {
+        let detectedCount = viewModel.latestPose.map { pose in
+            pose.confidences.values.filter { $0 > 0.15 }.count
+        } ?? 0
+        return detectedCount < 6
+    }
+
+    private var lowDetectionTip: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 32))
+                .foregroundStyle(.yellow)
+            Text("Body Not Detected")
+                .font(.headline.bold())
+                .foregroundStyle(.white)
+            Text("Ensure your full body is visible. For lying exercises (e.g. bench press), position the camera further away and to the side.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+        }
+        .padding(20)
+        .background(.black.opacity(0.75))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 30)
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.4), value: lowDetectionVisible)
     }
 
     // MARK: - Helpers

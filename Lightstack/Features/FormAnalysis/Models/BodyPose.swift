@@ -15,7 +15,7 @@ extension BodyPose {
         from a: VNHumanBodyPoseObservation.JointName,
         through b: VNHumanBodyPoseObservation.JointName,
         to c: VNHumanBodyPoseObservation.JointName,
-        minConfidence: Float = 0.3
+        minConfidence: Float = 0.15
     ) -> Double? {
         guard
             let pa = joints[a], (confidences[a] ?? 0) >= minConfidence,

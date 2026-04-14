@@ -231,8 +231,8 @@ final class RepCounterService {
                 let rs = pose.joints[.rightShoulder],
                 let le = pose.joints[.leftElbow],
                 let re = pose.joints[.rightElbow],
-                (pose.confidences[.leftElbow] ?? 0) > 0.3,
-                (pose.confidences[.rightElbow] ?? 0) > 0.3
+                (pose.confidences[.leftElbow] ?? 0) > 0.15,
+                (pose.confidences[.rightElbow] ?? 0) > 0.15
             else { return nil }
             let leftH = abs(ls.y - le.y)
             let rightH = abs(rs.y - re.y)

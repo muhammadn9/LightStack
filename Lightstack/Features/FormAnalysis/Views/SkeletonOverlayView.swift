@@ -27,8 +27,8 @@ struct SkeletonOverlayView: View {
                     guard
                         let ptA = convert(joint: a, pose: pose, size: size),
                         let ptB = convert(joint: b, pose: pose, size: size),
-                        (pose.confidences[a] ?? 0) > 0.3,
-                        (pose.confidences[b] ?? 0) > 0.3
+                        (pose.confidences[a] ?? 0) > 0.15,
+                        (pose.confidences[b] ?? 0) > 0.15
                     else { continue }
 
                     var path = Path()
@@ -39,7 +39,7 @@ struct SkeletonOverlayView: View {
 
                 // Draw joints
                 for (name, _) in pose.joints {
-                    guard (pose.confidences[name] ?? 0) > 0.3,
+                    guard (pose.confidences[name] ?? 0) > 0.15,
                           let pt = convert(joint: name, pose: pose, size: size)
                     else { continue }
                     let rect = CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)
