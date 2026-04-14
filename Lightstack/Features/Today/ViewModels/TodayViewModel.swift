@@ -334,4 +334,32 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         // Save state after modification
         saveSessionState()
     }
+
+    // MARK: - Manual Exercise Management
+
+    func addExerciseManually(name: String, muscleGroup: String) {
+        guard let workoutId = sessionService.currentWorkoutId else { return }
+        let newExercise = Exercise.create(
+            workoutId: workoutId,
+            name: name,
+            muscleGroup: muscleGroup,
+            orderIndex: exercises.count,
+            targetSets: 3,
+            targetReps: "8-12",
+            targetRir: "2",
+            restSeconds: 90,
+            coachNote: nil
+        )
+        exercises.append(newExercise)
+        workoutRepository.saveExercises([newExercise], workoutId: workoutId)
+        saveSessionState()
+    }
+
+    func removeExercise(at id: UUID) {
+        guard let index = exercises.firstIndex(where: { $0.id == id }) else { return }
+        exercises.remove(at: index)
+        loggedSets.removeValue(forKey: id)
+        workoutRepository.deleteExercise(id)
+        saveSessionState()
+    }
 }

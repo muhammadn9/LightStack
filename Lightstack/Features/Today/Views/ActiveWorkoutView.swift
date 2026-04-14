@@ -11,6 +11,9 @@ struct ActiveWorkoutView: View {
     @State private var showChat = false
     @State private var showCancelAlert = false
     @State private var currentExerciseIndex = 0
+    @State private var showAddExercise = false
+    @State private var newExerciseName = ""
+    @State private var newMuscleGroup = ""
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
@@ -85,6 +88,9 @@ struct ActiveWorkoutView: View {
         }
         .sheet(item: $formFeedbackResult) { result in
             FormFeedbackView(result: result)
+        }
+        .sheet(isPresented: $showAddExercise) {
+            addExerciseSheet
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
@@ -186,6 +192,17 @@ struct ActiveWorkoutView: View {
                             }
                         }
                     }
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            let id = exercise.id
+                            if currentExerciseIndex >= exercises.count - 1 {
+                                currentExerciseIndex = max(0, exercises.count - 2)
+                            }
+                            todayViewModel.removeExercise(at: id)
+                        } label: {
+                            Label("Remove Exercise", systemImage: "trash")
+                        }
+                    }
                     Spacer()
                     // Form Guide & Watch Form
                     HStack(spacing: 6) {
@@ -238,6 +255,15 @@ struct ActiveWorkoutView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 4))
                                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
                             }
+                        }
+                        Button(action: { showAddExercise = true }) {
+                            Image(systemName: "plus")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppTheme.accent)
+                                .padding(6)
+                                .background(AppTheme.surfaceElevated)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
                         }
                     }
                 }
@@ -609,5 +635,45 @@ struct ActiveWorkoutView: View {
         .padding(.top, 60)
         .transition(.move(edge: .top).combined(with: .opacity))
         .animation(.spring(response: 0.6, dampingFraction: 0.7), value: todayViewModel.lastPR != nil)
+    }
+
+    // MARK: - Add Exercise Sheet
+
+    private var addExerciseSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Exercise Details") {
+                    TextField("Exercise Name", text: $newExerciseName)
+                    TextField("Muscle Group (e.g. Chest)", text: $newMuscleGroup)
+                }
+            }
+            .navigationTitle("Add Exercise")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        newExerciseName = ""
+                        newMuscleGroup = ""
+                        showAddExercise = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let name = newExerciseName.trimmingCharacters(in: .whitespaces)
+                        let group = newMuscleGroup.trimmingCharacters(in: .whitespaces)
+                        guard !name.isEmpty else { return }
+                        todayViewModel.addExerciseManually(
+                            name: name,
+                            muscleGroup: group.isEmpty ? "Other" : group
+                        )
+                        currentExerciseIndex = todayViewModel.exercises.count - 1
+                        newExerciseName = ""
+                        newMuscleGroup = ""
+                        showAddExercise = false
+                    }
+                    .disabled(newExerciseName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
     }
 }
