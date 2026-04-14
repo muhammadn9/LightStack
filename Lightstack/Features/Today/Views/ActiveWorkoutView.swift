@@ -356,6 +356,18 @@ struct ActiveWorkoutView: View {
             .padding(.bottom, 60)
         }
         .themedBackground()
+        .gesture(
+            DragGesture(minimumDistance: 40, coordinateSpace: .local)
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    let count = todayViewModel.exercises.count
+                    if value.translation.width < -40, currentExerciseIndex < count - 1 {
+                        withAnimation(.easeInOut(duration: 0.25)) { currentExerciseIndex += 1 }
+                    } else if value.translation.width > 40, currentExerciseIndex > 0 {
+                        withAnimation(.easeInOut(duration: 0.25)) { currentExerciseIndex -= 1 }
+                    }
+                }
+        )
         .onChange(of: exercises.count) { _, _ in
             for ex in exercises {
                 viewModel.prefillTargets(for: ex)
