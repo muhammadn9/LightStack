@@ -18,6 +18,8 @@ final class NotificationService {
     /// Schedule a notification to fire when 10 seconds remain in the rest period.
     /// Requests permission contextually on first use (no-op once status is determined).
     func scheduleRestTimerAlert(exerciseName: String, totalRestSeconds: Int) {
+        let notifEnabled = UserDefaults.standard.object(forKey: "restTimerNotificationsEnabled") as? Bool ?? true
+        guard notifEnabled else { return }
         let alertAt = totalRestSeconds - 10
         guard alertAt > 0 else { return }
 

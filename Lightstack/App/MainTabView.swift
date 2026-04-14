@@ -38,6 +38,10 @@ struct MainTabView: View {
                 ProfileView()
                     .opacity(selectedTab == 3 ? 1 : 0)
                     .allowsHitTesting(selectedTab == 3)
+
+                SettingsView()
+                    .opacity(selectedTab == 4 ? 1 : 0)
+                    .allowsHitTesting(selectedTab == 4)
             }
         }
         .ignoresSafeArea(edges: .bottom)
@@ -91,7 +95,7 @@ struct MainTabView: View {
 
 struct NotebookTabRow: View {
     @Binding var selectedTab: Int
-    private let tabs = ["Today", "Month", "History", "Profile"]
+    private let tabs = ["Today", "Month", "History", "Profile", "Settings"]
 
     var body: some View {
         VStack(spacing: 0) {

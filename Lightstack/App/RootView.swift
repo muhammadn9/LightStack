@@ -4,6 +4,15 @@ import SwiftUI
 /// and the main tab bar based on authentication and onboarding state.
 struct RootView: View {
     @EnvironmentObject var environment: AppEnvironment
+    @AppStorage("appColorScheme") private var colorSchemePref = "system"
+
+    private var resolvedColorScheme: ColorScheme? {
+        switch colorSchemePref {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil
+        }
+    }
 
     var body: some View {
         Group {
@@ -17,6 +26,7 @@ struct RootView: View {
                 MainTabView()
             }
         }
+        .preferredColorScheme(resolvedColorScheme)
         .animation(.easeInOut(duration: 0.3), value: environment.isAuthenticated)
         .animation(.easeInOut(duration: 0.3), value: environment.needsEmailVerification)
         .animation(.easeInOut(duration: 0.3), value: environment.hasCompletedOnboarding)

@@ -22,6 +22,7 @@
 		FA330000000000000000CC0D /* SkeletonSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0D /* SkeletonSceneView.swift */; };
 		FA330000000000000000CC0E /* IdealFormData.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0E /* IdealFormData.swift */; };
 		FA330000000000000000CC0F /* ExerciseFormDemoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000BB0F /* ExerciseFormDemoView.swift */; };
+		e053a76b50d240b29534d2a7 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0282b1bbc2ab4eb7b9e857c6 /* SettingsView.swift */; };
 		013383C23AAFD428C65A00A4 /* Lightstack.xcdatamodeld in Sources */ = {isa = PBXBuildFile; fileRef = D3FD60834E9DEE694B6C5A1E /* Lightstack.xcdatamodeld */; };
 		031B0782D6BF4C1CADF77369 /* AIServiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58132967449B403EAA331A20 /* AIServiceManager.swift */; };
 		0394F953EECCF5B52F98E4FB /* SetRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBEF4BBBE0A525AA2C190BD /* SetRowView.swift */; };
@@ -199,6 +200,7 @@
 		FA220000000000000000BB0D /* SkeletonSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonSceneView.swift; sourceTree = "<group>"; };
 		FA220000000000000000BB0E /* IdealFormData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdealFormData.swift; sourceTree = "<group>"; };
 		FA220000000000000000BB0F /* ExerciseFormDemoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseFormDemoView.swift; sourceTree = "<group>"; };
+		0282b1bbc2ab4eb7b9e857c6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -605,6 +607,7 @@
 				4918AA3164ED8BCAA881D58A /* History */,
 				1FFEF5141B955331B3A58993 /* MonthPlan */,
 				F82D7FDECDE34F8C18CA1E9E /* Profile */,
+				3063fd7c86e84fc89c41f6f3 /* Settings */,
 				A00699C2CE9B1A08F74CFFDB /* Today */,
 			);
 			path = Features;
@@ -617,6 +620,14 @@
 				8AEE01610A192FA478F1630B /* Views */,
 			);
 			path = Profile;
+			sourceTree = "<group>";
+		};
+		3063fd7c86e84fc89c41f6f3 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				0282b1bbc2ab4eb7b9e857c6 /* SettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -780,6 +791,7 @@
 				FA330000000000000000CC0D /* SkeletonSceneView.swift in Sources */,
 				FA330000000000000000CC0E /* IdealFormData.swift in Sources */,
 				FA330000000000000000CC0F /* ExerciseFormDemoView.swift in Sources */,
+				e053a76b50d240b29534d2a7 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
