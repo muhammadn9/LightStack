@@ -59,9 +59,10 @@ enum AppTheme {
     // MARK: - Dimensions
 
     /// Small radius — paper / journal feel
-    static let cornerRadius: CGFloat = 6
-    static let cardPadding: CGFloat  = 14
+    static let cornerRadius: CGFloat = 10
+    static let cardPadding: CGFloat  = 18
     static let sectionSpacing: CGFloat = 20
+    static let minTouchSize: CGFloat = 44
 
     // MARK: - Custom Fonts
 

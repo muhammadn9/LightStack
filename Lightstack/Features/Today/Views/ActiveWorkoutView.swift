@@ -179,15 +179,15 @@ struct ActiveWorkoutView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(exercise.name)
-                            .font(AppTheme.playfair(17, weight: .bold))
+                            .font(AppTheme.playfair(22, weight: .bold))
                             .foregroundStyle(AppTheme.textPrimary)
                         HStack(spacing: 4) {
                             Text(exercise.muscleGroup)
-                                .font(AppTheme.caveat(12))
+                                .font(AppTheme.caveat(15))
                                 .foregroundStyle(AppTheme.textSecondary)
                             if let target = exercise.targetSets {
                                 Text("· \(target) sets")
-                                    .font(AppTheme.caveat(12))
+                                    .font(AppTheme.caveat(15))
                                     .foregroundStyle(AppTheme.textSecondary)
                             }
                         }
@@ -232,38 +232,38 @@ struct ActiveWorkoutView: View {
                                 withAnimation { currentExerciseIndex -= 1 }
                             }) {
                                 Image(systemName: "chevron.left")
-                                    .font(.caption.weight(.semibold))
+                                    .font(.body.weight(.semibold))
                                     .foregroundStyle(AppTheme.accent)
-                                    .padding(6)
+                                    .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
                                     .background(AppTheme.surfaceElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
                             }
                         }
                         Text("\(currentExerciseIndex + 1)/\(exercises.count)")
-                            .font(AppTheme.plexMono(11))
+                            .font(AppTheme.plexMono(14))
                             .foregroundStyle(AppTheme.textSecondary)
                         if currentExerciseIndex < exercises.count - 1 {
                             Button(action: {
                                 withAnimation { currentExerciseIndex += 1 }
                             }) {
                                 Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
+                                    .font(.body.weight(.semibold))
                                     .foregroundStyle(AppTheme.accent)
-                                    .padding(6)
+                                    .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
                                     .background(AppTheme.surfaceElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
                             }
                         }
                         Button(action: { showAddExercise = true }) {
                             Image(systemName: "plus")
-                                .font(.caption.weight(.semibold))
+                                .font(.body.weight(.semibold))
                                 .foregroundStyle(AppTheme.accent)
-                                .padding(6)
+                                .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
                                 .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
                         }
                     }
                 }
