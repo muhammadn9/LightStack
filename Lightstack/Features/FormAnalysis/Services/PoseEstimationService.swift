@@ -22,6 +22,7 @@ final class PoseEstimationService: NSObject, ObservableObject {
     private let processingQueue = DispatchQueue(label: "com.lightstack.pose", qos: .userInteractive)
     private lazy var bodyPoseRequest = VNDetectHumanBodyPoseRequest()
     private var isConfigured = false
+    private(set) var currentCameraPosition: AVCaptureDevice.Position = .back
 
     @available(iOS 17.0, *)
     private lazy var bodyPose3DRequest = VNDetectHumanBodyPose3DRequest()
@@ -56,10 +57,10 @@ final class PoseEstimationService: NSObject, ObservableObject {
     private func configureAndStart() {
         if !isConfigured {
             captureSession.beginConfiguration()
-            captureSession.sessionPreset = .medium
+            captureSession.sessionPreset = .high
 
             guard
-                let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front),
+                let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: currentCameraPosition),
                 let input = try? AVCaptureDeviceInput(device: device),
                 captureSession.canAddInput(input)
             else {
@@ -84,6 +85,23 @@ final class PoseEstimationService: NSObject, ObservableObject {
             DispatchQueue.main.async { self?.isRunning = true }
         }
     }
+
+    func flipCamera() {
+        let newPosition: AVCaptureDevice.Position = (currentCameraPosition == .back) ? .front : .back
+        guard let newDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: newPosition),
+              let newInput = try? AVCaptureDeviceInput(device: newDevice) else { return }
+
+        captureSession.beginConfiguration()
+        // Remove existing input
+        for input in captureSession.inputs {
+            captureSession.removeInput(input)
+        }
+        if captureSession.canAddInput(newInput) {
+            captureSession.addInput(newInput)
+            currentCameraPosition = newPosition
+        }
+        captureSession.commitConfiguration()
+    }
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
@@ -97,10 +115,10 @@ extension PoseEstimationService: AVCaptureVideoDataOutputSampleBufferDelegate {
     ) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
 
-        // .leftMirrored corrects front camera landscape buffers to portrait-space coordinates
+        let orientation: CGImagePropertyOrientation = (currentCameraPosition == .front) ? .leftMirrored : .right
         let handler = VNImageRequestHandler(
             cvPixelBuffer: pixelBuffer,
-            orientation: .leftMirrored,
+            orientation: orientation,
             options: [:]
         )
 

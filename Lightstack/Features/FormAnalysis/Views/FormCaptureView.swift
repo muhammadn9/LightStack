@@ -11,6 +11,8 @@ struct FormCaptureView: View {
     let exerciseName: String
     let onComplete: (FormAnalysisResult) -> Void
 
+    @State private var captureStartTime = Date()
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -35,6 +37,7 @@ struct FormCaptureView: View {
             }
         }
         .onAppear {
+            captureStartTime = Date()
             viewModel.reset()
             viewModel.startCapture(exerciseName: exerciseName)
         }
@@ -70,6 +73,14 @@ struct FormCaptureView: View {
                 .background(.black.opacity(0.5))
                 .clipShape(Capsule())
             Spacer()
+            Button(action: { viewModel.flipCamera() }) {
+                Image(systemName: "camera.rotate")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .padding(8)
+                    .background(.black.opacity(0.45))
+                    .clipShape(Circle())
+            }
         }
         .padding(.top, 8)
     }
@@ -153,6 +164,7 @@ struct FormCaptureView: View {
     // MARK: - Low Detection Guidance
 
     private var lowDetectionVisible: Bool {
+        guard Date().timeIntervalSince(captureStartTime) > 3.0 else { return false }
         let detectedCount = viewModel.latestPose.map { pose in
             pose.confidences.values.filter { $0 > 0.15 }.count
         } ?? 0

@@ -105,6 +105,10 @@ final class FormAnalysisViewModel: ObservableObject {
         }
     }
 
+    func flipCamera() {
+        poseService.flipCamera()
+    }
+
     func reset() {
         poseService.stop()
         collectedPoses = []
