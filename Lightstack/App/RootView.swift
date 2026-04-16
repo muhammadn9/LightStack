@@ -5,6 +5,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject var environment: AppEnvironment
     @AppStorage("appColorScheme") private var colorSchemePref = "system"
+    @Environment(\.colorScheme) private var systemColorScheme
 
     var body: some View {
         Group {
@@ -23,6 +24,11 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.3), value: environment.hasCompletedOnboarding)
         .onAppear { applyColorScheme(colorSchemePref) }
         .onChange(of: colorSchemePref) { _, newValue in applyColorScheme(newValue) }
+        .onChange(of: systemColorScheme) { _, _ in
+            if colorSchemePref == "system" {
+                applyColorScheme("system")
+            }
+        }
     }
 
     private func applyColorScheme(_ pref: String) {
