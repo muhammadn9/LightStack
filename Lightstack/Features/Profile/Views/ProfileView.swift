@@ -145,26 +145,6 @@ struct ProfileView: View {
                     .padding(.bottom, 12)
             }
 
-            // Sign Out
-            InkDivider()
-                .padding(.vertical, 10)
-
-            Button(action: { environment.authService.signOut() }) {
-                HStack {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                    Text("Sign Out")
-                }
-                .font(AppTheme.playfairItalic(14, weight: .bold))
-                .foregroundStyle(AppTheme.destructive)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(AppTheme.destructive.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(AppTheme.destructive.opacity(0.25), lineWidth: 1)
-                )
-            }
         }
         .padding(14)
         .background(AppTheme.surface)
