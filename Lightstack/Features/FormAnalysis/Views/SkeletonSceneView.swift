@@ -245,6 +245,8 @@ struct SkeletonSceneView: UIViewRepresentable {
         private var frameAdvance: Double = 0.50
         private var frameTimer: Timer?
 
+        var muscleBulkNodes: [String: SCNNode] = [:]  // key: muscle name
+
         func buildNodes(
             in scene: SCNScene,
             bones: [(String, String, SkeletonSceneView.BoneCategory)],
@@ -253,24 +255,36 @@ struct SkeletonSceneView: UIViewRepresentable {
             guard let firstFrame = frames.first else { return }
             let frame = withVirtualJoints(firstFrame)
 
-            let torsoColor = UIColor(white: 0.88, alpha: 1)
+            let skinColor = UIColor(red: 0.85, green: 0.72, blue: 0.62, alpha: 1.0)
+            let muscleColor = UIColor(red: 0.75, green: 0.30, blue: 0.28, alpha: 0.85)
+            let torsoColor = skinColor
 
-            // 4 landmark joint spheres (shoulders + hips)
+            // 4 landmark joint spheres (shoulders + hips) — larger for smooth connections
             for name in ["leftShoulder", "rightShoulder", "leftHip", "rightHip"] {
                 guard let pos = frame[name] else { continue }
-                let sphere = SCNSphere(radius: 0.028)
-                sphere.materials = [pbrMaterial(color: tintColor, roughness: 0.45, metalness: 0.05)]
+                let sphere = SCNSphere(radius: 0.045)
+                sphere.materials = [pbrMaterial(color: skinColor, roughness: 0.55, metalness: 0.02)]
                 let node = SCNNode(geometry: sphere)
                 node.position = SCNVector3(pos.x, pos.y, pos.z)
                 scene.rootNode.addChildNode(node)
                 jointNodes[name] = node
             }
 
-            // Head sphere
+            // Elbow and knee joints — smooth connectors
+            for name in ["leftElbow", "rightElbow", "leftKnee", "rightKnee"] {
+                guard let pos = frame[name] else { continue }
+                let sphere = SCNSphere(radius: 0.038)
+                sphere.materials = [pbrMaterial(color: skinColor, roughness: 0.55, metalness: 0.02)]
+                let node = SCNNode(geometry: sphere)
+                node.position = SCNVector3(pos.x, pos.y, pos.z)
+                scene.rootNode.addChildNode(node)
+                jointNodes[name] = node
+            }
+
+            // Head sphere with neck connector
             if let headPos = frame["_head"] {
-                let head = SCNSphere(radius: 0.09)
-                head.materials = [pbrMaterial(color: UIColor(white: 0.86, alpha: 1),
-                                              roughness: 0.60, metalness: 0.0)]
+                let head = SCNSphere(radius: 0.10)
+                head.materials = [pbrMaterial(color: skinColor, roughness: 0.60, metalness: 0.0)]
                 let headNode = SCNNode(geometry: head)
                 headNode.position = SCNVector3(headPos.x, headPos.y, headPos.z)
                 scene.rootNode.addChildNode(headNode)
@@ -286,14 +300,166 @@ struct SkeletonSceneView: UIViewRepresentable {
                 case .spine, .neck, .shoulderBar, .hipBar, .sideRib:
                     color = torsoColor
                 case .upperArm, .forearm:
-                    color = tintColor
+                    color = skinColor
                 case .thigh, .shin:
-                    color = tintColor.withAlphaComponent(0.85)
+                    color = skinColor
                 }
                 let node = makeBoneCapsule(from: posA, to: posB, capRadius: radius, color: color)
                 scene.rootNode.addChildNode(node)
                 boneNodes["\(aName)--\(bName)"] = node
                 boneConnections.append((aName, bName))
+            }
+
+            // Muscle bulk overlays
+            buildMuscleBulk(in: scene, frame: frame, muscleColor: muscleColor, skinColor: skinColor)
+        }
+
+        private func buildMuscleBulk(
+            in scene: SCNScene,
+            frame: [String: simd_float3],
+            muscleColor: UIColor,
+            skinColor: UIColor
+        ) {
+            let muscleMat = pbrMaterial(color: muscleColor, roughness: 0.50, metalness: 0.03)
+            let skinMat = pbrMaterial(color: skinColor.withAlphaComponent(0.5), roughness: 0.60, metalness: 0.0)
+
+            // Chest (pectoralis major) — flattened capsule between shoulders, offset forward
+            if let ls = frame["leftShoulder"], let rs = frame["rightShoulder"],
+               let mid = frame["_shoulderMid"], let hipMid = frame["_hipMid"] {
+                let chestWidth = CGFloat(simd_length(rs - ls)) * 0.85
+                let chestPos = simd_float3(mid.x, mid.y - 0.05, mid.z + 0.04)
+                let chest = SCNCapsule(capRadius: 0.06, height: max(0.01, chestWidth - 0.12))
+                chest.materials = [muscleMat]
+                let chestNode = SCNNode(geometry: chest)
+                chestNode.position = SCNVector3(chestPos.x, chestPos.y, chestPos.z)
+                chestNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
+                chestNode.scale = SCNVector3(1.0, 0.6, 1.2)
+                scene.rootNode.addChildNode(chestNode)
+                muscleBulkNodes["chest"] = chestNode
+
+                // Abs/core — along spine
+                let absPos = (mid + hipMid) / 2
+                let absHeight = CGFloat(simd_length(mid - hipMid)) * 0.6
+                let abs = SCNCapsule(capRadius: 0.065, height: max(0.01, absHeight))
+                abs.materials = [muscleMat]
+                let absNode = SCNNode(geometry: abs)
+                absNode.position = SCNVector3(absPos.x, absPos.y, absPos.z + 0.02)
+                absNode.scale = SCNVector3(0.9, 1.0, 0.7)
+                scene.rootNode.addChildNode(absNode)
+                muscleBulkNodes["abs"] = absNode
+
+                // Lats — wider back muscles
+                let latsPos = simd_float3(mid.x, mid.y - 0.06, mid.z - 0.03)
+                let lats = SCNCapsule(capRadius: 0.07, height: max(0.01, chestWidth - 0.08))
+                lats.materials = [muscleMat]
+                let latsNode = SCNNode(geometry: lats)
+                latsNode.position = SCNVector3(latsPos.x, latsPos.y, latsPos.z)
+                latsNode.eulerAngles = SCNVector3(0, 0, Float.pi / 2)
+                latsNode.scale = SCNVector3(1.0, 0.5, 1.1)
+                scene.rootNode.addChildNode(latsNode)
+                muscleBulkNodes["lats"] = latsNode
+            }
+
+            // Deltoids — shoulder caps
+            for (shoulderKey, sign) in [("leftShoulder", Float(-1)), ("rightShoulder", Float(1))] {
+                guard let sp = frame[shoulderKey] else { continue }
+                let deltoid = SCNSphere(radius: 0.055)
+                deltoid.materials = [muscleMat]
+                let dNode = SCNNode(geometry: deltoid)
+                dNode.position = SCNVector3(sp.x + sign * 0.01, sp.y + 0.01, sp.z)
+                dNode.scale = SCNVector3(1.2, 0.9, 1.0)
+                scene.rootNode.addChildNode(dNode)
+                muscleBulkNodes["\(shoulderKey)_deltoid"] = dNode
+            }
+
+            // Biceps and Triceps
+            for side in ["left", "right"] {
+                let shoulderKey = "\(side)Shoulder"
+                let elbowKey = "\(side)Elbow"
+                guard let sp = frame[shoulderKey], let ep = frame[elbowKey] else { continue }
+                let armMid = (sp + ep) / 2
+                let armLen = CGFloat(simd_length(ep - sp))
+
+                // Bicep — front of upper arm
+                let bicep = SCNCapsule(capRadius: 0.042, height: max(0.01, armLen * 0.55))
+                bicep.materials = [muscleMat]
+                let bicepNode = SCNNode(geometry: bicep)
+                bicepNode.position = SCNVector3(armMid.x, armMid.y, armMid.z + 0.015)
+                orient(node: bicepNode, toward: ep - sp)
+                scene.rootNode.addChildNode(bicepNode)
+                muscleBulkNodes["\(side)Bicep"] = bicepNode
+
+                // Tricep — back of upper arm
+                let tricep = SCNCapsule(capRadius: 0.038, height: max(0.01, armLen * 0.50))
+                tricep.materials = [muscleMat]
+                let tricepNode = SCNNode(geometry: tricep)
+                tricepNode.position = SCNVector3(armMid.x, armMid.y, armMid.z - 0.015)
+                orient(node: tricepNode, toward: ep - sp)
+                scene.rootNode.addChildNode(tricepNode)
+                muscleBulkNodes["\(side)Tricep"] = tricepNode
+            }
+
+            // Quads, Hamstrings, Glutes, Calves
+            for side in ["left", "right"] {
+                let hipKey = "\(side)Hip"
+                let kneeKey = "\(side)Knee"
+                let ankleKey = "\(side)Ankle"
+                guard let hp = frame[hipKey], let kp = frame[kneeKey] else { continue }
+                let thighMid = (hp + kp) / 2
+                let thighLen = CGFloat(simd_length(kp - hp))
+
+                // Glute — at hip
+                let glute = SCNSphere(radius: 0.065)
+                glute.materials = [muscleMat]
+                let gluteNode = SCNNode(geometry: glute)
+                gluteNode.position = SCNVector3(hp.x, hp.y - 0.02, hp.z - 0.025)
+                gluteNode.scale = SCNVector3(1.0, 0.8, 1.1)
+                scene.rootNode.addChildNode(gluteNode)
+                muscleBulkNodes["\(side)Glute"] = gluteNode
+
+                // Quad — front of thigh
+                let quad = SCNCapsule(capRadius: 0.055, height: max(0.01, thighLen * 0.6))
+                quad.materials = [muscleMat]
+                let quadNode = SCNNode(geometry: quad)
+                quadNode.position = SCNVector3(thighMid.x, thighMid.y, thighMid.z + 0.02)
+                orient(node: quadNode, toward: kp - hp)
+                scene.rootNode.addChildNode(quadNode)
+                muscleBulkNodes["\(side)Quad"] = quadNode
+
+                // Hamstring — back of thigh
+                let hamstring = SCNCapsule(capRadius: 0.048, height: max(0.01, thighLen * 0.55))
+                hamstring.materials = [muscleMat]
+                let hamNode = SCNNode(geometry: hamstring)
+                hamNode.position = SCNVector3(thighMid.x, thighMid.y, thighMid.z - 0.02)
+                orient(node: hamNode, toward: kp - hp)
+                scene.rootNode.addChildNode(hamNode)
+                muscleBulkNodes["\(side)Hamstring"] = hamNode
+
+                // Calf
+                if let ap = frame[ankleKey] {
+                    let calfMid = (kp + ap) / 2
+                    let calfLen = CGFloat(simd_length(ap - kp))
+                    let calf = SCNCapsule(capRadius: 0.040, height: max(0.01, calfLen * 0.5))
+                    calf.materials = [muscleMat]
+                    let calfNode = SCNNode(geometry: calf)
+                    calfNode.position = SCNVector3(calfMid.x, calfMid.y + Float(calfLen) * 0.1, calfMid.z - 0.01)
+                    orient(node: calfNode, toward: ap - kp)
+                    scene.rootNode.addChildNode(calfNode)
+                    muscleBulkNodes["\(side)Calf"] = calfNode
+                }
+            }
+
+            // Semi-transparent skin layer over torso
+            if let sm = frame["_shoulderMid"], let hm = frame["_hipMid"] {
+                let torsoLen = CGFloat(simd_length(sm - hm))
+                let torsoMid = (sm + hm) / 2
+                let skin = SCNCapsule(capRadius: 0.10, height: max(0.01, torsoLen * 0.6))
+                skin.materials = [skinMat]
+                let skinNode = SCNNode(geometry: skin)
+                skinNode.position = SCNVector3(torsoMid.x, torsoMid.y, torsoMid.z)
+                skinNode.scale = SCNVector3(0.85, 1.0, 0.75)
+                scene.rootNode.addChildNode(skinNode)
+                muscleBulkNodes["torsoSkin"] = skinNode
             }
         }
 
