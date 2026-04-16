@@ -41,7 +41,9 @@ struct ManualWorkoutEntryView: View {
                 }
             }
             .sheet(isPresented: $showAddExercise) {
-                AddExerciseSheet(exercises: $exercises)
+                ExerciseCatalogPicker { name, muscleGroup in
+                    exercises.append(ManualExercise(name: name, muscleGroup: muscleGroup, targetSets: 3))
+                }
             }
         }
     }
@@ -97,12 +99,35 @@ struct ManualWorkoutEntryView: View {
                 Text(exercise.name)
                     .font(AppTheme.playfair(14, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
-                Text("\(exercise.muscleGroup) • \(exercise.targetSets) sets")
+                Text(exercise.muscleGroup)
                     .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.textSecondary)
             }
 
             Spacer()
+
+            HStack(spacing: 8) {
+                Button(action: {
+                    guard exercises[index].targetSets > 1 else { return }
+                    exercises[index] = ManualExercise(name: exercise.name, muscleGroup: exercise.muscleGroup, targetSets: exercise.targetSets - 1)
+                }) {
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                Text("\(exercise.targetSets)")
+                    .font(AppTheme.plexMono(13, weight: .bold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .frame(minWidth: 20)
+
+                Button(action: {
+                    guard exercises[index].targetSets < 10 else { return }
+                    exercises[index] = ManualExercise(name: exercise.name, muscleGroup: exercise.muscleGroup, targetSets: exercise.targetSets + 1)
+                }) {
+                    Image(systemName: "plus.circle")
+                        .foregroundStyle(AppTheme.accent)
+                }
+            }
 
             Button(action: {
                 exercises.remove(at: index)
@@ -110,6 +135,7 @@ struct ManualWorkoutEntryView: View {
                 Image(systemName: "trash")
                     .foregroundStyle(AppTheme.warning)
             }
+            .padding(.leading, 8)
         }
         .padding(12)
         .background(AppTheme.surface)
@@ -180,124 +206,3 @@ struct ManualExercise {
     let targetSets: Int
 }
 
-// MARK: - Add Exercise Sheet
-
-struct AddExerciseSheet: View {
-    @Environment(\.dismiss) var dismiss
-    @Binding var exercises: [ManualExercise]
-
-    @State private var exerciseName = ""
-    @State private var selectedMuscleGroup = "Chest"
-    @State private var targetSets = 3
-
-    private let muscleGroups = [
-        "Chest", "Back", "Shoulders", "Biceps", "Triceps",
-        "Legs", "Quads", "Hamstrings", "Glutes", "Calves",
-        "Core", "General"
-    ]
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        exerciseNameSection
-                        muscleGroupSection
-                        targetSetsSection
-                    }
-                    .padding(20)
-                }
-            }
-            .navigationTitle("Add Exercise")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        addExercise()
-                    }
-                    .foregroundStyle(AppTheme.accent)
-                    .disabled(exerciseName.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-        }
-    }
-
-    private var exerciseNameSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Exercise Name")
-                .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-
-            TextField("e.g., Bench Press, Squat", text: $exerciseName)
-                .padding(14)
-                .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                        .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
-                )
-                .submitLabel(.done)
-                .onSubmit {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-        }
-        .cardStyle()
-    }
-
-    private var muscleGroupSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Muscle Group")
-                .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-
-            Picker("Muscle Group", selection: $selectedMuscleGroup) {
-                ForEach(muscleGroups, id: \.self) { group in
-                    Text(group).tag(group)
-                }
-            }
-            .pickerStyle(.menu)
-            .padding(14)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
-            )
-        }
-        .cardStyle()
-    }
-
-    private var targetSetsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Target Sets: \(targetSets)")
-                .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-
-            Stepper(value: $targetSets, in: 1...10) {
-                Text("\(targetSets) sets")
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-            .padding(14)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-        }
-        .cardStyle()
-    }
-
-    private func addExercise() {
-        let exercise = ManualExercise(
-            name: exerciseName.trimmingCharacters(in: .whitespaces),
-            muscleGroup: selectedMuscleGroup,
-            targetSets: targetSets
-        )
-        exercises.append(exercise)
-        dismiss()
-    }
-}

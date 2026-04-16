@@ -44,6 +44,8 @@
 		461D52F78ED44005A8093722 /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1613CF18334D45F0BDF46005 /* ClaudeService.swift */; };
 		47F1C8E6C7C01C3C0B5ADAD9 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7FAD3D73C29C60902B298C /* LoginView.swift */; };
 		4DA65CD92F7C14DD002F802B /* ManualWorkoutEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DA65CD82F7C14DD002F802B /* ManualWorkoutEntryView.swift */; };
+		FA330000000000000000DD01 /* ExerciseCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000DD01 /* ExerciseCatalog.swift */; };
+		FA330000000000000000DD02 /* ExerciseCatalogPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA220000000000000000DD02 /* ExerciseCatalogPicker.swift */; };
 		4EB8D7A7D05D304E9F7D8099 /* StreakView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E751DCD349D7A48BBFA68528 /* StreakView.swift */; };
 		5F0C97283EECF4F7A6AE53D7 /* MonthPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 925FF119C6D875B37829A0C7 /* MonthPlan.swift */; };
 		5F7CD083D9356E41ACD6F1CD /* Secrets.xcconfig.template in Resources */ = {isa = PBXBuildFile; fileRef = 37E1E2035580F893D5825F72 /* Secrets.xcconfig.template */; };
@@ -130,6 +132,8 @@
 		4519D58B41C428C87E6F8C59 /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
 		492CBCCB2744643A11E2CD2A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		4DA65CD82F7C14DD002F802B /* ManualWorkoutEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualWorkoutEntryView.swift; sourceTree = "<group>"; };
+		FA220000000000000000DD01 /* ExerciseCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseCatalog.swift; sourceTree = "<group>"; };
+		FA220000000000000000DD02 /* ExerciseCatalogPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseCatalogPicker.swift; sourceTree = "<group>"; };
 		5289433B1ABC3A4B839BAFC0 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		57A9EFAE7E6214033CA3F739 /* PersonalRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalRecord.swift; sourceTree = "<group>"; };
 		58132967449B403EAA331A20 /* AIServiceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIServiceManager.swift; sourceTree = "<group>"; };
@@ -302,6 +306,7 @@
 			isa = PBXGroup;
 			children = (
 				4DA65CD82F7C14DD002F802B /* ManualWorkoutEntryView.swift */,
+				FA220000000000000000DD02 /* ExerciseCatalogPicker.swift */,
 				E5134DFFF0BDCF4F40D0C611 /* ActiveWorkoutView.swift */,
 				AA3C7F9B2D4E81F056C9B0E3 /* ConfirmWorkoutView.swift */,
 				AECE0419B49FC2838485E794 /* ExerciseTableView.swift */,
@@ -468,9 +473,18 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		FA440000000000000000EE01 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				FA220000000000000000DD01 /* ExerciseCatalog.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
 		A00699C2CE9B1A08F74CFFDB /* Today */ = {
 			isa = PBXGroup;
 			children = (
+				FA440000000000000000EE01 /* Models */,
 				15916E830B9091D8B578820E /* Services */,
 				6FF8B85FD529A731F4AA6DC2 /* ViewModels */,
 				2EBBEDAEDBAE2E1208111FA4 /* Views */,
@@ -741,6 +755,8 @@
 				EDF9C0EF3DF4668882D87609 /* OnboardingView.swift in Sources */,
 				15BFA33868E0625E2B28A468 /* PRRepository.swift in Sources */,
 				4DA65CD92F7C14DD002F802B /* ManualWorkoutEntryView.swift in Sources */,
+				FA330000000000000000DD01 /* ExerciseCatalog.swift in Sources */,
+				FA330000000000000000DD02 /* ExerciseCatalogPicker.swift in Sources */,
 				7DD3567AF9DFA8ABC4DFD269 /* PersonalRecord.swift in Sources */,
 				E775B7901D34DE62274E280D /* PlanBuilderChatView.swift in Sources */,
 				3ACE171EC8EFFF4CEFE98C03 /* PlanBuilderViewModel.swift in Sources */,
