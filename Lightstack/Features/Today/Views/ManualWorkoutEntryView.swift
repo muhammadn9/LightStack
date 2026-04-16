@@ -157,7 +157,7 @@ struct ManualWorkoutEntryView: View {
                 targetSets: ex.targetSets,
                 targetReps: nil,
                 targetRir: nil,
-                restSeconds: nil,
+                restSeconds: 90,
                 coachNote: nil
             )
         }
