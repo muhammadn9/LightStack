@@ -45,6 +45,9 @@ struct TodayView: View {
                         PostWorkoutView(todayViewModel: viewModel)
                     }
                 }
+                .id(viewModel.phase)
+                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .center)))
+                .animation(.easeInOut(duration: 0.28), value: viewModel.phase)
             }
             .themedBackground()
             .onAppear {

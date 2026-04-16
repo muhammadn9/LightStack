@@ -122,7 +122,7 @@ struct ActiveWorkoutView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(todayViewModel.sessionService.currentWorkoutType ?? "Workout")
                     .font(AppTheme.playfairItalic(10))
-                    .foregroundStyle(Color(adaptiveDark: 0x8AAAD4, light: 0x5A7AAE))
+                    .foregroundStyle(AppTheme.accentSecondary)
                 HStack(spacing: 6) {
                     Button(action: { showCancelAlert = true }) {
                         Image(systemName: "xmark")
@@ -149,7 +149,7 @@ struct ActiveWorkoutView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Volume")
                         .font(AppTheme.caveat(11))
-                        .foregroundStyle(Color(adaptiveDark: 0x8AAAD4, light: 0x5A7AAE))
+                        .foregroundStyle(AppTheme.accentSecondary)
                     Text(String(format: "%.0f lbs", volume))
                         .font(AppTheme.plexMono(13, weight: .medium))
                         .foregroundStyle(AppTheme.accent)
@@ -275,7 +275,12 @@ struct ActiveWorkoutView: View {
                 let logged = viewModel.loggedSets[exercise.id] ?? []
                 ForEach(Array(logged.enumerated()), id: \.element.id) { index, set in
                     loggedSetRow(set, number: index + 1, exerciseId: exercise.id)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: logged.count)
 
                 // Pending set inputs
                 let pending = viewModel.pendingSets[exercise.id] ?? []
@@ -351,8 +356,10 @@ struct ActiveWorkoutView: View {
                         RoundedRectangle(cornerRadius: 4)
                             .stroke(AppTheme.border, lineWidth: 1)
                     )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.activeRestExerciseId == exercise.id)
             .padding(16)
             .padding(.bottom, 60)
         }
@@ -437,6 +444,7 @@ struct ActiveWorkoutView: View {
                 Rectangle()
                     .fill(pendingSets[index].weight.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 70, height: 1.5)
+                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].weight.wrappedValue.isEmpty)
             }
 
             Text("×")
@@ -454,6 +462,7 @@ struct ActiveWorkoutView: View {
                 Rectangle()
                     .fill(pendingSets[index].reps.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 60, height: 1.5)
+                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].reps.wrappedValue.isEmpty)
             }
 
             // RIR field
@@ -479,7 +488,7 @@ struct ActiveWorkoutView: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(pendingSets[index].reps.wrappedValue.isEmpty
                                          ? AppTheme.textSecondary
-                                         : Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+                                         : AppTheme.background)
                 }
                 .shadow(color: AppTheme.accent.opacity(pendingSets[index].reps.wrappedValue.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
@@ -506,7 +515,7 @@ struct ActiveWorkoutView: View {
                 Text("Finish Workout")
                     .font(AppTheme.playfairItalic(15, weight: .bold))
             }
-            .foregroundStyle(Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+            .foregroundStyle(AppTheme.background)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(AppTheme.accentGradient)
@@ -542,7 +551,7 @@ struct ActiveWorkoutView: View {
         }) {
             Image(systemName: "text.bubble")
                 .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+                .foregroundStyle(AppTheme.background)
                 .frame(width: 52, height: 52)
                 .background(AppTheme.accentGradient)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))

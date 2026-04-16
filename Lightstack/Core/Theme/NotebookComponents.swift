@@ -123,7 +123,6 @@ struct PRStamp: View {
 /// 40x40 spinning circle for rest timer countdown.
 struct RestTimerRing: View {
     let progress: Double // 0.0 to 1.0
-    @State private var isSpinning = false
 
     var body: some View {
         ZStack {
@@ -137,6 +136,7 @@ struct RestTimerRing: View {
                 .stroke(AppTheme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .frame(width: 40, height: 40)
                 .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 1.0), value: progress)
         }
     }
 }

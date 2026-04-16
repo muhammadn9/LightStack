@@ -6,14 +6,6 @@ struct RootView: View {
     @EnvironmentObject var environment: AppEnvironment
     @AppStorage("appColorScheme") private var colorSchemePref = "system"
 
-    private var resolvedColorScheme: ColorScheme? {
-        switch colorSchemePref {
-        case "light": return .light
-        case "dark":  return .dark
-        default:      return nil
-        }
-    }
-
     var body: some View {
         Group {
             if environment.needsEmailVerification {
@@ -26,9 +18,23 @@ struct RootView: View {
                 MainTabView()
             }
         }
-        .preferredColorScheme(resolvedColorScheme)
         .animation(.easeInOut(duration: 0.3), value: environment.isAuthenticated)
         .animation(.easeInOut(duration: 0.3), value: environment.needsEmailVerification)
         .animation(.easeInOut(duration: 0.3), value: environment.hasCompletedOnboarding)
+        .onAppear { applyColorScheme(colorSchemePref) }
+        .onChange(of: colorSchemePref) { _, newValue in applyColorScheme(newValue) }
+    }
+
+    private func applyColorScheme(_ pref: String) {
+        let style: UIUserInterfaceStyle
+        switch pref {
+        case "light": style = .light
+        case "dark":  style = .dark
+        default:      style = .unspecified
+        }
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .forEach { $0.overrideUserInterfaceStyle = style }
     }
 }
