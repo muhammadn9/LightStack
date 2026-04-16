@@ -119,23 +119,23 @@ struct ActiveWorkoutView: View {
     private var timerBar: some View {
         HStack(spacing: 0) {
             // Left: workout type + timer
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(todayViewModel.sessionService.currentWorkoutType ?? "Workout")
-                    .font(AppTheme.playfairItalic(10))
+                    .font(AppTheme.playfairItalic(15))
                     .foregroundStyle(AppTheme.accentSecondary)
-                HStack(spacing: 6) {
+                HStack(spacing: 10) {
                     Button(action: { showCancelAlert = true }) {
                         Image(systemName: "xmark")
-                            .font(.caption2.weight(.semibold))
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                     Text(viewModel.formattedElapsedTime)
-                        .font(AppTheme.plexMono(16, weight: .medium))
+                        .font(AppTheme.plexMono(24, weight: .medium))
                         .foregroundStyle(AppTheme.textPrimary)
                         .monospacedDigit()
                     Button(action: { viewModel.togglePause() }) {
                         Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                            .font(.caption2)
+                            .font(.subheadline)
                             .foregroundStyle(AppTheme.accent)
                     }
                 }
@@ -146,18 +146,18 @@ struct ActiveWorkoutView: View {
             // Right: volume
             let volume = runningVolume
             if volume > 0 {
-                VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: .trailing, spacing: 3) {
                     Text("Volume")
-                        .font(AppTheme.caveat(11))
+                        .font(AppTheme.caveat(16))
                         .foregroundStyle(AppTheme.accentSecondary)
                     Text(String(format: "%.0f lbs", volume))
-                        .font(AppTheme.plexMono(13, weight: .medium))
+                        .font(AppTheme.plexMono(20, weight: .medium))
                         .foregroundStyle(AppTheme.accent)
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 15)
         .background(Color(adaptiveDark: 0x1B3A6B, light: 0x1B3A6B))
         .overlay(alignment: .bottom) {
             InkDivider()
@@ -180,15 +180,15 @@ struct ActiveWorkoutView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(exercise.name)
-                            .font(AppTheme.playfair(22, weight: .bold))
+                            .font(AppTheme.playfair(33, weight: .bold))
                             .foregroundStyle(AppTheme.textPrimary)
                         HStack(spacing: 4) {
                             Text(exercise.muscleGroup)
-                                .font(AppTheme.caveat(15))
+                                .font(AppTheme.caveat(22))
                                 .foregroundStyle(AppTheme.textSecondary)
                             if let target = exercise.targetSets {
                                 Text("· \(target) sets")
-                                    .font(AppTheme.caveat(15))
+                                    .font(AppTheme.caveat(22))
                                     .foregroundStyle(AppTheme.textSecondary)
                             }
                         }
@@ -206,24 +206,24 @@ struct ActiveWorkoutView: View {
                     }
                     Spacer()
                     // Form Guide & Watch Form
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Button(action: { formDemoExercise = exercise }) {
                             Image(systemName: "figure.stand")
-                                .font(.caption.weight(.semibold))
+                                .font(.body.weight(.semibold))
                                 .foregroundStyle(AppTheme.accent)
-                                .padding(6)
+                                .padding(10)
                                 .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppTheme.border, lineWidth: 1))
                         }
                         Button(action: { formCaptureExercise = exercise }) {
                             Image(systemName: "camera.fill")
-                                .font(.caption.weight(.semibold))
+                                .font(.body.weight(.semibold))
                                 .foregroundStyle(AppTheme.accent)
-                                .padding(6)
+                                .padding(10)
                                 .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(AppTheme.border, lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppTheme.border, lineWidth: 1))
                         }
                     }
                     // Exercise navigation
@@ -242,7 +242,7 @@ struct ActiveWorkoutView: View {
                             }
                         }
                         Text("\(currentExerciseIndex + 1)/\(exercises.count)")
-                            .font(AppTheme.plexMono(14))
+                            .font(AppTheme.plexMono(20))
                             .foregroundStyle(AppTheme.textSecondary)
                         if currentExerciseIndex < exercises.count - 1 {
                             Button(action: {
@@ -286,21 +286,21 @@ struct ActiveWorkoutView: View {
                 let pending = viewModel.pendingSets[exercise.id] ?? []
                 if !pending.isEmpty {
                     // Column headers
-                    HStack(spacing: 8) {
+                    HStack(spacing: 12) {
                         Text("")
-                            .frame(width: 24)
+                            .frame(width: 28)
                         Text("lbs")
-                            .font(AppTheme.caveat(10))
+                            .font(AppTheme.caveat(15))
                             .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 70)
+                            .frame(width: 105)
                         Text("reps")
-                            .font(AppTheme.caveat(10))
+                            .font(AppTheme.caveat(15))
                             .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 60)
+                            .frame(width: 90)
                         Text("RIR")
-                            .font(AppTheme.caveat(10))
+                            .font(AppTheme.caveat(15))
                             .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 50)
+                            .frame(width: 75)
                         Spacer()
                     }
                     .padding(.top, 2)
@@ -324,44 +324,44 @@ struct ActiveWorkoutView: View {
                         Image(systemName: "plus.circle")
                         Text("Add Set")
                     }
-                    .font(AppTheme.caveat(12, weight: .bold))
+                    .font(AppTheme.caveat(18, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                 }
                 .buttonStyle(.plain)
 
                 // Rest timer banner
                 if let restTime = viewModel.formattedRestTime(for: exercise.id) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 14) {
                         RestTimerRing(progress: restTimerProgress(for: exercise.id))
-                            .frame(width: 40, height: 40)
-                        VStack(alignment: .leading, spacing: 2) {
+                            .frame(width: 60, height: 60)
+                        VStack(alignment: .leading, spacing: 3) {
                             Text("Rest Period")
-                                .font(AppTheme.caveat(13, weight: .bold))
+                                .font(AppTheme.caveat(20, weight: .bold))
                                 .foregroundStyle(AppTheme.textPrimary)
                             if let next = nextExercise {
                                 Text("Next: \(next.name)")
-                                    .font(AppTheme.plexMono(9))
+                                    .font(AppTheme.plexMono(13))
                                     .foregroundStyle(AppTheme.textSecondary)
                             }
                         }
                         Spacer()
                         Text(restTime)
-                            .font(AppTheme.plexMono(14, weight: .medium))
+                            .font(AppTheme.plexMono(21, weight: .medium))
                             .foregroundStyle(AppTheme.accent)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 12)
                     .background(AppTheme.surfaceElevated)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 6)
                             .stroke(AppTheme.border, lineWidth: 1)
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.activeRestExerciseId == exercise.id)
-            .padding(16)
-            .padding(.bottom, 60)
+            .padding(24)
+            .padding(.bottom, 90)
         }
         .themedBackground()
         .gesture(
@@ -386,20 +386,20 @@ struct ActiveWorkoutView: View {
     // MARK: - Logged Set Row (notebook style)
 
     private func loggedSetRow(_ workoutSet: WorkoutSet, number: Int, exerciseId: UUID) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             SetNumberCircle(number: number, isLogged: true)
 
             Text(String(format: "%.1f", workoutSet.weightLbs))
-                .font(AppTheme.caveat(14, weight: .bold))
+                .font(AppTheme.caveat(21, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("lbs")
-                .font(AppTheme.caveat(11))
+                .font(AppTheme.caveat(16))
                 .foregroundStyle(AppTheme.textSecondary)
 
             Spacer()
 
             Text("×\(workoutSet.reps)")
-                .font(AppTheme.caveat(14, weight: .bold))
+                .font(AppTheme.caveat(21, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Spacer()
@@ -408,7 +408,7 @@ struct ActiveWorkoutView: View {
                 PRStamp()
             } else {
                 Text("✓ RIR \(workoutSet.rir)")
-                    .font(AppTheme.caveat(11))
+                    .font(AppTheme.caveat(16))
                     .foregroundStyle(AppTheme.success)
             }
 
@@ -418,74 +418,74 @@ struct ActiveWorkoutView: View {
             }) {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
-                    .font(.caption)
+                    .font(.body)
             }
         }
-        .padding(.vertical, 5)
-        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
         .background(AppTheme.surfaceElevated.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     // MARK: - Pending Set Row (input)
 
     private func pendingSetRow(index: Int, setNumber: Int, pendingSets: Binding<[PendingSetInput]>, exerciseId: UUID) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             SetNumberCircle(number: setNumber, isLogged: false)
 
             // Weight field
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 TextField("lbs", text: pendingSets[index].weight)
                     .keyboardType(.decimalPad)
-                    .font(AppTheme.plexMono(14, weight: .bold))
+                    .font(AppTheme.plexMono(21, weight: .bold))
                     .multilineTextAlignment(.center)
-                    .frame(width: 70)
+                    .frame(width: 105)
                     .foregroundStyle(AppTheme.textPrimary)
                 Rectangle()
                     .fill(pendingSets[index].weight.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
-                    .frame(width: 70, height: 1.5)
+                    .frame(width: 105, height: 2)
                     .animation(.easeInOut(duration: 0.2), value: pendingSets[index].weight.wrappedValue.isEmpty)
             }
 
             Text("×")
-                .font(AppTheme.caveat(16))
+                .font(AppTheme.caveat(24))
                 .foregroundStyle(AppTheme.border)
 
             // Reps field
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 TextField("reps", text: pendingSets[index].reps)
                     .keyboardType(.numberPad)
-                    .font(AppTheme.plexMono(14, weight: .bold))
+                    .font(AppTheme.plexMono(21, weight: .bold))
                     .multilineTextAlignment(.center)
-                    .frame(width: 60)
+                    .frame(width: 90)
                     .foregroundStyle(AppTheme.textPrimary)
                 Rectangle()
                     .fill(pendingSets[index].reps.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
-                    .frame(width: 60, height: 1.5)
+                    .frame(width: 90, height: 2)
                     .animation(.easeInOut(duration: 0.2), value: pendingSets[index].reps.wrappedValue.isEmpty)
             }
 
             // RIR field
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 TextField("RIR", text: pendingSets[index].rir)
                     .keyboardType(.numberPad)
-                    .font(AppTheme.plexMono(14))
+                    .font(AppTheme.plexMono(21))
                     .multilineTextAlignment(.center)
-                    .frame(width: 50)
+                    .frame(width: 75)
                     .foregroundStyle(AppTheme.textPrimary)
                 Rectangle()
                     .fill(AppTheme.border.opacity(0.5))
-                    .frame(width: 50, height: 1.5)
+                    .frame(width: 75, height: 2)
             }
 
             // Log button
             Button(action: { logSet(at: index, exerciseId: exerciseId) }) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: 4)
                         .fill(pendingSets[index].reps.wrappedValue.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 42, height: 42)
                     Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(pendingSets[index].reps.wrappedValue.isEmpty
                                          ? AppTheme.textSecondary
                                          : AppTheme.background)
@@ -498,7 +498,7 @@ struct ActiveWorkoutView: View {
             Button(action: { viewModel.deletePendingSet(at: index, exerciseId: exerciseId) }) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
-                    .font(.caption)
+                    .font(.body)
             }
         }
     }
@@ -510,14 +510,15 @@ struct ActiveWorkoutView: View {
             autoLogAllPendingSets()
             todayViewModel.finishWorkout(userNote: nil)
         }) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Text("✦")
+                    .font(.title3)
                 Text("Finish Workout")
-                    .font(AppTheme.playfairItalic(15, weight: .bold))
+                    .font(AppTheme.playfairItalic(22, weight: .bold))
             }
             .foregroundStyle(AppTheme.background)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, 18)
             .background(AppTheme.accentGradient)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             .overlay(
@@ -526,8 +527,8 @@ struct ActiveWorkoutView: View {
             )
             .shadow(color: AppTheme.accent.opacity(0.3), radius: 2, x: 1, y: 2)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 15)
         .background(AppTheme.background)
         .overlay(alignment: .top) {
             InkDivider()
@@ -550,9 +551,9 @@ struct ActiveWorkoutView: View {
             showChat = true
         }) {
             Image(systemName: "text.bubble")
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 27, weight: .medium))
                 .foregroundStyle(AppTheme.background)
-                .frame(width: 52, height: 52)
+                .frame(width: 78, height: 78)
                 .background(AppTheme.accentGradient)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
@@ -561,8 +562,8 @@ struct ActiveWorkoutView: View {
                 )
                 .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, x: 2, y: 4)
         }
-        .padding(.trailing, 20)
-        .padding(.bottom, 80)
+        .padding(.trailing, 30)
+        .padding(.bottom, 120)
     }
 
     // MARK: - Helpers
@@ -630,22 +631,22 @@ struct ActiveWorkoutView: View {
     }
 
     private func prToast(pr: PersonalRecord) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             PRStamp()
-                .frame(width: 32, height: 32)
+                .frame(width: 48, height: 48)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text("Personal Record!")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
+                    .font(AppTheme.playfairItalic(24, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("\(pr.exerciseName): \(String(format: "%.1f", pr.weightLbs)) lbs × \(pr.reps)")
-                    .font(AppTheme.caveat(14))
+                    .font(AppTheme.caveat(21))
                     .foregroundStyle(AppTheme.textSecondary)
             }
 
             Spacer()
         }
-        .padding(16)
+        .padding(24)
         .background(AppTheme.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         .overlay(
