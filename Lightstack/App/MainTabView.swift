@@ -13,36 +13,37 @@ struct MainTabView: View {
             // Notebook tab row
             NotebookTabRow(selectedTab: $selectedTab)
 
-            // Content
-            ZStack {
-                if let todayVM = todayViewModel {
-                    TodayTabContent(viewModel: todayVM)
-                        .opacity(selectedTab == 0 ? 1 : 0)
-                        .allowsHitTesting(selectedTab == 0)
+            // Content — TabView with page style for smooth swiping
+            TabView(selection: $selectedTab) {
+                Group {
+                    if let todayVM = todayViewModel {
+                        TodayTabContent(viewModel: todayVM)
+                    } else {
+                        AppTheme.background
+                    }
                 }
+                .tag(0)
 
                 Group {
                     if let monthVM = monthPlanViewModel {
                         MonthPlanView(viewModel: monthVM, selectedTab: $selectedTab)
                     } else {
-                        AppTheme.background.ignoresSafeArea()
+                        AppTheme.background
                     }
                 }
-                .opacity(selectedTab == 1 ? 1 : 0)
-                .allowsHitTesting(selectedTab == 1)
+                .tag(1)
 
                 HistoryListView()
-                    .opacity(selectedTab == 2 ? 1 : 0)
-                    .allowsHitTesting(selectedTab == 2)
+                    .tag(2)
 
                 ProfileView()
-                    .opacity(selectedTab == 3 ? 1 : 0)
-                    .allowsHitTesting(selectedTab == 3)
+                    .tag(3)
 
                 SettingsView()
-                    .opacity(selectedTab == 4 ? 1 : 0)
-                    .allowsHitTesting(selectedTab == 4)
+                    .tag(4)
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(.easeInOut(duration: 0.25), value: selectedTab)
         }
         .ignoresSafeArea(edges: .bottom)
         .themedBackground()

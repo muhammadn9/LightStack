@@ -85,12 +85,12 @@ struct SetNumberCircle: View {
         ZStack {
             Circle()
                 .fill(isLogged ? AppTheme.accent : Color.clear)
-                .frame(width: 24, height: 24)
+                .frame(width: 18, height: 18)
             Circle()
-                .stroke(isLogged ? AppTheme.accent : AppTheme.bindingHole, lineWidth: 2)
-                .frame(width: 24, height: 24)
+                .stroke(isLogged ? AppTheme.accent : AppTheme.bindingHole, lineWidth: 1.5)
+                .frame(width: 18, height: 18)
             Text("\(number)")
-                .font(AppTheme.plexMono(11, weight: .bold))
+                .font(AppTheme.plexMono(8, weight: .bold))
                 .foregroundStyle(
                     isLogged
                         ? Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1)
@@ -107,10 +107,10 @@ struct PRStamp: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(AppTheme.prStamp, lineWidth: 3)
-                .frame(width: 42, height: 42)
+                .stroke(AppTheme.prStamp, lineWidth: 2)
+                .frame(width: 32, height: 32)
             Text("PR")
-                .font(AppTheme.playfairItalic(11, weight: .bold))
+                .font(AppTheme.playfairItalic(8, weight: .bold))
                 .foregroundStyle(AppTheme.prStamp)
         }
         .rotationEffect(.degrees(-12))
@@ -128,13 +128,13 @@ struct RestTimerRing: View {
         ZStack {
             // Track
             Circle()
-                .stroke(AppTheme.timerTrack, lineWidth: 4.5)
-                .frame(width: 60, height: 60)
+                .stroke(AppTheme.timerTrack, lineWidth: 3.5)
+                .frame(width: 45, height: 45)
             // Active arc
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(AppTheme.accent, style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
-                .frame(width: 60, height: 60)
+                .stroke(AppTheme.accent, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                .frame(width: 45, height: 45)
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 1.0), value: progress)
         }
