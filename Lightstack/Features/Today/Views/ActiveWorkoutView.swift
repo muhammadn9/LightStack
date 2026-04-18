@@ -121,9 +121,9 @@ struct ActiveWorkoutView: View {
             // Left: workout type + timer
             VStack(alignment: .leading, spacing: 3) {
                 Text(todayViewModel.sessionService.currentWorkoutType ?? "Workout")
-                    .font(AppTheme.playfairItalic(13))
+                    .font(AppTheme.playfairItalic(11))
                     .foregroundStyle(AppTheme.accentSecondary)
-                HStack(spacing: 10) {
+                HStack(spacing: 7) {
                     Button(action: { showCancelAlert = true }) {
                         Image(systemName: "xmark")
                             .font(.subheadline.weight(.semibold))
@@ -148,7 +148,7 @@ struct ActiveWorkoutView: View {
             if volume > 0 {
                 VStack(alignment: .trailing, spacing: 3) {
                     Text("Volume")
-                        .font(AppTheme.caveat(13))
+                        .font(AppTheme.caveat(12))
                         .foregroundStyle(AppTheme.accentSecondary)
                     Text(String(format: "%.0f lbs", volume))
                         .font(AppTheme.plexMono(15, weight: .medium))
@@ -184,11 +184,11 @@ struct ActiveWorkoutView: View {
                             .foregroundStyle(AppTheme.textPrimary)
                         HStack(spacing: 4) {
                             Text(exercise.muscleGroup)
-                                .font(AppTheme.caveat(16))
+                                .font(AppTheme.caveat(17))
                                 .foregroundStyle(AppTheme.textSecondary)
                             if let target = exercise.targetSets {
                                 Text("· \(target) sets")
-                                    .font(AppTheme.caveat(16))
+                                    .font(AppTheme.caveat(17))
                                     .foregroundStyle(AppTheme.textSecondary)
                             }
                         }
@@ -206,15 +206,15 @@ struct ActiveWorkoutView: View {
                     }
                     Spacer()
                     // Form Guide & Watch Form
-                    HStack(spacing: 8) {
+                    HStack(spacing: 7) {
                         Button(action: { formDemoExercise = exercise }) {
                             Image(systemName: "figure.stand")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(AppTheme.accent)
                                 .padding(7)
                                 .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppTheme.border, lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
                         }
                         Button(action: { formCaptureExercise = exercise }) {
                             Image(systemName: "camera.fill")
@@ -222,8 +222,8 @@ struct ActiveWorkoutView: View {
                                 .foregroundStyle(AppTheme.accent)
                                 .padding(7)
                                 .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(AppTheme.border, lineWidth: 1))
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
                         }
                     }
                     // Exercise navigation
@@ -242,7 +242,7 @@ struct ActiveWorkoutView: View {
                             }
                         }
                         Text("\(currentExerciseIndex + 1)/\(exercises.count)")
-                            .font(AppTheme.plexMono(15))
+                            .font(AppTheme.plexMono(16))
                             .foregroundStyle(AppTheme.textSecondary)
                         if currentExerciseIndex < exercises.count - 1 {
                             Button(action: {
@@ -286,19 +286,19 @@ struct ActiveWorkoutView: View {
                 let pending = viewModel.pendingSets[exercise.id] ?? []
                 if !pending.isEmpty {
                     // Column headers
-                    HStack(spacing: 12) {
+                    HStack(spacing: 9) {
                         Text("")
                             .frame(width: 22)
                         Text("lbs")
-                            .font(AppTheme.caveat(13))
+                            .font(AppTheme.caveat(11))
                             .foregroundStyle(AppTheme.textSecondary)
                             .frame(width: 78)
                         Text("reps")
-                            .font(AppTheme.caveat(13))
+                            .font(AppTheme.caveat(11))
                             .foregroundStyle(AppTheme.textSecondary)
                             .frame(width: 67)
                         Text("RIR")
-                            .font(AppTheme.caveat(13))
+                            .font(AppTheme.caveat(11))
                             .foregroundStyle(AppTheme.textSecondary)
                             .frame(width: 56)
                         Spacer()
@@ -324,23 +324,23 @@ struct ActiveWorkoutView: View {
                         Image(systemName: "plus.circle")
                         Text("Add Set")
                     }
-                    .font(AppTheme.caveat(14, weight: .bold))
+                    .font(AppTheme.caveat(13, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                 }
                 .buttonStyle(.plain)
 
                 // Rest timer banner
                 if let restTime = viewModel.formattedRestTime(for: exercise.id) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 11) {
                         RestTimerRing(progress: restTimerProgress(for: exercise.id))
                             .frame(width: 45, height: 45)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Rest Period")
-                                .font(AppTheme.caveat(16, weight: .bold))
+                                .font(AppTheme.caveat(15, weight: .bold))
                                 .foregroundStyle(AppTheme.textPrimary)
                             if let next = nextExercise {
                                 Text("Next: \(next.name)")
-                                    .font(AppTheme.plexMono(12))
+                                    .font(AppTheme.plexMono(10))
                                     .foregroundStyle(AppTheme.textSecondary)
                             }
                         }
@@ -349,11 +349,11 @@ struct ActiveWorkoutView: View {
                             .font(AppTheme.plexMono(16, weight: .medium))
                             .foregroundStyle(AppTheme.accent)
                     }
-                    .padding(.horizontal, 15)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 9)
                     .background(AppTheme.surfaceElevated)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: 5)
                             .stroke(AppTheme.border, lineWidth: 1)
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -361,7 +361,7 @@ struct ActiveWorkoutView: View {
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.activeRestExerciseId == exercise.id)
             .padding(18)
-            .padding(.bottom, 80)
+            .padding(.bottom, 67)
         }
         .themedBackground()
         .gesture(
@@ -386,14 +386,14 @@ struct ActiveWorkoutView: View {
     // MARK: - Logged Set Row (notebook style)
 
     private func loggedSetRow(_ workoutSet: WorkoutSet, number: Int, exerciseId: UUID) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 9) {
             SetNumberCircle(number: number, isLogged: true)
 
             Text(String(format: "%.1f", workoutSet.weightLbs))
                 .font(AppTheme.caveat(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("lbs")
-                .font(AppTheme.caveat(13))
+                .font(AppTheme.caveat(12))
                 .foregroundStyle(AppTheme.textSecondary)
 
             Spacer()
@@ -408,7 +408,7 @@ struct ActiveWorkoutView: View {
                 PRStamp()
             } else {
                 Text("✓ RIR \(workoutSet.rir)")
-                    .font(AppTheme.caveat(16))
+                    .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.success)
             }
 
@@ -421,16 +421,16 @@ struct ActiveWorkoutView: View {
                     .font(.body)
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 7)
         .background(AppTheme.surfaceElevated.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
     }
 
     // MARK: - Pending Set Row (input)
 
     private func pendingSetRow(index: Int, setNumber: Int, pendingSets: Binding<[PendingSetInput]>, exerciseId: UUID) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 9) {
             SetNumberCircle(number: setNumber, isLogged: false)
 
             // Weight field
@@ -483,9 +483,9 @@ struct ActiveWorkoutView: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(pendingSets[index].reps.wrappedValue.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 31, height: 31)
                     Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(pendingSets[index].reps.wrappedValue.isEmpty
                                          ? AppTheme.textSecondary
                                          : AppTheme.background)
@@ -510,7 +510,7 @@ struct ActiveWorkoutView: View {
             autoLogAllPendingSets()
             todayViewModel.finishWorkout(userNote: nil)
         }) {
-            HStack(spacing: 10) {
+            HStack(spacing: 9) {
                 Text("✦")
                     .font(.title3)
                 Text("Finish Workout")
@@ -563,7 +563,7 @@ struct ActiveWorkoutView: View {
                 .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, x: 2, y: 4)
         }
         .padding(.trailing, 22)
-        .padding(.bottom, 90)
+        .padding(.bottom, 88)
     }
 
     // MARK: - Helpers
@@ -637,7 +637,7 @@ struct ActiveWorkoutView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Personal Record!")
-                    .font(AppTheme.playfairItalic(17, weight: .bold))
+                    .font(AppTheme.playfairItalic(18, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("\(pr.exerciseName): \(String(format: "%.1f", pr.weightLbs)) lbs × \(pr.reps)")
                     .font(AppTheme.caveat(16))

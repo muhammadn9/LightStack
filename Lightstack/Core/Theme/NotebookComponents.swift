@@ -108,7 +108,7 @@ struct PRStamp: View {
         ZStack {
             Circle()
                 .stroke(AppTheme.prStamp, lineWidth: 2)
-                .frame(width: 32, height: 32)
+                .frame(width: 31, height: 31)
             Text("PR")
                 .font(AppTheme.playfairItalic(8, weight: .bold))
                 .foregroundStyle(AppTheme.prStamp)
