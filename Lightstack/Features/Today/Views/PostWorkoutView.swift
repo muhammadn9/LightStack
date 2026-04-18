@@ -162,7 +162,7 @@ struct PostWorkoutView: View {
             HStack(spacing: 8) {
                 Image(systemName: "square.and.arrow.down")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Save to Training Log")
+                Text(todayViewModel.isLoadingNote ? "Analyzing…" : "Save to Training Log")
             }
         }
         .buttonStyle(WaxSealButtonStyle(isSecondary: false))

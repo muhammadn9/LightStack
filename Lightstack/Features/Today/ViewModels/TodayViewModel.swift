@@ -94,7 +94,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     }
 
     func generatePlan(workoutType: String, time: Int, energy: Int, notes: String?) {
-        guard let userId = userId else { return }
+        guard let userId = userId else {
+            errorMessage = "Sign in required to generate a workout."
+            return
+        }
         phase = .generating
         errorMessage = nil
         sessionService.generatePlan(
@@ -198,6 +201,11 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     // MARK: - WorkoutSessionServiceDelegate
 
     func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise]) {
+        guard !exercises.isEmpty else {
+            self.errorMessage = "Couldn't build a workout. Please try again."
+            self.phase = .setup
+            return
+        }
         self.exercises = exercises
         self.exerciseListResetToken += 1
         self.phase = .confirmation

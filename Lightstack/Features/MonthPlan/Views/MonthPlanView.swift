@@ -80,7 +80,7 @@ struct MonthPlanView: View {
                     .cardStyle()
 
                     // Start Today's Workout button
-                    if viewModel.todaySession != nil && !viewModel.todaySession!.isRestDay {
+                    if let session = viewModel.todaySession, !session.isRestDay {
                         Button(action: { selectedTab = 0 }) {
                             HStack(spacing: 8) {
                                 Text("✦")

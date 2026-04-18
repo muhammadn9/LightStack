@@ -82,7 +82,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
         let weight: Double
         if weightStr.isEmpty || weightStr.uppercased() == "BW" {
             weight = 0.0
-        } else if let w = Double(weightStr), w >= 0 {
+        } else if let w = Double(weightStr), w > 0 {
             weight = w
         } else {
             return nil

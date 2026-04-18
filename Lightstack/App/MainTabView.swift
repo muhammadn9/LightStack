@@ -4,7 +4,7 @@ import SwiftUI
 /// Replaces the native iOS tab bar with an inline horizontal tab strip.
 struct MainTabView: View {
     @EnvironmentObject var environment: AppEnvironment
-    @State private var selectedTab: Int = 0
+    @AppStorage("selectedTab") private var selectedTab: Int = 0
     @State private var todayViewModel: TodayViewModel?
     @State private var monthPlanViewModel: MonthPlanViewModel?
 

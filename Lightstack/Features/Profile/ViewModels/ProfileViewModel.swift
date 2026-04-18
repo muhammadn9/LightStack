@@ -114,14 +114,15 @@ final class ProfileViewModel: ObservableObject {
 
         // Parse and update fields
         profile.displayName = validationService.sanitize(editDisplayName)
-        profile.age = Int(editAge)
-        profile.weightLbs = Double(editWeightLbs)
+        if let n = Int(editAge), (10...120).contains(n) { profile.age = n }
+        if let w = Double(editWeightLbs), (50...1000).contains(w) { profile.weightLbs = w }
 
-        if let feet = Int(editHeightFeet), let inches = Int(editHeightInches) {
+        if let feet = Int(editHeightFeet), let inches = Int(editHeightInches),
+           (3...8).contains(feet), (0...11).contains(inches) {
             profile.heightInches = Double(feet * 12 + inches)
         }
 
-        profile.trainingAgeMonths = Int(editTrainingAgeMonths)
+        if let tam = Int(editTrainingAgeMonths) { profile.trainingAgeMonths = max(0, min(1200, tam)) }
         profile.primaryGoals = Array(editGoals)
         profile.splitDays = editSplitDays
         profile.equipment = editEquipment
