@@ -206,24 +206,26 @@ struct ActiveWorkoutView: View {
                     }
                     Spacer()
                     // Form Guide & Watch Form
-                    HStack(spacing: 7) {
-                        Button(action: { formDemoExercise = exercise }) {
-                            Image(systemName: "figure.stand")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(AppTheme.accent)
-                                .padding(7)
-                                .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 5))
-                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
-                        }
-                        Button(action: { formCaptureExercise = exercise }) {
-                            Image(systemName: "camera.fill")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(AppTheme.accent)
-                                .padding(7)
-                                .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 5))
-                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
+                    if FeatureFlags.formAnalysisEnabled {
+                        HStack(spacing: 7) {
+                            Button(action: { formDemoExercise = exercise }) {
+                                Image(systemName: "figure.stand")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(AppTheme.accent)
+                                    .padding(7)
+                                    .background(AppTheme.surfaceElevated)
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
+                            }
+                            Button(action: { formCaptureExercise = exercise }) {
+                                Image(systemName: "camera.fill")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(AppTheme.accent)
+                                    .padding(7)
+                                    .background(AppTheme.surfaceElevated)
+                                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
+                            }
                         }
                     }
                     // Exercise navigation
