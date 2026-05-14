@@ -101,6 +101,14 @@
 		FEEB05DB01F16867AE20A1D7 /* WorkoutSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31760632B5C96652ADBAC3D6 /* WorkoutSessionService.swift */; };
 		b2aebeeb02a6431dbf57f6ca /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = d4f1049e7fe14415938e63cf /* FlowLayout.swift */; };
 		AA11BB22CC33DD44EE55FF66 /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22CC33DD44EE55FF66AA11 /* FeatureFlags.swift */; };
+		MK01000000000000000000A1 /* MockTabShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A1 /* MockTabShell.swift */; };
+		MK01000000000000000000A2 /* MockTodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A2 /* MockTodayView.swift */; };
+		MK01000000000000000000A3 /* MockPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A3 /* MockPlanView.swift */; };
+		MK01000000000000000000A4 /* MockLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A4 /* MockLogView.swift */; };
+		MK01000000000000000000A5 /* MockMeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A5 /* MockMeView.swift */; };
+		MK01000000000000000000A6 /* MockCoachSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A6 /* MockCoachSheet.swift */; };
+		MK01000000000000000000A7 /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A7 /* MockData.swift */; };
+		MK01000000000000000000A8 /* ModernTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = MK01FR0000000000000000A8 /* ModernTheme.swift */; };
 		c10da7ffb6164e359d117a76 /* MuscleGroupChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7229867bd5514613903794d3 /* MuscleGroupChartView.swift */; };
 		c59faa99015446129af0654c /* EditProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = d8b743b28d3549cda23bbb79 /* EditProfileView.swift */; };
 		db64ac83ca0546ab94e6abec /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64231a22773d45c3850456c1 /* KeychainService.swift */; };
@@ -190,6 +198,14 @@
 		FD7FAD3D73C29C60902B298C /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		d4f1049e7fe14415938e63cf /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		BB22CC33DD44EE55FF66AA11 /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A1 /* MockTabShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockTabShell.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A2 /* MockTodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockTodayView.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A3 /* MockPlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPlanView.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A4 /* MockLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockLogView.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A5 /* MockMeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockMeView.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A6 /* MockCoachSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockCoachSheet.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A7 /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
+		MK01FR0000000000000000A8 /* ModernTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernTheme.swift; sourceTree = "<group>"; };
 		d8b743b28d3549cda23bbb79 /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
 		FA220000000000000000BB01 /* BodyPose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyPose.swift; sourceTree = "<group>"; };
 		FA220000000000000000BB02 /* RepQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepQuality.swift; sourceTree = "<group>"; };
@@ -620,6 +636,7 @@
 			children = (
 				BC64868EC9B6E39CADC76555 /* AICoach */,
 				157C5E9F8614A49B4F4E9BDD /* Auth */,
+				MK01GR0000000000000000A0 /* _Mockups */,
 				FA110000000000000000AA01 /* FormAnalysis */,
 				4918AA3164ED8BCAA881D58A /* History */,
 				1FFEF5141B955331B3A58993 /* MonthPlan */,
@@ -628,6 +645,21 @@
 				A00699C2CE9B1A08F74CFFDB /* Today */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		MK01GR0000000000000000A0 /* _Mockups */ = {
+			isa = PBXGroup;
+			children = (
+				MK01FR0000000000000000A1 /* MockTabShell.swift */,
+				MK01FR0000000000000000A2 /* MockTodayView.swift */,
+				MK01FR0000000000000000A3 /* MockPlanView.swift */,
+				MK01FR0000000000000000A4 /* MockLogView.swift */,
+				MK01FR0000000000000000A5 /* MockMeView.swift */,
+				MK01FR0000000000000000A6 /* MockCoachSheet.swift */,
+				MK01FR0000000000000000A7 /* MockData.swift */,
+				MK01FR0000000000000000A8 /* ModernTheme.swift */,
+			);
+			path = _Mockups;
 			sourceTree = "<group>";
 		};
 		F82D7FDECDE34F8C18CA1E9E /* Profile */ = {
@@ -734,6 +766,14 @@
 				E65828876C6E0CCF717A9E36 /* DateFormatter+Extensions.swift in Sources */,
 				b2aebeeb02a6431dbf57f6ca /* FlowLayout.swift in Sources */,
 				AA11BB22CC33DD44EE55FF66 /* FeatureFlags.swift in Sources */,
+				MK01000000000000000000A1 /* MockTabShell.swift in Sources */,
+				MK01000000000000000000A2 /* MockTodayView.swift in Sources */,
+				MK01000000000000000000A3 /* MockPlanView.swift in Sources */,
+				MK01000000000000000000A4 /* MockLogView.swift in Sources */,
+				MK01000000000000000000A5 /* MockMeView.swift in Sources */,
+				MK01000000000000000000A6 /* MockCoachSheet.swift in Sources */,
+				MK01000000000000000000A7 /* MockData.swift in Sources */,
+				MK01000000000000000000A8 /* ModernTheme.swift in Sources */,
 				743305F5E054784067AAC2E7 /* EmailVerificationView.swift in Sources */,
 				87811207C311FE79DD3DAEF6 /* EquipmentPickerView.swift in Sources */,
 				982ED5F8ADB4A05CD9F909E1 /* Exercise.swift in Sources */,
