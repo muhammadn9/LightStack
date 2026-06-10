@@ -6,7 +6,9 @@ import Foundation
 enum FeatureFlags {
 
     /// Motion-capture form analysis (camera + 3D model overlays).
-    /// Disabled while pose estimation accuracy and the capture UX are reworked.
-    /// Hides: form-demo and form-capture buttons in ActiveWorkoutView.
-    static let formAnalysisEnabled: Bool = false
+    /// Re-enabled after capture/overlay fixes (permission observation, rep index
+    /// alignment, aspect-fill skeleton math, capture countdown) — pending
+    /// on-device validation. Gates: form-demo and form-capture buttons in
+    /// ActiveWorkoutView.
+    static let formAnalysisEnabled: Bool = true
 }
