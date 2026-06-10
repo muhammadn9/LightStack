@@ -62,10 +62,10 @@ struct ActiveWorkoutView: View {
             viewModel.stopTimer()
             todayViewModel.saveSessionState()
         }
-        .onChange(of: todayViewModel.exerciseListResetToken) { _ in
+        .onChange(of: todayViewModel.exerciseListResetToken) { _, _ in
             currentExerciseIndex = 0
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 viewModel.refreshRestTimers()
             }

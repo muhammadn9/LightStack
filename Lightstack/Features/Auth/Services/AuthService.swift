@@ -300,6 +300,6 @@ extension AuthService: ASAuthorizationControllerDelegate {
         controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
-        Task { await notifyError(error) }
+        Task { @MainActor in notifyError(error) }
     }
 }

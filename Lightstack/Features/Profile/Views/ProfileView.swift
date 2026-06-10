@@ -212,9 +212,6 @@ struct ProfileView: View {
         topLifts = vm.topLifts
 
         // Count this month's sessions
-        let calendar = Calendar.current
-        let now = Date()
-        let monthStart = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
         thisMonthSessions = vm.totalSessions > 0 ? min(vm.totalSessions, 20) : 0 // approximation
         viewModel = vm
     }
