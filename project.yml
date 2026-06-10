@@ -28,6 +28,8 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
+        DEVELOPMENT_TEAM: 7X8799T6N2
+        CODE_SIGN_IDENTITY: "iPhone Developer"
       configs:
         Debug:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
