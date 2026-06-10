@@ -1,16 +1,18 @@
 import Foundation
 import UserNotifications
+import os
 
 /// Manages local notifications for rest timer alerts.
 final class NotificationService {
 
     static let restTimerCategoryId = "REST_TIMER"
     private let center = UNUserNotificationCenter.current()
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "NotificationService")
 
     func requestPermission() {
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
-                print("[NotificationService] Permission error: \(error)")
+                self.logger.error("Permission error: \(error)")
             }
         }
     }
@@ -40,7 +42,7 @@ final class NotificationService {
 
         center.add(request) { error in
             if let error = error {
-                print("[NotificationService] Schedule error: \(error)")
+                self.logger.error("Schedule error: \(error)")
             }
         }
     }

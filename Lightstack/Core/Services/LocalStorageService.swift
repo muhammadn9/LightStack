@@ -1,5 +1,6 @@
 import Foundation
 import CoreData
+import os
 
 /// Core Data CRUD operations.
 /// Single responsibility: read/write entities to the local Core Data store.
@@ -7,6 +8,7 @@ import CoreData
 final class LocalStorageService {
 
     let container: NSPersistentContainer
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "LocalStorageService")
 
     init() {
         container = NSPersistentContainer(name: "Lightstack")
@@ -36,11 +38,11 @@ final class LocalStorageService {
     }
 
     func saveProfile(_ profile: UserProfile) {
-        print("[LocalStorageService] Saving profile with split days: \(profile.splitDays)")
+        logger.debug("Saving profile with split days: \(profile.splitDays)")
         let existing = fetchProfile(userId: profile.userId)
         let entity = existing ?? CDUserProfile(context: context)
         profile.applyToCoreData(entity)
-        print("[LocalStorageService] After applyToCoreData, entity.splitDays: \(entity.splitDays ?? [])")
+        logger.debug("After applyToCoreData, entity.splitDays: \(entity.splitDays ?? [])")
         save()
     }
 
@@ -322,7 +324,7 @@ final class LocalStorageService {
         guard let mostRecent = sorted.first else { return 0 }
 
         let today = calendar.startOfDay(for: Date())
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return 0 }
         guard mostRecent >= yesterday else { return 0 }
 
         var streak = 0
@@ -330,7 +332,8 @@ final class LocalStorageService {
         for date in sorted {
             if date == checkDate {
                 streak += 1
-                checkDate = calendar.date(byAdding: .day, value: -1, to: checkDate)!
+                guard let next = calendar.date(byAdding: .day, value: -1, to: checkDate) else { break }
+                checkDate = next
             } else if date < checkDate {
                 break
             }
@@ -346,7 +349,7 @@ final class LocalStorageService {
         do {
             try context.save()
         } catch {
-            print("Core Data save error: \(error.localizedDescription)")
+            logger.error("Core Data save error: \(error.localizedDescription)")
         }
     }
 }

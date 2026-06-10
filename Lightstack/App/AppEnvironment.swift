@@ -74,7 +74,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         assert(!supabaseURL.isEmpty, "SUPABASE_URL is not configured — add Secrets.xcconfig")
         assert(!supabaseKey.isEmpty, "SUPABASE_ANON_KEY is not configured — add Secrets.xcconfig")
 
-        let resolvedURL = URL(string: supabaseURL) ?? URL(string: "https://placeholder.supabase.co")!
+        // The asserts above guarantee supabaseURL is non-empty and well-formed at
+        // development time; the fallback below is unreachable in practice.
+        let resolvedURL = URL(string: supabaseURL) ?? URL(fileURLWithPath: "/dev/null")
         self.supabaseClient = SupabaseClient(
             supabaseURL: resolvedURL,
             supabaseKey: supabaseKey,

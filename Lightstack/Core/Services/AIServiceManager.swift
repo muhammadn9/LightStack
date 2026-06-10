@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Manages multiple AI providers and automatically rotates between them
 /// when rate limits are hit. Prioritizes providers in order: Gemini → OpenAI → Claude.
@@ -6,10 +7,11 @@ final class AIServiceManager {
 
     private var providers: [AIProvider]
     private var currentProviderIndex: Int = 0
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "AIServiceManager")
 
     init(providers: [AIProvider]) {
         self.providers = providers
-        print("[AIServiceManager] Initialized with providers: \(providers.map { $0.name }.joined(separator: ", "))")
+        logger.debug("Initialized with providers: \(providers.map { $0.name }.joined(separator: ", "))")
     }
 
     /// Generate chat completion using the first available provider.
@@ -19,7 +21,7 @@ final class AIServiceManager {
         messages: [ChatMessage],
         completion: @escaping (Result<String, Error>) -> Void
     ) {
-        print("[AIServiceManager] Starting chat generation with \(providers.count) providers available")
+        logger.debug("Starting chat generation with \(self.providers.count) providers available")
         tryNextProvider(
             systemPrompt: systemPrompt,
             messages: messages,
@@ -38,12 +40,12 @@ final class AIServiceManager {
     ) {
         // Find next available provider
         guard let availableProvider = findNextAvailableProvider(excluding: attemptedProviders) else {
-            print("[AIServiceManager] All providers exhausted or rate limited")
+            logger.debug("All providers exhausted or rate limited")
             completion(.failure(AIProviderError.allProvidersUnavailable))
             return
         }
 
-        print("[AIServiceManager] Trying provider: \(availableProvider.name)")
+        logger.debug("Trying provider: \(availableProvider.name)")
 
         availableProvider.generateChat(
             systemPrompt: systemPrompt,
@@ -53,11 +55,11 @@ final class AIServiceManager {
 
             switch result {
             case .success(let response):
-                print("[AIServiceManager] ✅ Success with \(availableProvider.name)")
+                self.logger.debug("✅ Success with \(availableProvider.name)")
                 completion(.success(response))
 
             case .failure(let error):
-                print("[AIServiceManager] ❌ Failed with \(availableProvider.name): \(error.localizedDescription)")
+                self.logger.error("❌ Failed with \(availableProvider.name): \(error.localizedDescription)")
 
                 // Check if this is a rate limit error
                 if self.isRateLimitError(error) {
@@ -86,7 +88,7 @@ final class AIServiceManager {
                 return provider
             } else if let nextAvailable = provider.nextAvailableTime {
                 let timeRemaining = nextAvailable.timeIntervalSinceNow
-                print("[AIServiceManager] \(provider.name) rate limited, available in \(Int(timeRemaining))s")
+                logger.debug("\(provider.name) rate limited, available in \(Int(timeRemaining))s")
             }
         }
         return nil
@@ -109,7 +111,7 @@ final class AIServiceManager {
         let retryAfter = extractRetryAfter(from: error)
         let retryTime = Date().addingTimeInterval(retryAfter)
         provider.markRateLimited(until: retryTime)
-        print("[AIServiceManager] Marked \(provider.name) as rate limited until \(retryTime)")
+        logger.debug("Marked \(provider.name) as rate limited until \(retryTime)")
     }
 
     private func extractRetryAfter(from error: Error) -> TimeInterval {
