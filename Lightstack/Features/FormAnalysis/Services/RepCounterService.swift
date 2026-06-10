@@ -132,8 +132,8 @@ final class RepCounterService {
 
     // MARK: - Angle Extraction (bilateral average)
 
-    private func extractAngles(from poses: [BodyPose], config: JointTriple) -> [(TimeInterval, Double)] {
-        poses.compactMap { pose in
+    private func extractAngles(from poses: [BodyPose], config: JointTriple) -> [(poseIndex: Int, t: TimeInterval, angle: Double)] {
+        poses.enumerated().compactMap { index, pose in
             let leftAngle = pose.angle(from: config.a, through: config.b, to: config.c)
 
             // If right-side joints are available, average both sides
@@ -149,21 +149,21 @@ final class RepCounterService {
             case let (nil, r?): angle = r
             case (nil, nil): return nil
             }
-            return (pose.timestamp, angle)
+            return (poseIndex: index, t: pose.timestamp, angle: angle)
         }
     }
 
     // MARK: - Rep Detection
 
     private func detectReps(
-        in angles: [(TimeInterval, Double)],
+        in angles: [(poseIndex: Int, t: TimeInterval, angle: Double)],
         config: JointTriple,
         poses: [BodyPose]
     ) -> [RepQuality] {
         guard angles.count >= 5 else { return [] }
 
-        let values = angles.map { $0.1 }
-        let timestamps = angles.map { $0.0 }
+        let values = angles.map { $0.angle }
+        let timestamps = angles.map { $0.t }
         let smoothed = smooth(values, windowSize: 5)
 
         let threshold = (config.startAngle + config.endAngle) / 2.0
@@ -196,7 +196,9 @@ final class RepCounterService {
                     if duration < 0.8 { flags.append("Too fast") }
                     if duration > 6.0 { flags.append("Very slow pace") }
 
-                    let poseRange = poses[repStartIdx..<min(i, poses.count)]
+                    let startPoseIdx = angles[repStartIdx].poseIndex
+                    let endPoseIdx = min(angles[i].poseIndex, poses.count)
+                    let poseRange = startPoseIdx < endPoseIdx ? poses[startPoseIdx..<endPoseIdx] : poses[startPoseIdx..<startPoseIdx]
                     let symmetry = symmetryScore(poses: Array(poseRange))
 
                     reps.append(RepQuality(

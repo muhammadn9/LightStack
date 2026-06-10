@@ -18,6 +18,7 @@ final class FormAnalysisViewModel: ObservableObject {
     @Published var captureState: CaptureState = .idle
     @Published var repCount: Int = 0
     @Published var latestPose: BodyPose?
+    @Published private(set) var permissionDenied = false
 
     // MARK: - Services
 
@@ -65,18 +66,35 @@ final class FormAnalysisViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        poseService.$permissionDenied
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$permissionDenied)
     }
 
     // MARK: - Public API
 
-    func startCapture(exerciseName: String) {
+    /// Starts the camera and resets capture buffers, but does not begin collecting
+    /// poses yet. Call `beginCollecting()` once the pre-capture countdown finishes.
+    func startCamera(exerciseName: String) {
         self.exerciseName = exerciseName
         collectedPoses = []
         collectedPoses3D = []
         pose3DFrameCount = 0
         repCount = 0
-        captureState = .capturing
+        captureState = .idle
         poseService.requestPermissionAndStart()
+    }
+
+    /// Switches capture state to `.capturing` so incoming frames start accumulating.
+    func beginCollecting() {
+        captureState = .capturing
+    }
+
+    /// Convenience that starts the camera and immediately begins collecting poses.
+    func startCapture(exerciseName: String) {
+        startCamera(exerciseName: exerciseName)
+        beginCollecting()
     }
 
     func stopCaptureAndAnalyze() {

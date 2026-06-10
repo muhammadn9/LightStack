@@ -55,15 +55,32 @@ struct SkeletonOverlayView: View {
     /// Vision: x=0 left, y=0 bottom, normalized. SwiftUI: x=0 left, y=0 top.
     /// .leftMirrored orientation passed to VNImageRequestHandler already corrects for
     /// front camera landscape buffers, so no X-mirror needed here.
+    ///
+    /// The camera preview uses `.resizeAspectFill` with a portrait 9:16 buffer, so the
+    /// image is scaled up to fill the view and cropped on one axis. We replicate that
+    /// scaling/offset here so skeleton points line up with the displayed video.
     private func convert(
         joint: VNHumanBodyPoseObservation.JointName,
         pose: BodyPose,
         size: CGSize
     ) -> CGPoint? {
         guard let p = pose.joints[joint] else { return nil }
+
+        let imageAspect: CGFloat = 9.0 / 16.0
+        let viewAspect = size.width / size.height
+        var drawn = size
+        var offset = CGPoint.zero
+        if viewAspect > imageAspect {            // view wider → fill width, crop top/bottom
+            drawn = CGSize(width: size.width, height: size.width / imageAspect)
+            offset.y = (drawn.height - size.height) / 2
+        } else {                                  // view taller → fill height, crop sides
+            drawn = CGSize(width: size.height * imageAspect, height: size.height)
+            offset.x = (drawn.width - size.width) / 2
+        }
+
         return CGPoint(
-            x: p.x * size.width,          // no mirror — .leftMirrored handles it
-            y: (1 - p.y) * size.height    // flip Y (Vision y=0=bottom, SwiftUI y=0=top)
+            x: p.x * drawn.width - offset.x,           // no mirror — .leftMirrored handles it
+            y: (1 - p.y) * drawn.height - offset.y     // flip Y (Vision y=0=bottom, SwiftUI y=0=top)
         )
     }
 }

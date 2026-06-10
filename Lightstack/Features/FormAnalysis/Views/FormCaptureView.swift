@@ -12,6 +12,10 @@ struct FormCaptureView: View {
     let onComplete: (FormAnalysisResult) -> Void
 
     @State private var captureStartTime = Date()
+    @State private var countdown = 3
+    @State private var countdownStarted = false
+
+    private let countdownTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -30,16 +34,29 @@ struct FormCaptureView: View {
             }
             .padding()
 
-            if viewModel.poseService.permissionDenied {
+            if viewModel.permissionDenied {
                 permissionDeniedOverlay
             } else if lowDetectionVisible {
                 lowDetectionTip
             }
+
+            if countdown > 0 {
+                countdownOverlay
+            }
         }
         .onAppear {
-            captureStartTime = Date()
+            guard !countdownStarted else { return }
+            countdownStarted = true
             viewModel.reset()
-            viewModel.startCapture(exerciseName: exerciseName)
+            viewModel.startCamera(exerciseName: exerciseName)
+        }
+        .onReceive(countdownTimer) { _ in
+            guard countdown > 0 else { return }
+            countdown -= 1
+            if countdown == 0 {
+                captureStartTime = Date()
+                viewModel.beginCollecting()
+            }
         }
         .onChange(of: captureIsDone) { _, done in
             if done, case .done(let result) = viewModel.captureState {
@@ -159,6 +176,20 @@ struct FormCaptureView: View {
             }
             .padding(32)
         }
+    }
+
+    private var countdownOverlay: some View {
+        ZStack {
+            Circle()
+                .fill(.black.opacity(0.55))
+                .frame(width: 160, height: 160)
+            Text("\(countdown)")
+                .font(.system(size: 96, weight: .bold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.6), radius: 8)
+        }
+        .transition(.opacity)
+        .animation(.easeInOut(duration: 0.2), value: countdown)
     }
 
     // MARK: - Low Detection Guidance
