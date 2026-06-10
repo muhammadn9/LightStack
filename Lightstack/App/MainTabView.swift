@@ -61,31 +61,12 @@ struct MainTabView: View {
     // MARK: - UIKit Appearance
 
     private func setupAppearance() {
-        // Hide native tab bar entirely
+        // Hide native tab bar entirely (custom tab row replaces it)
         UITabBar.appearance().isHidden = true
 
-        // Navigation bar styling
-        let navBgColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(netHex: 0x1C1510)
-                : UIColor(netHex: 0xFBF8F1)
-        }
-        let navTitleColor = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(netHex: 0xEDE0C4)
-                : UIColor(netHex: 0x1B2A40)
-        }
+        // Navigation bar styling — use system defaults
         let navAppearance = UINavigationBarAppearance()
-        navAppearance.configureWithOpaqueBackground()
-        navAppearance.backgroundColor = navBgColor
-        navAppearance.titleTextAttributes = [
-            .foregroundColor: navTitleColor,
-            .font: AppTheme.uiPlayfairBoldItalic(17)
-        ]
-        navAppearance.largeTitleTextAttributes = [
-            .foregroundColor: navTitleColor,
-            .font: AppTheme.uiPlayfairBoldItalic(34)
-        ]
+        navAppearance.configureWithDefaultBackground()
         UINavigationBar.appearance().standardAppearance = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
         UINavigationBar.appearance().compactAppearance = navAppearance
@@ -105,15 +86,16 @@ struct NotebookTabRow: View {
                     Button(action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = i } }) {
                         VStack(spacing: 0) {
                             Text(tabs[i])
-                                .font(AppTheme.caveat(15, weight: i == selectedTab ? .bold : .regular))
-                                .foregroundStyle(i == selectedTab ? AppTheme.accent : AppTheme.textSecondary)
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(i == selectedTab ? AppTheme.accent : Color.secondary)
                                 .padding(.vertical, 10)
                                 .frame(maxWidth: .infinity)
 
                             // Active indicator
-                            Rectangle()
+                            Capsule()
                                 .fill(i == selectedTab ? AppTheme.accent : Color.clear)
-                                .frame(height: 2)
+                                .frame(height: 3)
+                                .padding(.horizontal, 18)
                         }
                     }
                     .buttonStyle(.plain)
@@ -121,7 +103,7 @@ struct NotebookTabRow: View {
             }
             InkDivider()
         }
-        .background(AppTheme.background)
+        .background(.bar)
     }
 }
 

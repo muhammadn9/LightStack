@@ -2,75 +2,30 @@ import SwiftUI
 
 // MARK: - Ink Divider
 
-/// Gradient horizontal rule that fades at edges — replaces Divider().
+/// Hairline horizontal rule — replaces Divider().
 struct InkDivider: View {
     var body: some View {
         Rectangle()
-            .fill(
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: AppTheme.border, location: 0.2),
-                        .init(color: AppTheme.border, location: 0.8),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+            .fill(Color(.separator).opacity(0.6))
             .frame(height: 0.5)
     }
 }
 
 // MARK: - Notebook Binding Strip
 
-/// 18px-wide left-edge strip with spiral holes, mimicking a spiral-bound notebook.
+/// Formerly a spiral-bound binding strip — now removed visually.
 struct NotebookBindingStrip: View {
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(AppTheme.bindingStrip)
-                .frame(width: 18)
-            VStack(spacing: 0) {
-                ForEach(0..<10, id: \.self) { i in
-                    if i > 0 { Spacer() }
-                    Circle()
-                        .fill(AppTheme.bindingHole)
-                        .frame(width: 8, height: 8)
-                }
-                Spacer()
-            }
-            .padding(.vertical, 24)
-        }
-        .frame(width: 18)
+        Color.clear.frame(width: 0)
     }
 }
 
 // MARK: - Corner Fold
 
-/// 20x20 triangle fold effect at bottom-right of a page/card.
+/// Formerly a corner-fold effect — now removed visually.
 struct CornerFold: View {
     var body: some View {
-        Triangle()
-            .fill(
-                LinearGradient(
-                    colors: [AppTheme.cornerFold, .clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .frame(width: 20, height: 20)
-    }
-
-    private struct Triangle: Shape {
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-            path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-            path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-            path.closeSubpath()
-            return path
-        }
+        EmptyView()
     }
 }
 
@@ -91,11 +46,7 @@ struct SetNumberCircle: View {
                 .frame(width: 18, height: 18)
             Text("\(number)")
                 .font(AppTheme.plexMono(8, weight: .bold))
-                .foregroundStyle(
-                    isLogged
-                        ? Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1)
-                        : AppTheme.textSecondary
-                )
+                .foregroundStyle(isLogged ? Color.white : Color.secondary)
         }
     }
 }
@@ -168,18 +119,10 @@ struct InkFillBar: View {
 
 // MARK: - Notebook Page Modifier
 
-/// Wraps content with a binding strip on the leading edge and corner fold at bottom-right.
+/// Pass-through wrapper (binding strip and corner fold removed).
 struct NotebookPageModifier: ViewModifier {
     func body(content: Content) -> some View {
-        HStack(spacing: 0) {
-            NotebookBindingStrip()
-            content
-                .frame(maxWidth: .infinity)
-        }
-        .overlay(alignment: .bottomTrailing) {
-            CornerFold()
-                .padding(4)
-        }
+        content
     }
 }
 

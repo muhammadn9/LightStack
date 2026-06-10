@@ -6,10 +6,10 @@ enum AppTheme {
 
     // MARK: - Adaptive Colors
 
-    /// Deep leather (dark) / warm parchment (light)
-    static let background = Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1)
-    static let surface     = Color(adaptiveDark: 0x221810, light: 0xF0E8D8)
-    static let surfaceElevated = Color(adaptiveDark: 0x2A2015, light: 0xF4EDD8)
+    /// System grouped backgrounds — adapt automatically to light/dark mode.
+    static let background = Color(.systemGroupedBackground)
+    static let surface     = Color(.secondarySystemGroupedBackground)
+    static let surfaceElevated = Color(.tertiarySystemGroupedBackground)
 
     /// Amber gold (dark) / fountain-pen blue (light)
     static let accent              = Color(adaptiveDark: 0xC8860A, light: 0x1B3A6B)
@@ -17,18 +17,18 @@ enum AppTheme {
     static let accentGradientEnd   = Color(adaptiveDark: 0xE09818, light: 0x3A6AB0)
     static let accentSecondary     = Color(adaptiveDark: 0xD4A040, light: 0x3A6AB0)
 
-    /// Warm cream (dark) / deep navy (light)
-    static let textPrimary   = Color(adaptiveDark: 0xEDE0C4, light: 0x1B2A40)
-    static let textSecondary = Color(adaptiveDark: 0xA09070, light: 0x6A5840)
+    /// System label colors.
+    static let textPrimary   = Color(.label)
+    static let textSecondary = Color(.secondaryLabel)
 
-    /// Ruled-line / card border
-    static let border = Color(adaptiveDark: 0x3A2A1A, light: 0xC8B898)
+    /// Hairline separator.
+    static let border = Color(.separator)
 
     // Semantic
-    static let success      = Color(adaptiveDark: 0x6AB040, light: 0x2A6A2A)
-    static let warning      = Color(adaptiveDark: 0xD4920A, light: 0xC8860A)
-    static let destructive  = Color(hex: 0xC04030)
-    static let streakFlame  = Color(adaptiveDark: 0xD4920A, light: 0xC8860A)
+    static let success      = Color(.systemGreen)
+    static let warning      = Color(.systemOrange)
+    static let destructive  = Color(.systemRed)
+    static let streakFlame  = Color(.systemOrange)
 
     // MARK: - Gradients
 
@@ -49,76 +49,59 @@ enum AppTheme {
 
     // MARK: - Notebook-specific Colors
 
-    static let bindingStrip    = Color(adaptiveDark: 0x2A1F14, light: 0xE8E0D0)
-    static let bindingHole     = Color(adaptiveDark: 0x5A4020, light: 0xB8A880)
-    static let cornerFold      = Color(adaptiveDark: 0x2A2015, light: 0xE8E0CC)
-    static let timerTrack      = Color(adaptiveDark: 0x3A2A1A, light: 0xE8E0CC)
-    static let textHand        = Color(adaptiveDark: 0xC4A878, light: 0x3A5080)
+    static let bindingStrip    = Color(.secondarySystemGroupedBackground)
+    static let bindingHole     = Color(.tertiaryLabel)
+    static let cornerFold      = Color.clear
+    static let timerTrack      = Color(.systemFill)
+    static let textHand        = Color(.secondaryLabel)
     static let prStamp         = Color(hex: 0xB91C1C)
 
     // MARK: - Dimensions
 
-    /// Small radius — paper / journal feel
-    static let cornerRadius: CGFloat = 10
-    static let cardPadding: CGFloat  = 18
-    static let sectionSpacing: CGFloat = 20
+    static let cornerRadius: CGFloat = 14
+    static let cardPadding: CGFloat  = 16
+    static let sectionSpacing: CGFloat = 24
     static let minTouchSize: CGFloat = 50
 
     // MARK: - Custom Fonts
 
-    /// Playfair Display — page headers, section labels, buttons
+    /// Page headers, section labels, buttons — system font.
     static func playfair(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         switch weight {
         case .bold, .semibold, .heavy, .black:
-            return Font.custom("PlayfairDisplay-Bold", size: size)
+            return Font.system(size: size, weight: .bold)
         default:
-            return Font.custom("PlayfairDisplay-Regular", size: size)
+            return Font.system(size: size, weight: .semibold)
         }
     }
 
-    /// Playfair Display Italic — elegant headings, wax-seal labels
+    /// Elegant headings, wax-seal labels — system font (no italic).
     static func playfairItalic(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        switch weight {
-        case .bold, .semibold, .heavy, .black:
-            return Font.custom("PlayfairDisplay-BoldItalic", size: size)
-        default:
-            return Font.custom("PlayfairDisplay-Italic", size: size)
-        }
+        playfair(size, weight: weight)
     }
 
-    /// Caveat — handwritten subtitles, labels, notes, tab text
+    /// Handwritten subtitles, labels, notes, tab text — system font.
     static func caveat(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        weight == .bold
-            ? Font.custom("Caveat-Bold", size: size)
-            : Font.custom("Caveat-Regular", size: size)
+        Font.system(size: size, weight: weight == .bold ? .medium : .regular)
     }
 
-    /// IBM Plex Mono — data display, stats, calendar numbers
+    /// Data display, stats, calendar numbers — rounded system font.
     static func plexMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        switch weight {
-        case .bold, .semibold, .heavy, .black:
-            return Font.custom("IBMPlexMono-Bold", size: size)
-        case .medium:
-            return Font.custom("IBMPlexMono-Medium", size: size)
-        default:
-            return Font.custom("IBMPlexMono-Regular", size: size)
-        }
+        Font.system(size: size, weight: weight, design: .rounded)
     }
 
     // MARK: - UIFont versions (for UIKit appearance APIs)
 
     static func uiPlayfairBoldItalic(_ size: CGFloat) -> UIFont {
-        UIFont(name: "PlayfairDisplay-BoldItalic", size: size)
-            ?? UIFont(name: "PlayfairDisplay-Italic", size: size)
-            ?? .italicSystemFont(ofSize: size)
+        .systemFont(ofSize: size, weight: .bold)
     }
 
     static func uiCaveat(_ size: CGFloat) -> UIFont {
-        UIFont(name: "Caveat-Regular", size: size) ?? .systemFont(ofSize: size)
+        .systemFont(ofSize: size)
     }
 
     static func uiPlexMono(_ size: CGFloat) -> UIFont {
-        UIFont(name: "IBMPlexMono-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+        .monospacedDigitSystemFont(ofSize: size, weight: .regular)
     }
 }
 
@@ -159,28 +142,25 @@ extension UIColor {
 
 // MARK: - View Modifiers
 
-/// Plain notebook page card: warm fill + hairline border + small radius.
+/// Translucent material card with hairline border.
 struct CardStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(AppTheme.cardPadding)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
+                    .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5)
             )
-            .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
     }
 }
 
-/// Accented card: amber/blue left strip + warm fill + hairline border.
+/// Accented card: material card + amber/blue leading accent strip.
 struct GlowingCardStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(AppTheme.cardPadding)
-            .background(AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
             .overlay(alignment: .leading) {
                 Rectangle()
                     .fill(AppTheme.accent.opacity(0.8))
@@ -188,10 +168,9 @@ struct GlowingCardStyle: ViewModifier {
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
             .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.border, lineWidth: 1)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
+                    .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5)
             )
-            .shadow(color: Color.black.opacity(0.14), radius: 4, x: 0, y: 2)
     }
 }
 
@@ -201,61 +180,22 @@ struct AccentGradientBackground: ViewModifier {
     }
 }
 
-/// Full-screen background with very subtle ruled-line texture.
+/// Full-screen background — system grouped background.
 struct ThemedBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(
-                ZStack {
-                    AppTheme.background
-                    RuledLinesView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .allowsHitTesting(false)
-                }
-                .ignoresSafeArea()
-            )
-    }
-}
-
-// MARK: - Ruled Lines
-
-/// Draws faint horizontal lines over a full-screen background,
-/// like a premium training-log notebook.
-struct RuledLinesView: View {
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        GeometryReader { geo in
-            Canvas { ctx, size in
-                let lineColor: Color = scheme == .dark
-                    ? Color.white.opacity(0.035)
-                    : Color.black.opacity(0.055)
-                let spacing: CGFloat = 38
-                var y: CGFloat = spacing
-                while y < size.height {
-                    var path = Path()
-                    path.move(to: CGPoint(x: 20, y: y))
-                    path.addLine(to: CGPoint(x: size.width - 20, y: y))
-                    ctx.stroke(path, with: .color(lineColor), lineWidth: 0.5)
-                    y += spacing
-                }
-            }
-            .frame(width: geo.size.width, height: geo.size.height)
-        }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
     }
 }
 
 // MARK: - Notebook Section Header
 
-/// Notebook section label style — serif italic + amber underline rule.
+/// Section label style — secondary subheadline.
 struct NotebookSectionHeader: ViewModifier {
     func body(content: Content) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            content
-                .font(AppTheme.playfairItalic(11))
-                .foregroundStyle(AppTheme.textSecondary)
-            InkDivider()
-        }
+        content
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 }
 
@@ -284,7 +224,7 @@ struct InkDotRating: View {
 
 // MARK: - Journal Chip
 
-/// Rectangular journal-tab chip (replaces capsule pills).
+/// Modern capsule chip.
 struct JournalChip: View {
     let label: String
     let isSelected: Bool
@@ -293,16 +233,12 @@ struct JournalChip: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(AppTheme.caveat(13, weight: isSelected ? .bold : .regular))
-                .foregroundStyle(isSelected ? Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1) : AppTheme.textSecondary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(isSelected ? Color.white : AppTheme.textSecondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(isSelected ? AppTheme.accent : AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(isSelected ? AppTheme.accent.opacity(0.5) : AppTheme.border, lineWidth: 1)
-                )
+                .background(isSelected ? AppTheme.accent : Color(.secondarySystemFill))
+                .clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -310,32 +246,23 @@ struct JournalChip: View {
 
 // MARK: - Button Styles
 
-/// Primary action button: wax-seal style with offset ink shadow.
+/// Primary action button — modern filled rounded-rect style.
 struct WaxSealButtonStyle: ButtonStyle {
     var isSecondary: Bool = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(AppTheme.playfairItalic(12, weight: .bold))
-            .foregroundStyle(isSecondary ? AppTheme.accent : Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+            .font(.headline)
+            .foregroundStyle(isSecondary ? AppTheme.accent : Color.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(
-                isSecondary
-                    ? AppTheme.accent.opacity(0.12)
-                    : AppTheme.accent
+                isSecondary ? AppTheme.accent.opacity(0.12) : AppTheme.accent,
+                in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
             )
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .stroke(AppTheme.accent.opacity(isSecondary ? 0.5 : 0.3), lineWidth: 1)
-            )
-            .shadow(
-                color: AppTheme.accent.opacity(isSecondary ? 0 : 0.35),
-                radius: 2, x: 2, y: 3
-            )
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
