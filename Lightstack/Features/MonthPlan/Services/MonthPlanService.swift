@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Delegate for MonthPlanService async callbacks.
 protocol MonthPlanServiceDelegate: AnyObject {
@@ -9,6 +10,8 @@ protocol MonthPlanServiceDelegate: AnyObject {
 /// Owns month plan business logic: creating plans, generating sessions
 /// via AI, updating completion status, and revising remaining sessions.
 final class MonthPlanService {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "MonthPlanService")
 
     weak var delegate: MonthPlanServiceDelegate?
 
@@ -59,7 +62,7 @@ final class MonthPlanService {
             switch result {
             case .success(let responseText):
                 // Log the raw response for debugging
-                print("[MonthPlanService] Raw AI response: \(responseText)")
+                self.logger.debug("Raw AI response: \(responseText)")
 
                 if let (plan, sessions) = self.parseMonthPlanResponse(
                     responseText,
@@ -74,7 +77,7 @@ final class MonthPlanService {
                     // Provide more detailed error message
                     let extractedJSON = self.extractJSON(from: responseText)
                     let preview = String(extractedJSON.prefix(200))
-                    print("[MonthPlanService] Failed to parse. Extracted JSON preview: \(preview)")
+                    self.logger.error("Failed to parse. Extracted JSON preview: \(preview)")
 
                     let error = NSError(
                         domain: "MonthPlanService", code: -1,
@@ -84,7 +87,7 @@ final class MonthPlanService {
                 }
 
             case .failure(let error):
-                print("[MonthPlanService] AI request failed: \(error)")
+                self.logger.error("AI request failed: \(String(describing: error))")
                 self.delegate?.monthPlanServiceDidFail(self, error: error)
             }
         }
@@ -104,28 +107,28 @@ final class MonthPlanService {
         let jsonText = extractJSON(from: text)
 
         guard let data = jsonText.data(using: .utf8) else {
-            print("[MonthPlanService] Failed to convert extracted JSON to Data")
+            logger.error("Failed to convert extracted JSON to Data")
             return nil
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            print("[MonthPlanService] Failed to parse JSON. Invalid JSON format.")
+            logger.error("Failed to parse JSON. Invalid JSON format.")
             if let parseError = try? JSONSerialization.jsonObject(with: data) {
-                print("[MonthPlanService] Parsed as: \(type(of: parseError))")
+                logger.debug("Parsed as: \(String(describing: type(of: parseError)))")
             }
             return nil
         }
 
-        print("[MonthPlanService] Successfully parsed JSON with keys: \(json.keys)")
+        logger.debug("Successfully parsed JSON with keys: \(String(describing: json.keys))")
 
         let overview = json["overview"] as? String ?? ""
 
         guard let sessionsArray = json["sessions"] as? [[String: Any]] else {
-            print("[MonthPlanService] Missing or invalid 'sessions' array. Found keys: \(json.keys)")
+            logger.error("Missing or invalid 'sessions' array. Found keys: \(String(describing: json.keys))")
             return nil
         }
 
-        print("[MonthPlanService] Found \(sessionsArray.count) sessions in response")
+        logger.debug("Found \(sessionsArray.count) sessions in response")
 
         let plan = MonthPlan.create(
             userId: userId,
@@ -144,7 +147,7 @@ final class MonthPlanService {
                   let date = dateFormatter.date(from: dateStr),
                   let workoutType = sessionDict["workout_type"] as? String
             else {
-                print("[MonthPlanService] Skipping session \(index): missing required fields. Keys: \(sessionDict.keys)")
+                logger.debug("Skipping session \(index): missing required fields. Keys: \(String(describing: sessionDict.keys))")
                 continue
             }
 
@@ -162,10 +165,10 @@ final class MonthPlanService {
             sessions.append(session)
         }
 
-        print("[MonthPlanService] Successfully parsed \(sessions.count) sessions")
+        logger.debug("Successfully parsed \(sessions.count) sessions")
 
         guard !sessions.isEmpty else {
-            print("[MonthPlanService] No valid sessions were parsed")
+            logger.error("No valid sessions were parsed")
             return nil
         }
 
@@ -195,12 +198,12 @@ final class MonthPlanService {
         guard let start = cleaned.firstIndex(of: "{"),
               let end = cleaned.lastIndex(of: "}")
         else {
-            print("[MonthPlanService] Could not find JSON delimiters { } in response")
+            logger.error("Could not find JSON delimiters { } in response")
             return cleaned
         }
 
         let extracted = String(cleaned[start...end])
-        print("[MonthPlanService] Extracted JSON length: \(extracted.count) characters")
+        logger.debug("Extracted JSON length: \(extracted.count) characters")
         return extracted
     }
 }

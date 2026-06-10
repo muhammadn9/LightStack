@@ -1,6 +1,7 @@
 import Foundation
 import AuthenticationServices
 import Supabase
+import os
 
 // MARK: - AuthServiceDelegate
 
@@ -16,6 +17,8 @@ protocol AuthServiceDelegate: AnyObject {
 /// Handles all authentication: email sign-in/up, Apple Sign-In, and sign-out.
 /// Uses Supabase Auth under the hood.
 final class AuthService: NSObject {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "AuthService")
 
     weak var delegate: AuthServiceDelegate?
 
@@ -107,7 +110,7 @@ final class AuthService: NSObject {
                     type: .signup
                 )
             } catch {
-                print("Resend verification error: \(error.localizedDescription)")
+                self.logger.error("Resend verification error: \(error.localizedDescription)")
             }
         }
     }
@@ -150,7 +153,7 @@ final class AuthService: NSObject {
                     await notifySignIn()
                 }
             } catch {
-                print("Deep link session error: \(error.localizedDescription)")
+                self.logger.error("Deep link session error: \(error.localizedDescription)")
             }
         }
     }

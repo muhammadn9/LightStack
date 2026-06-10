@@ -1,11 +1,14 @@
 import Foundation
 import SwiftUI
 import Supabase
+import os
 
 /// DI container and shared environment object.
 /// Owns all service and repository singletons.
 /// Conforms to AuthServiceDelegate to propagate auth state changes.
 final class AppEnvironment: ObservableObject, AuthServiceDelegate {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "AppEnvironment")
 
     // MARK: - Auth State
 
@@ -300,11 +303,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         if isAuthenticated, let userId = authService.currentUser()?.userId {
             let profile = profileRepository.fetchProfileSync(userId: userId)
             if profile != nil {
-                print("[AppEnvironment] Existing profile found, setting hasCompletedOnboarding = true")
+                logger.debug("Existing profile found, setting hasCompletedOnboarding = true")
                 hasCompletedOnboarding = true
                 UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
             } else {
-                print("[AppEnvironment] No profile found, user needs onboarding")
+                logger.debug("No profile found, user needs onboarding")
                 hasCompletedOnboarding = false
             }
         }

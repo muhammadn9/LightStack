@@ -1,10 +1,13 @@
 import SwiftUI
+import os
 
 /// Three-step onboarding flow with purple radiant dark theme:
 /// 1. Profile stats (age, weight, height, training age, goals)
 /// 2. Split day setup with preset suggestions
 /// 3. Equipment picker
 struct OnboardingView: View {
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "OnboardingView")
+
     @EnvironmentObject var environment: AppEnvironment
     @State private var currentStep = 0
 
@@ -321,7 +324,7 @@ struct OnboardingView: View {
             notesToCoach: nil
         )
 
-        print("[OnboardingView] Saving profile with split days: \(splitDays)")
+        logger.debug("Saving profile with split days: \(splitDays)")
         environment.profileRepository.saveProfile(profile)
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         environment.hasCompletedOnboarding = true

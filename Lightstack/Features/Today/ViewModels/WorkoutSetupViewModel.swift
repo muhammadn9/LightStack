@@ -1,8 +1,11 @@
 import Foundation
+import os
 
 /// Manages pre-workout setup state: selected split day, time available, energy level.
 /// Triggers AI plan generation through WorkoutSessionService.
 final class WorkoutSetupViewModel: ObservableObject {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSetupViewModel")
 
     @Published var selectedWorkoutType: String = ""
     @Published var timeAvailable: Int = 45
@@ -21,15 +24,15 @@ final class WorkoutSetupViewModel: ObservableObject {
     }
 
     func loadSplitDays(userId: UUID) {
-        print("[WorkoutSetupViewModel] Loading split days for user: \(userId)")
+        logger.debug("Loading split days for user: \(userId)")
         if let profile = profileRepository.fetchProfileSync(userId: userId) {
-            print("[WorkoutSetupViewModel] Profile found with split days: \(profile.splitDays)")
+            logger.debug("Profile found with split days: \(profile.splitDays)")
             splitDays = profile.splitDays
             if selectedWorkoutType.isEmpty, let first = splitDays.first {
                 selectedWorkoutType = first
             }
         } else {
-            print("[WorkoutSetupViewModel] No profile found for user")
+            logger.error("No profile found for user")
         }
     }
 

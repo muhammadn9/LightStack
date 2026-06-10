@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - Delegate
 
@@ -15,6 +16,8 @@ protocol WorkoutSessionServiceDelegate: AnyObject {
 /// creating a workout record, adding exercises and sets,
 /// computing volume, and finalizing with AI progression note.
 final class WorkoutSessionService {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionService")
 
     weak var delegate: WorkoutSessionServiceDelegate?
 
@@ -299,7 +302,7 @@ final class WorkoutSessionService {
                     }
                 }
             case .failure(let error):
-                print("WorkoutSessionService: Context summary generation failed: \(error.localizedDescription)")
+                self.logger.error("Context summary generation failed: \(error.localizedDescription)")
             }
         }
     }
@@ -420,7 +423,7 @@ final class WorkoutSessionService {
         do {
             decoded = try JSONDecoder().decode(WorkoutPlanResponse.self, from: data)
         } catch {
-            print("[WorkoutSessionService] JSON parse failed: \(error)")
+            logger.error("JSON parse failed: \(String(describing: error))")
             return nil
         }
 
@@ -464,12 +467,12 @@ final class WorkoutSessionService {
     private func handleWorkoutPlanResponse(_ text: String) {
         // Primary path: JSON
         if let exercises = parseWorkoutPlanJSON(text) {
-            print("[WorkoutSessionService] JSON parse succeeded: \(exercises.count) exercises")
+            logger.debug("JSON parse succeeded: \(exercises.count) exercises")
             finalizePlan(exercises)
             return
         }
         // Fallback: markdown table (zero regression during rollout)
-        print("[WorkoutSessionService] JSON parse failed, attempting markdown fallback")
+        logger.debug("JSON parse failed, attempting markdown fallback")
         let fallback = parseExerciseTable(text)
         guard !fallback.isEmpty else {
             delegate?.sessionServiceDidFail(self, error: NSError(
@@ -478,7 +481,7 @@ final class WorkoutSessionService {
             ))
             return
         }
-        print("[WorkoutSessionService] Markdown fallback succeeded: \(fallback.count) exercises")
+        logger.debug("Markdown fallback succeeded: \(fallback.count) exercises")
         finalizePlan(fallback)
     }
 

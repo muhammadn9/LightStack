@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Phase of the Today tab lifecycle.
 enum TodayPhase {
@@ -12,6 +13,8 @@ enum TodayPhase {
 /// Coordinates the Today tab's state: loading today's plan,
 /// transitioning between setup/active/post states.
 final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "TodayViewModel")
 
     @Published var phase: TodayPhase = .setup
     @Published var exercises: [Exercise] = []
@@ -74,7 +77,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         // Restore workout in session service
         sessionService.startSession(workout: state.workout, exercises: state.exercises)
 
-        print("[TodayViewModel] Restored workout session: \(state.exercises.count) exercises, \(loggedSets.values.flatMap { $0 }.count) sets")
+        logger.debug("Restored workout session: \(state.exercises.count) exercises, \(state.loggedSets.values.flatMap { $0 }.count) sets")
     }
 
     func saveSessionState() {

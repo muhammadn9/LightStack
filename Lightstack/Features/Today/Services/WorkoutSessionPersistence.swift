@@ -1,9 +1,11 @@
 import Foundation
+import os
 
 /// Handles saving and restoring workout session state
 /// so users can pause workouts when switching tabs.
 final class WorkoutSessionPersistence {
 
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionPersistence")
     private let userDefaults = UserDefaults.standard
     private let stateKey = "com.lightstack.activeWorkoutSession"
 
@@ -58,9 +60,9 @@ final class WorkoutSessionPersistence {
         do {
             let data = try JSONEncoder().encode(state)
             userDefaults.set(data, forKey: stateKey)
-            print("[WorkoutSessionPersistence] Saved session state")
+            logger.debug("Saved session state")
         } catch {
-            print("[WorkoutSessionPersistence] Failed to save state: \(error)")
+            logger.error("Failed to save state: \(String(describing: error))")
         }
     }
 
@@ -74,16 +76,16 @@ final class WorkoutSessionPersistence {
         do {
             let state = try JSONDecoder().decode(SessionState.self, from: data)
             if state.isActive {
-                print("[WorkoutSessionPersistence] Restored active session")
+                logger.debug("Restored active session")
                 return state
             } else {
                 // Stale session, clear it
                 clearSession()
-                print("[WorkoutSessionPersistence] Cleared stale session")
+                logger.debug("Cleared stale session")
                 return nil
             }
         } catch {
-            print("[WorkoutSessionPersistence] Failed to decode state: \(error)")
+            logger.error("Failed to decode state: \(String(describing: error))")
             return nil
         }
     }
@@ -92,7 +94,7 @@ final class WorkoutSessionPersistence {
 
     func clearSession() {
         userDefaults.removeObject(forKey: stateKey)
-        print("[WorkoutSessionPersistence] Cleared session state")
+        logger.debug("Cleared session state")
     }
 
     // MARK: - Check

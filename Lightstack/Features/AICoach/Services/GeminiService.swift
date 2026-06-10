@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - GeminiServiceDelegate
 
@@ -13,6 +14,8 @@ protocol GeminiServiceDelegate: AnyObject {
 /// Single responsibility: send prompt, receive response.
 /// No context building — that's CoachContextBuilder's job.
 final class GeminiService {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "GeminiService")
 
     weak var delegate: GeminiServiceDelegate?
 
@@ -89,9 +92,9 @@ final class GeminiService {
         messages: [ChatMessage],
         completion: @escaping (Result<String, Error>) -> Void
     ) {
-        print("[GeminiService] 🔵 API CALL INITIATED - This counts against quota!")
-        print("[GeminiService] System prompt: \(systemPrompt.count) chars")
-        print("[GeminiService] Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
+        logger.debug("🔵 API CALL INITIATED - This counts against quota!")
+        logger.debug("System prompt: \(systemPrompt.count) chars")
+        logger.debug("Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
 
         guard !apiKey.isEmpty else {
             let error = NSError(domain: "GeminiService", code: -1,
@@ -142,7 +145,7 @@ final class GeminiService {
             // Retry on 503 with exponential backoff: 1s → 2s → 4s (max 3 retries)
             if httpStatus == 503 && attempt < 3 {
                 let delay = pow(2.0, Double(attempt))   // 1, 2, 4 seconds
-                print("[GeminiService] 503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/3)")
+                self.logger.debug("503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/3)")
                 DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
                     self?.performWithRetry(request: request, attempt: attempt + 1, completion: completion)
                 }
@@ -213,11 +216,11 @@ final class GeminiService {
     private func parseResponse(_ data: Data) throws -> String {
         // Log raw response for debugging
         if let responseString = String(data: data, encoding: .utf8) {
-            print("[GeminiService] Raw API response: \(responseString)")
+            logger.debug("Raw API response: \(responseString)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            print("[GeminiService] Failed to parse JSON from response")
+            logger.error("Failed to parse JSON from response")
             throw NSError(domain: "GeminiService", code: -4,
                           userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - invalid JSON"])
         }
@@ -225,19 +228,19 @@ final class GeminiService {
         // Check for API error response
         if let error = json["error"] as? [String: Any],
            let message = error["message"] as? String {
-            print("[GeminiService] API error: \(message)")
+            logger.error("API error: \(message)")
             throw NSError(domain: "GeminiService", code: -4,
                           userInfo: [NSLocalizedDescriptionKey: "Gemini API error: \(message)"])
         }
 
         guard let candidates = json["candidates"] as? [[String: Any]] else {
-            print("[GeminiService] No 'candidates' array in response. Keys: \(json.keys)")
+            logger.error("No 'candidates' array in response. Keys: \(String(describing: json.keys))")
             throw NSError(domain: "GeminiService", code: -4,
                           userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - no candidates"])
         }
 
         guard let firstCandidate = candidates.first else {
-            print("[GeminiService] Candidates array is empty")
+            logger.error("Candidates array is empty")
             throw NSError(domain: "GeminiService", code: -4,
                           userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - empty candidates"])
         }
@@ -246,7 +249,7 @@ final class GeminiService {
               let parts = content["parts"] as? [[String: Any]],
               let firstPart = parts.first,
               let text = firstPart["text"] as? String else {
-            print("[GeminiService] Failed to extract text from candidate. Candidate keys: \(firstCandidate.keys)")
+            logger.error("Failed to extract text from candidate. Candidate keys: \(String(describing: firstCandidate.keys))")
             throw NSError(domain: "GeminiService", code: -4,
                           userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - invalid structure"])
         }
@@ -296,11 +299,11 @@ extension GeminiService: AIProvider {
 
     func markRateLimited(until: Date) {
         UserDefaults.standard.set(until, forKey: "gemini_rate_limit_until")
-        print("[GeminiService] Rate limited until \(until)")
+        logger.debug("Rate limited until \(until)")
     }
 
     func clearRateLimit() {
         UserDefaults.standard.removeObject(forKey: "gemini_rate_limit_until")
-        print("[GeminiService] Rate limit cleared")
+        logger.debug("Rate limit cleared")
     }
 }
