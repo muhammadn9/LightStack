@@ -158,7 +158,7 @@ struct ActiveWorkoutView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 11)
-        .background(Color(adaptiveDark: 0x1B3A6B, light: 0x1B3A6B))
+        .background(.bar)
         .overlay(alignment: .bottom) {
             InkDivider()
         }

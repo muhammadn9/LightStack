@@ -50,7 +50,7 @@ struct ProfileView: View {
                         .frame(width: 48, height: 48)
                     Text(initials)
                         .font(AppTheme.playfair(20, weight: .bold))
-                        .foregroundStyle(Color(adaptiveDark: 0x1C1510, light: 0xFBF8F1))
+                        .foregroundStyle(Color.white)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
