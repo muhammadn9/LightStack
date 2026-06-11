@@ -198,7 +198,6 @@
 		AD0341D7637A1DAFC47F144D /* FormAnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormAnalysisResult.swift; sourceTree = "<group>"; };
 		AE05AE523B9A6672FFBFD2AD /* CoachChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachChatView.swift; sourceTree = "<group>"; };
 		AECE0419B49FC2838485E794 /* ExerciseTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseTableView.swift; sourceTree = "<group>"; };
-		AEDA9280394443CABC98322C /* Lightstack.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Lightstack.entitlements; sourceTree = "<group>"; };
 		B38831FD06945E0E5CABD7DE /* PlannedSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannedSession.swift; sourceTree = "<group>"; };
 		B7999CFCF9A4BC83C11B6B8A /* EmailVerificationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailVerificationView.swift; sourceTree = "<group>"; };
 		BB04CE824A0DE50FBF43E22B /* HistoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryListView.swift; sourceTree = "<group>"; };
@@ -396,7 +395,6 @@
 				D3FD60834E9DEE694B6C5A1E /* Lightstack.xcdatamodeld */,
 				240AC8E8FE2A1A62F31D3C8B /* Resources */,
 				35665C73925EAC4BFC6635A6 /* Info.plist */,
-				AEDA9280394443CABC98322C /* Lightstack.entitlements */,
 			);
 			path = Lightstack;
 			sourceTree = "<group>";
@@ -1065,7 +1063,6 @@
 			baseConfigurationReference = D1246336455EAB944BBCD0D7 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Lightstack/Lightstack.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7X8799T6N2;
@@ -1089,7 +1086,6 @@
 			baseConfigurationReference = D1246336455EAB944BBCD0D7 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Lightstack/Lightstack.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7X8799T6N2;

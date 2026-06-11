@@ -41,11 +41,6 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
-    entitlements:
-      path: Lightstack/Lightstack.entitlements
-      properties:
-        com.apple.developer.applesignin:
-          - Default
 
   LightstackTests:
     type: bundle.unit-test
