@@ -1,0 +1,55 @@
+name: Agent Task
+description: A fully-scoped task written for Claude to implement directly
+labels: [claude]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tasks created with this template automatically trigger the Claude agent. Write it as if briefing a senior iOS engineer who hasn't seen the codebase before.
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: One sentence — what should be true when this is done?
+      placeholder: "PRRepository must use a serial actor to prevent duplicate PR records from concurrent set saves"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context & root cause
+      description: Why does this need to change? What's the current behavior?
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to change
+      description: List the specific files Claude should read and edit
+      placeholder: |
+        - Lightstack/Core/Repositories/PRRepository.swift
+        - LightstackTests/PRRepositoryTests.swift
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How do we know it's done?
+      placeholder: |
+        - [ ] No duplicate PR records created when two sets finish within 100ms
+        - [ ] Existing tests still pass
+        - [ ] New test covers the concurrent-write scenario
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: What must NOT change? Side effects to avoid?
+      placeholder: "Don't change the PRRepository public API — callers in WorkoutSessionService must not need updating"
