@@ -737,7 +737,7 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					4314D9965F6645C96F8F7466 = {
-						DevelopmentTeam = 7X8799T6N2;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -913,7 +913,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.lightstack.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.muhammadn9.lightstack.tests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -931,7 +931,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = org.lightstack.app.tests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.muhammadn9.lightstack.tests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1064,8 +1064,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7X8799T6N2;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Lightstack/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1073,7 +1073,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.lightstack.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.muhammadn9.lightstack;
 				SDKROOT = iphoneos;
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
 				SWIFT_VERSION = 5.9;
@@ -1087,8 +1087,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7X8799T6N2;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Lightstack/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1096,7 +1096,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = org.lightstack.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.muhammadn9.lightstack;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.9;
