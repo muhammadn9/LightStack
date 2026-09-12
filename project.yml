@@ -28,17 +28,14 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: L6H7PW64R5
+        CODE_SIGN_IDENTITY: "Apple Development"
       configs:
         Debug:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
-          CODE_SIGNING_REQUIRED: NO
-          CODE_SIGN_IDENTITY: ""
-          CODE_SIGNING_ALLOWED: NO
         Release:
           SWIFT_OPTIMIZATION_LEVEL: -Owholemodule
-          CODE_SIGN_STYLE: Automatic
-          DEVELOPMENT_TEAM: L6H7PW64R5
-          CODE_SIGN_IDENTITY: "Apple Development"
     configFiles:
       Debug: Lightstack/Config/Secrets.xcconfig
       Release: Lightstack/Config/Secrets.xcconfig

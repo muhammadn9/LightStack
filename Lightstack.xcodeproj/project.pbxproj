@@ -736,6 +736,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					4314D9965F6645C96F8F7466 = {
+						DevelopmentTeam = L6H7PW64R5;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = 0F5E993C4AB4CEE7E1876E09 /* Build configuration list for PBXProject "Lightstack" */;
@@ -1084,10 +1088,10 @@
 			baseConfigurationReference = D1246336455EAB944BBCD0D7 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = L6H7PW64R5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Lightstack/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
