@@ -276,7 +276,7 @@ struct ActiveWorkoutView: View {
                 // Logged sets
                 let logged = viewModel.loggedSets[exercise.id] ?? []
                 ForEach(Array(logged.enumerated()), id: \.element.id) { index, set in
-                    loggedSetRow(set, number: index + 1, exerciseId: exercise.id)
+                    loggedSetRow(set, number: index + 1, exercise: exercise)
                         .transition(.asymmetric(
                             insertion: .move(edge: .top).combined(with: .opacity),
                             removal: .opacity
@@ -287,35 +287,63 @@ struct ActiveWorkoutView: View {
                 // Pending set inputs
                 let pending = viewModel.pendingSets[exercise.id] ?? []
                 if !pending.isEmpty {
-                    // Column headers
-                    HStack(spacing: 9) {
-                        Text("")
-                            .frame(width: 22)
-                        Text("lbs")
-                            .font(AppTheme.caveat(11))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 78)
-                        Text("reps")
-                            .font(AppTheme.caveat(11))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 67)
-                        Text("RIR")
-                            .font(AppTheme.caveat(11))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 56)
-                        Spacer()
+                    // Column headers — branch on tracking type
+                    if exercise.trackingType == .cardio {
+                        HStack(spacing: 9) {
+                            Text("").frame(width: 22)
+                            Text("Time")
+                                .font(AppTheme.caveat(11))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(width: 78)
+                            Text("Distance")
+                                .font(AppTheme.caveat(11))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(width: 67)
+                            Text("Incline")
+                                .font(AppTheme.caveat(11))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(width: 56)
+                            Spacer()
+                        }
+                        .padding(.top, 2)
+                    } else {
+                        HStack(spacing: 9) {
+                            Text("").frame(width: 22)
+                            Text("lbs")
+                                .font(AppTheme.caveat(11))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(width: 78)
+                            Text("reps")
+                                .font(AppTheme.caveat(11))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(width: 67)
+                            Text("RIR")
+                                .font(AppTheme.caveat(11))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(width: 56)
+                            Spacer()
+                        }
+                        .padding(.top, 2)
                     }
-                    .padding(.top, 2)
                 }
 
                 let pendingBinding = pendingSetsBinding(for: exercise.id)
                 ForEach(Array(pending.enumerated()), id: \.element.id) { index, _ in
-                    pendingSetRow(
-                        index: index,
-                        setNumber: logged.count + index + 1,
-                        pendingSets: pendingBinding,
-                        exerciseId: exercise.id
-                    )
+                    if exercise.trackingType == .cardio {
+                        cardioPendingSetRow(
+                            index: index,
+                            setNumber: logged.count + index + 1,
+                            pendingSets: pendingBinding,
+                            exerciseId: exercise.id
+                        )
+                    } else {
+                        pendingSetRow(
+                            index: index,
+                            setNumber: logged.count + index + 1,
+                            pendingSets: pendingBinding,
+                            exerciseId: exercise.id
+                        )
+                    }
                 }
 
                 InkDivider()
@@ -387,7 +415,16 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Logged Set Row (notebook style)
 
-    private func loggedSetRow(_ workoutSet: WorkoutSet, number: Int, exerciseId: UUID) -> some View {
+    @ViewBuilder
+    private func loggedSetRow(_ workoutSet: WorkoutSet, number: Int, exercise: Exercise) -> some View {
+        if exercise.trackingType == .cardio {
+            cardioLoggedSetRow(workoutSet, number: number, exercise: exercise)
+        } else {
+            strengthLoggedSetRow(workoutSet, number: number, exercise: exercise)
+        }
+    }
+
+    private func strengthLoggedSetRow(_ workoutSet: WorkoutSet, number: Int, exercise: Exercise) -> some View {
         HStack(spacing: 9) {
             SetNumberCircle(number: number, isLogged: true)
 
@@ -415,8 +452,44 @@ struct ActiveWorkoutView: View {
             }
 
             Button(action: {
-                viewModel.deleteSet(workoutSet, exerciseId: exerciseId)
-                viewModel.syncPendingSets(for: todayViewModel.exercises.first { $0.id == exerciseId }!)
+                viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
+                viewModel.syncPendingSets(for: exercise)
+            }) {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(AppTheme.warning.opacity(0.7))
+                    .font(.body)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 7)
+        .background(AppTheme.surfaceElevated.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+    }
+
+    private func cardioLoggedSetRow(_ workoutSet: WorkoutSet, number: Int, exercise: Exercise) -> some View {
+        HStack(spacing: 9) {
+            SetNumberCircle(number: number, isLogged: true)
+
+            let summary = CardioFormatting.loggedSummary(
+                durationSeconds: workoutSet.durationSeconds,
+                distanceMiles: workoutSet.distanceMiles,
+                inclineLevel: workoutSet.inclineLevel
+            )
+            Text(summary.isEmpty ? "—" : summary)
+                .font(AppTheme.caveat(14, weight: .bold))
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Spacer()
+
+            Text("✓")
+                .font(AppTheme.caveat(12))
+                .foregroundStyle(AppTheme.success)
+
+            Button(action: {
+                viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
+                viewModel.syncPendingSets(for: exercise)
             }) {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
@@ -495,6 +568,82 @@ struct ActiveWorkoutView: View {
                 .shadow(color: AppTheme.accent.opacity(pendingSets[index].reps.wrappedValue.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
             .disabled(pendingSets[index].reps.wrappedValue.isEmpty)
+
+            // Delete pending
+            Button(action: { viewModel.deletePendingSet(at: index, exerciseId: exerciseId) }) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(AppTheme.warning.opacity(0.7))
+                    .font(.body)
+            }
+        }
+    }
+
+    // MARK: - Cardio Pending Set Row
+
+    private func cardioPendingSetRow(index: Int, setNumber: Int, pendingSets: Binding<[PendingSetInput]>, exerciseId: UUID) -> some View {
+        HStack(spacing: 9) {
+            SetNumberCircle(number: setNumber, isLogged: false)
+
+            // Time field
+            VStack(spacing: 3) {
+                TextField("mm:ss", text: pendingSets[index].duration)
+                    .keyboardType(.numbersAndPunctuation)
+                    .font(AppTheme.plexMono(16, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .frame(width: 78)
+                    .foregroundStyle(AppTheme.textPrimary)
+                Rectangle()
+                    .fill(pendingSets[index].duration.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                    .frame(width: 78, height: 1.5)
+                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].duration.wrappedValue.isEmpty)
+            }
+
+            Text("·")
+                .font(AppTheme.caveat(18))
+                .foregroundStyle(AppTheme.border)
+
+            // Distance field
+            VStack(spacing: 3) {
+                TextField("mi", text: pendingSets[index].distance)
+                    .keyboardType(.decimalPad)
+                    .font(AppTheme.plexMono(16, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .frame(width: 67)
+                    .foregroundStyle(AppTheme.textPrimary)
+                Rectangle()
+                    .fill(pendingSets[index].distance.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                    .frame(width: 67, height: 1.5)
+                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].distance.wrappedValue.isEmpty)
+            }
+
+            // Incline field
+            VStack(spacing: 3) {
+                TextField("%", text: pendingSets[index].incline)
+                    .keyboardType(.decimalPad)
+                    .font(AppTheme.plexMono(16))
+                    .multilineTextAlignment(.center)
+                    .frame(width: 56)
+                    .foregroundStyle(AppTheme.textPrimary)
+                Rectangle()
+                    .fill(AppTheme.border.opacity(0.5))
+                    .frame(width: 56, height: 1.5)
+            }
+
+            // Log button (enabled when duration is non-empty)
+            Button(action: { logSet(at: index, exerciseId: exerciseId) }) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(pendingSets[index].duration.wrappedValue.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
+                        .frame(width: 31, height: 31)
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(pendingSets[index].duration.wrappedValue.isEmpty
+                                         ? AppTheme.textSecondary
+                                         : AppTheme.background)
+                }
+                .shadow(color: AppTheme.accent.opacity(pendingSets[index].duration.wrappedValue.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
+            }
+            .disabled(pendingSets[index].duration.wrappedValue.isEmpty)
 
             // Delete pending
             Button(action: { viewModel.deletePendingSet(at: index, exerciseId: exerciseId) }) {
@@ -588,7 +737,8 @@ struct ActiveWorkoutView: View {
     }
 
     private func logSet(at index: Int, exerciseId: UUID) {
-        guard let workoutSet = viewModel.logPendingSet(at: index, exerciseId: exerciseId) else { return }
+        let exercise = todayViewModel.exercises.first { $0.id == exerciseId }
+        guard let workoutSet = viewModel.logPendingSet(at: index, exerciseId: exerciseId, exercise: exercise) else { return }
         let isPR = todayViewModel.logSet(workoutSet, exerciseId: exerciseId)
 
         if isPR {
@@ -615,8 +765,11 @@ struct ActiveWorkoutView: View {
             let exerciseId = exercise.id
             let count = viewModel.pendingSets[exerciseId]?.count ?? 0
             for _ in 0..<count {
-                if let set = viewModel.pendingSets[exerciseId], !set.isEmpty,
-                   !set[0].reps.isEmpty {
+                guard let set = viewModel.pendingSets[exerciseId], !set.isEmpty else { break }
+                let isReady = exercise.trackingType == .cardio
+                    ? !set[0].duration.isEmpty
+                    : !set[0].reps.isEmpty
+                if isReady {
                     logSet(at: 0, exerciseId: exerciseId)
                 } else {
                     break

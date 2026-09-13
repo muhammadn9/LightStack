@@ -1,0 +1,66 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: claude-pr-review-${{ github.event.pull_request.node_id || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Trigger on:
+    #   - Non-draft PR opened/updated
+    #   - Issue comment containing /review on a PR
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'issue_comment' &&
+       contains(github.event.comment.body, '/review') &&
+       github.event.issue.pull_request != null)
+    # Review is static analysis only — it never builds, so no macOS/Xcode runner needed.
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude PR review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_tools: "Read,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+          custom_instructions: |
+            You are reviewing a pull request on the LightStack iOS app (SwiftUI, Xcode 16, iOS 17+).
+
+            SCOPE: Review the PR diff only. Do not suggest unrelated cleanups.
+
+            ENFORCE these rules from CLAUDE.md:
+            - Swift only — no Objective-C.
+            - SwiftUI views only — no UIKit view controllers.
+            - No force-unwraps. Use guard/if-let.
+            - Follow AppTheme for all colors, fonts, and spacing.
+            - Never hand-edit Lightstack.xcodeproj/project.pbxproj; xcodegen must be used after file adds/removes.
+            - No new third-party dependencies without explicit owner approval.
+
+            FLAG these issues:
+            - Correctness bugs
+            - Retain cycles (strong self in closures, circular references)
+            - Main-thread violations (blocking the main thread, UI updates off main)
+            - Force-unwraps (!), implicitly unwrapped optionals used unsafely
+            - Missing error handling (ignored throws, silent failures)
+            - Any violation of the CLAUDE.md rules above
+
+            STYLE:
+            - Post findings as inline PR review comments on the relevant lines.
+            - Be concise. Skip nitpicks and stylistic preferences.
+            - If nothing meaningful is wrong, say so briefly — do not invent findings to seem thorough.

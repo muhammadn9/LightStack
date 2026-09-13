@@ -3,10 +3,15 @@ import Foundation
 /// One pending (not-yet-logged) set for an exercise, with editable fields.
 struct PendingSetInput: Identifiable {
     var id = UUID()
+    // Strength fields
     var weight: String
     var reps: String
     var rir: String
     var note: String = ""
+    // Cardio fields (ignored for strength exercises)
+    var duration: String = ""
+    var distance: String = ""
+    var incline: String = ""
 }
 
 /// Manages active workout state: current exercises, set logging,
@@ -164,12 +169,23 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
         while current.count < needed {
             let last = loggedSets[exercise.id]?.last
-            current.append(PendingSetInput(
-                weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
-                    ?? prefillWeightValue(from: exercise),
-                reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-                rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
-            ))
+            if exercise.trackingType == .cardio {
+                current.append(PendingSetInput(
+                    weight: "",
+                    reps: "",
+                    rir: "",
+                    duration: last?.durationSeconds.map { CardioFormatting.formatDuration($0) } ?? "",
+                    distance: last?.distanceMiles.map { String(format: "%g", $0) } ?? "",
+                    incline: last?.inclineLevel.map { String(format: "%g", $0) } ?? ""
+                ))
+            } else {
+                current.append(PendingSetInput(
+                    weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
+                        ?? prefillWeightValue(from: exercise),
+                    reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
+                    rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+                ))
+            }
         }
         if current.count > needed {
             current = Array(current.prefix(needed))
@@ -178,32 +194,54 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     /// Log the pending set at `index`, add it to loggedSets, and remove it from pendingSets.
-    func logPendingSet(at index: Int, exerciseId: UUID) -> WorkoutSet? {
+    /// Pass the exercise so we can branch on trackingType.
+    func logPendingSet(at index: Int, exerciseId: UUID, exercise: Exercise? = nil) -> WorkoutSet? {
         guard var pending = pendingSets[exerciseId], index < pending.count else { return nil }
 
         let entry = pending[index]
-        let weight: Double
-        if entry.weight.isEmpty || entry.weight.uppercased() == "BW" {
-            weight = 0.0
-        } else if let w = Double(entry.weight), w > 0 {
-            weight = w
-        } else {
-            return nil
-        }
-        guard let reps = Int(entry.reps), reps > 0 else { return nil }
-        let rir = Int(entry.rir) ?? 2
-
         let existingSets = loggedSets[exerciseId] ?? []
         let setNumber = existingSets.count + 1
 
-        let workoutSet = WorkoutSet.create(
-            exerciseId: exerciseId,
-            setNumber: setNumber,
-            weightLbs: weight,
-            reps: reps,
-            rir: rir,
-            userFeedback: entry.note.isEmpty ? nil : entry.note
-        )
+        let workoutSet: WorkoutSet
+
+        if exercise?.trackingType == .cardio {
+            // Cardio: require duration, distance and incline are optional
+            guard !entry.duration.isEmpty,
+                  let durationSecs = CardioFormatting.parseDuration(entry.duration) else { return nil }
+            let distance = Double(entry.distance)
+            let incline = Double(entry.incline)
+            workoutSet = WorkoutSet.create(
+                exerciseId: exerciseId,
+                setNumber: setNumber,
+                weightLbs: 0,
+                reps: 0,
+                rir: 0,
+                userFeedback: entry.note.isEmpty ? nil : entry.note,
+                durationSeconds: durationSecs,
+                distanceMiles: distance,
+                inclineLevel: incline
+            )
+        } else {
+            // Strength: require reps, weight optional
+            let weight: Double
+            if entry.weight.isEmpty || entry.weight.uppercased() == "BW" {
+                weight = 0.0
+            } else if let w = Double(entry.weight), w > 0 {
+                weight = w
+            } else {
+                return nil
+            }
+            guard let reps = Int(entry.reps), reps > 0 else { return nil }
+            let rir = Int(entry.rir) ?? 2
+            workoutSet = WorkoutSet.create(
+                exerciseId: exerciseId,
+                setNumber: setNumber,
+                weightLbs: weight,
+                reps: reps,
+                rir: rir,
+                userFeedback: entry.note.isEmpty ? nil : entry.note
+            )
+        }
 
         var logged = existingSets
         logged.append(workoutSet)
@@ -225,12 +263,24 @@ final class ActiveWorkoutViewModel: ObservableObject {
     /// Add one extra pending set pre-filled from the last logged set (or AI target).
     func addPendingSet(for exercise: Exercise) {
         let last = loggedSets[exercise.id]?.last
-        let entry = PendingSetInput(
-            weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
-                ?? prefillWeightValue(from: exercise),
-            reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-            rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
-        )
+        let entry: PendingSetInput
+        if exercise.trackingType == .cardio {
+            entry = PendingSetInput(
+                weight: "",
+                reps: "",
+                rir: "",
+                duration: last?.durationSeconds.map { CardioFormatting.formatDuration($0) } ?? "",
+                distance: last?.distanceMiles.map { String(format: "%g", $0) } ?? "",
+                incline: last?.inclineLevel.map { String(format: "%g", $0) } ?? ""
+            )
+        } else {
+            entry = PendingSetInput(
+                weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
+                    ?? prefillWeightValue(from: exercise),
+                reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
+                rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+            )
+        }
         pendingSets[exercise.id, default: []].append(entry)
     }
 

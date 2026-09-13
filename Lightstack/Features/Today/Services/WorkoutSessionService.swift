@@ -494,7 +494,55 @@ final class WorkoutSessionService {
     }
 
     private func handleProgressionNoteResponse(_ text: String) {
-        delegate?.sessionServiceDidReceiveProgressionNote(self, note: text)
+        let clean = extractProgressionNote(from: text)
+        delegate?.sessionServiceDidReceiveProgressionNote(self, note: clean)
+    }
+
+    /// Extracts a plain-prose progression note from the AI response.
+    ///
+    /// Input shapes handled:
+    /// - Plain prose (happy path): trimmed and returned as-is.
+    /// - Fenced JSON (```json { ... } ```): fences stripped, then JSON decoded.
+    /// - Bare JSON object/array: decoded directly.
+    /// - JSON that decodes but has no usable `coaching_notes`: returns "".
+    /// - Anything that looks like JSON but cannot be decoded: returns "".
+    private func extractProgressionNote(from text: String) -> String {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        // Strip markdown code fences if present
+        if trimmed.hasPrefix("```") {
+            let lines = trimmed.components(separatedBy: .newlines)
+            trimmed = lines.dropFirst().dropLast().joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // If it doesn't look like JSON, it's plain prose — pass through
+        guard trimmed.hasPrefix("{") || trimmed.hasPrefix("[") else {
+            return trimmed
+        }
+
+        // Looks like JSON — attempt to extract coaching_notes
+        guard let data = trimmed.data(using: .utf8) else {
+            logger.warning("Progression note looked like JSON but couldn't be encoded to data — hiding card")
+            return ""
+        }
+
+        // Try to decode as the known workout plan schema (has coaching_notes key)
+        if let decoded = try? JSONDecoder().decode(ProgressionNoteEnvelope.self, from: data),
+           let note = decoded.coachingNotes, !note.isEmpty {
+            logger.debug("Progression note extracted from JSON coaching_notes field")
+            return note.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Try to decode as a bare JSON string value
+        if let decoded = try? JSONDecoder().decode(String.self, from: data), !decoded.isEmpty {
+            logger.debug("Progression note extracted from bare JSON string")
+            return decoded.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        logger.warning("Progression note was JSON but coaching_notes couldn't be extracted — hiding card")
+        return ""
     }
 
     // MARK: - Private Helpers
@@ -536,6 +584,15 @@ final class WorkoutSessionService {
 }
 
 // MARK: - JSON Models
+
+/// Minimal envelope for defensive parsing of a progression note response that
+/// accidentally came back as JSON (matches the workout-plan schema's top-level keys).
+private struct ProgressionNoteEnvelope: Decodable {
+    let coachingNotes: String?
+    enum CodingKeys: String, CodingKey {
+        case coachingNotes = "coaching_notes"
+    }
+}
 
 private struct WorkoutPlanResponse: Decodable {
     let exercises: [AIExercise]

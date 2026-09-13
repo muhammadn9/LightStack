@@ -108,22 +108,43 @@ struct ExerciseTableView: View {
 
     // MARK: - Pending Set Input Rows
 
+    private var isCardio: Bool { exercise.trackingType == .cardio }
+
     private var pendingSetColumnHeaders: some View {
-        HStack(spacing: 8) {
-            Text("")
-                .frame(width: 40)
-            Text("Lbs")
-                .font(AppTheme.caveat(10))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 70)
-            Text("Reps")
-                .font(AppTheme.caveat(10))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 60)
-            Text("RIR")
-                .font(AppTheme.caveat(10))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 50)
+        Group {
+            if isCardio {
+                HStack(spacing: 8) {
+                    Text("").frame(width: 40)
+                    Text("Time")
+                        .font(AppTheme.caveat(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 70)
+                    Text("Distance")
+                        .font(AppTheme.caveat(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 60)
+                    Text("Incline")
+                        .font(AppTheme.caveat(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 50)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Text("").frame(width: 40)
+                    Text("Lbs")
+                        .font(AppTheme.caveat(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 70)
+                    Text("Reps")
+                        .font(AppTheme.caveat(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 60)
+                    Text("RIR")
+                        .font(AppTheme.caveat(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 50)
+                }
+            }
         }
     }
 
@@ -140,21 +161,28 @@ struct ExerciseTableView: View {
                         .foregroundStyle(AppTheme.textSecondary)
                         .frame(width: 40, alignment: .leading)
 
-                    inputField("lbs", text: $pendingSets[index].weight, width: 70, keyboard: .decimalPad)
-                    inputField("reps", text: $pendingSets[index].reps, width: 60, keyboard: .numberPad)
-                    inputField("RIR", text: $pendingSets[index].rir, width: 50, keyboard: .numberPad)
+                    if isCardio {
+                        inputField("mm:ss", text: $pendingSets[index].duration, width: 70, keyboard: .numbersAndPunctuation)
+                        inputField("mi", text: $pendingSets[index].distance, width: 60, keyboard: .decimalPad)
+                        inputField("%", text: $pendingSets[index].incline, width: 50, keyboard: .decimalPad)
+                    } else {
+                        inputField("lbs", text: $pendingSets[index].weight, width: 70, keyboard: .decimalPad)
+                        inputField("reps", text: $pendingSets[index].reps, width: 60, keyboard: .numberPad)
+                        inputField("RIR", text: $pendingSets[index].rir, width: 50, keyboard: .numberPad)
+                    }
 
+                    let isReady = isCardio
+                        ? !pendingSets[index].duration.isEmpty
+                        : !pendingSets[index].reps.isEmpty
                     Button(action: { onLogSet(index) }) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.title2)
                             .foregroundStyle(
-                                pendingSets[index].reps.isEmpty
-                                    ? AppTheme.textSecondary
-                                    : AppTheme.accent
+                                isReady ? AppTheme.accent : AppTheme.textSecondary
                             )
                             .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
                     }
-                    .disabled(pendingSets[index].reps.isEmpty)
+                    .disabled(!isReady)
 
                     if let onDelete = onDeletePendingSet {
                         Button(action: { onDelete(index) }) {

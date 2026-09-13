@@ -71,7 +71,8 @@ final class CoachPromptService {
         the available time and energy level. Always respond with a workout table.
 
         WORKOUT PLAN FORMAT
-        Return the session plan as a JSON object matching this exact schema:
+        When asked to generate a workout plan, return ONLY a JSON object matching \
+        this exact schema — no markdown fences, no other text:
         {
           "exercises": [
             {
@@ -87,12 +88,14 @@ final class CoachPromptService {
           ],
           "coaching_notes": "string"
         }
-        Return ONLY the JSON. No markdown fences, no other text.
+        For any other request (progression notes, summaries, questions), reply in \
+        plain prose with no JSON and no markdown fences.
 
         PROGRESSION NOTE
-        After reviewing completed sets, write a short progression note (3-5 sentences) \
-        that summarizes what happened, what improved, and exactly what to target next \
-        session for each main lift. This note is saved to their workout record.
+        After reviewing completed sets, write a concise progression note (2-3 sentences). \
+        No greeting, do not address the athlete by name, no preamble. Lead with what \
+        happened in this session, then end with one specific target for next session \
+        (exact weight, reps, or duration). Plain prose only — no JSON, no markdown.
         """
     }
 
@@ -160,14 +163,39 @@ final class CoachPromptService {
             lines.append("**\(exercise.name)** (\(exercise.muscleGroup))")
             let exerciseSets = (sets[exercise.id] ?? []).sorted { $0.setNumber < $1.setNumber }
             for s in exerciseSets {
-                lines.append("  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ RIR \(s.rir)")
+                let setLine = exercise.trackingType == .cardio
+                    ? formatCardioSet(s)
+                    : "  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ RIR \(s.rir)"
+                lines.append(setLine)
             }
             lines.append("")
         }
 
-        lines.append("Write a progression note (3-5 sentences) summarizing this session and setting specific targets for next time.")
+        lines.append(
+            "Write a progression note (2-3 sentences). " +
+            "No greeting, no name, no preamble. " +
+            "Lead with what happened, end with one specific target for next session. " +
+            "Plain prose only — no JSON, no markdown."
+        )
 
         return lines.joined(separator: "\n")
+    }
+
+    // MARK: - Private Cardio Formatting
+
+    private func formatCardioSet(_ s: WorkoutSet) -> String {
+        var parts: [String] = []
+        if let secs = s.durationSeconds {
+            parts.append(CardioFormatting.formatDuration(secs))
+        }
+        if let miles = s.distanceMiles {
+            parts.append(String(format: "%g mi", miles))
+        }
+        if let incline = s.inclineLevel {
+            parts.append(String(format: "%g%% incline", incline))
+        }
+        let detail = parts.isEmpty ? "no metrics logged" : parts.joined(separator: ", ")
+        return "  Set \(s.setNumber): \(detail)"
     }
 
     /// Build user message for month plan generation.

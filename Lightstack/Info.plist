@@ -35,6 +35,14 @@
 			<key>CFBundleURLName</key>
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>com.muhammadn9.lightstack.google</string>
+		</dict>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
@@ -52,6 +60,10 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>GOOGLE_CLIENT_ID</key>
+	<string>$(GOOGLE_CLIENT_ID)</string>
+	<key>GOOGLE_REVERSED_CLIENT_ID</key>
+	<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Lightstack uses your camera to analyze exercise form and count reps during your workout.</string>
 </dict>
