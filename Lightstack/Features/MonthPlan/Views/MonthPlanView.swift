@@ -142,16 +142,8 @@ struct MonthPlanView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .lastTextBaseline) {
                 // Month + year
-                let monthStr: String = {
-                    let f = DateFormatter()
-                    f.dateFormat = "MMMM"
-                    return f.string(from: plan.startDate)
-                }()
-                let yearStr: String = {
-                    let f = DateFormatter()
-                    f.dateFormat = "yyyy"
-                    return f.string(from: plan.startDate)
-                }()
+                let monthStr: String = DateFormatter.monthName.string(from: plan.startDate)
+                let yearStr: String = DateFormatter.year.string(from: plan.startDate)
 
                 HStack(alignment: .lastTextBaseline, spacing: 6) {
                     Text(monthStr)
@@ -320,11 +312,7 @@ struct MonthPlanView: View {
                 .frame(width: 10, height: 10)
 
             // Day + workout
-            let dayStr: String = {
-                let f = DateFormatter()
-                f.dateFormat = "EEE"
-                return f.string(from: session.plannedDate)
-            }()
+            let dayStr: String = DateFormatter.dayAbbreviation.string(from: session.plannedDate)
 
             if session.isRestDay {
                 Text("\(dayStr) · Rest")

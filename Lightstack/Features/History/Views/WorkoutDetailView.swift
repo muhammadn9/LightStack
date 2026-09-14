@@ -219,9 +219,7 @@ struct WorkoutDetailView: View {
     }
 
     private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d, yyyy"
-        return formatter.string(from: date)
+        DateFormatter.weekdayMonthDayYear.string(from: date)
     }
 
     private func formatVolume(_ volume: Double) -> String {
