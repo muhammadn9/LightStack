@@ -117,51 +117,12 @@ struct ActiveWorkoutView: View {
     // MARK: - Timer Bar
 
     private var timerBar: some View {
-        HStack(spacing: 0) {
-            // Left: workout type + timer
-            VStack(alignment: .leading, spacing: 3) {
-                Text(todayViewModel.sessionService.currentWorkoutType ?? "Workout")
-                    .font(AppTheme.playfairItalic(11))
-                    .foregroundStyle(AppTheme.accentSecondary)
-                HStack(spacing: 7) {
-                    Button(action: { showCancelAlert = true }) {
-                        Image(systemName: "xmark")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                    Text(viewModel.formattedElapsedTime)
-                        .font(AppTheme.plexMono(18, weight: .medium))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .monospacedDigit()
-                    Button(action: { viewModel.togglePause() }) {
-                        Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(AppTheme.accent)
-                    }
-                }
-            }
-
-            Spacer()
-
-            // Right: volume
-            let volume = runningVolume
-            if volume > 0 {
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("Volume")
-                        .font(AppTheme.caveat(12))
-                        .foregroundStyle(AppTheme.accentSecondary)
-                    Text(String(format: "%.0f lbs", volume))
-                        .font(AppTheme.plexMono(15, weight: .medium))
-                        .foregroundStyle(AppTheme.accent)
-                }
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
-        .background(.bar)
-        .overlay(alignment: .bottom) {
-            InkDivider()
-        }
+        ActiveWorkoutTimerBar(
+            viewModel: viewModel,
+            workoutType: todayViewModel.sessionService.currentWorkoutType,
+            runningVolume: viewModel.runningVolume(exercises: todayViewModel.exercises),
+            onCancel: { showCancelAlert = true }
+        )
     }
 
     // MARK: - Current Exercise View
@@ -229,46 +190,13 @@ struct ActiveWorkoutView: View {
                         }
                     }
                     // Exercise navigation
-                    HStack(spacing: 6) {
-                        if currentExerciseIndex > 0 {
-                            Button(action: {
-                                withAnimation { currentExerciseIndex -= 1 }
-                            }) {
-                                Image(systemName: "chevron.left")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(AppTheme.accent)
-                                    .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
-                                    .background(AppTheme.surfaceElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
-                            }
-                        }
-                        Text("\(currentExerciseIndex + 1)/\(exercises.count)")
-                            .font(AppTheme.plexMono(16))
-                            .foregroundStyle(AppTheme.textSecondary)
-                        if currentExerciseIndex < exercises.count - 1 {
-                            Button(action: {
-                                withAnimation { currentExerciseIndex += 1 }
-                            }) {
-                                Image(systemName: "chevron.right")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(AppTheme.accent)
-                                    .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
-                                    .background(AppTheme.surfaceElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
-                            }
-                        }
-                        Button(action: { showAddExercise = true }) {
-                            Image(systemName: "plus")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(AppTheme.accent)
-                                .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
-                                .background(AppTheme.surfaceElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
-                        }
-                    }
+                    ExerciseNavButtons(
+                        currentIndex: currentExerciseIndex,
+                        totalCount: exercises.count,
+                        onPrevious: { withAnimation { currentExerciseIndex -= 1 } },
+                        onNext: { withAnimation { currentExerciseIndex += 1 } },
+                        onAdd: { showAddExercise = true }
+                    )
                 }
 
                 InkDivider()
@@ -276,11 +204,19 @@ struct ActiveWorkoutView: View {
                 // Logged sets
                 let logged = viewModel.loggedSets[exercise.id] ?? []
                 ForEach(Array(logged.enumerated()), id: \.element.id) { index, set in
-                    loggedSetRow(set, number: index + 1, exercise: exercise)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
-                            removal: .opacity
-                        ))
+                    LoggedSetRow(
+                        workoutSet: set,
+                        number: index + 1,
+                        exercise: exercise,
+                        onDelete: {
+                            viewModel.deleteSet(set, exerciseId: exercise.id)
+                            viewModel.syncPendingSets(for: exercise)
+                        }
+                    )
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity
+                    ))
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: logged.count)
 
@@ -330,18 +266,22 @@ struct ActiveWorkoutView: View {
                 let pendingBinding = pendingSetsBinding(for: exercise.id)
                 ForEach(Array(pending.enumerated()), id: \.element.id) { index, _ in
                     if exercise.trackingType == .cardio {
-                        cardioPendingSetRow(
+                        CardioPendingSetRow(
                             index: index,
                             setNumber: logged.count + index + 1,
                             pendingSets: pendingBinding,
-                            exerciseId: exercise.id
+                            exerciseId: exercise.id,
+                            onLog: { logSet(at: index, exerciseId: exercise.id) },
+                            onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
                         )
                     } else {
-                        pendingSetRow(
+                        StrengthPendingSetRow(
                             index: index,
                             setNumber: logged.count + index + 1,
                             pendingSets: pendingBinding,
-                            exerciseId: exercise.id
+                            exerciseId: exercise.id,
+                            onLog: { logSet(at: index, exerciseId: exercise.id) },
+                            onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
                         )
                     }
                 }
@@ -362,7 +302,7 @@ struct ActiveWorkoutView: View {
                 // Rest timer banner
                 if let restTime = viewModel.formattedRestTime(for: exercise.id) {
                     HStack(spacing: 11) {
-                        RestTimerRing(progress: restTimerProgress(for: exercise.id))
+                        RestTimerRing(progress: viewModel.restTimerProgress(for: exercise.id))
                             .frame(width: 45, height: 45)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Rest Period")
@@ -409,247 +349,6 @@ struct ActiveWorkoutView: View {
         .onChange(of: exercises.count) { _, _ in
             for ex in exercises {
                 viewModel.prefillTargets(for: ex)
-            }
-        }
-    }
-
-    // MARK: - Logged Set Row (notebook style)
-
-    @ViewBuilder
-    private func loggedSetRow(_ workoutSet: WorkoutSet, number: Int, exercise: Exercise) -> some View {
-        if exercise.trackingType == .cardio {
-            cardioLoggedSetRow(workoutSet, number: number, exercise: exercise)
-        } else {
-            strengthLoggedSetRow(workoutSet, number: number, exercise: exercise)
-        }
-    }
-
-    private func strengthLoggedSetRow(_ workoutSet: WorkoutSet, number: Int, exercise: Exercise) -> some View {
-        HStack(spacing: 9) {
-            SetNumberCircle(number: number, isLogged: true)
-
-            Text(String(format: "%.1f", workoutSet.weightLbs))
-                .font(AppTheme.caveat(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-            Text("lbs")
-                .font(AppTheme.caveat(12))
-                .foregroundStyle(AppTheme.textSecondary)
-
-            Spacer()
-
-            Text("×\(workoutSet.reps)")
-                .font(AppTheme.caveat(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-
-            Spacer()
-
-            if workoutSet.isPR {
-                PRStamp()
-            } else {
-                Text("✓ RIR \(workoutSet.rir)")
-                    .font(AppTheme.caveat(12))
-                    .foregroundStyle(AppTheme.success)
-            }
-
-            Button(action: {
-                viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
-                viewModel.syncPendingSets(for: exercise)
-            }) {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(AppTheme.warning.opacity(0.7))
-                    .font(.body)
-            }
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 7)
-        .background(AppTheme.surfaceElevated.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-    }
-
-    private func cardioLoggedSetRow(_ workoutSet: WorkoutSet, number: Int, exercise: Exercise) -> some View {
-        HStack(spacing: 9) {
-            SetNumberCircle(number: number, isLogged: true)
-
-            let summary = CardioFormatting.loggedSummary(
-                durationSeconds: workoutSet.durationSeconds,
-                distanceMiles: workoutSet.distanceMiles,
-                inclineLevel: workoutSet.inclineLevel
-            )
-            Text(summary.isEmpty ? "—" : summary)
-                .font(AppTheme.caveat(14, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Spacer()
-
-            Text("✓")
-                .font(AppTheme.caveat(12))
-                .foregroundStyle(AppTheme.success)
-
-            Button(action: {
-                viewModel.deleteSet(workoutSet, exerciseId: exercise.id)
-                viewModel.syncPendingSets(for: exercise)
-            }) {
-                Image(systemName: "minus.circle.fill")
-                    .foregroundStyle(AppTheme.warning.opacity(0.7))
-                    .font(.body)
-            }
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 7)
-        .background(AppTheme.surfaceElevated.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 5))
-    }
-
-    // MARK: - Pending Set Row (input)
-
-    private func pendingSetRow(index: Int, setNumber: Int, pendingSets: Binding<[PendingSetInput]>, exerciseId: UUID) -> some View {
-        HStack(spacing: 9) {
-            SetNumberCircle(number: setNumber, isLogged: false)
-
-            // Weight field
-            VStack(spacing: 3) {
-                TextField("lbs", text: pendingSets[index].weight)
-                    .keyboardType(.decimalPad)
-                    .font(AppTheme.plexMono(16, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 78)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Rectangle()
-                    .fill(pendingSets[index].weight.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
-                    .frame(width: 78, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].weight.wrappedValue.isEmpty)
-            }
-
-            Text("×")
-                .font(AppTheme.caveat(18))
-                .foregroundStyle(AppTheme.border)
-
-            // Reps field
-            VStack(spacing: 3) {
-                TextField("reps", text: pendingSets[index].reps)
-                    .keyboardType(.numberPad)
-                    .font(AppTheme.plexMono(16, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 67)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Rectangle()
-                    .fill(pendingSets[index].reps.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
-                    .frame(width: 67, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].reps.wrappedValue.isEmpty)
-            }
-
-            // RIR field
-            VStack(spacing: 3) {
-                TextField("RIR", text: pendingSets[index].rir)
-                    .keyboardType(.numberPad)
-                    .font(AppTheme.plexMono(16))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 56)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Rectangle()
-                    .fill(AppTheme.border.opacity(0.5))
-                    .frame(width: 56, height: 1.5)
-            }
-
-            // Log button
-            Button(action: { logSet(at: index, exerciseId: exerciseId) }) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(pendingSets[index].reps.wrappedValue.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
-                        .frame(width: 31, height: 31)
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(pendingSets[index].reps.wrappedValue.isEmpty
-                                         ? AppTheme.textSecondary
-                                         : AppTheme.background)
-                }
-                .shadow(color: AppTheme.accent.opacity(pendingSets[index].reps.wrappedValue.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
-            }
-            .disabled(pendingSets[index].reps.wrappedValue.isEmpty)
-
-            // Delete pending
-            Button(action: { viewModel.deletePendingSet(at: index, exerciseId: exerciseId) }) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(AppTheme.warning.opacity(0.7))
-                    .font(.body)
-            }
-        }
-    }
-
-    // MARK: - Cardio Pending Set Row
-
-    private func cardioPendingSetRow(index: Int, setNumber: Int, pendingSets: Binding<[PendingSetInput]>, exerciseId: UUID) -> some View {
-        HStack(spacing: 9) {
-            SetNumberCircle(number: setNumber, isLogged: false)
-
-            // Time field
-            VStack(spacing: 3) {
-                TextField("mm:ss", text: pendingSets[index].duration)
-                    .keyboardType(.numbersAndPunctuation)
-                    .font(AppTheme.plexMono(16, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 78)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Rectangle()
-                    .fill(pendingSets[index].duration.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
-                    .frame(width: 78, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].duration.wrappedValue.isEmpty)
-            }
-
-            Text("·")
-                .font(AppTheme.caveat(18))
-                .foregroundStyle(AppTheme.border)
-
-            // Distance field
-            VStack(spacing: 3) {
-                TextField("mi", text: pendingSets[index].distance)
-                    .keyboardType(.decimalPad)
-                    .font(AppTheme.plexMono(16, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 67)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Rectangle()
-                    .fill(pendingSets[index].distance.wrappedValue.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
-                    .frame(width: 67, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].distance.wrappedValue.isEmpty)
-            }
-
-            // Incline field
-            VStack(spacing: 3) {
-                TextField("%", text: pendingSets[index].incline)
-                    .keyboardType(.decimalPad)
-                    .font(AppTheme.plexMono(16))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 56)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Rectangle()
-                    .fill(AppTheme.border.opacity(0.5))
-                    .frame(width: 56, height: 1.5)
-            }
-
-            // Log button (enabled when duration is non-empty)
-            Button(action: { logSet(at: index, exerciseId: exerciseId) }) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(pendingSets[index].duration.wrappedValue.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
-                        .frame(width: 31, height: 31)
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(pendingSets[index].duration.wrappedValue.isEmpty
-                                         ? AppTheme.textSecondary
-                                         : AppTheme.background)
-                }
-                .shadow(color: AppTheme.accent.opacity(pendingSets[index].duration.wrappedValue.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
-            }
-            .disabled(pendingSets[index].duration.wrappedValue.isEmpty)
-
-            // Delete pending
-            Button(action: { viewModel.deletePendingSet(at: index, exerciseId: exerciseId) }) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(AppTheme.warning.opacity(0.7))
-                    .font(.body)
             }
         }
     }
@@ -719,16 +418,6 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Helpers
 
-    private var runningVolume: Double {
-        var volume = 0.0
-        for exercise in todayViewModel.exercises {
-            for s in viewModel.loggedSets[exercise.id] ?? [] {
-                volume += s.weightLbs * Double(s.reps)
-            }
-        }
-        return volume
-    }
-
     private func pendingSetsBinding(for exerciseId: UUID) -> Binding<[PendingSetInput]> {
         Binding(
             get: { viewModel.pendingSets[exerciseId] ?? [] },
@@ -756,10 +445,6 @@ struct ActiveWorkoutView: View {
         }
     }
 
-    private func logSetForExercise(at index: Int, exerciseId: UUID) {
-        logSet(at: index, exerciseId: exerciseId)
-    }
-
     private func autoLogAllPendingSets() {
         for exercise in todayViewModel.exercises {
             let exerciseId = exercise.id
@@ -776,13 +461,6 @@ struct ActiveWorkoutView: View {
                 }
             }
         }
-    }
-
-    private func restTimerProgress(for exerciseId: UUID) -> Double {
-        guard let target = viewModel.restTimerTargetDates[exerciseId] else { return 0 }
-        let total = Double(viewModel.restTimerTotalSeconds[exerciseId] ?? 90)
-        let remaining = max(0, target.timeIntervalSinceNow)
-        return total > 0 ? (total - remaining) / total : 0
     }
 
     private func prToast(pr: PersonalRecord) -> some View {
