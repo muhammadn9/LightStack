@@ -14,6 +14,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Create Secrets.xcconfig
+        # Secrets.xcconfig is git-ignored, but the Xcode project references it as a
+        # base configuration file, so the build fails outright when it is absent.
+        # CI only builds and analyses, so the template's empty values suffice.
+        run: cp Lightstack/Config/Secrets.xcconfig.template Lightstack/Config/Secrets.xcconfig
       - name: Set Default Scheme
         run: |
           scheme_list=$(xcodebuild -list -json | tr -d "\n")
