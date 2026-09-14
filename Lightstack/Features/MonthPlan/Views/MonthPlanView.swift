@@ -127,9 +127,10 @@ struct MonthPlanView: View {
             }
         }
         .fullScreenCover(item: $inlineWorkoutContext) { context in
-            InlineWorkoutSheet(
+            WorkoutSessionSheet(
                 todayViewModel: context.viewModel,
                 workoutType: context.workoutType,
+                mode: .generate,
                 onDismiss: { inlineWorkoutContext = nil }
             )
             .environmentObject(environment)
@@ -374,117 +375,6 @@ struct MonthPlanView: View {
         return viewModel.sessions
             .filter { $0.plannedDate >= weekStart && $0.plannedDate < weekEnd }
             .sorted { $0.plannedDate < $1.plannedDate }
-    }
-}
-
-// MARK: - Inline Workout Sheet
-
-private struct InlineWorkoutSheet: View {
-    @EnvironmentObject var environment: AppEnvironment
-    @ObservedObject var todayViewModel: TodayViewModel
-    let workoutType: String
-    let onDismiss: () -> Void
-
-    @State private var activeWorkoutViewModel: ActiveWorkoutViewModel?
-    @State private var chatViewModel: CoachChatViewModel?
-    @State private var hasTriggeredGeneration = false
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
-
-                Group {
-                    switch todayViewModel.phase {
-                    case .setup, .generating:
-                        generatingView
-                    case .confirmation:
-                        ConfirmWorkoutView(
-                            todayViewModel: todayViewModel,
-                            chatViewModel: chatViewModel,
-                            workoutType: workoutType
-                        )
-                    case .active:
-                        if let activeVM = activeWorkoutViewModel {
-                            ActiveWorkoutView(
-                                viewModel: activeVM,
-                                todayViewModel: todayViewModel,
-                                chatViewModel: chatViewModel ?? environment.makeCoachChatViewModel()
-                            )
-                        }
-                    case .postWorkout:
-                        PostWorkoutView(todayViewModel: todayViewModel)
-                    }
-                }
-            }
-            .navigationTitle(workoutType)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { onDismiss() }
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-            }
-            .onAppear {
-                if chatViewModel == nil {
-                    chatViewModel = environment.makeCoachChatViewModel()
-                }
-                if !hasTriggeredGeneration {
-                    hasTriggeredGeneration = true
-                    if todayViewModel.userId == nil,
-                       let userId = environment.authService.currentUser()?.userId {
-                        todayViewModel.setUserIdSkipRestore(userId)
-                    }
-                    todayViewModel.generatePlan(
-                        workoutType: workoutType,
-                        time: 60,
-                        energy: 3,
-                        notes: nil
-                    )
-                }
-            }
-            .onChange(of: todayViewModel.phase) { _, newPhase in
-                if newPhase == .active, activeWorkoutViewModel == nil {
-                    let vm = environment.makeActiveWorkoutViewModel()
-                    vm.onRestTimerStart = { name, seconds in
-                        environment.notificationService.scheduleRestTimerAlert(
-                            exerciseName: name, totalRestSeconds: seconds
-                        )
-                    }
-                    vm.onRestTimerCancel = {
-                        environment.notificationService.cancelPendingRestAlerts()
-                    }
-                    activeWorkoutViewModel = vm
-                } else if newPhase == .setup {
-                    onDismiss()
-                }
-            }
-            .alert("Error", isPresented: .init(
-                get: { todayViewModel.errorMessage != nil },
-                set: { if !$0 { todayViewModel.errorMessage = nil } }
-            )) {
-                Button("OK") { todayViewModel.errorMessage = nil }
-            } message: {
-                Text(todayViewModel.errorMessage ?? "")
-            }
-        }
-    }
-
-    private var generatingView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 40))
-                .foregroundStyle(AppTheme.accent)
-                .symbolEffect(.pulse, options: .repeating)
-            Text("Generating \(workoutType) workout...")
-                .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-            Text("Your AI coach is building a plan")
-                .font(AppTheme.caveat(14))
-                .foregroundStyle(AppTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

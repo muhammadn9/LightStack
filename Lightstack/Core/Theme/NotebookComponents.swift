@@ -1,5 +1,36 @@
 import SwiftUI
 
+// MARK: - Note Card
+
+/// Reusable card for workout notes (setup, AI progression, user notes).
+/// Hidden automatically when `content` is nil or empty.
+struct NoteCardView: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let content: String?
+
+    var body: some View {
+        if let text = content, !text.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .foregroundStyle(iconColor)
+                    Text(title)
+                        .font(AppTheme.playfairItalic(16, weight: .bold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                }
+
+                Text(text)
+                    .font(AppTheme.caveat(14))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .cardStyle()
+        }
+    }
+}
+
 // MARK: - Ink Divider
 
 /// Hairline horizontal rule — replaces Divider().

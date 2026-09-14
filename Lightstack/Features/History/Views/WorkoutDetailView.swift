@@ -17,15 +17,24 @@ struct WorkoutDetailView: View {
                 VStack(spacing: AppTheme.sectionSpacing) {
                     headerSection
                     exercisesSection
-                    if workout.setupNote != nil {
-                        setupNoteSection
-                    }
-                    if workout.userNote != nil {
-                        userNoteSection
-                    }
-                    if workout.aiProgressionNote != nil {
-                        aiNoteSection
-                    }
+                    NoteCardView(
+                        icon: "pencil.and.list.clipboard",
+                        iconColor: AppTheme.accent,
+                        title: "Pre-Workout Notes",
+                        content: workout.setupNote
+                    )
+                    NoteCardView(
+                        icon: "note.text",
+                        iconColor: AppTheme.accentSecondary,
+                        title: "My Notes",
+                        content: workout.userNote
+                    )
+                    NoteCardView(
+                        icon: "sparkles",
+                        iconColor: AppTheme.accent,
+                        title: "AI Progression Note",
+                        content: workout.aiProgressionNote
+                    )
 
                     repeatButton
                         .padding(.bottom, 8)
@@ -37,12 +46,11 @@ struct WorkoutDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .fullScreenCover(item: $repeatWorkoutContext) { ctx in
-            RepeatWorkoutSheet(
+            WorkoutSessionSheet(
                 todayViewModel: ctx.todayViewModel,
                 workoutType: ctx.workoutType,
-                onDismiss: {
-                    repeatWorkoutContext = nil
-                }
+                mode: .repeatExisting,
+                onDismiss: { repeatWorkoutContext = nil }
             )
             .environmentObject(environment)
         }
@@ -138,66 +146,6 @@ struct WorkoutDetailView: View {
         .cardStyle()
     }
 
-    // MARK: - Setup Note Section
-
-    private var setupNoteSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "pencil.and.list.clipboard")
-                    .foregroundStyle(AppTheme.accent)
-                Text("Pre-Workout Notes")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-            }
-
-            Text(workout.setupNote ?? "")
-                .font(AppTheme.caveat(14))
-                .foregroundStyle(AppTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .cardStyle()
-    }
-
-    // MARK: - AI Note Section
-
-    private var aiNoteSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(AppTheme.accent)
-                Text("AI Progression Note")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-            }
-
-            Text(workout.aiProgressionNote ?? "")
-                .font(AppTheme.caveat(14))
-                .foregroundStyle(AppTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .cardStyle()
-    }
-
-    // MARK: - User Note Section
-
-    private var userNoteSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "note.text")
-                    .foregroundStyle(AppTheme.accentSecondary)
-                Text("My Notes")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-            }
-
-            Text(workout.userNote ?? "")
-                .font(AppTheme.caveat(14))
-                .foregroundStyle(AppTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .cardStyle()
-    }
-
     // MARK: - Helpers
 
     private var exercises: [Exercise] {
@@ -238,85 +186,4 @@ private struct RepeatWorkoutContext: Identifiable {
     let id = UUID()
     let todayViewModel: TodayViewModel
     let workoutType: String
-}
-
-private struct RepeatWorkoutSheet: View {
-    @EnvironmentObject var environment: AppEnvironment
-    @ObservedObject var todayViewModel: TodayViewModel
-    let workoutType: String
-    let onDismiss: () -> Void
-
-    @State private var activeWorkoutViewModel: ActiveWorkoutViewModel?
-    @State private var chatViewModel: CoachChatViewModel?
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
-
-                Group {
-                    switch todayViewModel.phase {
-                    case .setup, .generating:
-                        ProgressView()
-                            .tint(AppTheme.accent)
-                    case .confirmation:
-                        ConfirmWorkoutView(
-                            todayViewModel: todayViewModel,
-                            chatViewModel: chatViewModel,
-                            workoutType: workoutType
-                        )
-                    case .active:
-                        if let activeVM = activeWorkoutViewModel {
-                            ActiveWorkoutView(
-                                viewModel: activeVM,
-                                todayViewModel: todayViewModel,
-                                chatViewModel: chatViewModel ?? environment.makeCoachChatViewModel()
-                            )
-                        }
-                    case .postWorkout:
-                        PostWorkoutView(todayViewModel: todayViewModel)
-                    }
-                }
-            }
-            .navigationTitle(workoutType)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { onDismiss() }
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-            }
-            .onAppear {
-                if chatViewModel == nil {
-                    chatViewModel = environment.makeCoachChatViewModel()
-                }
-            }
-            .onChange(of: todayViewModel.phase) { _, newPhase in
-                if newPhase == .active, activeWorkoutViewModel == nil {
-                    let vm = environment.makeActiveWorkoutViewModel()
-                    vm.onRestTimerStart = { name, seconds in
-                        environment.notificationService.scheduleRestTimerAlert(
-                            exerciseName: name, totalRestSeconds: seconds
-                        )
-                    }
-                    vm.onRestTimerCancel = {
-                        environment.notificationService.cancelPendingRestAlerts()
-                    }
-                    activeWorkoutViewModel = vm
-                    todayViewModel.exercises.forEach { vm.prefillTargets(for: $0) }
-                } else if newPhase == .setup {
-                    onDismiss()
-                }
-            }
-            .alert("Error", isPresented: .init(
-                get: { todayViewModel.errorMessage != nil },
-                set: { if !$0 { todayViewModel.errorMessage = nil } }
-            )) {
-                Button("OK") { todayViewModel.errorMessage = nil }
-            } message: {
-                Text(todayViewModel.errorMessage ?? "")
-            }
-        }
-    }
 }
