@@ -1,8 +1,11 @@
 name: Claude PR Review
 
 on:
+  # Review runs when a PR is first opened, not on every subsequent push —
+  # re-reviewing each commit burns API quota for little added value.
+  # Comment /review on a PR to re-run it on demand.
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened]
   issue_comment:
     types: [created]
 
