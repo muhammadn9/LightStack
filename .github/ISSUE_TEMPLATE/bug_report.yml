@@ -1,0 +1,54 @@
+name: Bug Report
+description: Something is broken in the app
+labels: [bug]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - MUST (crash, data loss, security)
+        - SHOULD (incorrect behavior, bad UX)
+        - NICE (minor polish)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What's broken
+      placeholder: "e.g. Tapping Finish crashes the app when the AI call is in-flight"
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a workout
+        2. Tap Finish while the AI is generating a progression note
+        3. App crashes
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: input
+    id: file
+    attributes:
+      label: Relevant file(s)
+      placeholder: "Lightstack/Features/Today/Services/WorkoutSessionService.swift"
+
+  - type: checkboxes
+    id: agent
+    attributes:
+      label: Agent-ready
+      description: Check this if the fix is well-scoped enough for Claude to implement autonomously
+      options:
+        - label: Ready for Claude — add the `claude` label to trigger the agent

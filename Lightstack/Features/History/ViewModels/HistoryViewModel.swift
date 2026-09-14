@@ -23,13 +23,7 @@ final class HistoryViewModel: ObservableObject {
         isLoading = true
         let fetched = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 200)
         allWorkouts = fetched
-
-        if let filter = filterType {
-            workouts = fetched.filter { $0.workoutType.lowercased() == filter.lowercased() }
-        } else {
-            workouts = fetched
-        }
-
+        workouts = Self.filtered(fetched, by: filterType)
         isLoading = false
     }
 
@@ -41,7 +35,19 @@ final class HistoryViewModel: ObservableObject {
     }
 
     var availableTypes: [String] {
-        let types = Set(allWorkouts.map { $0.workoutType })
+        Self.availableTypes(in: allWorkouts)
+    }
+
+    /// Returns the workouts matching `type` (case-insensitive comparison against
+    /// `workoutType`), or all workouts if `type` is nil.
+    static func filtered(_ workouts: [Workout], by type: String?) -> [Workout] {
+        guard let filter = type else { return workouts }
+        return workouts.filter { $0.workoutType.lowercased() == filter.lowercased() }
+    }
+
+    /// Returns the unique workout types present in `workouts`, sorted alphabetically.
+    static func availableTypes(in workouts: [Workout]) -> [String] {
+        let types = Set(workouts.map { $0.workoutType })
         return types.sorted()
     }
 

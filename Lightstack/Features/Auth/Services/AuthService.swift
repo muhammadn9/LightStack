@@ -1,6 +1,9 @@
 import Foundation
 import AuthenticationServices
 import Supabase
+import GoogleSignIn
+import UIKit
+import os
 
 // MARK: - AuthServiceDelegate
 
@@ -16,6 +19,8 @@ protocol AuthServiceDelegate: AnyObject {
 /// Handles all authentication: email sign-in/up, Apple Sign-In, and sign-out.
 /// Uses Supabase Auth under the hood.
 final class AuthService: NSObject {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "AuthService")
 
     weak var delegate: AuthServiceDelegate?
 
@@ -107,7 +112,7 @@ final class AuthService: NSObject {
                     type: .signup
                 )
             } catch {
-                print("Resend verification error: \(error.localizedDescription)")
+                self.logger.error("Resend verification error: \(error.localizedDescription)")
             }
         }
     }
@@ -140,9 +145,15 @@ final class AuthService: NSObject {
 
     // MARK: - Deep Link Handling
 
-    /// Call this when the app receives a deep link (lightstack://auth-callback?...).
-    /// Supabase appends session tokens to the URL after email verification.
+    /// Routes incoming deep links. Google reversed-client-ID callbacks go to GIDSignIn;
+    /// everything else goes to the Supabase session handler (email verification, etc.).
     func handleDeepLink(_ url: URL) {
+        let reversedClientID = Bundle.main.infoDictionary?["GOOGLE_REVERSED_CLIENT_ID"] as? String ?? ""
+        if !reversedClientID.isEmpty,
+           url.scheme?.lowercased() == reversedClientID.lowercased() {
+            _ = GIDSignIn.sharedInstance.handle(url)
+            return
+        }
         Task {
             do {
                 let session = try await supabaseClient.auth.session(from: url)
@@ -150,30 +161,94 @@ final class AuthService: NSObject {
                     await notifySignIn()
                 }
             } catch {
-                print("Deep link session error: \(error.localizedDescription)")
+                self.logger.error("Deep link session error: \(error.localizedDescription)")
             }
         }
     }
 
-    // MARK: - Google Sign-In (OAuth via ASWebAuthenticationSession)
+    // MARK: - Google Sign-In
 
     func signInWithGoogle() {
         Task {
-            do {
-                try await supabaseClient.auth.signInWithOAuth(
-                    provider: .google,
-                    redirectTo: Self.redirectURL
-                )
-                await notifySignIn()
-            } catch {
-                // Don't report cancellation as an error
-                let nsError = error as NSError
-                if nsError.domain == "com.apple.AuthenticationServices.WebAuthenticationSession",
-                   nsError.code == 1 {
-                    return
-                }
-                await notifyError(error)
+            let clientID = Bundle.main.infoDictionary?["GOOGLE_CLIENT_ID"] as? String ?? ""
+
+            // Primary path: native GoogleSignIn SDK (requires GOOGLE_CLIENT_ID to be set)
+            if !clientID.isEmpty {
+                await signInWithGoogleNative(clientID: clientID)
+            } else {
+                // Fallback: ephemeral web session — no "Wants to Use" alert
+                logger.info("Google Sign-In: GOOGLE_CLIENT_ID not set, using ephemeral web fallback")
+                await signInWithGoogleEphemeral()
             }
+        }
+    }
+
+    @MainActor
+    private func signInWithGoogleNative(clientID: String) async {
+        // Find presenting UIViewController from the active window scene
+        guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+              let rootVC = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+        else {
+            logger.warning("Google Sign-In: no presenting view controller found, falling back to ephemeral web session")
+            await signInWithGoogleEphemeral()
+            return
+        }
+
+        GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+
+        do {
+            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
+            guard let idToken = result.user.idToken?.tokenString else {
+                logger.error("Google Sign-In: native flow succeeded but idToken is missing")
+                let error = NSError(
+                    domain: "AuthService",
+                    code: -3,
+                    userInfo: [NSLocalizedDescriptionKey: "Google Sign-In did not return an ID token."]
+                )
+                await notifyError(error)
+                return
+            }
+            let accessToken = result.user.accessToken.tokenString
+            logger.info("Google Sign-In: native path succeeded, exchanging tokens with Supabase")
+            try await supabaseClient.auth.signInWithIdToken(
+                credentials: .init(
+                    provider: .google,
+                    idToken: idToken,
+                    accessToken: accessToken
+                )
+            )
+            await notifySignIn()
+        } catch let error as GIDSignInError where error.code == .canceled {
+            // User cancelled — silent no-op
+            logger.info("Google Sign-In: user cancelled native flow")
+        } catch {
+            logger.error("Google Sign-In: native flow failed (\(error.localizedDescription)), falling back to ephemeral web session")
+            await signInWithGoogleEphemeral()
+        }
+    }
+
+    @MainActor
+    private func signInWithGoogleEphemeral() async {
+        logger.info("Google Sign-In: using ephemeral ASWebAuthenticationSession (no host-disclosure alert)")
+        do {
+            try await supabaseClient.auth.signInWithOAuth(
+                provider: .google,
+                redirectTo: Self.redirectURL
+            ) { (session: ASWebAuthenticationSession) in
+                session.prefersEphemeralWebBrowserSession = true
+            }
+            await notifySignIn()
+        } catch {
+            // Don't report user cancellation as an error
+            let nsError = error as NSError
+            if nsError.domain == "com.apple.AuthenticationServices.WebAuthenticationSession",
+               nsError.code == 1 {
+                logger.info("Google Sign-In: user cancelled ephemeral web session")
+                return
+            }
+            await notifyError(error)
         }
     }
 
@@ -300,6 +375,6 @@ extension AuthService: ASAuthorizationControllerDelegate {
         controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
-        Task { await notifyError(error) }
+        Task { @MainActor in notifyError(error) }
     }
 }

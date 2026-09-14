@@ -32,15 +32,15 @@ struct ConfirmWorkoutView: View {
     // MARK: - Header
 
     private var headerSection: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 36))
+        VStack(spacing: 6) {
+            Image(systemName: "pencil.and.list.clipboard")
+                .font(.system(size: 30, weight: .light))
                 .foregroundStyle(AppTheme.accent)
             Text("Workout Ready")
-                .font(.title2.bold())
+                .font(AppTheme.playfairItalic(20, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
-            Text("Your AI coach prepared \(todayViewModel.exercises.count) exercises")
-                .font(.subheadline)
+            Text("Your coach prepared \(todayViewModel.exercises.count) exercises")
+                .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -54,11 +54,11 @@ struct ConfirmWorkoutView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Exercise Plan")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Spacer()
                 Text("Tap × to remove")
-                    .font(.caption)
+                    .font(AppTheme.caveat(10))
                     .foregroundStyle(AppTheme.textSecondary)
             }
 
@@ -75,10 +75,10 @@ struct ConfirmWorkoutView: View {
                 // Name + muscle group
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
-                        .font(.subheadline.weight(.semibold))
+                        .font(AppTheme.playfair(14, weight: .bold))
                         .foregroundStyle(AppTheme.textPrimary)
                     Text(exercise.muscleGroup)
-                        .font(.caption)
+                        .font(AppTheme.caveat(11))
                         .foregroundStyle(AppTheme.accentSecondary)
                 }
 
@@ -102,7 +102,7 @@ struct ConfirmWorkoutView: View {
         }
         .padding(12)
         .background(AppTheme.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     /// Renders one row per target set showing weight × reps @ RIR.
@@ -135,7 +135,7 @@ struct ConfirmWorkoutView: View {
                             .foregroundStyle(AppTheme.accent.opacity(0.8))
                     }
                 }
-                .font(.caption)
+                .font(AppTheme.caveat(12))
                 .foregroundStyle(AppTheme.textPrimary)
             }
         }
@@ -150,8 +150,7 @@ struct ConfirmWorkoutView: View {
     // MARK: - Action Buttons
 
     private var actionButtons: some View {
-        VStack(spacing: 12) {
-            // Chat with Coach button (only shown when chatViewModel is provided)
+        VStack(spacing: 10) {
             if let chatVM = chatViewModel {
                 Button(action: {
                     if let userId = todayViewModel.userId {
@@ -167,32 +166,22 @@ struct ConfirmWorkoutView: View {
                     }
                     showChat = true
                 }) {
-                    HStack {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                    HStack(spacing: 8) {
+                        Image(systemName: "text.bubble")
                         Text("Chat with Coach")
                     }
-                    .font(.headline)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(AppTheme.accent.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 }
+                .buttonStyle(WaxSealButtonStyle(isSecondary: true))
             }
 
-            // Start Workout button
             Button(action: { todayViewModel.confirmAndStartWorkout() }) {
-                HStack {
+                HStack(spacing: 8) {
                     Image(systemName: "play.fill")
+                        .font(.system(size: 12))
                     Text("Start Workout")
                 }
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(AppTheme.accentGradient)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
+            .buttonStyle(WaxSealButtonStyle(isSecondary: false))
         }
         .padding(.horizontal, 4)
     }

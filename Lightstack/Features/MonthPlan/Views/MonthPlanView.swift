@@ -1,8 +1,6 @@
 import SwiftUI
 
 /// Calendar grid view showing a full month of planned sessions.
-/// Days are color-coded: rest (grey), planned (default), today (highlighted),
-/// completed (checkmark), missed (amber).
 struct MonthPlanView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: MonthPlanViewModel
@@ -15,8 +13,7 @@ struct MonthPlanView: View {
     var body: some View {
         NavigationStack {
             calendarContent
-                .navigationTitle("Month Plan")
-                .toolbarColorScheme(.dark, for: .navigationBar)
+                .navigationBarHidden(true)
                 .toolbar {
                     if viewModel.canCreateNewPlan {
                         ToolbarItem(placement: .navigationBarTrailing) {
@@ -51,27 +48,53 @@ struct MonthPlanView: View {
 
     private var calendarContent: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 if viewModel.activePlan == nil {
                     emptyPlansState
                 } else {
+                    // Month header
                     if let plan = viewModel.activePlan {
-                        planHeader(plan)
+                        monthHeader(plan)
                     }
-                    // Plan switcher chips (when more than 1 plan)
+
+                    // Plan switcher chips
                     if viewModel.allPlans.count > 1 {
                         planSwitcherChips
                     }
-                    progressBar
-                    calendarGrid
+
+                    // Calendar card
+                    VStack(spacing: 10) {
+                        // Progress bar
+                        progressSection
+
+                        InkDivider()
+
+                        // Calendar grid (Mon-Sun)
+                        calendarGrid
+
+                        InkDivider()
+
+                        // This Week's Plan
+                        thisWeekSection
+                    }
+                    .cardStyle()
+
+                    // Start Today's Workout button
+                    if let session = viewModel.todaySession, !session.isRestDay {
+                        Button(action: { selectedTab = 0 }) {
+                            HStack(spacing: 8) {
+                                Text("✦")
+                                Text("Start Today's Workout")
+                            }
+                        }
+                        .buttonStyle(WaxSealButtonStyle(isSecondary: false))
+                    }
                 }
             }
             .padding(16)
         }
         .themedBackground()
         .sheet(item: $selectedSession, onDismiss: {
-            // Present the inline workout AFTER the sheet fully dismisses to avoid
-            // a black screen from concurrent sheet-dismiss + fullScreenCover-present.
             if let pending = pendingWorkoutContext {
                 inlineWorkoutContext = pending
                 pendingWorkoutContext = nil
@@ -82,7 +105,6 @@ struct MonthPlanView: View {
                     session: session,
                     onStartWorkout: {
                         let vm = environment.makeInlineTodayViewModel()
-                        // Skip session restoration so we don't replay the Today tab's workout.
                         if let userId = environment.authService.currentUser()?.userId {
                             vm.setUserIdSkipRestore(userId)
                         }
@@ -104,8 +126,6 @@ struct MonthPlanView: View {
                 }
             }
         }
-        // fullScreenCover(item:) guarantees the context is non-nil when the view renders,
-        // eliminating the empty-view → black screen race condition.
         .fullScreenCover(item: $inlineWorkoutContext) { context in
             InlineWorkoutSheet(
                 todayViewModel: context.viewModel,
@@ -116,6 +136,53 @@ struct MonthPlanView: View {
         }
     }
 
+    // MARK: - Month Header
+
+    private func monthHeader(_ plan: MonthPlan) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .lastTextBaseline) {
+                // Month + year
+                let monthStr: String = {
+                    let f = DateFormatter()
+                    f.dateFormat = "MMMM"
+                    return f.string(from: plan.startDate)
+                }()
+                let yearStr: String = {
+                    let f = DateFormatter()
+                    f.dateFormat = "yyyy"
+                    return f.string(from: plan.startDate)
+                }()
+
+                HStack(alignment: .lastTextBaseline, spacing: 6) {
+                    Text(monthStr)
+                        .font(AppTheme.playfair(20, weight: .bold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(yearStr)
+                        .font(AppTheme.playfairItalic(20, weight: .bold))
+                        .foregroundStyle(AppTheme.accent)
+                }
+
+                Spacer()
+
+                if viewModel.canCreateNewPlan {
+                    Button(action: { showPlanBuilder = true }) {
+                        Image(systemName: "plus.circle")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                }
+            }
+
+            if let overview = plan.aiOverview {
+                Text(overview)
+                    .font(AppTheme.caveat(13))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: - Empty State
 
     private var emptyPlansState: some View {
@@ -124,12 +191,17 @@ struct MonthPlanView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(AppTheme.accent)
             Text("No Active Plans")
-                .font(.title3.bold())
+                .font(AppTheme.playfair(18, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("Tap + to create your first month plan")
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
+
+            Button(action: { showPlanBuilder = true }) {
+                HStack { Text("✦"); Text("Create Plan") }
+            }
+            .buttonStyle(WaxSealButtonStyle(isSecondary: false))
         }
         .frame(maxWidth: .infinity)
         .padding(40)
@@ -146,12 +218,12 @@ struct MonthPlanView: View {
                         viewModel.selectPlan(plan)
                     } label: {
                         Text(plan.title ?? "Plan")
-                            .font(.caption.weight(.medium))
+                            .font(AppTheme.caveat(11))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(viewModel.activePlan?.id == plan.id ? AppTheme.accent : AppTheme.surfaceElevated)
                             .foregroundStyle(viewModel.activePlan?.id == plan.id ? Color.white : AppTheme.textPrimary)
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }
             }
@@ -159,74 +231,29 @@ struct MonthPlanView: View {
         }
     }
 
-    // MARK: - Plan Header
+    // MARK: - Progress Section
 
-    private func planHeader(_ plan: MonthPlan) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let title = plan.title {
-                Text(title)
-                    .font(.title3.bold())
-                    .foregroundStyle(AppTheme.textPrimary)
-            }
-
-            if let overview = plan.aiOverview {
-                Text(overview)
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-
-            HStack {
-                Text(DateFormatter.shortDate.string(from: plan.startDate))
-                Image(systemName: "arrow.right")
-                    .font(.caption)
-                Text(DateFormatter.shortDate.string(from: plan.endDate))
-            }
-            .font(.caption)
-            .foregroundStyle(AppTheme.textSecondary)
+    private var progressSection: some View {
+        HStack {
+            Text("Progress")
+                .font(AppTheme.playfairItalic(13))
+                .foregroundStyle(AppTheme.textPrimary)
+            Spacer()
+            Text("\(viewModel.completedCount)/\(viewModel.totalTrainingDays) sessions")
+                .font(AppTheme.plexMono(11))
+                .foregroundStyle(AppTheme.textSecondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cardStyle()
     }
 
-    // MARK: - Progress Bar
-
-    private var progressBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Progress")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(AppTheme.textPrimary)
-                Spacer()
-                Text("\(viewModel.completedCount)/\(viewModel.totalTrainingDays) sessions")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(AppTheme.surfaceElevated)
-                        .frame(height: 8)
-
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(AppTheme.accentGradient)
-                        .frame(width: geo.size.width * viewModel.progressFraction, height: 8)
-                }
-            }
-            .frame(height: 8)
-        }
-        .cardStyle()
-    }
-
-    // MARK: - Calendar Grid
+    // MARK: - Calendar Grid (Mon-Sun)
 
     private var calendarGrid: some View {
-        VStack(spacing: 4) {
-            // Day headers
-            HStack(spacing: 4) {
-                ForEach(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], id: \.self) { day in
+        VStack(spacing: 3) {
+            // Day headers: Mon-Sun
+            HStack(spacing: 3) {
+                ForEach(["M","T","W","T","F","S","S"], id: \.self) { day in
                     Text(day)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(AppTheme.caveat(9))
                         .foregroundStyle(AppTheme.textSecondary)
                         .frame(maxWidth: .infinity)
                 }
@@ -235,7 +262,7 @@ struct MonthPlanView: View {
             // Calendar weeks
             let weeks = calendarWeeks
             ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     ForEach(Array(week.enumerated()), id: \.offset) { _, dateOpt in
                         if let date = dateOpt {
                             MonthDayTileView(
@@ -250,27 +277,94 @@ struct MonthPlanView: View {
                         } else {
                             Color.clear
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 48)
+                                .frame(height: 44)
                         }
                     }
                 }
             }
         }
-        .cardStyle()
     }
 
-    /// Organize dates into weeks (Sun-Sat rows), with nil for empty cells.
+    // MARK: - This Week's Plan
+
+    private var thisWeekSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("This Week's Plan")
+                .notebookSectionHeader()
+
+            let weekSessions = currentWeekSessions
+            if weekSessions.isEmpty {
+                Text("No sessions planned this week")
+                    .font(AppTheme.caveat(13))
+                    .foregroundStyle(AppTheme.textSecondary)
+            } else {
+                ForEach(weekSessions, id: \.id) { session in
+                    weekSessionRow(session)
+                }
+            }
+        }
+    }
+
+    private func weekSessionRow(_ session: PlannedSession) -> some View {
+        HStack(spacing: 8) {
+            // Status square
+            let isToday = Calendar.current.isDateInToday(session.plannedDate)
+            let isDone = session.completed
+
+            RoundedRectangle(cornerRadius: 2)
+                .fill(isDone ? AppTheme.success : isToday ? AppTheme.accent : AppTheme.surfaceElevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(isDone ? AppTheme.success : isToday ? AppTheme.accent : AppTheme.border, lineWidth: 1)
+                )
+                .frame(width: 10, height: 10)
+
+            // Day + workout
+            let dayStr: String = {
+                let f = DateFormatter()
+                f.dateFormat = "EEE"
+                return f.string(from: session.plannedDate)
+            }()
+
+            if session.isRestDay {
+                Text("\(dayStr) · Rest")
+                    .font(AppTheme.caveat(12))
+                    .foregroundStyle(AppTheme.textSecondary)
+            } else {
+                Text("\(dayStr) · \(session.workoutType)")
+                    .font(AppTheme.caveat(12, weight: isToday ? .bold : .regular))
+                    .foregroundStyle(isToday ? AppTheme.accent : AppTheme.textSecondary)
+            }
+
+            Spacer()
+
+            // Status label
+            if isDone {
+                Text("Done ✓")
+                    .font(AppTheme.caveat(10))
+                    .foregroundStyle(AppTheme.success)
+            } else if isToday && !session.isRestDay {
+                Text("▶ Now")
+                    .font(AppTheme.plexMono(9))
+                    .foregroundStyle(AppTheme.warning)
+            }
+        }
+    }
+
+    // MARK: - Computed
+
+    /// Organize dates into Mon-Sun weeks, with nil for empty cells.
     private var calendarWeeks: [[Date?]] {
         let dates = viewModel.calendarDates
         guard let firstDate = dates.first else { return [] }
 
         let calendar = Calendar.current
-        let weekday = calendar.component(.weekday, from: firstDate) // 1 = Sun
-        let leadingEmpties = weekday - 1
+        // weekday: 1=Sun, 2=Mon, ..., 7=Sat — we want Mon=0
+        let weekday = calendar.component(.weekday, from: firstDate) // 1-7
+        let leadingEmpties = (weekday + 5) % 7 // Mon-based offset
 
         var allSlots: [Date?] = Array(repeating: nil, count: leadingEmpties) + dates.map { $0 }
 
-        // Pad to complete the last week
         let remainder = allSlots.count % 7
         if remainder > 0 {
             allSlots.append(contentsOf: Array(repeating: nil as Date?, count: 7 - remainder))
@@ -279,6 +373,19 @@ struct MonthPlanView: View {
         return stride(from: 0, to: allSlots.count, by: 7).map {
             Array(allSlots[$0..<min($0 + 7, allSlots.count)])
         }
+    }
+
+    private var currentWeekSessions: [PlannedSession] {
+        let calendar = Calendar.current
+        let today = Date()
+        // Start of this week (Monday)
+        var components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
+        components.weekday = 2 // Monday
+        guard let weekStart = calendar.date(from: components),
+              let weekEnd = calendar.date(byAdding: .day, value: 7, to: weekStart) else { return [] }
+        return viewModel.sessions
+            .filter { $0.plannedDate >= weekStart && $0.plannedDate < weekEnd }
+            .sorted { $0.plannedDate < $1.plannedDate }
     }
 }
 
@@ -337,7 +444,6 @@ private struct InlineWorkoutSheet: View {
                 }
                 if !hasTriggeredGeneration {
                     hasTriggeredGeneration = true
-                    // Ensure userId is set without restoring an old saved session
                     if todayViewModel.userId == nil,
                        let userId = environment.authService.currentUser()?.userId {
                         todayViewModel.setUserIdSkipRestore(userId)
@@ -363,7 +469,6 @@ private struct InlineWorkoutSheet: View {
                     }
                     activeWorkoutViewModel = vm
                 } else if newPhase == .setup {
-                    // Workout was saved — auto-dismiss
                     onDismiss()
                 }
             }
@@ -385,10 +490,10 @@ private struct InlineWorkoutSheet: View {
                 .foregroundStyle(AppTheme.accent)
                 .symbolEffect(.pulse, options: .repeating)
             Text("Generating \(workoutType) workout...")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("Your AI coach is building a plan")
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -397,8 +502,6 @@ private struct InlineWorkoutSheet: View {
 
 // MARK: - Plan Builder Wrapper
 
-/// Wrapper that owns the PlanBuilderViewModel as a @StateObject so it
-/// isn't recreated on every SwiftUI body evaluation.
 private struct PlanBuilderWrapper: View {
     let environment: AppEnvironment
     let onPlanGenerated: (MonthPlan, [PlannedSession]) -> Void
@@ -423,15 +526,13 @@ private struct PlanBuilderWrapper: View {
 
 // MARK: - Inline Workout Context
 
-/// Identifiable wrapper for the inline workout flow so fullScreenCover(item:)
-/// guarantees a non-nil context when the cover renders.
 private struct InlineWorkoutContext: Identifiable {
     let id = UUID()
     let viewModel: TodayViewModel
     let workoutType: String
 }
 
-// MARK: - PlannedSession + Hashable (for sheet)
+// MARK: - PlannedSession + Hashable
 
 extension PlannedSession: Hashable {
     static func == (lhs: PlannedSession, rhs: PlannedSession) -> Bool {

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Phase of the Today tab lifecycle.
 enum TodayPhase {
@@ -13,8 +14,11 @@ enum TodayPhase {
 /// transitioning between setup/active/post states.
 final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "TodayViewModel")
+
     @Published var phase: TodayPhase = .setup
     @Published var exercises: [Exercise] = []
+    @Published var exerciseListResetToken: Int = 0
     @Published var loggedSets: [UUID: [WorkoutSet]] = [:]
     @Published var aiProgressionNote: String?
     @Published var streak: Int = 0
@@ -73,7 +77,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         // Restore workout in session service
         sessionService.startSession(workout: state.workout, exercises: state.exercises)
 
-        print("[TodayViewModel] Restored workout session: \(state.exercises.count) exercises, \(loggedSets.values.flatMap { $0 }.count) sets")
+        logger.debug("Restored workout session: \(state.exercises.count) exercises, \(state.loggedSets.values.flatMap { $0 }.count) sets")
     }
 
     func saveSessionState() {
@@ -93,7 +97,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     }
 
     func generatePlan(workoutType: String, time: Int, energy: Int, notes: String?) {
-        guard let userId = userId else { return }
+        guard let userId = userId else {
+            errorMessage = "Sign in required to generate a workout."
+            return
+        }
         phase = .generating
         errorMessage = nil
         sessionService.generatePlan(
@@ -197,7 +204,13 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     // MARK: - WorkoutSessionServiceDelegate
 
     func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise]) {
+        guard !exercises.isEmpty else {
+            self.errorMessage = "Couldn't build a workout. Please try again."
+            self.phase = .setup
+            return
+        }
         self.exercises = exercises
+        self.exerciseListResetToken += 1
         self.phase = .confirmation
     }
 
@@ -330,6 +343,34 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         }
 
         // Save state after modification
+        saveSessionState()
+    }
+
+    // MARK: - Manual Exercise Management
+
+    func addExerciseManually(name: String, muscleGroup: String) {
+        guard let workoutId = sessionService.currentWorkoutId else { return }
+        let newExercise = Exercise.create(
+            workoutId: workoutId,
+            name: name,
+            muscleGroup: muscleGroup,
+            orderIndex: exercises.count,
+            targetSets: 3,
+            targetReps: "8-12",
+            targetRir: "2",
+            restSeconds: 90,
+            coachNote: nil
+        )
+        exercises.append(newExercise)
+        workoutRepository.saveExercises([newExercise], workoutId: workoutId)
+        saveSessionState()
+    }
+
+    func removeExercise(at id: UUID) {
+        guard let index = exercises.firstIndex(where: { $0.id == id }) else { return }
+        exercises.remove(at: index)
+        loggedSets.removeValue(forKey: id)
+        workoutRepository.deleteExercise(id)
         saveSessionState()
     }
 }

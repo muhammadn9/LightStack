@@ -123,7 +123,8 @@ struct WorkoutModificationParser {
 
         guard parts.count >= 3 else { return nil }
 
-        let names = parts[0].split(separator: "→").map { $0.trimmingCharacters(in: .whitespaces) }
+        let normalized = parts[0].replacingOccurrences(of: "->", with: "→")
+        let names = normalized.split(separator: "→").map { $0.trimmingCharacters(in: .whitespaces) }
         guard names.count == 2 else { return nil }
 
         let oldName = names[0]

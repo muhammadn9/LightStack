@@ -1,0 +1,49 @@
+name: Feature Request
+description: New capability or improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      placeholder: "As a user logging a workout, I can't see my previous set's weight without scrolling back up"
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      placeholder: "Show the last logged weight as a ghost placeholder in the reps/weight input fields"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Files likely involved
+      placeholder: "ActiveWorkoutView.swift, WorkoutSessionService.swift"
+
+  - type: dropdown
+    id: archetype
+    attributes:
+      label: Feature area
+      options:
+        - Today / Active Workout
+        - AI Coach
+        - Form Analysis
+        - History
+        - Month Plan
+        - Profile
+        - Settings
+        - Auth / Onboarding
+        - Data / Sync
+        - Other
+
+  - type: checkboxes
+    id: agent
+    attributes:
+      label: Agent-ready
+      description: Check if this is scoped enough for Claude to implement from this description alone
+      options:
+        - label: Ready for Claude — add the `claude` label to trigger the agent

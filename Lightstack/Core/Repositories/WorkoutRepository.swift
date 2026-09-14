@@ -108,6 +108,17 @@ final class WorkoutRepository {
         localStorage.deleteExercise(exerciseId: exerciseId)
     }
 
+    func deleteExercises(forWorkoutId workoutId: UUID) {
+        localStorage.deleteExercises(workoutId: workoutId)
+        Task {
+            do {
+                try await supabaseService.deleteExercises(workoutId: workoutId)
+            } catch {
+                // Non-critical: local delete succeeded; Supabase will reconcile on next sync
+            }
+        }
+    }
+
     func deleteWorkout(_ workout: Workout) {
         localStorage.deleteWorkout(workoutId: workout.id)
         Task {

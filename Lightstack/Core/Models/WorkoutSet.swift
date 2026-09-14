@@ -15,6 +15,10 @@ struct WorkoutSet: Codable, Identifiable {
     var isPR: Bool
     var syncStatus: SyncStatus
     var recordedAt: Date
+    // Cardio-specific fields (nil for strength sets)
+    var durationSeconds: Int?
+    var distanceMiles: Double?
+    var inclineLevel: Double?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -27,6 +31,9 @@ struct WorkoutSet: Codable, Identifiable {
         case userFeedback = "user_feedback"
         case isPR = "is_pr"
         case recordedAt = "recorded_at"
+        case durationSeconds = "duration_seconds"
+        case distanceMiles = "distance_miles"
+        case inclineLevel = "incline_level"
     }
 
     // syncStatus is local-only
@@ -44,6 +51,9 @@ struct WorkoutSet: Codable, Identifiable {
         isPR = try c.decodeIfPresent(Bool.self, forKey: .isPR) ?? false
         recordedAt = try c.decode(Date.self, forKey: .recordedAt)
         syncStatus = .synced
+        durationSeconds = try c.decodeIfPresent(Int.self, forKey: .durationSeconds)
+        distanceMiles = try c.decodeIfPresent(Double.self, forKey: .distanceMiles)
+        inclineLevel = try c.decodeIfPresent(Double.self, forKey: .inclineLevel)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -58,6 +68,9 @@ struct WorkoutSet: Codable, Identifiable {
         try c.encodeIfPresent(userFeedback, forKey: .userFeedback)
         try c.encode(isPR, forKey: .isPR)
         try c.encode(recordedAt, forKey: .recordedAt)
+        try c.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
+        try c.encodeIfPresent(distanceMiles, forKey: .distanceMiles)
+        try c.encodeIfPresent(inclineLevel, forKey: .inclineLevel)
     }
 
     func toSupabase() -> WorkoutSet {
@@ -78,6 +91,9 @@ struct WorkoutSet: Codable, Identifiable {
         self.isPR = cdEntity.isPR
         self.syncStatus = SyncStatus(rawValue: cdEntity.syncStatus ?? "pending") ?? .pending
         self.recordedAt = cdEntity.recordedAt ?? Date()
+        self.durationSeconds = (cdEntity.value(forKey: "durationSeconds") as? NSNumber).map { Int(truncating: $0) }
+        self.distanceMiles = (cdEntity.value(forKey: "distanceMiles") as? NSNumber).map { Double(truncating: $0) }
+        self.inclineLevel = (cdEntity.value(forKey: "inclineLevel") as? NSNumber).map { Double(truncating: $0) }
     }
 
     func applyToCoreData(_ entity: CDWorkoutSet) {
@@ -91,6 +107,9 @@ struct WorkoutSet: Codable, Identifiable {
         entity.isPR = isPR
         entity.syncStatus = syncStatus.rawValue
         entity.recordedAt = recordedAt
+        entity.setValue(durationSeconds.map { NSNumber(value: $0) }, forKey: "durationSeconds")
+        entity.setValue(distanceMiles.map { NSNumber(value: $0) }, forKey: "distanceMiles")
+        entity.setValue(inclineLevel.map { NSNumber(value: $0) }, forKey: "inclineLevel")
     }
 
     // MARK: - Factory
@@ -101,7 +120,10 @@ struct WorkoutSet: Codable, Identifiable {
         weightLbs: Double,
         reps: Int,
         rir: Int,
-        userFeedback: String? = nil
+        userFeedback: String? = nil,
+        durationSeconds: Int? = nil,
+        distanceMiles: Double? = nil,
+        inclineLevel: Double? = nil
     ) -> WorkoutSet {
         WorkoutSet(
             id: UUID(),
@@ -114,7 +136,10 @@ struct WorkoutSet: Codable, Identifiable {
             userFeedback: userFeedback,
             isPR: false,
             syncStatus: .pending,
-            recordedAt: Date()
+            recordedAt: Date(),
+            durationSeconds: durationSeconds,
+            distanceMiles: distanceMiles,
+            inclineLevel: inclineLevel
         )
     }
 
@@ -123,7 +148,8 @@ struct WorkoutSet: Codable, Identifiable {
     init(
         id: UUID, exerciseId: UUID, localId: String?, setNumber: Int,
         weightLbs: Double, reps: Int, rir: Int, userFeedback: String?,
-        isPR: Bool, syncStatus: SyncStatus, recordedAt: Date
+        isPR: Bool, syncStatus: SyncStatus, recordedAt: Date,
+        durationSeconds: Int? = nil, distanceMiles: Double? = nil, inclineLevel: Double? = nil
     ) {
         self.id = id
         self.exerciseId = exerciseId
@@ -136,5 +162,8 @@ struct WorkoutSet: Codable, Identifiable {
         self.isPR = isPR
         self.syncStatus = syncStatus
         self.recordedAt = recordedAt
+        self.durationSeconds = durationSeconds
+        self.distanceMiles = distanceMiles
+        self.inclineLevel = inclineLevel
     }
 }

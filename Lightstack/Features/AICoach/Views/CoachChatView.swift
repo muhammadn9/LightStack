@@ -48,7 +48,7 @@ struct CoachChatView: View {
 
     private var systemBanner: some View {
         Text("Chat with your coach about this session")
-            .font(.caption)
+            .font(AppTheme.caveat(12))
             .foregroundStyle(AppTheme.textSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
@@ -73,7 +73,7 @@ struct CoachChatView: View {
                             ProgressView()
                                 .tint(AppTheme.accent)
                             Text("Coach is thinking...")
-                                .font(.caption)
+                                .font(AppTheme.caveat(12))
                                 .foregroundStyle(AppTheme.textSecondary)
                             Spacer()
                         }
@@ -99,10 +99,11 @@ struct CoachChatView: View {
         HStack(spacing: 12) {
             TextField("Ask your coach...", text: $viewModel.inputText)
                 .textFieldStyle(.plain)
+                .font(AppTheme.caveat(14))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .foregroundStyle(AppTheme.textPrimary)
 
             Button(action: { viewModel.sendMessage() }) {

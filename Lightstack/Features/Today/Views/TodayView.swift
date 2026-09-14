@@ -12,8 +12,6 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
-
                 Group {
                     switch viewModel.phase {
                     case .setup:
@@ -47,7 +45,11 @@ struct TodayView: View {
                         PostWorkoutView(todayViewModel: viewModel)
                     }
                 }
+                .id(viewModel.phase)
+                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .center)))
+                .animation(.easeInOut(duration: 0.28), value: viewModel.phase)
             }
+            .themedBackground()
             .onAppear {
                 if chatViewModel == nil {
                     chatViewModel = environment.makeCoachChatViewModel()
@@ -92,35 +94,34 @@ struct TodayView: View {
     // MARK: - Generating State
 
     private var generatingView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             ZStack {
-                // Pulsing rings
+                // Ink-ring pulse
                 ForEach(0..<3) { i in
-                    Circle()
-                        .stroke(AppTheme.accent.opacity(0.2 - Double(i) * 0.05), lineWidth: 2)
-                        .frame(width: CGFloat(60 + i * 30), height: CGFloat(60 + i * 30))
-                        .scaleEffect(1.0)
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(AppTheme.accent.opacity(0.18 - Double(i) * 0.05), lineWidth: 1.5)
+                        .frame(width: CGFloat(56 + i * 24), height: CGFloat(56 + i * 24))
                         .animation(
-                            .easeInOut(duration: 1.5)
+                            .easeInOut(duration: 1.6)
                                 .repeatForever(autoreverses: true)
-                                .delay(Double(i) * 0.3),
+                                .delay(Double(i) * 0.35),
                             value: viewModel.phase
                         )
                 }
-
-                Image(systemName: "sparkles")
-                    .font(.system(size: 32))
+                Image(systemName: "pencil.and.list.clipboard")
+                    .font(.system(size: 28, weight: .light))
                     .foregroundStyle(AppTheme.accent)
                     .symbolEffect(.pulse, options: .repeating)
             }
 
-            Text("Generating your workout...")
-                .font(.headline)
-                .foregroundStyle(AppTheme.textPrimary)
-
-            Text("Your AI coach is building a plan")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.textSecondary)
+            VStack(spacing: 6) {
+                Text("Writing your plan…")
+                    .font(AppTheme.playfairItalic(17, weight: .bold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text("Your coach is preparing the workout")
+                    .font(AppTheme.caveat(15))
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

@@ -1,11 +1,14 @@
 import Foundation
 import SwiftUI
 import Supabase
+import os
 
 /// DI container and shared environment object.
 /// Owns all service and repository singletons.
 /// Conforms to AuthServiceDelegate to propagate auth state changes.
 final class AppEnvironment: ObservableObject, AuthServiceDelegate {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "AppEnvironment")
 
     // MARK: - Auth State
 
@@ -69,12 +72,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         let supabaseURL = Bundle.main.infoDictionary?["SUPABASE_URL"] as? String ?? ""
         let supabaseKey = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String ?? ""
 
-        // Fail loudly at development time if keys are missing so misconfiguration
-        // is never silently swallowed (placeholder URL would produce cryptic errors).
-        assert(!supabaseURL.isEmpty, "SUPABASE_URL is not configured — add Secrets.xcconfig")
-        assert(!supabaseKey.isEmpty, "SUPABASE_ANON_KEY is not configured — add Secrets.xcconfig")
-
-        let resolvedURL = URL(string: supabaseURL) ?? URL(string: "https://placeholder.supabase.co")!
+        precondition(!supabaseURL.isEmpty, "SUPABASE_URL is not configured — add Secrets.xcconfig")
+        precondition(!supabaseKey.isEmpty, "SUPABASE_ANON_KEY is not configured — add Secrets.xcconfig")
+        guard let resolvedURL = URL(string: supabaseURL) else {
+            fatalError("SUPABASE_URL is invalid — add a valid URL in Secrets.xcconfig")
+        }
         self.supabaseClient = SupabaseClient(
             supabaseURL: resolvedURL,
             supabaseKey: supabaseKey,
@@ -298,11 +300,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         if isAuthenticated, let userId = authService.currentUser()?.userId {
             let profile = profileRepository.fetchProfileSync(userId: userId)
             if profile != nil {
-                print("[AppEnvironment] Existing profile found, setting hasCompletedOnboarding = true")
+                logger.debug("Existing profile found, setting hasCompletedOnboarding = true")
                 hasCompletedOnboarding = true
                 UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
             } else {
-                print("[AppEnvironment] No profile found, user needs onboarding")
+                logger.debug("No profile found, user needs onboarding")
                 hasCompletedOnboarding = false
             }
         }

@@ -21,27 +21,30 @@ struct PostWorkoutView: View {
     // MARK: - Completion Header
 
     private var completionHeader: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             ZStack {
-                Circle()
-                    .fill(AppTheme.success.opacity(0.15))
-                    .frame(width: 100, height: 100)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56))
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .fill(AppTheme.success.opacity(0.1))
+                    .frame(width: 88, height: 88)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                            .stroke(AppTheme.success.opacity(0.3), lineWidth: 1)
+                    )
+                Image(systemName: "checkmark")
+                    .font(.system(size: 40, weight: .light))
                     .foregroundStyle(AppTheme.success)
-                    .shadow(color: AppTheme.success.opacity(0.3), radius: 8)
             }
 
-            Text("Workout Complete")
-                .font(.title2.bold())
+            Text("Session Complete")
+                .font(AppTheme.playfairItalic(22, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
-            Text("Great session! Here's your coach's feedback.")
-                .font(.subheadline)
+            Text("Logged to your training journal")
+                .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
-        .padding(.top, 20)
+        .padding(.top, 16)
     }
 
     // MARK: - Session Stats
@@ -62,16 +65,16 @@ struct PostWorkoutView: View {
                 .font(.caption)
                 .foregroundStyle(AppTheme.accentSecondary)
             Text(value)
-                .font(.headline)
+                .font(AppTheme.plexMono(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text(unit)
-                .font(.caption2)
+                .font(AppTheme.caveat(10))
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     private var sessionVolume: Double {
@@ -93,7 +96,7 @@ struct PostWorkoutView: View {
                     .foregroundStyle(AppTheme.accent)
                     .symbolEffect(.pulse, options: .repeating)
                 Text("Coach's Progression Note")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
@@ -102,7 +105,7 @@ struct PostWorkoutView: View {
                     ProgressView()
                         .tint(AppTheme.accent)
                     Text("Analyzing your session...")
-                        .font(.subheadline)
+                        .font(AppTheme.caveat(14))
                         .foregroundStyle(AppTheme.textSecondary)
                 }
                 .padding()
@@ -113,13 +116,13 @@ struct PostWorkoutView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 2))
 
                     Text(note)
-                        .font(.body)
+                        .font(AppTheme.caveat(15))
                         .foregroundStyle(AppTheme.textPrimary)
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(AppTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
     }
@@ -129,7 +132,7 @@ struct PostWorkoutView: View {
     private var userNoteSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Your Notes (optional)")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
 
             TextField("How did it feel? Anything to remember?",
@@ -138,8 +141,17 @@ struct PostWorkoutView: View {
                 .padding(14)
                 .background(AppTheme.surface)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .lineLimit(3...6)
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") {
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        }
+                        .foregroundStyle(AppTheme.accent)
+                    }
+                }
         }
     }
 
@@ -147,18 +159,13 @@ struct PostWorkoutView: View {
 
     private var saveButton: some View {
         Button(action: { todayViewModel.saveWorkout(userNote: userNote.isEmpty ? nil : userNote) }) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "square.and.arrow.down")
-                Text("Save Workout")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(todayViewModel.isLoadingNote ? "Analyzing…" : "Save to Training Log")
             }
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(AppTheme.accentGradient)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            .shadow(color: AppTheme.accent.opacity(0.3), radius: 8, x: 0, y: 4)
         }
+        .buttonStyle(WaxSealButtonStyle(isSecondary: false))
         .disabled(todayViewModel.isLoadingNote)
         .opacity(todayViewModel.isLoadingNote ? 0.6 : 1)
     }

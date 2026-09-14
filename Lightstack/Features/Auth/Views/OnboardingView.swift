@@ -1,10 +1,13 @@
 import SwiftUI
+import os
 
 /// Three-step onboarding flow with purple radiant dark theme:
 /// 1. Profile stats (age, weight, height, training age, goals)
 /// 2. Split day setup with preset suggestions
 /// 3. Equipment picker
 struct OnboardingView: View {
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "OnboardingView")
+
     @EnvironmentObject var environment: AppEnvironment
     @State private var currentStep = 0
 
@@ -75,7 +78,7 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("About You")
-                    .font(.title2.bold())
+                    .font(AppTheme.playfair(22, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
 
                 themedField("Display Name", text: $displayName)
@@ -92,7 +95,7 @@ struct OnboardingView: View {
                 }
 
                 Text("Goals")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 goalSelectionGrid
             }
@@ -113,14 +116,15 @@ struct OnboardingView: View {
         let isSelected = selectedGoals.contains(goal)
         return Button(action: { toggleGoal(goal) }) {
             Text(goal)
-                .font(.subheadline)
+                .font(AppTheme.caveat(14))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(isSelected ? AppTheme.accent : AppTheme.surface)
                 .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    Capsule().stroke(isSelected ? Color.clear : AppTheme.surfaceElevated, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .stroke(isSelected ? Color.clear : AppTheme.border, lineWidth: 1)
                 )
         }
     }
@@ -139,10 +143,10 @@ struct OnboardingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Your Split Days")
-                    .font(.title2.bold())
+                    .font(AppTheme.playfair(22, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("Name your training days however you like. These are suggestions to get started.")
-                    .font(.subheadline)
+                    .font(AppTheme.caveat(15))
                     .foregroundStyle(AppTheme.textSecondary)
 
                 presetSuggestions
@@ -156,7 +160,7 @@ struct OnboardingView: View {
     private var presetSuggestions: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Quick Presets")
-                .font(.headline)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
             presetButton("PPL", days: ["Push", "Pull", "Legs"])
             presetButton("Bro Split", days: ["Chest", "Back", "Shoulders", "Arms", "Legs"])
@@ -169,10 +173,10 @@ struct OnboardingView: View {
         let isActive = splitDays == days
         return Button(action: { splitDays = days }) {
             HStack {
-                Text(name).fontWeight(.medium).foregroundStyle(AppTheme.textPrimary)
+                Text(name).font(AppTheme.caveat(14, weight: .bold)).foregroundStyle(AppTheme.textPrimary)
                 Spacer()
                 Text(days.joined(separator: ", "))
-                    .font(.caption)
+                    .font(AppTheme.caveat(11))
                     .foregroundStyle(AppTheme.textSecondary)
             }
             .padding(12)
@@ -190,7 +194,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 8) {
             if !splitDays.isEmpty {
                 Text("Your Days")
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .padding(.top, 8)
                 ForEach(Array(splitDays.enumerated()), id: \.offset) { index, day in
@@ -252,7 +256,7 @@ struct OnboardingView: View {
         HStack {
             if currentStep > 0 {
                 Button("Back") { currentStep -= 1 }
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
@@ -266,7 +270,7 @@ struct OnboardingView: View {
                         currentStep += 1
                     }
                 }
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
@@ -275,7 +279,7 @@ struct OnboardingView: View {
                     .disabled(!canProceedToNextStep)
             } else {
                 Button("Finish") { completeOnboarding() }
-                    .font(.headline)
+                    .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
@@ -320,7 +324,7 @@ struct OnboardingView: View {
             notesToCoach: nil
         )
 
-        print("[OnboardingView] Saving profile with split days: \(splitDays)")
+        logger.debug("Saving profile with split days: \(splitDays)")
         environment.profileRepository.saveProfile(profile)
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         environment.hasCompletedOnboarding = true
@@ -342,7 +346,7 @@ struct OnboardingView: View {
         keyboard: UIKeyboardType
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption).foregroundStyle(AppTheme.textSecondary)
+            Text(label).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
             TextField(label, text: text)
                 .keyboardType(keyboard)
                 .padding(12)

@@ -1,7 +1,10 @@
 import Foundation
+import os
 
 /// Manages profile state: streak, total sessions, volume, duration, and more.
 final class ProfileViewModel: ObservableObject {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "ProfileViewModel")
 
     @Published var streak: Int = 0
     @Published var totalSessions: Int = 0
@@ -70,18 +73,18 @@ final class ProfileViewModel: ObservableObject {
 
     func loadProfile(userId: UUID) {
         profile = profileRepository.loadProfile(userId: userId)
-        print("[ProfileViewModel] Loaded profile: \(profile?.displayName ?? "nil")")
-        print("[ProfileViewModel] Split days: \(profile?.splitDays ?? [])")
+        logger.debug("Loaded profile: \(self.profile?.displayName ?? "nil")")
+        logger.debug("Split days: \(self.profile?.splitDays ?? [])")
     }
 
     // MARK: - Editing
 
     func startEditing() {
         guard let profile = profile else {
-            print("[ProfileViewModel] Cannot start editing - profile is nil")
+            logger.error("Cannot start editing - profile is nil")
             return
         }
-        print("[ProfileViewModel] Starting edit with profile: \(profile.displayName ?? "no name")")
+        logger.debug("Starting edit with profile: \(profile.displayName ?? "no name")")
         isEditing = true
 
         editDisplayName = profile.displayName ?? ""
@@ -114,14 +117,15 @@ final class ProfileViewModel: ObservableObject {
 
         // Parse and update fields
         profile.displayName = validationService.sanitize(editDisplayName)
-        profile.age = Int(editAge)
-        profile.weightLbs = Double(editWeightLbs)
+        if let n = Int(editAge), (10...120).contains(n) { profile.age = n }
+        if let w = Double(editWeightLbs), (50...1000).contains(w) { profile.weightLbs = w }
 
-        if let feet = Int(editHeightFeet), let inches = Int(editHeightInches) {
+        if let feet = Int(editHeightFeet), let inches = Int(editHeightInches),
+           (3...8).contains(feet), (0...11).contains(inches) {
             profile.heightInches = Double(feet * 12 + inches)
         }
 
-        profile.trainingAgeMonths = Int(editTrainingAgeMonths)
+        if let tam = Int(editTrainingAgeMonths) { profile.trainingAgeMonths = max(0, min(1200, tam)) }
         profile.primaryGoals = Array(editGoals)
         profile.splitDays = editSplitDays
         profile.equipment = editEquipment

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - Delegate
 
@@ -15,6 +16,8 @@ protocol WorkoutSessionServiceDelegate: AnyObject {
 /// creating a workout record, adding exercises and sets,
 /// computing volume, and finalizing with AI progression note.
 final class WorkoutSessionService {
+
+    private let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionService")
 
     weak var delegate: WorkoutSessionServiceDelegate?
 
@@ -299,7 +302,7 @@ final class WorkoutSessionService {
                     }
                 }
             case .failure(let error):
-                print("WorkoutSessionService: Context summary generation failed: \(error.localizedDescription)")
+                self.logger.error("Context summary generation failed: \(error.localizedDescription)")
             }
         }
     }
@@ -307,19 +310,29 @@ final class WorkoutSessionService {
     // MARK: - Parse Exercise Table
 
     /// Parse markdown table into Exercise structs.
-    /// Expected format: | Exercise | Sets | Target Weight | Reps | RIR | Rest |
+    /// Detects column positions from the header row so it handles both:
+    ///   | Exercise | Sets | Target Weight | Reps | RIR | Rest |
+    ///   | Muscle Group | Exercise | Sets | Target Weight | Reps | RIR | Rest |
     /// Defensive parsing — returns empty array on malformed output, never crashes.
     func parseExerciseTable(_ text: String) -> [Exercise] {
         guard let workoutId = currentWorkoutId else { return [] }
 
-        // Use .newlines to handle both \n and \r\n line endings from API responses
         let lines = text.components(separatedBy: .newlines)
         var exercises: [Exercise] = []
         var orderIndex = 0
 
+        // Column indices — set to defaults for old format, overridden by header detection
+        var nameCol = 0
+        var muscleCol: Int? = nil
+        var setsCol = 1
+        var weightCol = 2
+        var repsCol = 3
+        var rirCol = 4
+        var restCol = 5
+        var headerParsed = false
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-
             guard trimmed.hasPrefix("|") && trimmed.hasSuffix("|") else { continue }
 
             let columns = trimmed
@@ -327,32 +340,57 @@ final class WorkoutSessionService {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
 
             guard columns.count >= 4 else { continue }
-            if columns[0].lowercased().contains("exercise") { continue }
-            if columns[0].contains("---") { continue }
 
-            let rawName = columns[0]
+            // Skip separator rows
+            if columns.contains(where: { $0.hasPrefix("-") }) { continue }
+
+            // Header row: detect column indices once
+            if !headerParsed {
+                let lower = columns.map { $0.lowercased() }
+                if lower.contains(where: { $0.contains("exercise") || $0.contains("sets") || $0.contains("movement") }) {
+                    for (i, col) in lower.enumerated() {
+                        if col.contains("exercise") || col.contains("movement") { nameCol = i }
+                        else if col.contains("muscle") || col.contains("group")  { muscleCol = i }
+                        else if col.contains("set")                               { setsCol = i }
+                        else if col.contains("weight") || col.contains("target")  { weightCol = i }
+                        else if col.contains("rep")                               { repsCol = i }
+                        else if col.contains("rir")                               { rirCol = i }
+                        else if col.contains("rest")                              { restCol = i }
+                    }
+                    headerParsed = true
+                    continue
+                }
+            }
+
+            guard columns.count > nameCol else { continue }
+            let rawName = columns[nameCol]
             guard !rawName.isEmpty, !rawName.contains("---") else { continue }
 
-            // Sanitize AI-generated exercise names before storing
             let name = validationService.sanitizeLabel(rawName)
             guard !name.isEmpty else { continue }
 
-            let setsStr = columns.count > 1 ? columns[1] : ""
-            let weightStr = columns.count > 2 ? columns[2] : ""
-            let repsStr = columns.count > 3 ? columns[3] : ""
-            let rirStr = columns.count > 4 ? columns[4] : ""
-            let restStr = columns.count > 5 ? columns[5] : ""
+            let setsStr   = columns.count > setsCol   ? columns[setsCol]   : ""
+            let weightStr = columns.count > weightCol  ? columns[weightCol] : ""
+            let repsStr   = columns.count > repsCol    ? columns[repsCol]   : ""
+            let rirStr    = columns.count > rirCol     ? columns[rirCol]    : ""
+            let restStr   = columns.count > restCol    ? columns[restCol]   : ""
+
+            // Use Muscle Group column when present, otherwise infer from name
+            let muscleGroup: String
+            if let mc = muscleCol, columns.count > mc, !columns[mc].isEmpty {
+                muscleGroup = columns[mc]
+            } else {
+                muscleGroup = inferMuscleGroup(name)
+            }
 
             let targetSets = parseFirstInt(setsStr)
-            // Skip rows that have no valid set count — these are section headers
-            // (e.g. "Quads/Glutes (form focus)") not actual exercises
-            guard let targetSets = targetSets, targetSets > 0 else { continue }
+            guard let targetSets, targetSets > 0 else { continue }
             let restSeconds = parseRestSeconds(restStr)
 
             let exercise = Exercise.create(
                 workoutId: workoutId,
                 name: name,
-                muscleGroup: inferMuscleGroup(name),
+                muscleGroup: muscleGroup,
                 orderIndex: orderIndex,
                 targetSets: targetSets,
                 targetReps: repsStr.isEmpty ? nil : repsStr,
@@ -367,24 +405,144 @@ final class WorkoutSessionService {
         return exercises
     }
 
+    // MARK: - JSON Parser
+
+    func parseWorkoutPlanJSON(_ text: String) -> [Exercise]? {
+        guard let workoutId = currentWorkoutId else { return nil }
+
+        // Strip accidental markdown code-fences some providers emit
+        var jsonString = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if jsonString.hasPrefix("```") {
+            let lines = jsonString.components(separatedBy: .newlines)
+            jsonString = lines.dropFirst().dropLast().joined(separator: "\n")
+        }
+
+        guard let data = jsonString.data(using: .utf8) else { return nil }
+
+        let decoded: WorkoutPlanResponse
+        do {
+            decoded = try JSONDecoder().decode(WorkoutPlanResponse.self, from: data)
+        } catch {
+            logger.error("JSON parse failed: \(String(describing: error))")
+            return nil
+        }
+
+        guard !decoded.exercises.isEmpty else { return nil }
+
+        var exercises: [Exercise] = []
+        for (index, aiEx) in decoded.exercises.enumerated() {
+            let name = validationService.sanitizeLabel(aiEx.name)
+            guard !name.isEmpty, aiEx.sets > 0 else { continue }
+
+            // Preserve "Target: {weight}" prefix convention that
+            // ActiveWorkoutViewModel.prefillWeightValue depends on
+            let weightNote = aiEx.targetWeight.flatMap { $0.isEmpty ? nil : "Target: \($0)" }
+            let mergedNote: String?
+            switch (weightNote, aiEx.coachNote) {
+            case let (w?, c?): mergedNote = "\(w) — \(c)"
+            case let (w?, nil): mergedNote = w
+            case let (nil, c?): mergedNote = c
+            case (nil, nil):    mergedNote = nil
+            }
+
+            let muscleGroup = aiEx.muscleGroup.isEmpty ? inferMuscleGroup(name) : aiEx.muscleGroup
+
+            exercises.append(Exercise.create(
+                workoutId: workoutId,
+                name: name,
+                muscleGroup: muscleGroup,
+                orderIndex: index,
+                targetSets: aiEx.sets,
+                targetReps: aiEx.reps,
+                targetRir: aiEx.rir,
+                restSeconds: aiEx.restSeconds,
+                coachNote: mergedNote
+            ))
+        }
+        return exercises.isEmpty ? nil : exercises
+    }
+
     // MARK: - Response Handlers
 
     private func handleWorkoutPlanResponse(_ text: String) {
-        let exercises = parseExerciseTable(text)
-        if exercises.isEmpty {
-            let error = NSError(domain: "WorkoutSessionService", code: -1,
-                                userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"])
-            delegate?.sessionServiceDidFail(self, error: error)
+        // Primary path: JSON
+        if let exercises = parseWorkoutPlanJSON(text) {
+            logger.debug("JSON parse succeeded: \(exercises.count) exercises")
+            finalizePlan(exercises)
             return
         }
+        // Fallback: markdown table (zero regression during rollout)
+        logger.debug("JSON parse failed, attempting markdown fallback")
+        let fallback = parseExerciseTable(text)
+        guard !fallback.isEmpty else {
+            delegate?.sessionServiceDidFail(self, error: NSError(
+                domain: "WorkoutSessionService", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"]
+            ))
+            return
+        }
+        logger.debug("Markdown fallback succeeded: \(fallback.count) exercises")
+        finalizePlan(fallback)
+    }
+
+    private func finalizePlan(_ exercises: [Exercise]) {
         if let workoutId = currentWorkoutId {
+            workoutRepository.deleteExercises(forWorkoutId: workoutId)
             workoutRepository.saveExercises(exercises, workoutId: workoutId)
         }
         delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises)
     }
 
     private func handleProgressionNoteResponse(_ text: String) {
-        delegate?.sessionServiceDidReceiveProgressionNote(self, note: text)
+        let clean = extractProgressionNote(from: text)
+        delegate?.sessionServiceDidReceiveProgressionNote(self, note: clean)
+    }
+
+    /// Extracts a plain-prose progression note from the AI response.
+    ///
+    /// Input shapes handled:
+    /// - Plain prose (happy path): trimmed and returned as-is.
+    /// - Fenced JSON (```json { ... } ```): fences stripped, then JSON decoded.
+    /// - Bare JSON object/array: decoded directly.
+    /// - JSON that decodes but has no usable `coaching_notes`: returns "".
+    /// - Anything that looks like JSON but cannot be decoded: returns "".
+    private func extractProgressionNote(from text: String) -> String {
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        // Strip markdown code fences if present
+        if trimmed.hasPrefix("```") {
+            let lines = trimmed.components(separatedBy: .newlines)
+            trimmed = lines.dropFirst().dropLast().joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // If it doesn't look like JSON, it's plain prose — pass through
+        guard trimmed.hasPrefix("{") || trimmed.hasPrefix("[") else {
+            return trimmed
+        }
+
+        // Looks like JSON — attempt to extract coaching_notes
+        guard let data = trimmed.data(using: .utf8) else {
+            logger.warning("Progression note looked like JSON but couldn't be encoded to data — hiding card")
+            return ""
+        }
+
+        // Try to decode as the known workout plan schema (has coaching_notes key)
+        if let decoded = try? JSONDecoder().decode(ProgressionNoteEnvelope.self, from: data),
+           let note = decoded.coachingNotes, !note.isEmpty {
+            logger.debug("Progression note extracted from JSON coaching_notes field")
+            return note.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Try to decode as a bare JSON string value
+        if let decoded = try? JSONDecoder().decode(String.self, from: data), !decoded.isEmpty {
+            logger.debug("Progression note extracted from bare JSON string")
+            return decoded.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        logger.warning("Progression note was JSON but coaching_notes couldn't be extracted — hiding card")
+        return ""
     }
 
     // MARK: - Private Helpers
@@ -422,5 +580,43 @@ final class WorkoutSessionService {
             return "Chest"
         }
         return "General"
+    }
+}
+
+// MARK: - JSON Models
+
+/// Minimal envelope for defensive parsing of a progression note response that
+/// accidentally came back as JSON (matches the workout-plan schema's top-level keys).
+private struct ProgressionNoteEnvelope: Decodable {
+    let coachingNotes: String?
+    enum CodingKeys: String, CodingKey {
+        case coachingNotes = "coaching_notes"
+    }
+}
+
+private struct WorkoutPlanResponse: Decodable {
+    let exercises: [AIExercise]
+    let coachingNotes: String?
+    enum CodingKeys: String, CodingKey {
+        case exercises
+        case coachingNotes = "coaching_notes"
+    }
+}
+
+private struct AIExercise: Decodable {
+    let name: String
+    let muscleGroup: String
+    let sets: Int
+    let targetWeight: String?
+    let reps: String?
+    let rir: String?
+    let restSeconds: Int?
+    let coachNote: String?
+    enum CodingKeys: String, CodingKey {
+        case name, sets, reps, rir
+        case muscleGroup  = "muscle_group"
+        case targetWeight = "target_weight"
+        case restSeconds  = "rest_seconds"
+        case coachNote    = "coach_note"
     }
 }

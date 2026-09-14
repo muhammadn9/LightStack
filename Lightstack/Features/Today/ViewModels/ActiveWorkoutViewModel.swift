@@ -3,10 +3,15 @@ import Foundation
 /// One pending (not-yet-logged) set for an exercise, with editable fields.
 struct PendingSetInput: Identifiable {
     var id = UUID()
+    // Strength fields
     var weight: String
     var reps: String
     var rir: String
     var note: String = ""
+    // Cardio fields (ignored for strength exercises)
+    var duration: String = ""
+    var distance: String = ""
+    var incline: String = ""
 }
 
 /// Manages active workout state: current exercises, set logging,
@@ -21,7 +26,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
     @Published var editingReps: [UUID: String] = [:]
     @Published var editingRir: [UUID: String] = [:]
     @Published var editingNote: [UUID: String] = [:]
-    @Published var restTimers: [UUID: Int] = [:]    // exerciseId → seconds remaining
+    @Published var restTimerTargetDates: [UUID: Date] = [:]    // exerciseId → target end date
+    @Published var restTimerTotalSeconds: [UUID: Int] = [:]    // exerciseId → original duration
     @Published var activeRestExerciseId: UUID? = nil
     @Published var elapsedSeconds: Int = 0
     @Published var isPaused: Bool = false
@@ -81,7 +87,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
         let weight: Double
         if weightStr.isEmpty || weightStr.uppercased() == "BW" {
             weight = 0.0
-        } else if let w = Double(weightStr), w >= 0 {
+        } else if let w = Double(weightStr), w > 0 {
             weight = w
         } else {
             return nil
@@ -163,12 +169,23 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
         while current.count < needed {
             let last = loggedSets[exercise.id]?.last
-            current.append(PendingSetInput(
-                weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
-                    ?? prefillWeightValue(from: exercise),
-                reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-                rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
-            ))
+            if exercise.trackingType == .cardio {
+                current.append(PendingSetInput(
+                    weight: "",
+                    reps: "",
+                    rir: "",
+                    duration: last?.durationSeconds.map { CardioFormatting.formatDuration($0) } ?? "",
+                    distance: last?.distanceMiles.map { String(format: "%g", $0) } ?? "",
+                    incline: last?.inclineLevel.map { String(format: "%g", $0) } ?? ""
+                ))
+            } else {
+                current.append(PendingSetInput(
+                    weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
+                        ?? prefillWeightValue(from: exercise),
+                    reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
+                    rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+                ))
+            }
         }
         if current.count > needed {
             current = Array(current.prefix(needed))
@@ -177,32 +194,54 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     /// Log the pending set at `index`, add it to loggedSets, and remove it from pendingSets.
-    func logPendingSet(at index: Int, exerciseId: UUID) -> WorkoutSet? {
+    /// Pass the exercise so we can branch on trackingType.
+    func logPendingSet(at index: Int, exerciseId: UUID, exercise: Exercise? = nil) -> WorkoutSet? {
         guard var pending = pendingSets[exerciseId], index < pending.count else { return nil }
 
         let entry = pending[index]
-        let weight: Double
-        if entry.weight.isEmpty || entry.weight.uppercased() == "BW" {
-            weight = 0.0
-        } else if let w = Double(entry.weight), w >= 0 {
-            weight = w
-        } else {
-            return nil
-        }
-        guard let reps = Int(entry.reps), reps > 0 else { return nil }
-        let rir = Int(entry.rir) ?? 2
-
         let existingSets = loggedSets[exerciseId] ?? []
         let setNumber = existingSets.count + 1
 
-        let workoutSet = WorkoutSet.create(
-            exerciseId: exerciseId,
-            setNumber: setNumber,
-            weightLbs: weight,
-            reps: reps,
-            rir: rir,
-            userFeedback: entry.note.isEmpty ? nil : entry.note
-        )
+        let workoutSet: WorkoutSet
+
+        if exercise?.trackingType == .cardio {
+            // Cardio: require duration, distance and incline are optional
+            guard !entry.duration.isEmpty,
+                  let durationSecs = CardioFormatting.parseDuration(entry.duration) else { return nil }
+            let distance = Double(entry.distance)
+            let incline = Double(entry.incline)
+            workoutSet = WorkoutSet.create(
+                exerciseId: exerciseId,
+                setNumber: setNumber,
+                weightLbs: 0,
+                reps: 0,
+                rir: 0,
+                userFeedback: entry.note.isEmpty ? nil : entry.note,
+                durationSeconds: durationSecs,
+                distanceMiles: distance,
+                inclineLevel: incline
+            )
+        } else {
+            // Strength: require reps, weight optional
+            let weight: Double
+            if entry.weight.isEmpty || entry.weight.uppercased() == "BW" {
+                weight = 0.0
+            } else if let w = Double(entry.weight), w > 0 {
+                weight = w
+            } else {
+                return nil
+            }
+            guard let reps = Int(entry.reps), reps > 0 else { return nil }
+            let rir = Int(entry.rir) ?? 2
+            workoutSet = WorkoutSet.create(
+                exerciseId: exerciseId,
+                setNumber: setNumber,
+                weightLbs: weight,
+                reps: reps,
+                rir: rir,
+                userFeedback: entry.note.isEmpty ? nil : entry.note
+            )
+        }
 
         var logged = existingSets
         logged.append(workoutSet)
@@ -224,12 +263,24 @@ final class ActiveWorkoutViewModel: ObservableObject {
     /// Add one extra pending set pre-filled from the last logged set (or AI target).
     func addPendingSet(for exercise: Exercise) {
         let last = loggedSets[exercise.id]?.last
-        let entry = PendingSetInput(
-            weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
-                ?? prefillWeightValue(from: exercise),
-            reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-            rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
-        )
+        let entry: PendingSetInput
+        if exercise.trackingType == .cardio {
+            entry = PendingSetInput(
+                weight: "",
+                reps: "",
+                rir: "",
+                duration: last?.durationSeconds.map { CardioFormatting.formatDuration($0) } ?? "",
+                distance: last?.distanceMiles.map { String(format: "%g", $0) } ?? "",
+                incline: last?.inclineLevel.map { String(format: "%g", $0) } ?? ""
+            )
+        } else {
+            entry = PendingSetInput(
+                weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
+                    ?? prefillWeightValue(from: exercise),
+                reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
+                rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+            )
+        }
         pendingSets[exercise.id, default: []].append(entry)
     }
 
@@ -261,26 +312,31 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     // MARK: - Rest Timer
 
-    /// Start a rest countdown timer for an exercise.
+    /// Start a rest countdown timer for an exercise using a target date for background-safe accuracy.
     func startRestTimer(for exerciseId: UUID, seconds: Int, exerciseName: String = "") {
         onRestTimerCancel?()  // cancel any existing notification
         restTimerClock?.invalidate()
         restTimerClock = nil
-        restTimers[exerciseId] = seconds
+
+        let targetDate = Date().addingTimeInterval(TimeInterval(seconds))
+        restTimerTargetDates[exerciseId] = targetDate
+        restTimerTotalSeconds[exerciseId] = seconds
         activeRestExerciseId = exerciseId
 
         restTimerClock = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] t in
             guard let self = self else { t.invalidate(); return }
             DispatchQueue.main.async {
-                let current = self.restTimers[exerciseId] ?? 0
-                if current <= 1 {
-                    self.restTimers[exerciseId] = 0
+                guard let target = self.restTimerTargetDates[exerciseId] else { t.invalidate(); return }
+                let remaining = Int(target.timeIntervalSinceNow.rounded())
+                if remaining <= 0 {
+                    self.restTimerTargetDates.removeValue(forKey: exerciseId)
+                    self.restTimerTotalSeconds.removeValue(forKey: exerciseId)
                     self.activeRestExerciseId = nil
                     t.invalidate()
                     self.restTimerClock = nil
                     self.onRestTimerCancel?()  // timer expired naturally
                 } else {
-                    self.restTimers[exerciseId] = current - 1
+                    self.objectWillChange.send()  // re-render timer display
                 }
             }
         }
@@ -289,10 +345,17 @@ final class ActiveWorkoutViewModel: ObservableObject {
     }
 
     func formattedRestTime(for exerciseId: UUID) -> String? {
-        guard let remaining = restTimers[exerciseId], remaining > 0 else { return nil }
+        guard let target = restTimerTargetDates[exerciseId] else { return nil }
+        let remaining = max(0, Int(target.timeIntervalSinceNow.rounded()))
+        guard remaining > 0 else { return nil }
         let minutes = remaining / 60
         let seconds = remaining % 60
         return minutes > 0 ? "\(minutes):\(String(format: "%02d", seconds))" : "\(seconds)s"
+    }
+
+    /// Call on app foreground return to refresh timer display after background suspension.
+    func refreshRestTimers() {
+        objectWillChange.send()
     }
 
     deinit {

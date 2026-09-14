@@ -1,6 +1,14 @@
 import Foundation
 import CoreData
 
+/// Distinguishes strength exercises (weight × reps × RIR) from cardio
+/// exercises (duration × distance × incline). Derived from muscleGroup so
+/// no migration is needed.
+enum TrackingType: String, Codable {
+    case strength
+    case cardio
+}
+
 /// Local representation of the exercises table.
 struct Exercise: Codable, Identifiable {
     let id: UUID
@@ -96,6 +104,13 @@ struct Exercise: Codable, Identifiable {
         entity.restSeconds = Int32(restSeconds ?? 0)
         entity.coachNote = coachNote
         entity.syncStatus = syncStatus.rawValue
+    }
+
+    // MARK: - Tracking Type
+
+    /// Derived from muscleGroup — no stored field, no migration required.
+    var trackingType: TrackingType {
+        muscleGroup.caseInsensitiveCompare("Cardio") == .orderedSame ? .cardio : .strength
     }
 
     // MARK: - Factory
