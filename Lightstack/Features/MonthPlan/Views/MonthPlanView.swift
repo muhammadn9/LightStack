@@ -204,24 +204,11 @@ struct MonthPlanView: View {
     // MARK: - Plan Switcher Chips
 
     private var planSwitcherChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(viewModel.allPlans) { plan in
-                    Button {
-                        viewModel.selectPlan(plan)
-                    } label: {
-                        Text(plan.title ?? "Plan")
-                            .font(AppTheme.caveat(11))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(viewModel.activePlan?.id == plan.id ? AppTheme.accent : AppTheme.surfaceElevated)
-                            .foregroundStyle(viewModel.activePlan?.id == plan.id ? Color.white : AppTheme.textPrimary)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                }
-            }
-            .padding(.horizontal, 4)
-        }
+        PlanSwitcherChipsView(
+            plans: viewModel.allPlans,
+            activePlanId: viewModel.activePlan?.id,
+            onSelect: { viewModel.selectPlan($0) }
+        )
     }
 
     // MARK: - Progress Section
@@ -241,103 +228,21 @@ struct MonthPlanView: View {
     // MARK: - Calendar Grid (Mon-Sun)
 
     private var calendarGrid: some View {
-        VStack(spacing: 3) {
-            // Day headers: Mon-Sun
-            HStack(spacing: 3) {
-                ForEach(["M","T","W","T","F","S","S"], id: \.self) { day in
-                    Text(day)
-                        .font(AppTheme.caveat(9))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
+        MonthCalendarGridView(
+            weeks: calendarWeeks,
+            sessionForDate: { viewModel.session(for: $0) },
+            onTapDate: { date in
+                if let session = viewModel.session(for: date) {
+                    selectedSession = session
                 }
             }
-
-            // Calendar weeks
-            let weeks = calendarWeeks
-            ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
-                HStack(spacing: 3) {
-                    ForEach(Array(week.enumerated()), id: \.offset) { _, dateOpt in
-                        if let date = dateOpt {
-                            MonthDayTileView(
-                                date: date,
-                                session: viewModel.session(for: date),
-                                onTap: {
-                                    if let session = viewModel.session(for: date) {
-                                        selectedSession = session
-                                    }
-                                }
-                            )
-                        } else {
-                            Color.clear
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                        }
-                    }
-                }
-            }
-        }
+        )
     }
 
     // MARK: - This Week's Plan
 
     private var thisWeekSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("This Week's Plan")
-                .notebookSectionHeader()
-
-            let weekSessions = currentWeekSessions
-            if weekSessions.isEmpty {
-                Text("No sessions planned this week")
-                    .font(AppTheme.caveat(13))
-                    .foregroundStyle(AppTheme.textSecondary)
-            } else {
-                ForEach(weekSessions, id: \.id) { session in
-                    weekSessionRow(session)
-                }
-            }
-        }
-    }
-
-    private func weekSessionRow(_ session: PlannedSession) -> some View {
-        HStack(spacing: 8) {
-            // Status square
-            let isToday = Calendar.current.isDateInToday(session.plannedDate)
-            let isDone = session.completed
-
-            RoundedRectangle(cornerRadius: 2)
-                .fill(isDone ? AppTheme.success : isToday ? AppTheme.accent : AppTheme.surfaceElevated)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(isDone ? AppTheme.success : isToday ? AppTheme.accent : AppTheme.border, lineWidth: 1)
-                )
-                .frame(width: 10, height: 10)
-
-            // Day + workout
-            let dayStr: String = DateFormatter.dayAbbreviation.string(from: session.plannedDate)
-
-            if session.isRestDay {
-                Text("\(dayStr) · Rest")
-                    .font(AppTheme.caveat(12))
-                    .foregroundStyle(AppTheme.textSecondary)
-            } else {
-                Text("\(dayStr) · \(session.workoutType)")
-                    .font(AppTheme.caveat(12, weight: isToday ? .bold : .regular))
-                    .foregroundStyle(isToday ? AppTheme.accent : AppTheme.textSecondary)
-            }
-
-            Spacer()
-
-            // Status label
-            if isDone {
-                Text("Done ✓")
-                    .font(AppTheme.caveat(10))
-                    .foregroundStyle(AppTheme.success)
-            } else if isToday && !session.isRestDay {
-                Text("▶ Now")
-                    .font(AppTheme.plexMono(9))
-                    .foregroundStyle(AppTheme.warning)
-            }
-        }
+        ThisWeekSectionView(sessions: currentWeekSessions)
     }
 
     // MARK: - Computed
