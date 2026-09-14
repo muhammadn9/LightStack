@@ -39,5 +39,5 @@ All work goes to `claude/v3-tests-and-ui` (current branch).
 2. **User approves the plan.** The plan is presented to the repo owner for explicit go-ahead.
 3. **Sonnet subagents implement.** Once approved, work is split into independent workstreams dispatched to Sonnet subagents. Subagents must not commit or push — the orchestrator builds and commits centrally. Subagents that touch overlapping files run sequentially, not in parallel.
 4. **User review.** The orchestrator builds, verifies EXIT=0, and brings the repo owner in to review before anything is pushed.
-5. **Push + PR.** After owner approval, push and open a PR. GitHub-side Claude review runs automatically.
+5. **Push + PR.** After owner approval, push and open a PR. GitHub Copilot reviews the PR; there is no GitHub-side Claude review (it would need a paid `ANTHROPIC_API_KEY`).
 6. **Back to Opus.** PR review feedback returns to Opus, which triages it and re-enters the loop at step 1 for anything needing changes.
