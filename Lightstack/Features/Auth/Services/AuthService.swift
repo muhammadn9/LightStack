@@ -29,7 +29,12 @@ final class AuthService: NSObject {
     /// Redirect URL for email verification links — must match the
     /// CFBundleURLSchemes entry in Info.plist AND the "Redirect URLs"
     /// allow-list in the Supabase dashboard.
-    static let redirectURL = URL(string: "lightstack://auth-callback")!
+    static let redirectURL: URL = {
+        guard let url = URL(string: "lightstack://auth-callback") else {
+            preconditionFailure("Malformed static redirect URL")
+        }
+        return url
+    }()
 
     // MARK: - Init
 
@@ -41,8 +46,13 @@ final class AuthService: NSObject {
     override convenience init() {
         let url = Bundle.main.infoDictionary?["SUPABASE_URL"] as? String ?? ""
         let key = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String ?? ""
+        guard let resolvedURL = URL(string: url), !url.isEmpty else {
+            let logger = Logger(subsystem: "org.lightstack.app", category: "AuthService")
+            logger.critical("SUPABASE_URL is missing or invalid — add a valid URL in Secrets.xcconfig")
+            fatalError("SUPABASE_URL is missing or invalid — add a valid URL in Secrets.xcconfig")
+        }
         let client = SupabaseClient(
-            supabaseURL: URL(string: url)!,
+            supabaseURL: resolvedURL,
             supabaseKey: key
         )
         self.init(client: client)

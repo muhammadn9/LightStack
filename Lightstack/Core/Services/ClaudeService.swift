@@ -19,17 +19,14 @@ final class ClaudeService: AIProvider {
     // MARK: - AIProvider
 
     var name: String { "Claude" }
+    var rateLimitKey: String { "claude_rate_limit_until" }
 
     var isAvailable: Bool {
         guard !apiKey.isEmpty else { return false }
-        if let rateLimitUntil = UserDefaults.standard.object(forKey: "claude_rate_limit_until") as? Date {
+        if let rateLimitUntil = UserDefaults.standard.object(forKey: rateLimitKey) as? Date {
             return Date() >= rateLimitUntil
         }
         return true
-    }
-
-    var nextAvailableTime: Date? {
-        UserDefaults.standard.object(forKey: "claude_rate_limit_until") as? Date
     }
 
     func generateChat(
@@ -41,23 +38,13 @@ final class ClaudeService: AIProvider {
         logger.debug("System prompt: \(systemPrompt.count) chars")
         logger.debug("Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
 
-        guard !apiKey.isEmpty else{
-            let error = NSError(
-                domain: "ClaudeService",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing CLAUDE_API_KEY"]
-            )
-            completion(.failure(error))
+        guard !apiKey.isEmpty else {
+            completion(.failure(missingAPIKeyError()))
             return
         }
 
         guard let url = URL(string: baseURL) else {
-            let error = NSError(
-                domain: "ClaudeService",
-                code: -2,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid API URL"]
-            )
-            completion(.failure(error))
+            completion(.failure(invalidURLError()))
             return
         }
 
@@ -70,19 +57,16 @@ final class ClaudeService: AIProvider {
         request.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        let task = session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else { return }
+
             if let error = error {
                 DispatchQueue.main.async { completion(.failure(error)) }
                 return
             }
 
-            guard let data = data else {
-                let error = NSError(
-                    domain: "ClaudeService",
-                    code: -3,
-                    userInfo: [NSLocalizedDescriptionKey: "No data received"]
-                )
-                DispatchQueue.main.async { completion(.failure(error)) }
+            guard let data else {
+                DispatchQueue.main.async { completion(.failure(self.noDataError())) }
                 return
             }
 
@@ -94,16 +78,6 @@ final class ClaudeService: AIProvider {
             }
         }
         task.resume()
-    }
-
-    func markRateLimited(until: Date) {
-        UserDefaults.standard.set(until, forKey: "claude_rate_limit_until")
-        logger.debug("Rate limited until \(until)")
-    }
-
-    func clearRateLimit() {
-        UserDefaults.standard.removeObject(forKey: "claude_rate_limit_until")
-        logger.debug("Rate limit cleared")
     }
 
     // MARK: - Private
@@ -132,40 +106,26 @@ final class ClaudeService: AIProvider {
     }
 
     private func parseResponse(_ data: Data) throws -> String {
-        // Log raw response for debugging
         if let responseString = String(data: data, encoding: .utf8) {
             logger.debug("Raw API response: \(responseString)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             logger.error("Failed to parse JSON from response")
-            throw NSError(
-                domain: "ClaudeService",
-                code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to parse Claude response - invalid JSON"]
-            )
+            throw parseError("invalid JSON")
         }
 
-        // Check for API error response
-        if let error = json["error"] as? [String: Any],
-           let message = error["message"] as? String {
+        if let errorObj = json["error"] as? [String: Any],
+           let message = errorObj["message"] as? String {
             logger.error("API error: \(message)")
-            throw NSError(
-                domain: "ClaudeService",
-                code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "Claude API error: \(message)"]
-            )
+            throw apiResponseError(message)
         }
 
         guard let content = json["content"] as? [[String: Any]],
               let firstContent = content.first,
               let text = firstContent["text"] as? String else {
             logger.error("Failed to extract content. Keys: \(String(describing: json.keys))")
-            throw NSError(
-                domain: "ClaudeService",
-                code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to parse Claude response - invalid structure"]
-            )
+            throw parseError("invalid structure")
         }
 
         return text
