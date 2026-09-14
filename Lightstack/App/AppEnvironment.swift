@@ -72,14 +72,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         let supabaseURL = Bundle.main.infoDictionary?["SUPABASE_URL"] as? String ?? ""
         let supabaseKey = Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String ?? ""
 
-        // Fail loudly at development time if keys are missing so misconfiguration
-        // is never silently swallowed (placeholder URL would produce cryptic errors).
-        assert(!supabaseURL.isEmpty, "SUPABASE_URL is not configured — add Secrets.xcconfig")
-        assert(!supabaseKey.isEmpty, "SUPABASE_ANON_KEY is not configured — add Secrets.xcconfig")
-
-        // The asserts above guarantee supabaseURL is non-empty and well-formed at
-        // development time; the fallback below is unreachable in practice.
-        let resolvedURL = URL(string: supabaseURL) ?? URL(fileURLWithPath: "/dev/null")
+        precondition(!supabaseURL.isEmpty, "SUPABASE_URL is not configured — add Secrets.xcconfig")
+        precondition(!supabaseKey.isEmpty, "SUPABASE_ANON_KEY is not configured — add Secrets.xcconfig")
+        guard let resolvedURL = URL(string: supabaseURL) else {
+            fatalError("SUPABASE_URL is invalid — add a valid URL in Secrets.xcconfig")
+        }
         self.supabaseClient = SupabaseClient(
             supabaseURL: resolvedURL,
             supabaseKey: supabaseKey,
