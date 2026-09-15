@@ -8,9 +8,7 @@ struct WorkoutSetupView: View {
     @State private var showManualEntry = false
 
     private var todayHeader: String {
-        let f = DateFormatter()
-        f.dateFormat = "EEEE, MMMM d"
-        return "\(f.string(from: Date())) — Training Log"
+        "\(DateFormatter.weekdayMonthDay.string(from: Date())) — Training Log"
     }
 
     var body: some View {

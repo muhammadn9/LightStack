@@ -47,6 +47,13 @@ enum AppTheme {
         startPoint: .leading, endPoint: .trailing
     )
 
+    /// Bright green gradient for success-action buttons (e.g. "Analyse Form").
+    static let successActionGradient = LinearGradient(
+        colors: [Color(red: 0.2, green: 0.75, blue: 0.2),
+                 Color(red: 0.1, green: 0.5,  blue: 0.1)],
+        startPoint: .leading, endPoint: .trailing
+    )
+
     // MARK: - Notebook-specific Colors
 
     static let bindingStrip    = Color(.secondarySystemGroupedBackground)

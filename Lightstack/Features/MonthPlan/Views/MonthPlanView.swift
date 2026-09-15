@@ -127,9 +127,10 @@ struct MonthPlanView: View {
             }
         }
         .fullScreenCover(item: $inlineWorkoutContext) { context in
-            InlineWorkoutSheet(
+            WorkoutSessionSheet(
                 todayViewModel: context.viewModel,
                 workoutType: context.workoutType,
+                mode: .generate,
                 onDismiss: { inlineWorkoutContext = nil }
             )
             .environmentObject(environment)
@@ -142,16 +143,8 @@ struct MonthPlanView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .lastTextBaseline) {
                 // Month + year
-                let monthStr: String = {
-                    let f = DateFormatter()
-                    f.dateFormat = "MMMM"
-                    return f.string(from: plan.startDate)
-                }()
-                let yearStr: String = {
-                    let f = DateFormatter()
-                    f.dateFormat = "yyyy"
-                    return f.string(from: plan.startDate)
-                }()
+                let monthStr: String = DateFormatter.monthName.string(from: plan.startDate)
+                let yearStr: String = DateFormatter.year.string(from: plan.startDate)
 
                 HStack(alignment: .lastTextBaseline, spacing: 6) {
                     Text(monthStr)
@@ -211,24 +204,11 @@ struct MonthPlanView: View {
     // MARK: - Plan Switcher Chips
 
     private var planSwitcherChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(viewModel.allPlans) { plan in
-                    Button {
-                        viewModel.selectPlan(plan)
-                    } label: {
-                        Text(plan.title ?? "Plan")
-                            .font(AppTheme.caveat(11))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(viewModel.activePlan?.id == plan.id ? AppTheme.accent : AppTheme.surfaceElevated)
-                            .foregroundStyle(viewModel.activePlan?.id == plan.id ? Color.white : AppTheme.textPrimary)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                }
-            }
-            .padding(.horizontal, 4)
-        }
+        PlanSwitcherChipsView(
+            plans: viewModel.allPlans,
+            activePlanId: viewModel.activePlan?.id,
+            onSelect: { viewModel.selectPlan($0) }
+        )
     }
 
     // MARK: - Progress Section
@@ -248,107 +228,21 @@ struct MonthPlanView: View {
     // MARK: - Calendar Grid (Mon-Sun)
 
     private var calendarGrid: some View {
-        VStack(spacing: 3) {
-            // Day headers: Mon-Sun
-            HStack(spacing: 3) {
-                ForEach(["M","T","W","T","F","S","S"], id: \.self) { day in
-                    Text(day)
-                        .font(AppTheme.caveat(9))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
+        MonthCalendarGridView(
+            weeks: calendarWeeks,
+            sessionForDate: { viewModel.session(for: $0) },
+            onTapDate: { date in
+                if let session = viewModel.session(for: date) {
+                    selectedSession = session
                 }
             }
-
-            // Calendar weeks
-            let weeks = calendarWeeks
-            ForEach(Array(weeks.enumerated()), id: \.offset) { _, week in
-                HStack(spacing: 3) {
-                    ForEach(Array(week.enumerated()), id: \.offset) { _, dateOpt in
-                        if let date = dateOpt {
-                            MonthDayTileView(
-                                date: date,
-                                session: viewModel.session(for: date),
-                                onTap: {
-                                    if let session = viewModel.session(for: date) {
-                                        selectedSession = session
-                                    }
-                                }
-                            )
-                        } else {
-                            Color.clear
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                        }
-                    }
-                }
-            }
-        }
+        )
     }
 
     // MARK: - This Week's Plan
 
     private var thisWeekSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("This Week's Plan")
-                .notebookSectionHeader()
-
-            let weekSessions = currentWeekSessions
-            if weekSessions.isEmpty {
-                Text("No sessions planned this week")
-                    .font(AppTheme.caveat(13))
-                    .foregroundStyle(AppTheme.textSecondary)
-            } else {
-                ForEach(weekSessions, id: \.id) { session in
-                    weekSessionRow(session)
-                }
-            }
-        }
-    }
-
-    private func weekSessionRow(_ session: PlannedSession) -> some View {
-        HStack(spacing: 8) {
-            // Status square
-            let isToday = Calendar.current.isDateInToday(session.plannedDate)
-            let isDone = session.completed
-
-            RoundedRectangle(cornerRadius: 2)
-                .fill(isDone ? AppTheme.success : isToday ? AppTheme.accent : AppTheme.surfaceElevated)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 2)
-                        .stroke(isDone ? AppTheme.success : isToday ? AppTheme.accent : AppTheme.border, lineWidth: 1)
-                )
-                .frame(width: 10, height: 10)
-
-            // Day + workout
-            let dayStr: String = {
-                let f = DateFormatter()
-                f.dateFormat = "EEE"
-                return f.string(from: session.plannedDate)
-            }()
-
-            if session.isRestDay {
-                Text("\(dayStr) · Rest")
-                    .font(AppTheme.caveat(12))
-                    .foregroundStyle(AppTheme.textSecondary)
-            } else {
-                Text("\(dayStr) · \(session.workoutType)")
-                    .font(AppTheme.caveat(12, weight: isToday ? .bold : .regular))
-                    .foregroundStyle(isToday ? AppTheme.accent : AppTheme.textSecondary)
-            }
-
-            Spacer()
-
-            // Status label
-            if isDone {
-                Text("Done ✓")
-                    .font(AppTheme.caveat(10))
-                    .foregroundStyle(AppTheme.success)
-            } else if isToday && !session.isRestDay {
-                Text("▶ Now")
-                    .font(AppTheme.plexMono(9))
-                    .foregroundStyle(AppTheme.warning)
-            }
-        }
+        ThisWeekSectionView(sessions: currentWeekSessions)
     }
 
     // MARK: - Computed
@@ -386,117 +280,6 @@ struct MonthPlanView: View {
         return viewModel.sessions
             .filter { $0.plannedDate >= weekStart && $0.plannedDate < weekEnd }
             .sorted { $0.plannedDate < $1.plannedDate }
-    }
-}
-
-// MARK: - Inline Workout Sheet
-
-private struct InlineWorkoutSheet: View {
-    @EnvironmentObject var environment: AppEnvironment
-    @ObservedObject var todayViewModel: TodayViewModel
-    let workoutType: String
-    let onDismiss: () -> Void
-
-    @State private var activeWorkoutViewModel: ActiveWorkoutViewModel?
-    @State private var chatViewModel: CoachChatViewModel?
-    @State private var hasTriggeredGeneration = false
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
-
-                Group {
-                    switch todayViewModel.phase {
-                    case .setup, .generating:
-                        generatingView
-                    case .confirmation:
-                        ConfirmWorkoutView(
-                            todayViewModel: todayViewModel,
-                            chatViewModel: chatViewModel,
-                            workoutType: workoutType
-                        )
-                    case .active:
-                        if let activeVM = activeWorkoutViewModel {
-                            ActiveWorkoutView(
-                                viewModel: activeVM,
-                                todayViewModel: todayViewModel,
-                                chatViewModel: chatViewModel ?? environment.makeCoachChatViewModel()
-                            )
-                        }
-                    case .postWorkout:
-                        PostWorkoutView(todayViewModel: todayViewModel)
-                    }
-                }
-            }
-            .navigationTitle(workoutType)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { onDismiss() }
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-            }
-            .onAppear {
-                if chatViewModel == nil {
-                    chatViewModel = environment.makeCoachChatViewModel()
-                }
-                if !hasTriggeredGeneration {
-                    hasTriggeredGeneration = true
-                    if todayViewModel.userId == nil,
-                       let userId = environment.authService.currentUser()?.userId {
-                        todayViewModel.setUserIdSkipRestore(userId)
-                    }
-                    todayViewModel.generatePlan(
-                        workoutType: workoutType,
-                        time: 60,
-                        energy: 3,
-                        notes: nil
-                    )
-                }
-            }
-            .onChange(of: todayViewModel.phase) { _, newPhase in
-                if newPhase == .active, activeWorkoutViewModel == nil {
-                    let vm = environment.makeActiveWorkoutViewModel()
-                    vm.onRestTimerStart = { name, seconds in
-                        environment.notificationService.scheduleRestTimerAlert(
-                            exerciseName: name, totalRestSeconds: seconds
-                        )
-                    }
-                    vm.onRestTimerCancel = {
-                        environment.notificationService.cancelPendingRestAlerts()
-                    }
-                    activeWorkoutViewModel = vm
-                } else if newPhase == .setup {
-                    onDismiss()
-                }
-            }
-            .alert("Error", isPresented: .init(
-                get: { todayViewModel.errorMessage != nil },
-                set: { if !$0 { todayViewModel.errorMessage = nil } }
-            )) {
-                Button("OK") { todayViewModel.errorMessage = nil }
-            } message: {
-                Text(todayViewModel.errorMessage ?? "")
-            }
-        }
-    }
-
-    private var generatingView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 40))
-                .foregroundStyle(AppTheme.accent)
-                .symbolEffect(.pulse, options: .repeating)
-            Text("Generating \(workoutType) workout...")
-                .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-            Text("Your AI coach is building a plan")
-                .font(AppTheme.caveat(14))
-                .foregroundStyle(AppTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

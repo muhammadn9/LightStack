@@ -247,9 +247,7 @@ struct ProfileView: View {
 
     private var memberSince: String {
         if let user = environment.authService.currentUser() {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "MMM yyyy"
-            return formatter.string(from: user.createdAt)
+            return DateFormatter.monthYear.string(from: user.createdAt)
         }
         return "Unknown"
     }

@@ -40,6 +40,25 @@ final class ActiveWorkoutViewModel: ObservableObject {
     /// Called when a rest timer completes or is cancelled
     var onRestTimerCancel: (() -> Void)?
 
+    /// Total volume (lbs × reps) across all logged sets, given the current exercise list.
+    func runningVolume(exercises: [Exercise]) -> Double {
+        var volume = 0.0
+        for exercise in exercises {
+            for s in loggedSets[exercise.id] ?? [] {
+                volume += s.weightLbs * Double(s.reps)
+            }
+        }
+        return volume
+    }
+
+    /// Fractional progress of the rest timer for `exerciseId` (0…1).
+    func restTimerProgress(for exerciseId: UUID) -> Double {
+        guard let target = restTimerTargetDates[exerciseId] else { return 0 }
+        let total = Double(restTimerTotalSeconds[exerciseId] ?? 90)
+        let remaining = max(0, target.timeIntervalSinceNow)
+        return total > 0 ? (total - remaining) / total : 0
+    }
+
     var formattedElapsedTime: String {
         let minutes = elapsedSeconds / 60
         let seconds = elapsedSeconds % 60

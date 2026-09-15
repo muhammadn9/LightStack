@@ -32,8 +32,6 @@ struct MessageBubbleView: View {
     }
 
     private var formattedTime: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: message.timestamp)
+        DateFormatter.timeShort.string(from: message.timestamp)
     }
 }

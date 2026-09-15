@@ -18,17 +18,14 @@ final class OpenAIService: AIProvider {
     // MARK: - AIProvider
 
     var name: String { "OpenAI" }
+    var rateLimitKey: String { "openai_rate_limit_until" }
 
     var isAvailable: Bool {
         guard !apiKey.isEmpty else { return false }
-        if let rateLimitUntil = UserDefaults.standard.object(forKey: "openai_rate_limit_until") as? Date {
+        if let rateLimitUntil = UserDefaults.standard.object(forKey: rateLimitKey) as? Date {
             return Date() >= rateLimitUntil
         }
         return true
-    }
-
-    var nextAvailableTime: Date? {
-        UserDefaults.standard.object(forKey: "openai_rate_limit_until") as? Date
     }
 
     func generateChat(
@@ -41,22 +38,12 @@ final class OpenAIService: AIProvider {
         logger.debug("Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
 
         guard !apiKey.isEmpty else {
-            let error = NSError(
-                domain: "OpenAIService",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Missing OPENAI_API_KEY"]
-            )
-            completion(.failure(error))
+            completion(.failure(missingAPIKeyError()))
             return
         }
 
         guard let url = URL(string: baseURL) else {
-            let error = NSError(
-                domain: "OpenAIService",
-                code: -2,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid API URL"]
-            )
-            completion(.failure(error))
+            completion(.failure(invalidURLError()))
             return
         }
 
@@ -68,19 +55,16 @@ final class OpenAIService: AIProvider {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        let task = session.dataTask(with: request) { data, response, error in
+        let task = session.dataTask(with: request) { [weak self] data, response, error in
+            guard let self else { return }
+
             if let error = error {
                 DispatchQueue.main.async { completion(.failure(error)) }
                 return
             }
 
-            guard let data = data else {
-                let error = NSError(
-                    domain: "OpenAIService",
-                    code: -3,
-                    userInfo: [NSLocalizedDescriptionKey: "No data received"]
-                )
-                DispatchQueue.main.async { completion(.failure(error)) }
+            guard let data else {
+                DispatchQueue.main.async { completion(.failure(self.noDataError())) }
                 return
             }
 
@@ -92,16 +76,6 @@ final class OpenAIService: AIProvider {
             }
         }
         task.resume()
-    }
-
-    func markRateLimited(until: Date) {
-        UserDefaults.standard.set(until, forKey: "openai_rate_limit_until")
-        logger.debug("Rate limited until \(until)")
-    }
-
-    func clearRateLimit() {
-        UserDefaults.standard.removeObject(forKey: "openai_rate_limit_until")
-        logger.debug("Rate limit cleared")
     }
 
     // MARK: - Private
@@ -132,29 +106,19 @@ final class OpenAIService: AIProvider {
     }
 
     private func parseResponse(_ data: Data) throws -> String {
-        // Log raw response for debugging
         if let responseString = String(data: data, encoding: .utf8) {
             logger.debug("Raw API response: \(responseString)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             logger.error("Failed to parse JSON from response")
-            throw NSError(
-                domain: "OpenAIService",
-                code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to parse OpenAI response - invalid JSON"]
-            )
+            throw parseError("invalid JSON")
         }
 
-        // Check for API error response
-        if let error = json["error"] as? [String: Any],
-           let message = error["message"] as? String {
+        if let errorObj = json["error"] as? [String: Any],
+           let message = errorObj["message"] as? String {
             logger.error("API error: \(message)")
-            throw NSError(
-                domain: "OpenAIService",
-                code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "OpenAI API error: \(message)"]
-            )
+            throw apiResponseError(message)
         }
 
         guard let choices = json["choices"] as? [[String: Any]],
@@ -162,11 +126,7 @@ final class OpenAIService: AIProvider {
               let message = firstChoice["message"] as? [String: Any],
               let content = message["content"] as? String else {
             logger.error("Failed to extract content. Keys: \(String(describing: json.keys))")
-            throw NSError(
-                domain: "OpenAIService",
-                code: -4,
-                userInfo: [NSLocalizedDescriptionKey: "Failed to parse OpenAI response - invalid structure"]
-            )
+            throw parseError("invalid structure")
         }
 
         return content

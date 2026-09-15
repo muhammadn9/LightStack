@@ -49,6 +49,48 @@ extension DateFormatter {
         f.dateFormat = "d"
         return f
     }()
+
+    /// Time: "3:45 PM"
+    static let timeShort: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f
+    }()
+
+    /// Weekday + month + day: "Monday, March 25"
+    static let weekdayMonthDay: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMMM d"
+        return f
+    }()
+
+    /// Weekday + month + day + year: "Monday, March 25, 2026"
+    static let weekdayMonthDayYear: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMMM d, yyyy"
+        return f
+    }()
+
+    /// Month + year: "Mar 2026"
+    static let monthYear: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM yyyy"
+        return f
+    }()
+
+    /// Full month name: "March"
+    static let monthName: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMMM"
+        return f
+    }()
+
+    /// Four-digit year: "2026"
+    static let year: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy"
+        return f
+    }()
 }
 
 extension Date {

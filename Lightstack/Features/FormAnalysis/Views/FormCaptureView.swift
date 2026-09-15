@@ -132,14 +132,7 @@ struct FormCaptureView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(
-                    LinearGradient(
-                        colors: [Color(red: 0.2, green: 0.75, blue: 0.2),
-                                 Color(red: 0.1, green: 0.5, blue: 0.1)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .background(AppTheme.successActionGradient)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .disabled(captureIsAnalyzing)
@@ -184,7 +177,7 @@ struct FormCaptureView: View {
                 .fill(.black.opacity(0.55))
                 .frame(width: 160, height: 160)
             Text("\(countdown)")
-                .font(.system(size: 96, weight: .bold))
+                .font(AppTheme.plexMono(96, weight: .bold))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.6), radius: 8)
         }

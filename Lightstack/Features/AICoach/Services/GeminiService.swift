@@ -1,13 +1,6 @@
 import Foundation
 import os
 
-// MARK: - GeminiServiceDelegate
-
-protocol GeminiServiceDelegate: AnyObject {
-    func geminiService(_ service: GeminiService, didReceiveResponse text: String)
-    func geminiService(_ service: GeminiService, didFailWith error: Error)
-}
-
 // MARK: - GeminiService
 
 /// Handles all Google Gemini API calls.
@@ -17,8 +10,6 @@ final class GeminiService {
 
     private let logger = Logger(subsystem: "org.lightstack.app", category: "GeminiService")
 
-    weak var delegate: GeminiServiceDelegate?
-
     private let apiKey: String
     private let session: URLSession
     private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
@@ -26,61 +17,6 @@ final class GeminiService {
     init() {
         self.apiKey = Bundle.main.infoDictionary?["GEMINI_API_KEY"] as? String ?? ""
         self.session = URLSession.shared
-    }
-
-    // MARK: - Single-Turn (Delegate-based)
-
-    func generateContent(systemPrompt: String, userMessage: String) {
-        guard !apiKey.isEmpty else {
-            let error = NSError(domain: "GeminiService", code: -1,
-                                userInfo: [NSLocalizedDescriptionKey: "Missing GEMINI_API_KEY"])
-            delegate?.geminiService(self, didFailWith: error)
-            return
-        }
-
-        guard let url = URL(string: "\(baseURL)?key=\(apiKey)") else {
-            let error = NSError(domain: "GeminiService", code: -2,
-                                userInfo: [NSLocalizedDescriptionKey: "Invalid API URL"])
-            delegate?.geminiService(self, didFailWith: error)
-            return
-        }
-
-        let body = buildRequestBody(systemPrompt: systemPrompt, userMessage: userMessage)
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        } catch {
-            delegate?.geminiService(self, didFailWith: error)
-            return
-        }
-
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-
-            if let error = error {
-                self.notifyError(error)
-                return
-            }
-
-            guard let data = data else {
-                let error = NSError(domain: "GeminiService", code: -3,
-                                    userInfo: [NSLocalizedDescriptionKey: "No response data"])
-                self.notifyError(error)
-                return
-            }
-
-            do {
-                let text = try self.parseResponse(data)
-                self.notifyResponse(text)
-            } catch {
-                self.notifyError(error)
-            }
-        }
-        task.resume()
     }
 
     // MARK: - Multi-Turn Chat (Callback-based)
@@ -97,16 +33,12 @@ final class GeminiService {
         logger.debug("Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
 
         guard !apiKey.isEmpty else {
-            let error = NSError(domain: "GeminiService", code: -1,
-                                userInfo: [NSLocalizedDescriptionKey: "Missing GEMINI_API_KEY"])
-            DispatchQueue.main.async { completion(.failure(error)) }
+            DispatchQueue.main.async { completion(.failure(self.missingAPIKeyError())) }
             return
         }
 
         guard let url = URL(string: "\(baseURL)?key=\(apiKey)") else {
-            let error = NSError(domain: "GeminiService", code: -2,
-                                userInfo: [NSLocalizedDescriptionKey: "Invalid API URL"])
-            DispatchQueue.main.async { completion(.failure(error)) }
+            DispatchQueue.main.async { completion(.failure(self.invalidURLError())) }
             return
         }
 
@@ -153,9 +85,7 @@ final class GeminiService {
             }
 
             guard let data else {
-                let error = NSError(domain: "GeminiService", code: -3,
-                                    userInfo: [NSLocalizedDescriptionKey: "No response data"])
-                DispatchQueue.main.async { completion(.failure(error)) }
+                DispatchQueue.main.async { completion(.failure(self.noDataError())) }
                 return
             }
 
@@ -170,24 +100,6 @@ final class GeminiService {
     }
 
     // MARK: - Private
-
-    private func buildRequestBody(systemPrompt: String, userMessage: String) -> [String: Any] {
-        [
-            "system_instruction": [
-                "parts": [["text": systemPrompt]]
-            ],
-            "contents": [
-                [
-                    "role": "user",
-                    "parts": [["text": userMessage]]
-                ]
-            ],
-            "generationConfig": [
-                "temperature": 0.7,
-                "maxOutputTokens": 8192
-            ]
-        ]
-    }
 
     private func buildChatRequestBody(systemPrompt: String, messages: [ChatMessage]) -> [String: Any] {
         var contents: [[String: Any]] = []
@@ -214,35 +126,29 @@ final class GeminiService {
     }
 
     private func parseResponse(_ data: Data) throws -> String {
-        // Log raw response for debugging
         if let responseString = String(data: data, encoding: .utf8) {
             logger.debug("Raw API response: \(responseString)")
         }
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             logger.error("Failed to parse JSON from response")
-            throw NSError(domain: "GeminiService", code: -4,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - invalid JSON"])
+            throw parseError("invalid JSON")
         }
 
-        // Check for API error response
-        if let error = json["error"] as? [String: Any],
-           let message = error["message"] as? String {
+        if let errorObj = json["error"] as? [String: Any],
+           let message = errorObj["message"] as? String {
             logger.error("API error: \(message)")
-            throw NSError(domain: "GeminiService", code: -4,
-                          userInfo: [NSLocalizedDescriptionKey: "Gemini API error: \(message)"])
+            throw apiResponseError(message)
         }
 
         guard let candidates = json["candidates"] as? [[String: Any]] else {
             logger.error("No 'candidates' array in response. Keys: \(String(describing: json.keys))")
-            throw NSError(domain: "GeminiService", code: -4,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - no candidates"])
+            throw parseError("no candidates")
         }
 
         guard let firstCandidate = candidates.first else {
             logger.error("Candidates array is empty")
-            throw NSError(domain: "GeminiService", code: -4,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - empty candidates"])
+            throw parseError("empty candidates")
         }
 
         guard let content = firstCandidate["content"] as? [String: Any],
@@ -250,25 +156,10 @@ final class GeminiService {
               let firstPart = parts.first,
               let text = firstPart["text"] as? String else {
             logger.error("Failed to extract text from candidate. Candidate keys: \(String(describing: firstCandidate.keys))")
-            throw NSError(domain: "GeminiService", code: -4,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to parse Gemini response - invalid structure"])
+            throw parseError("invalid structure")
         }
 
         return text
-    }
-
-    private func notifyResponse(_ text: String) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.delegate?.geminiService(self, didReceiveResponse: text)
-        }
-    }
-
-    private func notifyError(_ error: Error) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.delegate?.geminiService(self, didFailWith: error)
-        }
     }
 }
 
@@ -276,17 +167,14 @@ final class GeminiService {
 
 extension GeminiService: AIProvider {
     var name: String { "Gemini" }
+    var rateLimitKey: String { "gemini_rate_limit_until" }
 
     var isAvailable: Bool {
         guard !apiKey.isEmpty else { return false }
-        if let rateLimitUntil = UserDefaults.standard.object(forKey: "gemini_rate_limit_until") as? Date {
+        if let rateLimitUntil = UserDefaults.standard.object(forKey: rateLimitKey) as? Date {
             return Date() >= rateLimitUntil
         }
         return true
-    }
-
-    var nextAvailableTime: Date? {
-        UserDefaults.standard.object(forKey: "gemini_rate_limit_until") as? Date
     }
 
     func generateChat(
@@ -295,15 +183,5 @@ extension GeminiService: AIProvider {
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         generateChatAsync(systemPrompt: systemPrompt, messages: messages, completion: completion)
-    }
-
-    func markRateLimited(until: Date) {
-        UserDefaults.standard.set(until, forKey: "gemini_rate_limit_until")
-        logger.debug("Rate limited until \(until)")
-    }
-
-    func clearRateLimit() {
-        UserDefaults.standard.removeObject(forKey: "gemini_rate_limit_until")
-        logger.debug("Rate limit cleared")
     }
 }
