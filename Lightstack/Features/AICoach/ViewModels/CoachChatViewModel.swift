@@ -15,6 +15,7 @@ final class CoachChatViewModel: ObservableObject {
     private let coachContextBuilder: CoachContextBuilder
     private let validationService: ValidationService
     private let modificationParser = WorkoutModificationParser()
+    private let jsonParser = WorkoutModificationJSONParser()
 
     private var userId: UUID?
     private var workoutType: String?
@@ -46,15 +47,58 @@ final class CoachChatViewModel: ObservableObject {
 
         WORKOUT MODIFICATIONS
         You can suggest modifications to the current workout if the athlete asks.
-        Use these special commands in your response:
-
-        [ADD] Exercise Name | Muscle Group | Sets | Reps | RIR | Rest | Note
-        [REMOVE] Exercise Name
-        [MODIFY] Exercise Name | Sets | Reps | RIR | Rest | Note
-        [REPLACE] Old Name → New Name | Muscle Group | Sets | Reps | RIR | Rest | Note
-
-        Always explain WHY you're suggesting the change before the command.
+        Always explain WHY you are suggesting the change in natural language first.
         The athlete will be asked to confirm before any changes are applied.
+
+        If — and only if — you are suggesting modifications, append a single fenced \
+        JSON code block at the very end of your response using this exact schema:
+
+        ```json
+        {
+          "modifications": [
+            {
+              "action": "add",
+              "name": "Exercise Name",
+              "muscle_group": "Muscle Group",
+              "target_sets": 3,
+              "target_reps": "8-10",
+              "target_rir": "2",
+              "rest_seconds": 90,
+              "note": "Optional note"
+            },
+            {
+              "action": "remove",
+              "name": "Exercise Name"
+            },
+            {
+              "action": "modify",
+              "name": "Exercise Name",
+              "new_target_sets": 4,
+              "new_target_reps": "6-8",
+              "new_target_rir": "1",
+              "new_rest": 120,
+              "note": "Optional note"
+            },
+            {
+              "action": "replace",
+              "old_name": "Old Exercise",
+              "new_name": "New Exercise",
+              "muscle_group": "Muscle Group",
+              "target_sets": 3,
+              "target_reps": "8-10",
+              "target_rir": "2",
+              "rest_seconds": 90,
+              "note": "Optional note"
+            }
+          ]
+        }
+        ```
+
+        Rules:
+        - Include only the modifications you are actually suggesting (any mix of actions).
+        - Omit optional fields (target_reps, target_rir, rest_seconds, note, new_*) when not relevant.
+        - If you are NOT suggesting any modifications, omit the JSON block entirely.
+        - Do NOT include the JSON block for general questions or advice without workout changes.
         """
 
         // Add workout context as an initial system-like context message
@@ -104,14 +148,39 @@ final class CoachChatViewModel: ObservableObject {
 
             switch result {
             case .success(let responseText):
-                let coachMessage = ChatMessage(role: .coach, content: responseText)
+                // Strip JSON block before displaying to the user
+                let displayText = self.jsonParser.strippingJSONBlock(from: responseText)
+                let coachMessage = ChatMessage(role: .coach, content: displayText)
                 self.messages.append(coachMessage)
 
-                // Parse for workout modifications
-                let modifications = self.modificationParser.parse(responseText)
+                // Parse modifications: try JSON parser first, fall back to pipe parser
+                let modifications: [WorkoutModification]
+                var extractionFailed = false
+                do {
+                    let jsonModifications = try self.jsonParser.parse(responseText)
+                    if !jsonModifications.isEmpty {
+                        modifications = jsonModifications
+                    } else {
+                        // No JSON block found — try legacy pipe format
+                        modifications = self.modificationParser.parse(responseText)
+                    }
+                } catch {
+                    // Malformed JSON block — fall back to legacy pipe parser
+                    modifications = self.modificationParser.parse(responseText)
+                    extractionFailed = true
+                }
+
                 if !modifications.isEmpty {
                     self.pendingModifications = modifications
                     self.showModificationConfirmation = true
+                } else if extractionFailed {
+                    // The coach described changes but we couldn't read them. Say so
+                    // rather than leaving the athlete waiting for a prompt that
+                    // will never appear.
+                    self.messages.append(ChatMessage(
+                        role: .coach,
+                        content: "I couldn't apply those changes automatically — please adjust the workout manually, or ask me again."
+                    ))
                 }
             case .failure(let error):
                 let errorMessage = ChatMessage(role: .coach, content: "Sorry, I couldn't respond right now. Please try again. (\(error.localizedDescription))")
