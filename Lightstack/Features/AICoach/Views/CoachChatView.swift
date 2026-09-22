@@ -41,7 +41,9 @@ struct CoachChatView: View {
 
     private var modificationMessage: String {
         let changes = viewModel.pendingModifications.map { $0.description }
-        return "The coach suggested these changes:\n\n" + changes.joined(separator: "\n")
+        let body = "The coach suggested these changes:\n\n" + changes.joined(separator: "\n")
+        guard viewModel.requiresExplicitConfirmation else { return body }
+        return body + "\n\nWe're not fully confident this is what you asked for — please double-check before applying."
     }
 
     // MARK: - System Banner

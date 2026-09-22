@@ -9,12 +9,16 @@ final class CoachChatViewModel: ObservableObject {
     @Published var inputText = ""
     @Published var pendingModifications: [WorkoutModification] = []
     @Published var showModificationConfirmation = false
+    /// True when the latest modification batch has low confidence and needs explicit user confirmation
+    /// even though the user initiated the conversation (i.e., do NOT pre-apply).
+    @Published var requiresExplicitConfirmation = false
 
     private let aiServiceManager: AIServiceManager
     private let coachPromptService: CoachPromptService
     private let coachContextBuilder: CoachContextBuilder
     private let validationService: ValidationService
     private let modificationParser = WorkoutModificationParser()
+    let intentService: OnDeviceIntentService
 
     private var userId: UUID?
     private var workoutType: String?
@@ -26,12 +30,14 @@ final class CoachChatViewModel: ObservableObject {
         aiServiceManager: AIServiceManager,
         coachPromptService: CoachPromptService,
         coachContextBuilder: CoachContextBuilder,
-        validationService: ValidationService
+        validationService: ValidationService,
+        intentService: OnDeviceIntentService = OnDeviceIntentService()
     ) {
         self.aiServiceManager = aiServiceManager
         self.coachPromptService = coachPromptService
         self.coachContextBuilder = coachContextBuilder
         self.validationService = validationService
+        self.intentService = intentService
     }
 
     /// Configure chat with current workout context.
@@ -95,6 +101,9 @@ final class CoachChatViewModel: ObservableObject {
         messages.append(userMessage)
         isLoading = true
 
+        // Snapshot for async capture
+        let capturedText = text
+
         aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
             messages: messages
@@ -107,17 +116,64 @@ final class CoachChatViewModel: ObservableObject {
                 let coachMessage = ChatMessage(role: .coach, content: responseText)
                 self.messages.append(coachMessage)
 
-                // Parse for workout modifications
-                let modifications = self.modificationParser.parse(responseText)
-                if !modifications.isEmpty {
-                    self.pendingModifications = modifications
-                    self.showModificationConfirmation = true
+                // Use on-device intent classification + structured extraction when available;
+                // fall back to the pipe-delimited parser otherwise.
+                if self.intentService.isAvailable {
+                    Task { @MainActor [weak self] in
+                        guard let self = self else { return }
+                        await self.handleModificationsOnDevice(userMessage: capturedText, responseText: responseText)
+                    }
+                } else {
+                    self.handleModificationsFallback(responseText: responseText, requireConfirmation: false)
                 }
+
             case .failure(let error):
                 let errorMessage = ChatMessage(role: .coach, content: "Sorry, I couldn't respond right now. Please try again. (\(error.localizedDescription))")
                 self.messages.append(errorMessage)
             }
         }
+    }
+
+    // MARK: - Private modification helpers
+
+    @MainActor
+    private func handleModificationsOnDevice(userMessage: String, responseText: String) async {
+        // Step 1: classify intent — skip extraction if not a modification request.
+        let classification: IntentClassification
+        do {
+            classification = try await intentService.classify(userMessage)
+        } catch {
+            // Intent check failed; fall back to parser without extra confirmation.
+            handleModificationsFallback(responseText: responseText, requireConfirmation: false)
+            return
+        }
+
+        guard classification.intent == .modificationRequest else {
+            // Not a modification request — nothing to extract.
+            return
+        }
+
+        let lowConfidence = classification.confidence < OnDeviceIntentService.confidenceThreshold
+
+        // Step 2: structured extraction via guided generation.
+        do {
+            let mods = try await intentService.extractModifications(from: responseText)
+            guard !mods.isEmpty else { return }
+            pendingModifications = mods
+            requiresExplicitConfirmation = lowConfidence
+            showModificationConfirmation = true
+        } catch {
+            // Extraction failed — fall back to pipe parser, but honour low-confidence flag.
+            handleModificationsFallback(responseText: responseText, requireConfirmation: lowConfidence)
+        }
+    }
+
+    private func handleModificationsFallback(responseText: String, requireConfirmation: Bool) {
+        let mods = modificationParser.parse(responseText)
+        guard !mods.isEmpty else { return }
+        pendingModifications = mods
+        requiresExplicitConfirmation = requireConfirmation
+        showModificationConfirmation = true
     }
 
     /// Called when user confirms modifications.
@@ -127,12 +183,14 @@ final class CoachChatViewModel: ObservableObject {
         }
         pendingModifications = []
         showModificationConfirmation = false
+        requiresExplicitConfirmation = false
     }
 
     /// Called when user rejects modifications.
     func rejectModifications() {
         pendingModifications = []
         showModificationConfirmation = false
+        requiresExplicitConfirmation = false
     }
 
     /// Clear all messages when leaving the workout.
@@ -142,5 +200,6 @@ final class CoachChatViewModel: ObservableObject {
         isLoading = false
         pendingModifications = []
         showModificationConfirmation = false
+        requiresExplicitConfirmation = false
     }
 }

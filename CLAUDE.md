@@ -4,7 +4,7 @@
 
 1. **Build first:**
    ```
-   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.2' -quiet 2>&1 | tail -5; echo EXIT=$?
+   set -o pipefail; DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -quiet 2>&1 | tail -5; echo EXIT=$?
    ```
 2. If **BUILD FAILED** → fix all errors before proceeding. Never commit broken code.
 3. **Commit:** `git add -A && git commit -m "<clear description of what changed>"`
