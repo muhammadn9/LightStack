@@ -18,6 +18,10 @@
 	<string>1</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<!-- App uses only standard HTTPS, which is exempt. Without this key
+	     TestFlight holds every build pending an export-compliance answer. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

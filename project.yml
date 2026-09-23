@@ -32,13 +32,15 @@ targets:
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: L6H7PW64R5
-        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: 7X8799T6N2
       configs:
         Debug:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+          CODE_SIGN_IDENTITY: "Apple Development"
         Release:
           SWIFT_OPTIMIZATION_LEVEL: -Owholemodule
+          # Archive/TestFlight builds must be distribution-signed.
+          CODE_SIGN_IDENTITY: "Apple Distribution"
     configFiles:
       Debug: Lightstack/Config/Secrets.xcconfig
       Release: Lightstack/Config/Secrets.xcconfig
