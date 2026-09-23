@@ -12,7 +12,12 @@ final class CoachPromptService {
     }
 
     /// Build the full system prompt with profile data injected.
-    func buildSystemPrompt(profile: UserProfile?) -> String {
+    ///
+    /// - Parameter includeWorkoutPlanFormat: whether to include the bare-JSON
+    ///   workout plan schema. Generation paths need it; the coach chat must not
+    ///   have it, or a request like "change the weights" gets answered with a
+    ///   raw plan JSON object in the conversation instead of prose.
+    func buildSystemPrompt(profile: UserProfile?, includeWorkoutPlanFormat: Bool = true) -> String {
         let name = sanitize(profile?.displayName ?? "Athlete")
         let age = profile?.age.map { String($0) } ?? "Unknown"
         let weight = profile?.weightLbs.map { String(format: "%.0f", $0) } ?? "Unknown"
@@ -22,6 +27,34 @@ final class CoachPromptService {
         let avoid = sanitize((profile?.avoidExercises ?? []).joined(separator: ", "))
         let equip = formatEquipment(profile?.equipment ?? [:])
         let notes = sanitize(profile?.notesToCoach ?? "None")
+
+        let planFormat = includeWorkoutPlanFormat ? """
+        WORKOUT PLAN FORMAT
+        When asked to generate a workout plan, return ONLY a JSON object matching \
+        this exact schema — no markdown fences, no other text:
+        {
+          "exercises": [
+            {
+              "name": "string",
+              "muscle_group": "string",
+              "sets": integer,
+              "target_weight": "string or null",
+              "reps": "string or null (e.g. '8-12')",
+              "rir": "string or null (e.g. '1-2')",
+              "rest_seconds": integer or null,
+              "coach_note": "string or null"
+            }
+          ],
+          "coaching_notes": "string"
+        }
+        For any other request (progression notes, summaries, questions), reply in \
+        plain prose with no JSON and no markdown fences.
+        """ : """
+        NEVER EMIT A WORKOUT PLAN
+        Do not return a JSON workout plan, an exercise array, or any other raw \
+        JSON in your reply. The athlete is mid-session and reads your message as \
+        conversation. Answer in plain prose.
+        """
 
         return """
         You are the Lightstack Coach — a personal strength and hypertrophy coach \
@@ -70,26 +103,7 @@ final class CoachPromptService {
         provide a complementary strength or conditioning workout that fits \
         the available time and energy level. Always respond with a workout table.
 
-        WORKOUT PLAN FORMAT
-        When asked to generate a workout plan, return ONLY a JSON object matching \
-        this exact schema — no markdown fences, no other text:
-        {
-          "exercises": [
-            {
-              "name": "string",
-              "muscle_group": "string",
-              "sets": integer,
-              "target_weight": "string or null",
-              "reps": "string or null (e.g. '8-12')",
-              "rir": "string or null (e.g. '1-2')",
-              "rest_seconds": integer or null,
-              "coach_note": "string or null"
-            }
-          ],
-          "coaching_notes": "string"
-        }
-        For any other request (progression notes, summaries, questions), reply in \
-        plain prose with no JSON and no markdown fences.
+        \(planFormat)
 
         PROGRESSION NOTE
         After reviewing completed sets, write a concise progression note (2-3 sentences). \

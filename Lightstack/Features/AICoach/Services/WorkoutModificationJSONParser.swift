@@ -86,11 +86,14 @@ struct WorkoutModificationJSONParser {
         return try decode(jsonString)
     }
 
-    /// Returns the response text with any fenced JSON block removed, for clean display.
+    /// Returns the response text with any JSON removed, for clean display.
+    ///
+    /// Strips the fenced block first, then any bare unfenced JSON object. The
+    /// second pass matters: the model is capable of emitting an unfenced workout
+    /// plan object, and without this it lands verbatim in a chat bubble.
     func strippingJSONBlock(from text: String) -> String {
-        let stripped = removeJSONBlock(from: text)
+        removeBareJSONObjects(from: removeJSONBlock(from: text))
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return stripped
     }
 
     // MARK: - Block extraction
@@ -166,6 +169,69 @@ struct WorkoutModificationJSONParser {
         }
 
         return text
+    }
+
+    /// Removes every bare `{ … }` run that actually parses as JSON, leaving
+    /// surrounding prose intact. A `{` that doesn't open valid JSON is left
+    /// alone — the coach is allowed to write braces in a sentence.
+    private func removeBareJSONObjects(from text: String) -> String {
+        var result = ""
+        var remainder = Substring(text)
+
+        while let start = remainder.firstIndex(of: "{") {
+            guard let end = matchingBrace(in: remainder, from: start) else {
+                // Unbalanced. If the tail still looks like JSON the model was
+                // cut off mid-object; drop it rather than show the fragment.
+                if remainder[start...].contains("\":") {
+                    result += remainder[remainder.startIndex..<start]
+                    return result
+                }
+                break
+            }
+
+            let candidate = remainder[start...end]
+            if (try? JSONSerialization.jsonObject(with: Data(candidate.utf8))) != nil {
+                result += remainder[remainder.startIndex..<start]
+                remainder = remainder[remainder.index(after: end)...]
+            } else {
+                // Keep this brace and resume scanning after it.
+                result += remainder[remainder.startIndex...start]
+                remainder = remainder[remainder.index(after: start)...]
+            }
+        }
+
+        result += remainder
+        return result
+    }
+
+    /// Index of the `}` that closes the `{` at `start`, or nil if unbalanced.
+    /// Braces inside string literals are ignored.
+    private func matchingBrace(in text: Substring, from start: Substring.Index) -> Substring.Index? {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var index = start
+
+        while index < text.endIndex {
+            let character = text[index]
+            if escaped {
+                escaped = false
+            } else if inString && character == "\\" {
+                escaped = true
+            } else if character == "\"" {
+                inString.toggle()
+            } else if !inString {
+                if character == "{" {
+                    depth += 1
+                } else if character == "}" {
+                    depth -= 1
+                    if depth == 0 { return index }
+                }
+            }
+            index = text.index(after: index)
+        }
+
+        return nil
     }
 
     // MARK: - Decoding

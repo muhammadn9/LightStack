@@ -43,7 +43,10 @@ final class CoachChatViewModel: ObservableObject {
         self.currentLoggedSets = loggedSets
 
         let context = coachContextBuilder.buildContext(userId: userId, workoutType: workoutType)
-        systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile) + """
+        systemPrompt = coachPromptService.buildSystemPrompt(
+            profile: context.profile,
+            includeWorkoutPlanFormat: false
+        ) + """
 
         WORKOUT MODIFICATIONS
         You can suggest modifications to the current workout if the athlete asks.
@@ -148,8 +151,13 @@ final class CoachChatViewModel: ObservableObject {
 
             switch result {
             case .success(let responseText):
-                // Strip JSON block before displaying to the user
-                let displayText = self.jsonParser.strippingJSONBlock(from: responseText)
+                // Strip JSON before displaying to the user. If that leaves
+                // nothing, the reply was JSON end to end — show a sentence
+                // rather than an empty bubble.
+                var displayText = self.jsonParser.strippingJSONBlock(from: responseText)
+                if displayText.isEmpty {
+                    displayText = "Here's what I'd change for this session."
+                }
                 let coachMessage = ChatMessage(role: .coach, content: displayText)
                 self.messages.append(coachMessage)
 

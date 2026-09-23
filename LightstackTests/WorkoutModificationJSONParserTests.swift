@@ -319,6 +319,41 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         XCTAssertEqual(stripped, "Advice here.")
     }
 
+    // MARK: - Bare (unfenced) JSON
+
+    /// The failure seen in TestFlight: asking to change weights mid-session got
+    /// answered with an unfenced workout plan object, which reached the bubble.
+    func testStrippingRemovesBareWorkoutPlanJSON() {
+        let text = """
+        Here's the updated session.
+        {"exercises":[{"name":"Face Pulls","muscle_group":"Rear Delts","sets":3,\
+        "target_weight":null,"reps":null,"rir":null,"rest_seconds":null,\
+        "coach_note":null}],"coaching_notes":"Need your previous numbers."}
+        """
+        let stripped = parser.strippingJSONBlock(from: text)
+        XCTAssertEqual(stripped, "Here's the updated session.")
+    }
+
+    func testStrippingRemovesBareJSONWithNoSurroundingProse() {
+        let text = "{\"exercises\":[],\"coaching_notes\":\"x\"}"
+        XCTAssertEqual(parser.strippingJSONBlock(from: text), "")
+    }
+
+    func testStrippingRemovesTruncatedBareJSON() {
+        let text = "Updated plan:\n{\"exercises\": [{\"name\": \"Face Pulls\", \"sets\": 3"
+        XCTAssertEqual(parser.strippingJSONBlock(from: text), "Updated plan:")
+    }
+
+    func testStrippingKeepsBracesThatAreNotJSON() {
+        let text = "Use a {1,2} rep bracket and keep RIR at 2."
+        XCTAssertEqual(parser.strippingJSONBlock(from: text), text)
+    }
+
+    func testStrippingKeepsProseAfterBareJSON() {
+        let text = "Before. {\"a\":1} After."
+        XCTAssertEqual(parser.strippingJSONBlock(from: text), "Before.  After.")
+    }
+
     // MARK: - Fence tolerance
 
     func testAcceptsBackticksWithoutLanguageTag() throws {
