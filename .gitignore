@@ -33,3 +33,7 @@ Lightstack/Config/Secrets.xcconfig
 *.swp
 *~
 .DS_Store
+
+# App Store Connect credentials — NEVER commit
+scripts/asc-config.sh
+scripts/.venv/

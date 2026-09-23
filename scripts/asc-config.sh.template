@@ -1,0 +1,10 @@
+# Copy to scripts/asc-config.sh (git-ignored) and fill in.
+# The .p8 key must have the Admin role — App Manager cannot cloud-sign.
+
+export ASC_KEY_ID="XXXXXXXXXX"
+export ASC_ISSUER_ID="00000000-0000-0000-0000-000000000000"
+export ASC_KEY_PATH="$HOME/private_keys/AuthKey_XXXXXXXXXX.p8"
+
+export ASC_TEAM_ID="XXXXXXXXXX"
+export ASC_APP_ID="0000000000"          # numeric App Store Connect app id
+export ASC_BETA_GROUP_ID=""             # uuid of the TestFlight group to distribute to
