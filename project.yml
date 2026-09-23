@@ -31,16 +31,20 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
+        # iPhone only. The UI is portrait-locked, and App Store validation
+        # rejects iPad-capable builds that don't support all four orientations.
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: 7X8799T6N2
       configs:
         Debug:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
-          CODE_SIGN_IDENTITY: "Apple Development"
         Release:
           SWIFT_OPTIMIZATION_LEVEL: -Owholemodule
-          # Archive/TestFlight builds must be distribution-signed.
-          CODE_SIGN_IDENTITY: "Apple Distribution"
+      # CODE_SIGN_IDENTITY is deliberately unset: with CODE_SIGN_STYLE=Automatic
+      # Xcode picks Apple Development for builds and Apple Distribution when
+      # archiving. Pinning it manually makes archiving fail with a conflicting
+      # provisioning settings error.
     configFiles:
       Debug: Lightstack/Config/Secrets.xcconfig
       Release: Lightstack/Config/Secrets.xcconfig
