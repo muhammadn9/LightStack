@@ -87,7 +87,7 @@ struct NotebookTabRow: View {
                         VStack(spacing: 0) {
                             Text(tabs[i])
                                 .font(.footnote.weight(.semibold))
-                                .foregroundStyle(i == selectedTab ? AppTheme.accent : Color.secondary)
+                                .foregroundStyle(i == selectedTab ? AppTheme.accent : AppTheme.textSecondary)
                                 .padding(.vertical, 10)
                                 .frame(maxWidth: .infinity)
 
