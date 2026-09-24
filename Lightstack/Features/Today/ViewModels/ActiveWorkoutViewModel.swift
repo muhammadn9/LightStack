@@ -155,6 +155,33 @@ final class ActiveWorkoutViewModel: ObservableObject {
         syncPendingSets(for: exercise)
     }
 
+    /// Re-apply an exercise's targets to every input that has not been logged yet.
+    ///
+    /// Unlike `prefillTargets`, this overwrites what is already on screen. When the
+    /// coach changes a target mid-session the value already there is stale by
+    /// definition, and `prefillTargets` would defer to it — which is why confirming
+    /// a change looked like nothing happened. Logged sets are history, left alone.
+    func refreshTargets(for exercise: Exercise) {
+        let weight = prefillWeightValue(from: exercise)
+        let reps = prefillRepsValue(from: exercise)
+        let rir = prefillRirValue(from: exercise)
+
+        editingWeight[exercise.id] = weight
+        editingReps[exercise.id] = reps
+        editingRir[exercise.id] = rir
+
+        guard exercise.trackingType != .cardio else {
+            // Cardio rows carry no targets to refresh; just resize.
+            syncPendingSets(for: exercise)
+            return
+        }
+
+        let needed = max(0, (exercise.targetSets ?? 0) - (loggedSets[exercise.id]?.count ?? 0))
+        pendingSets[exercise.id] = (0..<needed).map { _ in
+            PendingSetInput(weight: weight, reps: reps, rir: rir)
+        }
+    }
+
     /// Reset legacy single-set fields after logging (carries forward last logged values).
     func resetToTargets(for exercise: Exercise) {
         if let lastSet = loggedSets[exercise.id]?.last {

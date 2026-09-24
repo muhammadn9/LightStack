@@ -19,6 +19,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var phase: TodayPhase = .setup
     @Published var exercises: [Exercise] = []
     @Published var exerciseListResetToken: Int = 0
+    /// Bumped whenever a coach modification rewrites exercise targets, so the
+    /// active workout screen can refresh inputs it has already filled in.
+    @Published var targetsRevision: Int = 0
     @Published var loggedSets: [UUID: [WorkoutSet]] = [:]
     @Published var aiProgressionNote: String?
     @Published var streak: Int = 0
@@ -344,6 +347,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
         // Save state after modification
         saveSessionState()
+        // Tell the active workout screen its already-filled inputs are stale.
+        targetsRevision += 1
     }
 
     /// `coachNote` doubles as the target-weight carrier — generation writes
