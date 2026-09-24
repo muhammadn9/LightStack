@@ -144,7 +144,8 @@ final class CoachChatViewModel: ObservableObject {
 
         aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
-            messages: messages
+            messages: messages,
+            expectsJSON: false
         ) { [weak self] result in
             guard let self = self else { return }
             self.isLoading = false

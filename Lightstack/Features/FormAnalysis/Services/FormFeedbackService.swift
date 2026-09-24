@@ -19,9 +19,11 @@ final class FormFeedbackService {
             ChatMessage(role: .user, content: Self.buildUserPrompt(from: result))
         ]
 
+        // Form feedback is displayed to the athlete as written.
         aiServiceManager.generateChat(
             systemPrompt: Self.systemPrompt,
-            messages: messages
+            messages: messages,
+            expectsJSON: false
         ) { aiResult in
             switch aiResult {
             case .success(let text):

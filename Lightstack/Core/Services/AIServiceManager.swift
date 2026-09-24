@@ -16,15 +16,20 @@ final class AIServiceManager {
 
     /// Generate chat completion using the first available provider.
     /// Automatically falls back to next provider if current one is rate limited.
+    ///
+    /// - Parameter expectsJSON: pass false for anything the user reads directly.
+    ///   See `AIProvider.generateChat` — this is enforced by the API, not the prompt.
     func generateChat(
         systemPrompt: String,
         messages: [ChatMessage],
+        expectsJSON: Bool = true,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         logger.debug("Starting chat generation with \(self.providers.count) providers available")
         tryNextProvider(
             systemPrompt: systemPrompt,
             messages: messages,
+            expectsJSON: expectsJSON,
             attemptedProviders: [],
             completion: completion
         )
@@ -35,6 +40,7 @@ final class AIServiceManager {
     private func tryNextProvider(
         systemPrompt: String,
         messages: [ChatMessage],
+        expectsJSON: Bool,
         attemptedProviders: [String],
         completion: @escaping (Result<String, Error>) -> Void
     ) {
@@ -49,7 +55,8 @@ final class AIServiceManager {
 
         availableProvider.generateChat(
             systemPrompt: systemPrompt,
-            messages: messages
+            messages: messages,
+            expectsJSON: expectsJSON
         ) { [weak self] result in
             guard let self = self else { return }
 
@@ -70,6 +77,7 @@ final class AIServiceManager {
                     self.tryNextProvider(
                         systemPrompt: systemPrompt,
                         messages: messages,
+                        expectsJSON: expectsJSON,
                         attemptedProviders: attempted,
                         completion: completion
                     )
