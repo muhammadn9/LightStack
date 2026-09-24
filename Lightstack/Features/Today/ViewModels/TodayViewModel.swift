@@ -268,7 +268,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         guard let workoutId = sessionService.currentWorkoutId else { return }
 
         switch modification {
-        case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let note):
+        case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note):
             let newExercise = Exercise.create(
                 workoutId: workoutId,
                 name: name,
@@ -278,7 +278,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetReps: targetReps,
                 targetRir: targetRir,
                 restSeconds: restSeconds,
-                coachNote: note
+                coachNote: Self.coachNote(nil, weight: targetWeight, note: note)
             )
             exercises.append(newExercise)
             // Save the new exercise to the repository
@@ -294,7 +294,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 // Note: Already-logged sets are preserved in the dictionary if preserveLoggedSets is true
             }
 
-        case .modifyExercise(let name, let newTargetSets, let newTargetReps, let newTargetRir, let newRest, let note):
+        case .modifyExercise(let name, let newTargetSets, let newTargetReps, let newTargetRir, let newRest, let newTargetWeight, let note):
             if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
                 var exercise = exercises[index]
                 if let sets = newTargetSets {
@@ -309,13 +309,13 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 if let rest = newRest {
                     exercise.restSeconds = rest
                 }
-                if let note = note {
-                    exercise.coachNote = (exercise.coachNote ?? "") + " " + note
+                if newTargetWeight != nil || note != nil {
+                    exercise.coachNote = Self.coachNote(exercise.coachNote, weight: newTargetWeight, note: note)
                 }
                 exercises[index] = exercise
             }
 
-        case .replaceExercise(let oldName, let newName, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let note):
+        case .replaceExercise(let oldName, let newName, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note):
             if let index = exercises.firstIndex(where: { $0.name.lowercased() == oldName.lowercased() }) {
                 let oldExerciseId = exercises[index].id
                 let orderIndex = exercises[index].orderIndex
@@ -330,7 +330,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     targetReps: targetReps,
                     targetRir: targetRir,
                     restSeconds: restSeconds,
-                    coachNote: note
+                    coachNote: Self.coachNote(nil, weight: targetWeight, note: note)
                 )
 
                 exercises[index] = newExercise
@@ -344,6 +344,28 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
         // Save state after modification
         saveSessionState()
+    }
+
+    /// `coachNote` doubles as the target-weight carrier — generation writes
+    /// "Target: 135 lbs" into it, since `Exercise` has no weight column. Rebuild
+    /// the note so a new weight replaces the old `Target:` segment instead of
+    /// being appended after it, which left two contradictory targets on screen.
+    static func coachNote(_ existing: String?, weight: String?, note: String?) -> String? {
+        var segments = (existing ?? "")
+            .components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        if let weight = weight, !weight.isEmpty {
+            segments.removeAll { $0.lowercased().hasPrefix("target:") }
+            segments.insert("Target: \(weight)", at: 0)
+        }
+        if let note = note, !note.isEmpty, !segments.contains(note) {
+            segments.append(note)
+        }
+
+        let joined = segments.joined(separator: " · ")
+        return joined.isEmpty ? nil : joined
     }
 
     // MARK: - Manual Exercise Management

@@ -67,6 +67,7 @@ final class CoachChatViewModel: ObservableObject {
               "target_reps": "8-10",
               "target_rir": "2",
               "rest_seconds": 90,
+              "target_weight": "135 lbs",
               "note": "Optional note"
             },
             {
@@ -80,6 +81,7 @@ final class CoachChatViewModel: ObservableObject {
               "new_target_reps": "6-8",
               "new_target_rir": "1",
               "new_rest": 120,
+              "new_target_weight": "145 lbs",
               "note": "Optional note"
             },
             {
@@ -99,9 +101,15 @@ final class CoachChatViewModel: ObservableObject {
 
         Rules:
         - Include only the modifications you are actually suggesting (any mix of actions).
-        - Omit optional fields (target_reps, target_rir, rest_seconds, note, new_*) when not relevant.
+        - Omit optional fields (target_reps, target_rir, rest_seconds, target_weight, \
+        note, new_*) when not relevant.
+        - Weights are free-form strings including units, e.g. "135 lbs".
+        - To change the weight on an exercise the athlete is already doing, use \
+        "modify" with new_target_weight — not "replace".
         - If you are NOT suggesting any modifications, omit the JSON block entirely.
         - Do NOT include the JSON block for general questions or advice without workout changes.
+        - Never present changes as a markdown table. A table does nothing; only \
+        the JSON block actually updates the workout.
         """
 
         // Add workout context as an initial system-like context message
@@ -182,7 +190,7 @@ final class CoachChatViewModel: ObservableObject {
                 if !modifications.isEmpty {
                     self.pendingModifications = modifications
                     self.showModificationConfirmation = true
-                } else if extractionFailed {
+                } else if extractionFailed || Self.containsMarkdownTable(responseText) {
                     // The coach described changes but we couldn't read them. Say so
                     // rather than leaving the athlete waiting for a prompt that
                     // will never appear.
@@ -195,6 +203,17 @@ final class CoachChatViewModel: ObservableObject {
                 let errorMessage = ChatMessage(role: .coach, content: "Sorry, I couldn't respond right now. Please try again. (\(error.localizedDescription))")
                 self.messages.append(errorMessage)
             }
+        }
+    }
+
+    /// True when the reply contains a markdown table separator row (`|---|---|`).
+    /// A table means the coach laid out a plan in prose only — nothing reached
+    /// the workout — so we surface that instead of silently doing nothing.
+    static func containsMarkdownTable(_ text: String) -> Bool {
+        text.components(separatedBy: .newlines).contains { line in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.contains("|"), trimmed.contains("-") else { return false }
+            return trimmed.allSatisfy { "|-: ".contains($0) }
         }
     }
 

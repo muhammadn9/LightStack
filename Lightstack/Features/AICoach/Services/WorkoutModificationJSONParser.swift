@@ -34,6 +34,8 @@ private struct WorkoutModificationDTO: Decodable {
     let targetReps: String?
     let targetRir: String?
     let restSeconds: Int?
+    /// Free-form, e.g. "135 lbs" — matches how generation records weight.
+    let targetWeight: String?
     let note: String?
 
     // removeExercise field
@@ -44,6 +46,7 @@ private struct WorkoutModificationDTO: Decodable {
     let newTargetReps: String?
     let newTargetRir: String?
     let newRest: Int?
+    let newTargetWeight: String?
 
     // replaceExercise extra fields
     let oldName: String?
@@ -57,11 +60,13 @@ private struct WorkoutModificationDTO: Decodable {
         case targetReps        = "target_reps"
         case targetRir         = "target_rir"
         case restSeconds       = "rest_seconds"
+        case targetWeight      = "target_weight"
         case note
         case newTargetSets     = "new_target_sets"
         case newTargetReps     = "new_target_reps"
         case newTargetRir      = "new_target_rir"
         case newRest           = "new_rest"
+        case newTargetWeight   = "new_target_weight"
         case oldName           = "old_name"
         case newName           = "new_name"
     }
@@ -274,6 +279,7 @@ struct WorkoutModificationJSONParser {
                 targetReps: dto.targetReps,
                 targetRir: dto.targetRir,
                 restSeconds: dto.restSeconds,
+                targetWeight: dto.targetWeight,
                 note: dto.note
             )
 
@@ -293,6 +299,7 @@ struct WorkoutModificationJSONParser {
                 newTargetReps: dto.newTargetReps,
                 newTargetRir: dto.newTargetRir,
                 newRest: dto.newRest,
+                newTargetWeight: dto.newTargetWeight,
                 note: dto.note
             )
 
@@ -317,6 +324,7 @@ struct WorkoutModificationJSONParser {
                 targetReps: dto.targetReps,
                 targetRir: dto.targetRir,
                 restSeconds: dto.restSeconds,
+                targetWeight: dto.targetWeight,
                 note: dto.note
             )
 

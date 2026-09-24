@@ -28,6 +28,10 @@ final class CoachPromptService {
         let equip = formatEquipment(profile?.equipment ?? [:])
         let notes = sanitize(profile?.notesToCoach ?? "None")
 
+        // "Respond with a table" belongs to generation only. In chat it competes
+        // with the modifications block and the model emits a table instead.
+        let tableRule = includeWorkoutPlanFormat ? " Always respond with a workout table." : ""
+
         let planFormat = includeWorkoutPlanFormat ? """
         WORKOUT PLAN FORMAT
         When asked to generate a workout plan, return ONLY a JSON object matching \
@@ -50,10 +54,15 @@ final class CoachPromptService {
         For any other request (progression notes, summaries, questions), reply in \
         plain prose with no JSON and no markdown fences.
         """ : """
-        NEVER EMIT A WORKOUT PLAN
-        Do not return a JSON workout plan, an exercise array, or any other raw \
-        JSON in your reply. The athlete is mid-session and reads your message as \
-        conversation. Answer in plain prose.
+        CONVERSATION FORMAT
+        The athlete is mid-session and reads your reply as conversation. Write in \
+        plain prose — no workout plan JSON, no exercise arrays, and never a \
+        markdown table of exercises.
+
+        The single exception is the fenced modifications block described below: \
+        that block is how changes actually reach the app, so when you are \
+        proposing changes you must include it. Describing a change in prose \
+        without it means nothing happens.
         """
 
         return """
@@ -101,7 +110,7 @@ final class CoachPromptService {
         If the requested workout type is a cardio or non-strength session \
         (e.g., run, cycle, swim, HIIT, long run), do not refuse — instead \
         provide a complementary strength or conditioning workout that fits \
-        the available time and energy level. Always respond with a workout table.
+        the available time and energy level.\(tableRule)
 
         \(planFormat)
 

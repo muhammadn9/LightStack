@@ -20,7 +20,24 @@ final class CoachPromptServiceTests: XCTestCase {
         XCTAssertFalse(prompt.contains("WORKOUT PLAN FORMAT"))
         XCTAssertFalse(prompt.contains("\"coaching_notes\""))
         XCTAssertFalse(prompt.contains("\"target_weight\""))
-        XCTAssertTrue(prompt.contains("NEVER EMIT A WORKOUT PLAN"))
+        XCTAssertTrue(prompt.contains("CONVERSATION FORMAT"))
+    }
+
+    /// "Always respond with a workout table" belongs to generation. Left in the
+    /// chat prompt it outcompetes the modifications block and the coach answers
+    /// with a table, which changes nothing in the app.
+    func testChatPromptDoesNotAskForAWorkoutTable() {
+        let chat = service.buildSystemPrompt(profile: nil, includeWorkoutPlanFormat: false)
+        XCTAssertFalse(chat.contains("Always respond with a workout table"))
+        XCTAssertTrue(service.buildSystemPrompt(profile: nil).contains("Always respond with a workout table"))
+    }
+
+    /// The chat prompt forbids plan JSON but must still permit the one fenced
+    /// block that actually applies changes — otherwise the two rules contradict.
+    func testChatPromptPermitsTheModificationsBlock() {
+        let prompt = service.buildSystemPrompt(profile: nil, includeWorkoutPlanFormat: false)
+        XCTAssertTrue(prompt.contains("single exception"))
+        XCTAssertTrue(prompt.contains("markdown table"))
     }
 
     func testBothVariantsKeepSharedCoachingSections() {
