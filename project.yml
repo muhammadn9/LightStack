@@ -28,7 +28,7 @@ targets:
         INFOPLIST_FILE: Lightstack/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.muhammadn9.lightstack
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: 4
+        CURRENT_PROJECT_VERSION: 5
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
         # iPhone only. The UI is portrait-locked, and App Store validation
