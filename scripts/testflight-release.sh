@@ -44,7 +44,25 @@ step() { printf '\n==> %s\n' "$1"; }
 CURRENT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST")
 NEXT=$((CURRENT + 1))
 step "Bumping build $CURRENT -> $NEXT"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEXT" "$INFO_PLIST"
+# Patch the XML in place rather than using `PlistBuddy -c Set`, which rewrites
+# the whole file: it reorders keys alphabetically and silently drops comments.
+python3 - "$INFO_PLIST" "$NEXT" <<'PY'
+import re, sys
+
+path, version = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    text = f.read()
+patched, count = re.subn(
+    r"(<key>CFBundleVersion</key>\s*<string>)[^<]*(</string>)",
+    rf"\g<1>{version}\g<2>",
+    text,
+    count=1,
+)
+if count != 1:
+    sys.exit("Could not find CFBundleVersion in " + path)
+with open(path, "w") as f:
+    f.write(patched)
+PY
 /usr/bin/sed -i '' "s/CURRENT_PROJECT_VERSION: .*/CURRENT_PROJECT_VERSION: $NEXT/" "$REPO_ROOT/project.yml"
 
 step "Regenerating Xcode project"
