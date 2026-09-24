@@ -29,9 +29,12 @@ final class ClaudeService: AIProvider {
         return true
     }
 
+    // Claude has no JSON-mode switch, so `expectsJSON` is accepted for protocol
+    // conformance and deliberately unused — the prompt alone drives the format.
     func generateChat(
         systemPrompt: String,
         messages: [ChatMessage],
+        expectsJSON: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         logger.debug("🔵 API CALL INITIATED - This counts against quota!")

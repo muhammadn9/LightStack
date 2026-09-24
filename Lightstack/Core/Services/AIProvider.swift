@@ -17,10 +17,16 @@ protocol AIProvider {
     /// When the provider will be available again (after rate limit)
     var nextAvailableTime: Date? { get }
 
-    /// Generate chat completion with system prompt and messages
+    /// Generate chat completion with system prompt and messages.
+    ///
+    /// - Parameter expectsJSON: when true the provider constrains the response
+    ///   to a JSON object. Prose callers MUST pass false — Gemini and OpenAI
+    ///   enforce this at the API level, so a prompt asking for plain text is
+    ///   ignored and the caller gets raw JSON back.
     func generateChat(
         systemPrompt: String,
         messages: [ChatMessage],
+        expectsJSON: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     )
 

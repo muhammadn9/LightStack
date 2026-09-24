@@ -26,6 +26,7 @@ final class GeminiService {
     func generateChatAsync(
         systemPrompt: String,
         messages: [ChatMessage],
+        expectsJSON: Bool = true,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         logger.debug("🔵 API CALL INITIATED - This counts against quota!")
@@ -42,7 +43,11 @@ final class GeminiService {
             return
         }
 
-        let body = buildChatRequestBody(systemPrompt: systemPrompt, messages: messages)
+        let body = buildChatRequestBody(
+            systemPrompt: systemPrompt,
+            messages: messages,
+            expectsJSON: expectsJSON
+        )
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -101,7 +106,11 @@ final class GeminiService {
 
     // MARK: - Private
 
-    private func buildChatRequestBody(systemPrompt: String, messages: [ChatMessage]) -> [String: Any] {
+    func buildChatRequestBody(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool
+    ) -> [String: Any] {
         var contents: [[String: Any]] = []
 
         for message in messages {
@@ -112,16 +121,23 @@ final class GeminiService {
             ])
         }
 
+        var generationConfig: [String: Any] = [
+            "temperature": 0.7,
+            "maxOutputTokens": 8192
+        ]
+        // Only constrain the response for callers that decode JSON. Setting this
+        // unconditionally forces JSON on prose replies too, which no prompt can
+        // override — that is how raw JSON ended up in Coach Chat.
+        if expectsJSON {
+            generationConfig["responseMimeType"] = "application/json"
+        }
+
         return [
             "system_instruction": [
                 "parts": [["text": systemPrompt]]
             ],
             "contents": contents,
-            "generationConfig": [
-                "temperature": 0.7,
-                "maxOutputTokens": 8192,
-                "responseMimeType": "application/json"
-            ]
+            "generationConfig": generationConfig
         ]
     }
 
@@ -180,8 +196,14 @@ extension GeminiService: AIProvider {
     func generateChat(
         systemPrompt: String,
         messages: [ChatMessage],
+        expectsJSON: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
-        generateChatAsync(systemPrompt: systemPrompt, messages: messages, completion: completion)
+        generateChatAsync(
+            systemPrompt: systemPrompt,
+            messages: messages,
+            expectsJSON: expectsJSON,
+            completion: completion
+        )
     }
 }
