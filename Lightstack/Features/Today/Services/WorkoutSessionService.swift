@@ -187,9 +187,11 @@ final class WorkoutSessionService {
                 sets: allSets
             )
 
+            // Progression notes are shown to the athlete verbatim.
             aiServiceManager.generateChat(
                 systemPrompt: systemPrompt,
-                messages: [ChatMessage(role: .user, content: userMessage)]
+                messages: [ChatMessage(role: .user, content: userMessage)],
+                expectsJSON: false
             ) { [weak self] result in
                 guard let self = self else { return }
                 switch result {
@@ -275,9 +277,11 @@ final class WorkoutSessionService {
             sets: sets
         )
 
+        // The rolling summary is prose fed back into later prompts.
         aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
-            messages: [ChatMessage(role: .user, content: userMessage)]
+            messages: [ChatMessage(role: .user, content: userMessage)],
+            expectsJSON: false
         ) { [weak self] result in
             guard let self = self else { return }
 

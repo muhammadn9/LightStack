@@ -1,19 +1,24 @@
 import Foundation
 
 /// Represents a modification the AI suggests to the current workout.
+/// `targetWeight` is a free-form string ("130 lbs") to match how workout
+/// generation already records it — there is no numeric weight column on
+/// `Exercise`; it is carried in `coachNote` as a "Target: …" segment.
 enum WorkoutModification {
-    case addExercise(name: String, muscleGroup: String, targetSets: Int, targetReps: String?, targetRir: String?, restSeconds: Int?, note: String?)
+    case addExercise(name: String, muscleGroup: String, targetSets: Int, targetReps: String?, targetRir: String?, restSeconds: Int?, targetWeight: String?, note: String?)
     case removeExercise(name: String)
-    case modifyExercise(name: String, newTargetSets: Int?, newTargetReps: String?, newTargetRir: String?, newRest: Int?, note: String?)
-    case replaceExercise(oldName: String, newName: String, muscleGroup: String, targetSets: Int, targetReps: String?, targetRir: String?, restSeconds: Int?, note: String?)
+    case modifyExercise(name: String, newTargetSets: Int?, newTargetReps: String?, newTargetRir: String?, newRest: Int?, newTargetWeight: String?, note: String?)
+    case replaceExercise(oldName: String, newName: String, muscleGroup: String, targetSets: Int, targetReps: String?, targetRir: String?, restSeconds: Int?, targetWeight: String?, note: String?)
 
     var description: String {
         switch self {
-        case .addExercise(let name, let muscleGroup, let sets, _, _, _, _):
-            return "Add \(name) (\(muscleGroup)) - \(sets) sets"
+        case .addExercise(let name, let muscleGroup, let sets, _, _, _, let weight, _):
+            var text = "Add \(name) (\(muscleGroup)) - \(sets) sets"
+            if let weight = weight { text += " @ \(weight)" }
+            return text
         case .removeExercise(let name):
             return "Remove \(name)"
-        case .modifyExercise(let name, let newSets, let newReps, let newRir, _, let note):
+        case .modifyExercise(let name, let newSets, let newReps, let newRir, _, let newWeight, let note):
             var parts = ["Modify \(name)"]
             if let sets = newSets {
                 parts.append("\(sets) sets")
@@ -24,12 +29,17 @@ enum WorkoutModification {
             if let rir = newRir {
                 parts.append("RIR \(rir)")
             }
+            if let weight = newWeight {
+                parts.append(weight)
+            }
             if let note = note {
                 parts.append("(\(note))")
             }
             return parts.joined(separator: " - ")
-        case .replaceExercise(let oldName, let newName, let muscleGroup, let sets, _, _, _, _):
-            return "Replace \(oldName) with \(newName) (\(muscleGroup)) - \(sets) sets"
+        case .replaceExercise(let oldName, let newName, let muscleGroup, let sets, _, _, _, let weight, _):
+            var text = "Replace \(oldName) with \(newName) (\(muscleGroup)) - \(sets) sets"
+            if let weight = weight { text += " @ \(weight)" }
+            return text
         }
     }
 }
@@ -92,7 +102,8 @@ struct WorkoutModificationParser {
         let rest = parts.count > 5 ? Int(parts[5]) : nil
         let note = parts.count > 6 ? parts[6] : nil
 
-        return .addExercise(name: name, muscleGroup: muscleGroup, targetSets: sets, targetReps: reps, targetRir: rir, restSeconds: rest, note: note)
+        // The legacy pipe format has no weight column; only the JSON block carries one.
+        return .addExercise(name: name, muscleGroup: muscleGroup, targetSets: sets, targetReps: reps, targetRir: rir, restSeconds: rest, targetWeight: nil, note: note)
     }
 
     private func parseRemove(_ line: String) -> WorkoutModification? {
@@ -114,7 +125,7 @@ struct WorkoutModificationParser {
         let rest = parts.count > 4 ? Int(parts[4]) : nil
         let note = parts.count > 5 ? parts[5] : nil
 
-        return .modifyExercise(name: name, newTargetSets: sets, newTargetReps: reps, newTargetRir: rir, newRest: rest, note: note)
+        return .modifyExercise(name: name, newTargetSets: sets, newTargetReps: reps, newTargetRir: rir, newRest: rest, newTargetWeight: nil, note: note)
     }
 
     private func parseReplace(_ line: String) -> WorkoutModification? {
@@ -136,6 +147,6 @@ struct WorkoutModificationParser {
         let rest = parts.count > 5 ? Int(parts[5]) : nil
         let note = parts.count > 6 ? parts[6] : nil
 
-        return .replaceExercise(oldName: oldName, newName: newName, muscleGroup: muscleGroup, targetSets: sets, targetReps: reps, targetRir: rir, restSeconds: rest, note: note)
+        return .replaceExercise(oldName: oldName, newName: newName, muscleGroup: muscleGroup, targetSets: sets, targetReps: reps, targetRir: rir, restSeconds: rest, targetWeight: nil, note: note)
     }
 }

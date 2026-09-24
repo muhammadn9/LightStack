@@ -12,7 +12,12 @@ final class CoachPromptService {
     }
 
     /// Build the full system prompt with profile data injected.
-    func buildSystemPrompt(profile: UserProfile?) -> String {
+    ///
+    /// - Parameter includeWorkoutPlanFormat: whether to include the bare-JSON
+    ///   workout plan schema. Generation paths need it; the coach chat must not
+    ///   have it, or a request like "change the weights" gets answered with a
+    ///   raw plan JSON object in the conversation instead of prose.
+    func buildSystemPrompt(profile: UserProfile?, includeWorkoutPlanFormat: Bool = true) -> String {
         let name = sanitize(profile?.displayName ?? "Athlete")
         let age = profile?.age.map { String($0) } ?? "Unknown"
         let weight = profile?.weightLbs.map { String(format: "%.0f", $0) } ?? "Unknown"
@@ -22,6 +27,43 @@ final class CoachPromptService {
         let avoid = sanitize((profile?.avoidExercises ?? []).joined(separator: ", "))
         let equip = formatEquipment(profile?.equipment ?? [:])
         let notes = sanitize(profile?.notesToCoach ?? "None")
+
+        // "Respond with a table" belongs to generation only. In chat it competes
+        // with the modifications block and the model emits a table instead.
+        let tableRule = includeWorkoutPlanFormat ? " Always respond with a workout table." : ""
+
+        let planFormat = includeWorkoutPlanFormat ? """
+        WORKOUT PLAN FORMAT
+        When asked to generate a workout plan, return ONLY a JSON object matching \
+        this exact schema — no markdown fences, no other text:
+        {
+          "exercises": [
+            {
+              "name": "string",
+              "muscle_group": "string",
+              "sets": integer,
+              "target_weight": "string or null",
+              "reps": "string or null (e.g. '8-12')",
+              "rir": "string or null (e.g. '1-2')",
+              "rest_seconds": integer or null,
+              "coach_note": "string or null"
+            }
+          ],
+          "coaching_notes": "string"
+        }
+        For any other request (progression notes, summaries, questions), reply in \
+        plain prose with no JSON and no markdown fences.
+        """ : """
+        CONVERSATION FORMAT
+        The athlete is mid-session and reads your reply as conversation. Write in \
+        plain prose — no workout plan JSON, no exercise arrays, and never a \
+        markdown table of exercises.
+
+        The single exception is the fenced modifications block described below: \
+        that block is how changes actually reach the app, so when you are \
+        proposing changes you must include it. Describing a change in prose \
+        without it means nothing happens.
+        """
 
         return """
         You are the Lightstack Coach — a personal strength and hypertrophy coach \
@@ -68,28 +110,9 @@ final class CoachPromptService {
         If the requested workout type is a cardio or non-strength session \
         (e.g., run, cycle, swim, HIIT, long run), do not refuse — instead \
         provide a complementary strength or conditioning workout that fits \
-        the available time and energy level. Always respond with a workout table.
+        the available time and energy level.\(tableRule)
 
-        WORKOUT PLAN FORMAT
-        When asked to generate a workout plan, return ONLY a JSON object matching \
-        this exact schema — no markdown fences, no other text:
-        {
-          "exercises": [
-            {
-              "name": "string",
-              "muscle_group": "string",
-              "sets": integer,
-              "target_weight": "string or null",
-              "reps": "string or null (e.g. '8-12')",
-              "rir": "string or null (e.g. '1-2')",
-              "rest_seconds": integer or null,
-              "coach_note": "string or null"
-            }
-          ],
-          "coaching_notes": "string"
-        }
-        For any other request (progression notes, summaries, questions), reply in \
-        plain prose with no JSON and no markdown fences.
+        \(planFormat)
 
         PROGRESSION NOTE
         After reviewing completed sets, write a concise progression note (2-3 sentences). \

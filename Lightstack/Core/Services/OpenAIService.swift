@@ -31,6 +31,7 @@ final class OpenAIService: AIProvider {
     func generateChat(
         systemPrompt: String,
         messages: [ChatMessage],
+        expectsJSON: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         logger.debug("🔵 API CALL INITIATED - This counts against quota!")
@@ -47,7 +48,11 @@ final class OpenAIService: AIProvider {
             return
         }
 
-        let body = buildRequestBody(systemPrompt: systemPrompt, messages: messages)
+        let body = buildRequestBody(
+            systemPrompt: systemPrompt,
+            messages: messages,
+            expectsJSON: expectsJSON
+        )
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -80,7 +85,11 @@ final class OpenAIService: AIProvider {
 
     // MARK: - Private
 
-    private func buildRequestBody(systemPrompt: String, messages: [ChatMessage]) -> [String: Any] {
+    func buildRequestBody(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool
+    ) -> [String: Any] {
         var chatMessages: [[String: String]] = [
             ["role": "system", "content": systemPrompt]
         ]
@@ -96,13 +105,18 @@ final class OpenAIService: AIProvider {
             chatMessages.append(["role": role, "content": message.content])
         }
 
-        return [
+        var body: [String: Any] = [
             "model": model,
             "messages": chatMessages,
             "max_tokens": 2048,
-            "temperature": 0.7,
-            "response_format": ["type": "json_object"]
+            "temperature": 0.7
         ]
+        // See GeminiService: JSON mode is an API-level constraint, so it must
+        // only be set for callers that actually decode JSON.
+        if expectsJSON {
+            body["response_format"] = ["type": "json_object"]
+        }
+        return body
     }
 
     private func parseResponse(_ data: Data) throws -> String {

@@ -65,6 +65,14 @@ struct ActiveWorkoutView: View {
         .onChange(of: todayViewModel.exerciseListResetToken) { _, _ in
             currentExerciseIndex = 0
         }
+        .onChange(of: todayViewModel.targetsRevision) { _, _ in
+            for exercise in todayViewModel.exercises {
+                viewModel.refreshTargets(for: exercise)
+            }
+            if currentExerciseIndex >= todayViewModel.exercises.count {
+                currentExerciseIndex = max(0, todayViewModel.exercises.count - 1)
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 viewModel.refreshRestTimers()

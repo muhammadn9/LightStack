@@ -225,4 +225,63 @@ final class ActiveWorkoutViewModelTests: XCTestCase {
         viewModel.elapsedSeconds = 3725
         XCTAssertEqual(viewModel.formattedElapsedTime, "62:05")
     }
+
+    // MARK: - refreshTargets
+
+    private func exercise(sets: Int, coachNote: String?) -> Exercise {
+        Exercise.create(
+            workoutId: UUID(),
+            name: "Bench Press",
+            muscleGroup: "Chest",
+            orderIndex: 0,
+            targetSets: sets,
+            targetReps: "8-10",
+            targetRir: "2",
+            restSeconds: 90,
+            coachNote: coachNote
+        )
+    }
+
+    /// The bug behind "I accepted the change and nothing happened": inputs were
+    /// already filled from the old target, and prefillTargets skips non-empty
+    /// fields. A coach modification has to overwrite them.
+    func testRefreshTargetsOverwritesAlreadyFilledInputs() {
+        var ex = exercise(sets: 3, coachNote: "Target: 135 lbs")
+        viewModel.prefillTargets(for: ex)
+        XCTAssertEqual(viewModel.editingWeight[ex.id], "135")
+
+        ex.coachNote = "Target: 145 lbs"
+        viewModel.refreshTargets(for: ex)
+
+        XCTAssertEqual(viewModel.editingWeight[ex.id], "145")
+        XCTAssertEqual(viewModel.pendingSets[ex.id]?.count, 3)
+        XCTAssertEqual(viewModel.pendingSets[ex.id]?.allSatisfy { $0.weight == "145" }, true)
+    }
+
+    /// Already-logged sets are history — a new target must not resurrect them.
+    func testRefreshTargetsLeavesLoggedSetsAlone() {
+        var ex = exercise(sets: 3, coachNote: "Target: 135 lbs")
+        viewModel.prefillTargets(for: ex)
+        viewModel.loggedSets[ex.id] = [
+            WorkoutSet.create(exerciseId: ex.id, setNumber: 1, weightLbs: 135, reps: 8, rir: 2)
+        ]
+
+        ex.coachNote = "Target: 145 lbs"
+        viewModel.refreshTargets(for: ex)
+
+        XCTAssertEqual(viewModel.loggedSets[ex.id]?.count, 1)
+        XCTAssertEqual(viewModel.loggedSets[ex.id]?.first?.weightLbs, 135)
+        XCTAssertEqual(viewModel.pendingSets[ex.id]?.count, 2)
+    }
+
+    /// Dropping the set count must shrink the visible rows, not leave orphans.
+    func testRefreshTargetsShrinksPendingSetsWhenTargetDrops() {
+        var ex = exercise(sets: 4, coachNote: "Target: 135 lbs")
+        viewModel.prefillTargets(for: ex)
+        XCTAssertEqual(viewModel.pendingSets[ex.id]?.count, 4)
+
+        ex.targetSets = 2
+        viewModel.refreshTargets(for: ex)
+        XCTAssertEqual(viewModel.pendingSets[ex.id]?.count, 2)
+    }
 }
