@@ -181,7 +181,7 @@ struct MonthPlanView: View {
     private var emptyPlansState: some View {
         VStack(spacing: 16) {
             Image(systemName: "calendar.badge.plus")
-                .font(.system(size: 48))
+                .scaledSymbol(size: 48)
                 .foregroundStyle(AppTheme.accent)
             Text("No Active Plans")
                 .font(AppTheme.playfair(18, weight: .bold))

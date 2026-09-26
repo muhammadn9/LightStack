@@ -195,7 +195,7 @@ private struct TodayTabContent: View {
                         .frame(width: CGFloat(56 + i * 24), height: CGFloat(56 + i * 24))
                 }
                 Image(systemName: "pencil.and.list.clipboard")
-                    .font(.system(size: 28, weight: .light))
+                    .font(.system(.title, design: .default, weight: .light))
                     .foregroundStyle(AppTheme.accent)
                     .symbolEffect(.pulse, options: .repeating)
             }

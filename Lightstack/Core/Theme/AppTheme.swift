@@ -70,31 +70,58 @@ enum AppTheme {
     static let sectionSpacing: CGFloat = 24
     static let minTouchSize: CGFloat = 50
 
-    // MARK: - Custom Fonts
+    // MARK: - Dynamic Type
 
-    /// Page headers, section labels, buttons — system font.
-    static func playfair(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        switch weight {
-        case .bold, .semibold, .heavy, .black:
-            return Font.system(size: size, weight: .bold)
-        default:
-            return Font.system(size: size, weight: .semibold)
+    /// Maps a legacy point size to the nearest semantic text style.
+    ///
+    /// The font helpers below keep their `(size:weight:)` signatures for source
+    /// compatibility, but resolve through this table so every call site scales with
+    /// the user's text-size setting.
+    ///
+    /// Sizes below 11pt all resolve to `.caption2`. That is deliberate: 11pt is
+    /// Apple's minimum legible size, so the handful of 7-9pt labels in the app
+    /// render slightly larger than before. This is the intended correction.
+    static func textStyle(for size: CGFloat) -> Font.TextStyle {
+        switch size {
+        case ..<11.5:  return .caption2
+        case ..<12.5:  return .caption
+        case ..<13.5:  return .footnote
+        case ..<14.5:  return .subheadline
+        case ..<16.5:  return .callout
+        case ..<17.5:  return .body
+        case ..<20.5:  return .title3
+        case ..<26.5:  return .title2
+        default:       return .title
         }
     }
 
-    /// Elegant headings, wax-seal labels — system font (no italic).
+    // MARK: - Font Helpers
+
+    /// Page headers, section labels, buttons.
+    static func playfair(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let resolved: Font.Weight
+        switch weight {
+        case .bold, .semibold, .heavy, .black: resolved = .bold
+        default:                               resolved = .semibold
+        }
+        return .system(textStyle(for: size), design: .default, weight: resolved)
+    }
+
+    /// Elegant headings, wax-seal labels (no italic — matches previous behaviour).
     static func playfairItalic(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         playfair(size, weight: weight)
     }
 
-    /// Handwritten subtitles, labels, notes, tab text — system font.
+    /// Handwritten subtitles, labels, notes, tab text.
     static func caveat(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        Font.system(size: size, weight: weight == .bold ? .medium : .regular)
+        .system(textStyle(for: size),
+                design: .default,
+                weight: weight == .bold ? .medium : .regular)
     }
 
-    /// Data display, stats, calendar numbers — rounded system font.
+    /// Data display, stats, calendar numbers — rounded design.
     static func plexMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        Font.system(size: size, weight: weight, design: .rounded)
+        .system(textStyle(for: size), design: .rounded, weight: weight)
     }
 
     // MARK: - UIFont versions (for UIKit appearance APIs)
@@ -178,6 +205,32 @@ struct GlowingCardStyle: ViewModifier {
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
                     .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5)
             )
+    }
+}
+
+// MARK: - Scaled Symbol
+
+/// Scales a large decorative SF Symbol with Dynamic Type while preserving its
+/// design size.
+///
+/// Semantic text styles top out at `.largeTitle` (34pt), so routing a 48-60pt
+/// hero icon through one would shrink it by a third. This scales by metric
+/// instead: the symbol keeps its intended size at the default text setting and
+/// grows proportionally from there.
+///
+/// Use this only for decorative symbols that are *not* inside a hardcoded
+/// frame — symbols in fixed frames must keep a fixed size or they clip.
+struct ScaledSymbol: ViewModifier {
+    @ScaledMetric private var size: CGFloat
+    private let weight: Font.Weight
+
+    init(size: CGFloat, weight: Font.Weight = .regular) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: .largeTitle)
+        self.weight = weight
+    }
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight))
     }
 }
 
@@ -282,6 +335,12 @@ extension View {
 
     func glowingCard() -> some View {
         modifier(GlowingCardStyle())
+    }
+
+    /// Sizes a large decorative SF Symbol so it scales with Dynamic Type
+    /// without losing its design size.
+    func scaledSymbol(size: CGFloat, weight: Font.Weight = .regular) -> some View {
+        modifier(ScaledSymbol(size: size, weight: weight))
     }
 
     func accentGradientBackground() -> some View {

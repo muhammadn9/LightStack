@@ -161,7 +161,7 @@ struct PostWorkoutView: View {
         Button(action: { todayViewModel.saveWorkout(userNote: userNote.isEmpty ? nil : userNote) }) {
             HStack(spacing: 8) {
                 Image(systemName: "square.and.arrow.down")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(.footnote, design: .default, weight: .semibold))
                 Text(todayViewModel.isLoadingNote ? "Analyzing…" : "Save to Training Log")
             }
         }

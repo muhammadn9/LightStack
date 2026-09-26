@@ -77,7 +77,7 @@ private struct HistoryContentView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 60))
+                .scaledSymbol(size: 60)
                 .foregroundStyle(AppTheme.accent.opacity(0.5))
             Text("No workout history yet")
                 .font(AppTheme.playfair(16, weight: .bold))

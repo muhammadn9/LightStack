@@ -126,7 +126,7 @@ struct WorkoutSessionSheet: View {
         case .generate:
             VStack(spacing: 20) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 40))
+                    .scaledSymbol(size: 40)
                     .foregroundStyle(AppTheme.accent)
                     .symbolEffect(.pulse, options: .repeating)
                 Text("Generating \(workoutType) workout...")

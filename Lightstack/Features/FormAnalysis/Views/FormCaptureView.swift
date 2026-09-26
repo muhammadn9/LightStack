@@ -146,7 +146,7 @@ struct FormCaptureView: View {
             Color.black.opacity(0.85).ignoresSafeArea()
             VStack(spacing: 20) {
                 Image(systemName: "camera.slash")
-                    .font(.system(size: 52))
+                    .scaledSymbol(size: 52)
                     .foregroundStyle(.white)
                 Text("Camera Access Required")
                     .font(.title2.bold())
@@ -198,7 +198,7 @@ struct FormCaptureView: View {
     private var lowDetectionTip: some View {
         VStack(spacing: 10) {
             Image(systemName: "figure.walk")
-                .font(.system(size: 32))
+                .scaledSymbol(size: 32)
                 .foregroundStyle(.yellow)
             Text("Body Not Detected")
                 .font(.headline.bold())
