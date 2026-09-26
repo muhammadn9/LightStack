@@ -62,64 +62,74 @@ struct CornerFold: View {
 
 // MARK: - Set Number Circle
 
-/// 16x16 circle badge for set numbers. Filled when logged, outlined when pending.
+/// Circle badge for set numbers. Filled when logged, outlined when pending.
 struct SetNumberCircle: View {
     let number: Int
     let isLogged: Bool
+
+    @ScaledMetric(relativeTo: .caption2) private var diameter: CGFloat = 18
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(isLogged ? AppTheme.accent : Color.clear)
-                .frame(width: 18, height: 18)
             Circle()
                 .stroke(isLogged ? AppTheme.accent : AppTheme.bindingHole, lineWidth: 1.5)
-                .frame(width: 18, height: 18)
             Text("\(number)")
                 .font(AppTheme.plexMono(8, weight: .bold))
                 .foregroundStyle(isLogged ? Color.white : Color.secondary)
         }
+        .frame(width: diameter, height: diameter)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Set \(number)")
+        .accessibilityValue(isLogged ? "Logged" : "Not logged")
     }
 }
 
 // MARK: - PR Stamp
 
-/// 28x28 red circular stamp for personal records — rotated slightly for authenticity.
+/// Red circular stamp for personal records — rotated slightly for authenticity.
 struct PRStamp: View {
+    @ScaledMetric(relativeTo: .caption2) private var diameter: CGFloat = 31
+
     var body: some View {
         ZStack {
             Circle()
                 .stroke(AppTheme.prStamp, lineWidth: 2)
-                .frame(width: 31, height: 31)
             Text("PR")
                 .font(AppTheme.playfairItalic(8, weight: .bold))
                 .foregroundStyle(AppTheme.prStamp)
         }
+        .frame(width: diameter, height: diameter)
         .rotationEffect(.degrees(-12))
         .opacity(0.9)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Personal record")
     }
 }
 
 // MARK: - Rest Timer Ring
 
-/// 40x40 spinning circle for rest timer countdown.
+/// Spinning circle for rest timer countdown.
 struct RestTimerRing: View {
     let progress: Double // 0.0 to 1.0
 
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 45
+
     var body: some View {
         ZStack {
-            // Track
             Circle()
                 .stroke(AppTheme.timerTrack, lineWidth: 3.5)
-                .frame(width: 45, height: 45)
-            // Active arc
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(AppTheme.accent, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
-                .frame(width: 45, height: 45)
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 1.0), value: progress)
         }
+        .frame(width: diameter, height: diameter)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rest timer")
+        .accessibilityValue("\(Int(progress * 100)) percent remaining")
     }
 }
 

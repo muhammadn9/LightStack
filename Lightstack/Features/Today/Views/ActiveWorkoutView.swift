@@ -311,7 +311,6 @@ struct ActiveWorkoutView: View {
                 if let restTime = viewModel.formattedRestTime(for: exercise.id) {
                     HStack(spacing: 11) {
                         RestTimerRing(progress: viewModel.restTimerProgress(for: exercise.id))
-                            .frame(width: 45, height: 45)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Rest Period")
                                 .font(AppTheme.caveat(15, weight: .bold))

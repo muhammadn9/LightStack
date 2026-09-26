@@ -15,13 +15,18 @@
 **Build command** (from `CLAUDE.md`, run after every change):
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.2' -quiet 2>&1 | tail -5; echo EXIT=$?
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.2' -quiet > /tmp/lightstack-build.log 2>&1; echo EXIT=$?
+grep -E "error:|BUILD FAILED" /tmp/lightstack-build.log | head -30
 ```
+
+Never pipe `xcodebuild` into `tail` before reading `$?` — `$?` reports `tail`'s status, so a failed
+build looks like it passed.
 
 **Test command:**
 
 ```bash
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.2' -only-testing:LightstackTests/AppThemeTypographyTests -quiet 2>&1 | tail -20; echo EXIT=$?
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.2' -quiet > /tmp/lightstack-test.log 2>&1; echo EXIT=$?
+grep -E "error:|failed|TEST FAILED" /tmp/lightstack-test.log | head -30
 ```
 
 **Execution order — do not follow the numbering blindly:**
