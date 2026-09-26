@@ -174,40 +174,6 @@ extension UIColor {
     }
 }
 
-// MARK: - View Modifiers
-
-/// Translucent material card with hairline border.
-struct CardStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(AppTheme.cardPadding)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
-                    .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5)
-            )
-    }
-}
-
-/// Accented card: material card + amber/blue leading accent strip.
-struct GlowingCardStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(AppTheme.cardPadding)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(AppTheme.accent.opacity(0.8))
-                    .frame(width: 3)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            }
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
-                    .strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5)
-            )
-    }
-}
-
 // MARK: - Scaled Symbol
 
 /// Scales a large decorative SF Symbol with Dynamic Type while preserving its
@@ -329,12 +295,14 @@ struct WaxSealButtonStyle: ButtonStyle {
 // MARK: - View Extensions
 
 extension View {
+    /// Deprecated shim — prefer `.lsCard()` with `.lsCardStyle(_:)`.
     func cardStyle() -> some View {
-        modifier(CardStyle())
+        lsCard(PlainCardStyle())
     }
 
+    /// Deprecated shim — prefer `.lsCard()` with `.lsCardStyle(AccentedCardStyle())`.
     func glowingCard() -> some View {
-        modifier(GlowingCardStyle())
+        lsCard(AccentedCardStyle())
     }
 
     /// Sizes a large decorative SF Symbol so it scales with Dynamic Type

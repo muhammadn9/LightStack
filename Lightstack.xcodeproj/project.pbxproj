@@ -12,6 +12,7 @@
 		03E23C4610AE5B9575692AF6 /* WorkoutRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40FE44FC1CFE4A089DC9FEC7 /* WorkoutRepository.swift */; };
 		09588CE04FF075C5C8517A3D /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 173AACE39DC28FCC095B3696 /* FlowLayout.swift */; };
 		096F2829000A33814E72522A /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492CBCCB2744643A11E2CD2A /* RootView.swift */; };
+		0C5D87C8D4C07B35F4ED6BE8 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5DBF98B887DA0578EDB784F /* Motion.swift */; };
 		15BFA33868E0625E2B28A468 /* PRRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 080CD96138F0AC191E99AEF1 /* PRRepository.swift */; };
 		16424B48B13C644A5BD4D8E2 /* TodayViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B18B3615F7F4252B87E34D /* TodayViewModel.swift */; };
 		176C0A96EC1D6BF0056C0F46 /* ValidationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 246C661744A8F0F458CF4900 /* ValidationService.swift */; };
@@ -85,6 +86,7 @@
 		A24E47A0EF0129F6CE105664 /* PlannedSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B38831FD06945E0E5CABD7DE /* PlannedSession.swift */; };
 		A34EFE5CA51CF01E30EA09E8 /* NotebookComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A049A3CB8EED029EB74346C4 /* NotebookComponents.swift */; };
 		A43C475BA62F19708BD27C2E /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F3610212DE9B047C649205 /* ProfileView.swift */; };
+		A6A6E13BA1F21FD0A8553CD4 /* CardStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FC9617A9073CA859D021BBE /* CardStyle.swift */; };
 		ADFEF822E7E6AB5A5B263698 /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC654469C47BC74D1CF942BA /* HistoryViewModel.swift */; };
 		AE4C263835B9E1565F60CBA9 /* OfflineQueueManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943DDDDBD93BD87F949E45E2 /* OfflineQueueManager.swift */; };
 		B0644410F3E1729FA98C69B8 /* CoachChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE05AE523B9A6672FFBFD2AD /* CoachChatView.swift */; };
@@ -204,6 +206,7 @@
 		8DFC8581DB1D2DAE78F2A5BA /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
 		8EA3C754CAD6B7891142B311 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
 		8F9112A9BD39A9D9D6389E03 /* LightstackTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LightstackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		8FC9617A9073CA859D021BBE /* CardStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardStyle.swift; sourceTree = "<group>"; };
 		914E21170D7FC5E94253F648 /* MessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubbleView.swift; sourceTree = "<group>"; };
 		925FF119C6D875B37829A0C7 /* MonthPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthPlan.swift; sourceTree = "<group>"; };
 		943DDDDBD93BD87F949E45E2 /* OfflineQueueManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineQueueManager.swift; sourceTree = "<group>"; };
@@ -247,6 +250,7 @@
 		E61D4DECBBD32EB1F8BDBEDF /* PoseEstimationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PoseEstimationService.swift; sourceTree = "<group>"; };
 		E751DCD349D7A48BBFA68528 /* StreakView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreakView.swift; sourceTree = "<group>"; };
 		E75F43C954C4BDE242435736 /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
+		F5DBF98B887DA0578EDB784F /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		F6B18B3615F7F4252B87E34D /* TodayViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayViewModel.swift; sourceTree = "<group>"; };
 		F76632164F927C0412CC3F6A /* CoachChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachChatViewModel.swift; sourceTree = "<group>"; };
 		F86DC1C823353E0CA17A98E0 /* AIRequestFormatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIRequestFormatTests.swift; sourceTree = "<group>"; };
@@ -388,6 +392,8 @@
 			isa = PBXGroup;
 			children = (
 				410B6C5178A19D60B2F8C3DC /* AppTheme.swift */,
+				8FC9617A9073CA859D021BBE /* CardStyle.swift */,
+				F5DBF98B887DA0578EDB784F /* Motion.swift */,
 				A049A3CB8EED029EB74346C4 /* NotebookComponents.swift */,
 			);
 			path = Theme;
@@ -829,6 +835,7 @@
 				B4C096DCC6D14973731B51E5 /* BodyPose.swift in Sources */,
 				5F336FAFC4BCC3615AB28C3A /* BodyPose3D.swift in Sources */,
 				817B687586782545AA7F2918 /* CameraPreviewView.swift in Sources */,
+				A6A6E13BA1F21FD0A8553CD4 /* CardStyle.swift in Sources */,
 				66841ECE2939A6742FBE068C /* CardioFormatting.swift in Sources */,
 				EE5B3C02A4B490A77D1D4F00 /* ChatMessage.swift in Sources */,
 				470B28C009029D80D64A879E /* ClaudeService.swift in Sources */,
@@ -874,6 +881,7 @@
 				5588F5C60A1C402C14AFE506 /* MonthPlanSubviews.swift in Sources */,
 				DF9B2FBCC0B0624CFE3BC1DF /* MonthPlanView.swift in Sources */,
 				911201B0C18194CFE2472CDA /* MonthPlanViewModel.swift in Sources */,
+				0C5D87C8D4C07B35F4ED6BE8 /* Motion.swift in Sources */,
 				9D98769EC4A34AE37C6A28D9 /* MuscleGroupChartView.swift in Sources */,
 				A34EFE5CA51CF01E30EA09E8 /* NotebookComponents.swift in Sources */,
 				8A87F39CC901230D31EDADF6 /* NotificationService.swift in Sources */,
