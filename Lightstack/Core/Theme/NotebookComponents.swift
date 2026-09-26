@@ -139,22 +139,24 @@ struct RestTimerRing: View {
 struct InkFillBar: View {
     let progress: Double // 0.0 to 1.0
 
+    private var clamped: Double { min(max(progress, 0), 1) }
+
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(height: 5)
-                    .overlay(
-                        Rectangle()
-                            .stroke(AppTheme.border, lineWidth: 1)
-                    )
+        Rectangle()
+            .fill(Color.clear)
+            .frame(height: 5)
+            .overlay(Rectangle().stroke(AppTheme.border, lineWidth: 1))
+            .background(alignment: .leading) {
+                // Scaling from the leading edge gives an exact proportional fill
+                // without reading geometry: the rectangle lays out at the bar's
+                // full width, then shrinks to `clamped` of it. `layoutPriority`
+                // cannot do this — it grants space by rank, not by fraction.
                 Rectangle()
                     .fill(AppTheme.accent)
-                    .frame(width: geo.size.width * min(max(progress, 0), 1), height: 5)
+                    .scaleEffect(x: clamped, anchor: .leading)
             }
-        }
-        .frame(height: 5)
+            .accessibilityElement(children: .ignore)
+            .accessibilityValue("\(Int(clamped * 100)) percent")
     }
 }
 

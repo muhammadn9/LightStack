@@ -1352,11 +1352,11 @@ Apply these mechanical replacements at the sites found above:
 // before
 .glowingCard()
 // after
-.lsCardStyle(AccentedCardStyle()).lsCard()
+.lsCard(AccentedCardStyle())
 ```
 
 In `PlannedSessionView`, `headerCard` is the primary card — give it emphasis by using
-`.lsCardStyle(AccentedCardStyle()).lsCard()`, and leave `detailsCard` as plain `.lsCard()`.
+`.lsCard(AccentedCardStyle())`, and leave `detailsCard` as plain `.lsCard()`.
 
 Leave call sites in FormAnalysis, Auth, Profile, and History on the shim — they are out of scope
 per the spec.

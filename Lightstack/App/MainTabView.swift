@@ -124,6 +124,7 @@ struct NotebookTabRow: View {
         }
         .accessibilityElement(children: .contain)
         .background(.bar)
+        .sensoryFeedback(.selection, trigger: selectedTab)
     }
 }
 

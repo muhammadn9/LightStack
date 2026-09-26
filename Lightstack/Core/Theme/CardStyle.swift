@@ -115,3 +115,75 @@ extension View {
         environment(\.lsCardStyle, style)
     }
 }
+
+// MARK: - Expandable Card
+
+/// A card that expands to reveal detail, with spring motion and haptics.
+///
+/// Motion is physics-based so a rapid second tap retargets the spring rather
+/// than restarting it. Both the animation and the haptic defer to the user's
+/// accessibility settings.
+struct ExpandableCard<Header: View, Detail: View>: View {
+    @Binding var isExpanded: Bool
+    @ViewBuilder var header: Header
+    @ViewBuilder var detail: Detail
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(reduceMotion ? .easeOut(duration: 0.12) : AppMotion.cardExpand) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    header
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.down")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PressableCardButtonStyle())
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(isExpanded ? "Collapses details" : "Expands details")
+
+            if isExpanded {
+                detail
+                    .padding(.top, 12)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal:   .opacity
+                        )
+                    )
+            }
+        }
+        .lsCard()
+        .sensoryFeedback(.impact(weight: .light), trigger: isExpanded)
+        .animation(reduceMotion ? nil : AppMotion.cardExpand, value: isExpanded)
+    }
+}
+
+// MARK: - Press Feedback
+
+/// Scales and dims a card slightly while pressed. Skips the scale under
+/// Reduce Motion, keeping only the opacity change.
+struct PressableCardButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(scale(pressed: configuration.isPressed))
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(AppMotion.press, value: configuration.isPressed)
+    }
+
+    private func scale(pressed: Bool) -> CGFloat {
+        guard pressed, !reduceMotion else { return 1.0 }
+        return 0.98
+    }
+}
