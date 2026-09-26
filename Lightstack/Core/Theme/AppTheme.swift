@@ -245,6 +245,16 @@ struct InkDotRating: View {
                 .buttonStyle(.plain)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rating")
+        .accessibilityValue("\(value) out of \(max)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: if value < max { onChange(value + 1) }
+            case .decrement: if value > 1   { onChange(value - 1) }
+            @unknown default: break
+            }
+        }
     }
 }
 

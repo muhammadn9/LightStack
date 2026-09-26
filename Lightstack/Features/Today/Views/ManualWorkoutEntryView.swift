@@ -114,6 +114,7 @@ struct ManualWorkoutEntryView: View {
                     Image(systemName: "minus.circle")
                         .foregroundStyle(AppTheme.textSecondary)
                 }
+                .accessibilityLabel("Decrease sets")
 
                 Text("\(exercise.targetSets)")
                     .font(AppTheme.plexMono(13, weight: .bold))
@@ -127,6 +128,7 @@ struct ManualWorkoutEntryView: View {
                     Image(systemName: "plus.circle")
                         .foregroundStyle(AppTheme.accent)
                 }
+                .accessibilityLabel("Increase sets")
             }
 
             Button(action: {
@@ -136,6 +138,8 @@ struct ManualWorkoutEntryView: View {
                     .foregroundStyle(AppTheme.warning)
             }
             .padding(.leading, 8)
+            .accessibilityLabel("Remove \(exercise.name)")
+            .accessibilityHint("Removes this exercise from the workout")
         }
         .padding(12)
         .background(AppTheme.surface)

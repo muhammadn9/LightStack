@@ -23,6 +23,7 @@ struct MonthPlanView: View {
                                 Image(systemName: "plus")
                                     .foregroundStyle(AppTheme.accent)
                             }
+                            .accessibilityLabel("Create new plan")
                         }
                     }
                 }
@@ -163,6 +164,7 @@ struct MonthPlanView: View {
                             .font(.title3)
                             .foregroundStyle(AppTheme.accent)
                     }
+                    .accessibilityLabel("Create new plan")
                 }
             }
 

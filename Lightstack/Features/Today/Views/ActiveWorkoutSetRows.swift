@@ -55,6 +55,8 @@ private struct StrengthLoggedSetRow: View {
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
                     .font(.body)
             }
+            .accessibilityLabel("Delete set")
+            .accessibilityHint("Removes this logged set")
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 7)
@@ -94,6 +96,8 @@ private struct CardioLoggedSetRow: View {
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
                     .font(.body)
             }
+            .accessibilityLabel("Delete set")
+            .accessibilityHint("Removes this logged set")
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 7)
@@ -177,6 +181,7 @@ struct StrengthPendingSetRow: View {
                 .shadow(color: AppTheme.accent.opacity(pendingSets[index].reps.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
             .disabled(pendingSets[index].reps.isEmpty)
+            .accessibilityLabel("Log set")
 
             // Delete pending
             Button(action: onDelete) {
@@ -184,6 +189,8 @@ struct StrengthPendingSetRow: View {
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
                     .font(.body)
             }
+            .accessibilityLabel("Remove set")
+            .accessibilityHint("Removes this pending set from the exercise")
         }
     }
 }
@@ -261,6 +268,7 @@ struct CardioPendingSetRow: View {
                 .shadow(color: AppTheme.accent.opacity(pendingSets[index].duration.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
             .disabled(pendingSets[index].duration.isEmpty)
+            .accessibilityLabel("Log set")
 
             // Delete pending
             Button(action: onDelete) {
@@ -268,6 +276,8 @@ struct CardioPendingSetRow: View {
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
                     .font(.body)
             }
+            .accessibilityLabel("Remove set")
+            .accessibilityHint("Removes this pending set from the exercise")
         }
     }
 }

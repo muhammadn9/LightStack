@@ -77,13 +77,20 @@ struct MainTabView: View {
 
 struct NotebookTabRow: View {
     @Binding var selectedTab: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @Namespace private var indicator
     private let tabs = ["Today", "Month", "History", "Profile", "Settings"]
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 ForEach(tabs.indices, id: \.self) { i in
-                    Button(action: { withAnimation(.easeInOut(duration: 0.15)) { selectedTab = i } }) {
+                    Button {
+                        withAnimation(reduceMotion ? nil : AppMotion.tabSwitch) {
+                            selectedTab = i
+                        }
+                    } label: {
                         VStack(spacing: 0) {
                             Text(tabs[i])
                                 .font(.footnote.weight(.semibold))
@@ -91,18 +98,31 @@ struct NotebookTabRow: View {
                                 .padding(.vertical, 10)
                                 .frame(maxWidth: .infinity)
 
-                            // Active indicator
-                            Capsule()
-                                .fill(i == selectedTab ? AppTheme.accent : Color.clear)
-                                .frame(height: 3)
-                                .padding(.horizontal, 18)
+                            ZStack {
+                                Capsule()
+                                    .fill(Color.clear)
+                                    .frame(height: 3)
+                                if i == selectedTab {
+                                    Capsule()
+                                        .fill(AppTheme.accent)
+                                        .frame(height: 3)
+                                        .matchedGeometryEffect(id: "tabIndicator", in: indicator)
+                                }
+                            }
+                            .padding(.horizontal, 18)
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(tabs[i])
+                    .accessibilityHint("Shows the \(tabs[i]) screen")
+                    .accessibilityAddTraits(
+                        i == selectedTab ? [.isButton, .isSelected] : .isButton
+                    )
                 }
             }
             InkDivider()
         }
+        .accessibilityElement(children: .contain)
         .background(.bar)
     }
 }

@@ -99,6 +99,8 @@ struct ConfirmWorkoutView: View {
                     .foregroundStyle(AppTheme.warning)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(exercise.name)")
+            .accessibilityHint("Removes this exercise from the workout plan")
         }
         .padding(12)
         .background(AppTheme.surfaceElevated)

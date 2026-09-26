@@ -101,6 +101,8 @@ struct ExerciseTableView: View {
                             .foregroundStyle(AppTheme.warning.opacity(0.7))
                             .font(.body)
                     }
+                    .accessibilityLabel("Delete set")
+                    .accessibilityHint("Removes this logged set")
                 }
             }
         }
@@ -183,6 +185,7 @@ struct ExerciseTableView: View {
                             .shadow(color: AppTheme.accent.opacity(0.3), radius: 4)
                     }
                     .disabled(!isReady)
+                    .accessibilityLabel("Log set")
 
                     if let onDelete = onDeletePendingSet {
                         Button(action: { onDelete(index) }) {
@@ -190,6 +193,8 @@ struct ExerciseTableView: View {
                                 .foregroundStyle(AppTheme.warning.opacity(0.7))
                                 .font(.body)
                         }
+                        .accessibilityLabel("Remove set")
+                        .accessibilityHint("Removes this pending set from the exercise")
                     }
                 }
 
