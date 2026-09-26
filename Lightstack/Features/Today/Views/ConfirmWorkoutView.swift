@@ -45,7 +45,7 @@ struct ConfirmWorkoutView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .cardStyle()
+        .lsCard()
     }
 
     // MARK: - Exercise List
@@ -66,7 +66,7 @@ struct ConfirmWorkoutView: View {
                 exerciseCard(exercise)
             }
         }
-        .cardStyle()
+        .lsCard()
     }
 
     private func exerciseCard(_ exercise: Exercise) -> some View {

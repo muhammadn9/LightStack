@@ -78,7 +78,7 @@ struct MonthPlanView: View {
                         // This Week's Plan
                         thisWeekSection
                     }
-                    .cardStyle()
+                    .lsCard()
 
                     // Start Today's Workout button
                     if let session = viewModel.todaySession, !session.isRestDay {
@@ -200,7 +200,7 @@ struct MonthPlanView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(40)
-        .cardStyle()
+        .lsCard()
     }
 
     // MARK: - Plan Switcher Chips

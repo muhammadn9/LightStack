@@ -48,7 +48,7 @@ struct PlannedSessionView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .cardStyle()
+        .lsCard(AccentedCardStyle())
     }
 
     // MARK: - Details
@@ -76,7 +76,7 @@ struct PlannedSessionView: View {
                 .padding(.top, 4)
             }
         }
-        .cardStyle()
+        .lsCard()
     }
 
     // MARK: - Action Buttons
