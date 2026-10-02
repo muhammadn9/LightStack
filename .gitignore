@@ -37,3 +37,9 @@ Lightstack/Config/Secrets.xcconfig
 # App Store Connect credentials — NEVER commit
 scripts/asc-config.sh
 scripts/.venv/
+
+# Local agent tooling / scratch output
+.claude/
+brag-output/
+.agents/
+skills-lock.json

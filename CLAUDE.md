@@ -4,9 +4,11 @@
 
 1. **Build first:**
    ```
-   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.2' -quiet 2>&1 | tail -5; echo EXIT=$?
+   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild build -project Lightstack.xcodeproj -scheme Lightstack -destination 'platform=iOS Simulator,name=iPhone 15 Pro,OS=17.2' -quiet > /tmp/lightstack-build.log 2>&1; echo EXIT=$?
+   grep -E "error:|BUILD FAILED" /tmp/lightstack-build.log | head -30
    ```
-2. If **BUILD FAILED** → fix all errors before proceeding. Never commit broken code.
+   Never pipe `xcodebuild` into `tail` before reading `$?` — `$?` would report `tail`'s status, so the build always looks like it passed.
+2. If `EXIT` is not 0, or the grep prints anything → fix all errors before proceeding. Never commit broken code.
 3. **Commit:** `git add -A && git commit -m "<clear description of what changed>"`
 4. **Push:** `git push origin HEAD`
 

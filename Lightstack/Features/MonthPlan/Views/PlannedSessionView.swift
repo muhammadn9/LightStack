@@ -48,7 +48,7 @@ struct PlannedSessionView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .cardStyle()
+        .lsCard(AccentedCardStyle())
     }
 
     // MARK: - Details
@@ -76,7 +76,7 @@ struct PlannedSessionView: View {
                 .padding(.top, 4)
             }
         }
-        .cardStyle()
+        .lsCard()
     }
 
     // MARK: - Action Buttons
@@ -115,42 +115,15 @@ struct PlannedSessionView: View {
 
     // MARK: - Helpers
 
+    @ViewBuilder
     private var statusBadge: some View {
-        Group {
-            if session.completed {
-                Text("Done")
-                    .font(AppTheme.caveat(11, weight: .bold))
-                    .foregroundStyle(AppTheme.success)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.success.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            } else if isToday {
-                Text("Today")
-                    .font(AppTheme.caveat(11, weight: .bold))
-                    .foregroundStyle(AppTheme.accent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            } else if isPast {
-                Text("Missed")
-                    .font(AppTheme.caveat(11, weight: .bold))
-                    .foregroundStyle(AppTheme.warning)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppTheme.warning.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            }
+        if let status = BadgeStatus(completed: session.completed, date: session.plannedDate) {
+            StatusBadge(status: status)
         }
     }
 
     private var isToday: Bool {
         Calendar.current.isDateInToday(session.plannedDate)
-    }
-
-    private var isPast: Bool {
-        session.plannedDate < Calendar.current.startOfDay(for: Date()) && !session.completed
     }
 
     private var formattedDate: String {

@@ -186,6 +186,7 @@ struct ActiveWorkoutView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 5))
                                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
                             }
+                            .accessibilityLabel("Form guide")
                             Button(action: { formCaptureExercise = exercise }) {
                                 Image(systemName: "camera.fill")
                                     .font(.footnote.weight(.semibold))
@@ -195,6 +196,7 @@ struct ActiveWorkoutView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 5))
                                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
                             }
+                            .accessibilityLabel("Record form")
                         }
                     }
                     // Exercise navigation
@@ -311,7 +313,6 @@ struct ActiveWorkoutView: View {
                 if let restTime = viewModel.formattedRestTime(for: exercise.id) {
                     HStack(spacing: 11) {
                         RestTimerRing(progress: viewModel.restTimerProgress(for: exercise.id))
-                            .frame(width: 45, height: 45)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Rest Period")
                                 .font(AppTheme.caveat(15, weight: .bold))
@@ -420,6 +421,7 @@ struct ActiveWorkoutView: View {
                 )
                 .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, x: 2, y: 4)
         }
+        .accessibilityLabel("Chat with coach")
         .padding(.trailing, 22)
         .padding(.bottom, 88)
     }

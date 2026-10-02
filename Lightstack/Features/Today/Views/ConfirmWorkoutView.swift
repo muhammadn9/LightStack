@@ -34,7 +34,7 @@ struct ConfirmWorkoutView: View {
     private var headerSection: some View {
         VStack(spacing: 6) {
             Image(systemName: "pencil.and.list.clipboard")
-                .font(.system(size: 30, weight: .light))
+                .font(.system(.title, design: .default, weight: .light))
                 .foregroundStyle(AppTheme.accent)
             Text("Workout Ready")
                 .font(AppTheme.playfairItalic(20, weight: .bold))
@@ -45,7 +45,7 @@ struct ConfirmWorkoutView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .cardStyle()
+        .lsCard()
     }
 
     // MARK: - Exercise List
@@ -66,7 +66,7 @@ struct ConfirmWorkoutView: View {
                 exerciseCard(exercise)
             }
         }
-        .cardStyle()
+        .lsCard()
     }
 
     private func exerciseCard(_ exercise: Exercise) -> some View {
@@ -95,10 +95,12 @@ struct ConfirmWorkoutView: View {
                 )
             }) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20))
+                    .font(.system(.title3, design: .default, weight: .regular))
                     .foregroundStyle(AppTheme.warning)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(exercise.name)")
+            .accessibilityHint("Removes this exercise from the workout plan")
         }
         .padding(12)
         .background(AppTheme.surfaceElevated)
@@ -177,7 +179,7 @@ struct ConfirmWorkoutView: View {
             Button(action: { todayViewModel.confirmAndStartWorkout() }) {
                 HStack(spacing: 8) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 12))
+                        .font(.system(.caption, design: .default, weight: .regular))
                     Text("Start Workout")
                 }
             }

@@ -75,6 +75,19 @@ struct WorkoutSetupView: View {
                             .foregroundStyle(AppTheme.textSecondary)
                             .padding(.leading, 4)
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Energy level")
+                    .accessibilityValue("\(min(5, max(1, (viewModel.energyLevel + 1) / 2))) out of 5")
+                    .accessibilityAdjustableAction { direction in
+                        switch direction {
+                        case .increment:
+                            if viewModel.energyLevel < 10 { viewModel.energyLevel += 2 }
+                        case .decrement:
+                            if viewModel.energyLevel > 2 { viewModel.energyLevel -= 2 }
+                        @unknown default:
+                            break
+                        }
+                    }
                 }
 
                 // Time Available — stepper style
@@ -103,6 +116,7 @@ struct WorkoutSetupView: View {
                                     )
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Decrease time")
 
                             Button(action: { if viewModel.timeAvailable < 120 { viewModel.timeAvailable += 15 } }) {
                                 Text("+")
@@ -116,6 +130,7 @@ struct WorkoutSetupView: View {
                                     )
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Increase time")
                         }
                     }
                 }

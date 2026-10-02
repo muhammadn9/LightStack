@@ -16,6 +16,8 @@ struct MonthDayTileView: View {
     let session: PlannedSession?
     let onTap: () -> Void
 
+    @ScaledMetric(relativeTo: .caption2) private var tileHeight: CGFloat = 44
+
     var body: some View {
         Button(action: onTap) {
             VStack(spacing: 3) {
@@ -47,7 +49,7 @@ struct MonthDayTileView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(minHeight: tileHeight)
             .background(backgroundColor)
             .clipShape(RoundedRectangle(cornerRadius: 3))
             .overlay(
@@ -56,9 +58,24 @@ struct MonthDayTileView: View {
             )
         }
         .buttonStyle(.plain)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(.isButton)
     }
 
     // MARK: - Computed
+
+    private var accessibilityDescription: String {
+        let day = DateFormatter.shortDate.string(from: date)
+        switch state {
+        case .empty:     return day
+        case .rest:      return "\(day), rest day"
+        case .today:     return "\(day), today, \(session?.workoutType ?? "planned")"
+        case .completed: return "\(day), completed, \(session?.workoutType ?? "")"
+        case .missed:    return "\(day), missed, \(session?.workoutType ?? "")"
+        case .planned:   return "\(day), planned, \(session?.workoutType ?? "")"
+        }
+    }
 
     private var dayNumber: Int {
         Calendar.current.component(.day, from: date)

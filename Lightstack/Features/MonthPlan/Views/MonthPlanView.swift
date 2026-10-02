@@ -23,6 +23,7 @@ struct MonthPlanView: View {
                                 Image(systemName: "plus")
                                     .foregroundStyle(AppTheme.accent)
                             }
+                            .accessibilityLabel("Create new plan")
                         }
                     }
                 }
@@ -77,7 +78,7 @@ struct MonthPlanView: View {
                         // This Week's Plan
                         thisWeekSection
                     }
-                    .cardStyle()
+                    .lsCard()
 
                     // Start Today's Workout button
                     if let session = viewModel.todaySession, !session.isRestDay {
@@ -163,6 +164,7 @@ struct MonthPlanView: View {
                             .font(.title3)
                             .foregroundStyle(AppTheme.accent)
                     }
+                    .accessibilityLabel("Create new plan")
                 }
             }
 
@@ -181,7 +183,7 @@ struct MonthPlanView: View {
     private var emptyPlansState: some View {
         VStack(spacing: 16) {
             Image(systemName: "calendar.badge.plus")
-                .font(.system(size: 48))
+                .scaledSymbol(size: 48)
                 .foregroundStyle(AppTheme.accent)
             Text("No Active Plans")
                 .font(AppTheme.playfair(18, weight: .bold))
@@ -198,7 +200,7 @@ struct MonthPlanView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(40)
-        .cardStyle()
+        .lsCard()
     }
 
     // MARK: - Plan Switcher Chips

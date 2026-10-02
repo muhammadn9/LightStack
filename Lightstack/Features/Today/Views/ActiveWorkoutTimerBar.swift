@@ -22,6 +22,8 @@ struct ActiveWorkoutTimerBar: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
+                    .accessibilityLabel("Cancel workout")
+                    .accessibilityHint("Ends the current workout session")
                     Text(viewModel.formattedElapsedTime)
                         .font(AppTheme.plexMono(18, weight: .medium))
                         .foregroundStyle(AppTheme.textPrimary)
@@ -31,6 +33,7 @@ struct ActiveWorkoutTimerBar: View {
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.accent)
                     }
+                    .accessibilityLabel(viewModel.isPaused ? "Resume workout" : "Pause workout")
                 }
             }
 
@@ -79,6 +82,7 @@ struct ExerciseNavButtons: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
                 }
+                .accessibilityLabel("Previous exercise")
             }
             Text("\(currentIndex + 1)/\(totalCount)")
                 .font(AppTheme.plexMono(16))
@@ -93,6 +97,7 @@ struct ExerciseNavButtons: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
                 }
+                .accessibilityLabel("Next exercise")
             }
             Button(action: onAdd) {
                 Image(systemName: "plus")
@@ -103,6 +108,7 @@ struct ExerciseNavButtons: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
             }
+            .accessibilityLabel("Add exercise")
         }
     }
 }
