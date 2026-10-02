@@ -65,6 +65,15 @@ private struct HistoryContentView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                if let userId = environment.authService.currentUser()?.userId {
+                                    viewModel.deleteWorkout(workout, userId: userId)
+                                }
+                            } label: {
+                                Label("Delete Workout", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)

@@ -77,7 +77,7 @@ struct SetNumberCircle: View {
                 .stroke(isLogged ? AppTheme.accent : AppTheme.bindingHole, lineWidth: 1.5)
             Text("\(number)")
                 .font(AppTheme.plexMono(8, weight: .bold))
-                .foregroundStyle(isLogged ? Color.white : Color.secondary)
+                .foregroundStyle(isLogged ? Color.white : AppTheme.textSecondary)
         }
         .frame(width: diameter, height: diameter)
         .accessibilityElement(children: .ignore)
