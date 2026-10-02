@@ -333,8 +333,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
     // MARK: - Private prefill helpers
 
     private func prefillWeightValue(from exercise: Exercise) -> String {
-        guard let note = exercise.coachNote else { return "" }
-        let cleaned = note.replacingOccurrences(of: "Target: ", with: "")
+        guard let cleaned = exercise.coachNoteParts.weight else { return "" }
         let upper = cleaned.uppercased()
         if upper.contains("BW") || upper.contains("BODYWEIGHT") { return "BW" }
         let parts = cleaned.components(separatedBy: " ")

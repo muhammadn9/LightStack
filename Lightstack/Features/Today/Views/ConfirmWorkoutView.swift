@@ -82,6 +82,14 @@ struct ConfirmWorkoutView: View {
                         .foregroundStyle(AppTheme.accentSecondary)
                 }
 
+                // Coach's message, shown once per exercise
+                if let message = exercise.coachNoteParts.message {
+                    Text(message)
+                        .font(AppTheme.caveat(12))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 // Per-set rows
                 setRows(for: exercise)
             }
@@ -111,7 +119,7 @@ struct ConfirmWorkoutView: View {
     @ViewBuilder
     private func setRows(for exercise: Exercise) -> some View {
         let count = max(1, exercise.targetSets ?? 1)
-        let weight = extractWeight(from: exercise.coachNote)
+        let weight = exercise.coachNoteParts.weight ?? ""
         let reps = exercise.targetReps ?? "—"
         let rir: String = {
             guard let r = exercise.targetRir,
@@ -124,11 +132,12 @@ struct ConfirmWorkoutView: View {
             ForEach(1...count, id: \.self) { setNum in
                 HStack(spacing: 6) {
                     Text("Set \(setNum)")
-                        .frame(width: 38, alignment: .leading)
+                        .fixedSize()
                         .foregroundStyle(AppTheme.textSecondary)
                     Spacer()
                     if !weight.isEmpty {
                         Text(weight)
+                            .lineLimit(1)
                     }
                     Text("×")
                     Text("\(reps) reps")
@@ -143,11 +152,6 @@ struct ConfirmWorkoutView: View {
         }
     }
 
-    private func extractWeight(from coachNote: String?) -> String {
-        guard let note = coachNote else { return "" }
-        let prefix = "Target: "
-        return note.hasPrefix(prefix) ? String(note.dropFirst(prefix.count)) : note
-    }
 
     // MARK: - Action Buttons
 

@@ -160,7 +160,7 @@ final class CoachPromptService {
                 message += "\n\n[\(dateStr)] \(workout.workoutType)"
                 if let exercises = recentSessionExercises[workout.id] {
                     for ex in exercises {
-                        let weight = ex.coachNote ?? "bodyweight"
+                        let weight = ex.coachNoteParts.weight ?? "bodyweight"
                         message += "\n  - \(ex.name): \(ex.targetSets ?? 0) sets x \(ex.targetReps ?? "?") reps (\(weight))"
                     }
                 }

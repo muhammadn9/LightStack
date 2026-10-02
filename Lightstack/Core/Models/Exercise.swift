@@ -164,3 +164,44 @@ struct Exercise: Codable, Identifiable {
         self.syncStatus = syncStatus
     }
 }
+
+// MARK: - Coach note parts
+
+extension Exercise {
+    /// `coachNote` packs the target weight and the coach's message into one
+    /// string ("Target: 155 lbs — You crushed…" or "Target: 155 lbs · Slow eccentric").
+    /// Splits off the leading weight segment so views can show each separately.
+    var coachNoteParts: (weight: String?, message: String?) {
+        Self.splitCoachNote(coachNote)
+    }
+
+    static func splitCoachNote(_ note: String?) -> (weight: String?, message: String?) {
+        guard let note = note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty else {
+            return (nil, nil)
+        }
+
+        // Split only at the first separator — the message itself may contain dashes.
+        let separators = [" — ", " · "]
+        let firstSplit = separators
+            .compactMap { note.range(of: $0) }
+            .min { $0.lowerBound < $1.lowerBound }
+        let head = firstSplit.map { String(note[..<$0.lowerBound]) } ?? note
+        let tail = firstSplit.map { String(note[$0.upperBound...]) }
+
+        var weight = head.trimmingCharacters(in: .whitespaces)
+        let hasTargetPrefix = weight.lowercased().hasPrefix("target:")
+        if hasTargetPrefix {
+            weight = String(weight.dropFirst("target:".count)).trimmingCharacters(in: .whitespaces)
+        }
+
+        let looksLikeWeight = weight.range(
+            of: #"^(\d+(\.\d+)?\s*(lbs?|kg)?\b|bw\b|bodyweight\b)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+
+        guard hasTargetPrefix || looksLikeWeight else { return (nil, note) }
+
+        let message = tail?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (weight.isEmpty ? nil : weight, (message?.isEmpty ?? true) ? nil : message)
+    }
+}
