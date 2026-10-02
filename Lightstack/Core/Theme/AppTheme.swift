@@ -19,7 +19,8 @@ enum AppTheme {
 
     /// System label colors.
     static let textPrimary   = Color(.label)
-    static let textSecondary = Color(.secondaryLabel)
+    /// Darker in light mode than system secondaryLabel to meet WCAG AA (4.5:1) on system grouped backgrounds.
+    static let textSecondary = Color(adaptiveDark: 0x8E8E93, light: 0x555555)
 
     /// Hairline separator.
     static let border = Color(.separator)
@@ -60,7 +61,7 @@ enum AppTheme {
     static let bindingHole     = Color(.tertiaryLabel)
     static let cornerFold      = Color.clear
     static let timerTrack      = Color(.systemFill)
-    static let textHand        = Color(.secondaryLabel)
+    static let textHand        = AppTheme.textSecondary
     static let prStamp         = Color(hex: 0xB91C1C)
 
     // MARK: - Dimensions
@@ -202,7 +203,7 @@ struct NotebookSectionHeader: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(AppTheme.textSecondary)
     }
 }
 

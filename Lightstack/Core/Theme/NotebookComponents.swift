@@ -77,7 +77,7 @@ struct SetNumberCircle: View {
                 .frame(width: 18, height: 18)
             Text("\(number)")
                 .font(AppTheme.plexMono(8, weight: .bold))
-                .foregroundStyle(isLogged ? Color.white : Color.secondary)
+                .foregroundStyle(isLogged ? Color.white : AppTheme.textSecondary)
         }
     }
 }
