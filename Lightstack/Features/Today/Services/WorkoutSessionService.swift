@@ -144,6 +144,13 @@ final class WorkoutSessionService {
         workoutRepository.saveExercises(exercises, workoutId: workout.id)
     }
 
+    /// Forget the current workout once it has been saved or discarded, so it is
+    /// no longer treated as in progress.
+    func clearCurrentWorkout() {
+        currentWorkout = nil
+        currentWorkoutId = nil
+    }
+
     // MARK: - Log Set
 
     func logSet(_ workoutSet: WorkoutSet, exerciseId: UUID) {

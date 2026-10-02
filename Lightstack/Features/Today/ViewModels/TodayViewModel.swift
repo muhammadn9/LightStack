@@ -208,6 +208,22 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
         // Clear saved session when resetting to setup
         sessionPersistence.clearSession()
+        sessionService.clearCurrentWorkout()
+    }
+
+    /// Cancel the in-progress workout: delete it and its logged sets from storage
+    /// so it never appears in History, recompute any PRs it set, then reset.
+    func discardWorkout() {
+        if let workout = sessionService.currentWorkout {
+            let exerciseNames = Set(exercises.map(\.name))
+            workoutRepository.deleteWorkout(workout)
+            if let userId = userId {
+                for name in exerciseNames {
+                    prRepository.recalculatePR(userId: userId, exerciseName: name)
+                }
+            }
+        }
+        resetToSetup()
     }
 
     // MARK: - WorkoutSessionServiceDelegate

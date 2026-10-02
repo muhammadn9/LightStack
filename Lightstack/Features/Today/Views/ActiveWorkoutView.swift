@@ -103,7 +103,7 @@ struct ActiveWorkoutView: View {
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
-                todayViewModel.resetToSetup()
+                todayViewModel.discardWorkout()
             }
             Button("Keep Going", role: .cancel) {}
         } message: {
