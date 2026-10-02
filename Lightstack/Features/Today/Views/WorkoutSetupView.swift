@@ -6,6 +6,7 @@ struct WorkoutSetupView: View {
     @ObservedObject var viewModel: WorkoutSetupViewModel
     @ObservedObject var todayViewModel: TodayViewModel
     @State private var showManualEntry = false
+    @State private var lastSessionMatch: Workout?
 
     private var todayHeader: String {
         "\(DateFormatter.weekdayMonthDay.string(from: Date())) — Training Log"
@@ -181,6 +182,17 @@ struct WorkoutSetupView: View {
                         }
                     }
                     .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+
+                    if let last = lastSessionMatch, !viewModel.selectedWorkoutType.isEmpty {
+                        Button(action: { todayViewModel.repeatLastSession(ofType: viewModel.selectedWorkoutType) }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.counterclockwise")
+                                Text("Repeat last \(viewModel.selectedWorkoutType) · \(last.date.formatted(.dateTime.month(.abbreviated).day()))")
+                            }
+                        }
+                        .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+                        .accessibilityHint("Starts with the same exercises as last time, no AI coaching")
+                    }
                 }
                 .padding(.top, 4)
             }
@@ -188,11 +200,16 @@ struct WorkoutSetupView: View {
         }
         .themedBackground()
         .scrollDismissesKeyboard(.interactively)
+        .onChange(of: viewModel.selectedWorkoutType) { _, newType in
+            lastSessionMatch = newType.isEmpty ? nil : todayViewModel.lastSession(ofType: newType)
+        }
         .onAppear {
             if let userId = environment.authService.currentUser()?.userId {
                 viewModel.loadSplitDays(userId: userId)
                 todayViewModel.setUserId(userId)
             }
+            let type = viewModel.selectedWorkoutType
+            lastSessionMatch = type.isEmpty ? nil : todayViewModel.lastSession(ofType: type)
         }
         .sheet(isPresented: $showManualEntry) {
             if let userId = environment.authService.currentUser()?.userId {

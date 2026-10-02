@@ -166,11 +166,11 @@ final class ActiveWorkoutViewModelTests: XCTestCase {
 
     // MARK: - logPendingSet: weight validation regression
 
-    func testLogPendingSetReturnsNilWhenWeightIsZeroRegression() {
-        // Regression: w > 0 fix — weight "0" must not be accepted
+    func testLogPendingSetTreatsZeroWeightAsBodyweight() {
+        // Repeat-session rules: weight "0" is accepted and logged as bodyweight (0).
         let id = UUID()
         viewModel.pendingSets[id] = [PendingSetInput(weight: "0", reps: "5", rir: "2")]
-        XCTAssertNil(viewModel.logPendingSet(at: 0, exerciseId: id))
+        XCTAssertEqual(viewModel.logPendingSet(at: 0, exerciseId: id)?.weightLbs, 0)
     }
 
     // MARK: - logPendingSet: bodyweight logic

@@ -46,6 +46,7 @@ struct ActiveWorkoutView: View {
         }
         .onAppear {
             viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
+            viewModel.previousHints = todayViewModel.previousHints
             for exercise in todayViewModel.exercises {
                 viewModel.prefillTargets(for: exercise)
             }

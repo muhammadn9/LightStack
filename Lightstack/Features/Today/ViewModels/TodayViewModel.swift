@@ -28,6 +28,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var errorMessage: String?
     @Published var isLoadingNote: Bool = false
     @Published var lastPR: PersonalRecord?
+    /// Last session's sets per new exercise id (repeat sessions only).
+    @Published var previousHints: [UUID: [PreviousSetHint]] = [:]
 
     let sessionService: WorkoutSessionService
     let workoutRepository: WorkoutRepository
@@ -69,6 +71,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         // Restore all workout state
         exercises = state.exercises
         loggedSets = state.loggedSets
+        previousHints = state.previousHints ?? [:]
         activeWorkoutElapsed = state.elapsedSeconds
 
         if state.phase == "active" {
@@ -95,7 +98,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             loggedSets: loggedSets,
             phase: phase,
             userNote: nil,
-            elapsedSeconds: activeWorkoutElapsed
+            elapsedSeconds: activeWorkoutElapsed,
+            previousHints: previousHints
         )
     }
 
@@ -128,7 +132,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             return false
         }
 
-        if let pr = prRepository.checkAndRecordPR(
+        // Skip PR check for zero-rep sets (nothing was actually lifted)
+        if workoutSet.reps > 0, let pr = prRepository.checkAndRecordPR(
             userId: userId,
             exerciseName: exercise.name,
             weightLbs: workoutSet.weightLbs,
@@ -192,6 +197,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         phase = .setup
         exercises = []
         loggedSets = [:]
+        previousHints = [:]
         aiProgressionNote = nil
         errorMessage = nil
         isLoadingNote = false
@@ -244,6 +250,67 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         workoutRepository.createWorkout(newWorkout)
         sessionService.startSession(workout: newWorkout, exercises: newExercises)
         self.exercises = newExercises
+        phase = .confirmation
+    }
+
+    /// Most recent past workout of this type that has at least one logged set.
+    func lastSession(ofType type: String) -> Workout? {
+        guard let userId = userId else { return nil }
+        let wanted = type.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !wanted.isEmpty else { return nil }
+        let currentId = sessionService.currentWorkoutId
+        let candidates = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 60)
+            .filter { $0.id != currentId }
+            .filter { $0.workoutType.trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(wanted) == .orderedSame }
+            .sorted { $0.date > $1.date }
+        return candidates.first { workout in
+            workoutRepository.fetchExercises(workoutId: workout.id).contains { exercise in
+                !workoutRepository.fetchSets(exerciseId: exercise.id).isEmpty
+            }
+        }
+    }
+
+    /// Start a new workout from the last session of this type, skipping AI.
+    /// Last session's numbers become grey hints on the set rows.
+    func repeatLastSession(ofType type: String) {
+        guard let userId = userId, let source = lastSession(ofType: type) else { return }
+        let newWorkout = Workout.create(userId: userId, workoutType: source.workoutType, energyLevel: nil, timeAvailableMinutes: nil)
+        let sourceExercises = workoutRepository.fetchExercises(workoutId: source.id)
+            .sorted { $0.orderIndex < $1.orderIndex }
+
+        var hints: [UUID: [PreviousSetHint]] = [:]
+        var newExercises: [Exercise] = []
+        for (index, ex) in sourceExercises.enumerated() {
+            let sets = workoutRepository.fetchSets(exerciseId: ex.id)
+                .sorted { $0.setNumber < $1.setNumber }
+            let first = sets.first
+            let coachNote: String? = first.map { set in
+                set.weightLbs == 0 ? "Target: BW" : "Target: \(String(format: "%g", set.weightLbs)) lbs"
+            }
+            let newExercise = Exercise.create(
+                workoutId: newWorkout.id,
+                name: ex.name,
+                muscleGroup: ex.muscleGroup,
+                orderIndex: index,
+                targetSets: sets.isEmpty ? ex.targetSets : sets.count,
+                targetReps: first.map { String($0.reps) } ?? ex.targetReps,
+                targetRir: ex.targetRir,
+                restSeconds: ex.restSeconds,
+                coachNote: coachNote
+            )
+            if newExercise.trackingType == .strength, !sets.isEmpty {
+                hints[newExercise.id] = sets.map {
+                    PreviousSetHint(weightLbs: $0.weightLbs, reps: $0.reps, rir: $0.rir)
+                }
+            }
+            newExercises.append(newExercise)
+        }
+
+        workoutRepository.createWorkout(newWorkout)
+        sessionService.startSession(workout: newWorkout, exercises: newExercises)
+        self.exercises = newExercises
+        self.previousHints = hints
         phase = .confirmation
     }
 

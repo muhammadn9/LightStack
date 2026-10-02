@@ -117,18 +117,31 @@ struct StrengthPendingSetRow: View {
     let onLog: () -> Void
     let onDelete: () -> Void
 
+    private var hint: PreviousSetHint? { pendingSets[index].previous }
+    private var canLog: Bool { !pendingSets[index].reps.isEmpty || hint != nil }
+
+    private func hintPrompt(_ text: String) -> Text {
+        Text(text).foregroundStyle(AppTheme.textSecondary.opacity(0.6))
+    }
+
+    private var weightHintText: String {
+        guard let hint else { return "lbs" }
+        return hint.weightLbs == 0 ? "BW" : String(format: "%g", hint.weightLbs)
+    }
+
     var body: some View {
         HStack(spacing: 9) {
             SetNumberCircle(number: setNumber, isLogged: false)
 
             // Weight field
             VStack(spacing: 3) {
-                TextField("lbs", text: $pendingSets[index].weight)
+                TextField("lbs", text: $pendingSets[index].weight, prompt: hintPrompt(weightHintText))
                     .keyboardType(.decimalPad)
                     .font(AppTheme.plexMono(16, weight: .bold))
                     .multilineTextAlignment(.center)
                     .frame(width: 78)
                     .foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityLabel(hint.map { "Weight, last time \($0.weightLbs == 0 ? "bodyweight" : String(format: "%g", $0.weightLbs))" } ?? "Weight")
                 Rectangle()
                     .fill(pendingSets[index].weight.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 78, height: 1.5)
@@ -141,12 +154,13 @@ struct StrengthPendingSetRow: View {
 
             // Reps field
             VStack(spacing: 3) {
-                TextField("reps", text: $pendingSets[index].reps)
+                TextField("reps", text: $pendingSets[index].reps, prompt: hintPrompt(hint.map { String($0.reps) } ?? "reps"))
                     .keyboardType(.numberPad)
                     .font(AppTheme.plexMono(16, weight: .bold))
                     .multilineTextAlignment(.center)
                     .frame(width: 67)
                     .foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityLabel(hint.map { "Reps, last time \($0.reps)" } ?? "Reps")
                 Rectangle()
                     .fill(pendingSets[index].reps.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 67, height: 1.5)
@@ -155,12 +169,13 @@ struct StrengthPendingSetRow: View {
 
             // RIR field
             VStack(spacing: 3) {
-                TextField("RIR", text: $pendingSets[index].rir)
+                TextField("RIR", text: $pendingSets[index].rir, prompt: hintPrompt(hint.map { String($0.rir) } ?? "RIR"))
                     .keyboardType(.numberPad)
                     .font(AppTheme.plexMono(16))
                     .multilineTextAlignment(.center)
                     .frame(width: 56)
                     .foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityLabel(hint.map { "RIR, last time \($0.rir)" } ?? "RIR")
                 Rectangle()
                     .fill(AppTheme.border.opacity(0.5))
                     .frame(width: 56, height: 1.5)
@@ -170,17 +185,17 @@ struct StrengthPendingSetRow: View {
             Button(action: onLog) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(pendingSets[index].reps.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
+                        .fill(!canLog ? AppTheme.surfaceElevated : AppTheme.accent)
                         .frame(width: 31, height: 31)
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(pendingSets[index].reps.isEmpty
+                        .foregroundStyle(!canLog
                                          ? AppTheme.textSecondary
                                          : AppTheme.background)
                 }
-                .shadow(color: AppTheme.accent.opacity(pendingSets[index].reps.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
+                .shadow(color: AppTheme.accent.opacity(!canLog ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
-            .disabled(pendingSets[index].reps.isEmpty)
+            .disabled(!canLog)
             .accessibilityLabel("Log set")
 
             // Delete pending
