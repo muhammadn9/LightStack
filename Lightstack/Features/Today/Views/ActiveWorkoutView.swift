@@ -46,6 +46,7 @@ struct ActiveWorkoutView: View {
         }
         .onAppear {
             viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
+            viewModel.previousHints = todayViewModel.previousHints
             for exercise in todayViewModel.exercises {
                 viewModel.prefillTargets(for: exercise)
             }
@@ -102,7 +103,7 @@ struct ActiveWorkoutView: View {
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
-                todayViewModel.resetToSetup()
+                todayViewModel.discardWorkout()
             }
             Button("Keep Going", role: .cancel) {}
         } message: {
@@ -461,10 +462,7 @@ struct ActiveWorkoutView: View {
             let count = viewModel.pendingSets[exerciseId]?.count ?? 0
             for _ in 0..<count {
                 guard let set = viewModel.pendingSets[exerciseId], !set.isEmpty else { break }
-                let isReady = exercise.trackingType == .cardio
-                    ? !set[0].duration.isEmpty
-                    : !set[0].reps.isEmpty
-                if isReady {
+                if ActiveWorkoutViewModel.isReadyToLog(set[0], trackingType: exercise.trackingType) {
                     logSet(at: 0, exerciseId: exerciseId)
                 } else {
                     break

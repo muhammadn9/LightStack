@@ -1,5 +1,12 @@
 import Foundation
 
+/// Last session's numbers for one set, shown as grey hints in a repeat session.
+struct PreviousSetHint: Codable, Equatable {
+    let weightLbs: Double   // 0 = bodyweight
+    let reps: Int
+    let rir: Int
+}
+
 /// One pending (not-yet-logged) set for an exercise, with editable fields.
 struct PendingSetInput: Identifiable {
     var id = UUID()
@@ -12,6 +19,8 @@ struct PendingSetInput: Identifiable {
     var duration: String = ""
     var distance: String = ""
     var incline: String = ""
+    /// Last session's values for this set (repeat sessions only).
+    var previous: PreviousSetHint? = nil
 }
 
 /// Manages active workout state: current exercises, set logging,
@@ -21,6 +30,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
     @Published var loggedSets: [UUID: [WorkoutSet]] = [:]
     /// Per-exercise array of pending sets (shown as individual editable rows).
     @Published var pendingSets: [UUID: [PendingSetInput]] = [:]
+    /// Last session's sets per exercise id, used as hints in a repeat session.
+    @Published var previousHints: [UUID: [PreviousSetHint]] = [:]
     // Legacy single-set editing fields kept for any remaining callers.
     @Published var editingWeight: [UUID: String] = [:]
     @Published var editingReps: [UUID: String] = [:]
@@ -177,8 +188,11 @@ final class ActiveWorkoutViewModel: ObservableObject {
         }
 
         let needed = max(0, (exercise.targetSets ?? 0) - (loggedSets[exercise.id]?.count ?? 0))
-        pendingSets[exercise.id] = (0..<needed).map { _ in
-            PendingSetInput(weight: weight, reps: reps, rir: rir)
+        let existing = pendingSets[exercise.id] ?? []
+        pendingSets[exercise.id] = (0..<needed).map { i in
+            // Rows carrying a hint keep it (and their blank text) untouched.
+            if i < existing.count, existing[i].previous != nil { return existing[i] }
+            return PendingSetInput(weight: weight, reps: reps, rir: rir)
         }
     }
 
@@ -208,7 +222,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
     /// pre-filled with AI targets or last-logged values.
     func syncPendingSets(for exercise: Exercise) {
         let loggedCount = loggedSets[exercise.id]?.count ?? 0
-        let targetCount = exercise.targetSets ?? 0
+        var targetCount = exercise.targetSets ?? 0
+        let hints = exercise.trackingType == .cardio ? [] : (previousHints[exercise.id] ?? [])
+        if !hints.isEmpty { targetCount = max(targetCount, hints.count) }
         let needed = max(0, targetCount - loggedCount)
 
         var current = pendingSets[exercise.id] ?? []
@@ -224,6 +240,8 @@ final class ActiveWorkoutViewModel: ObservableObject {
                     distance: last?.distanceMiles.map { String(format: "%g", $0) } ?? "",
                     incline: last?.inclineLevel.map { String(format: "%g", $0) } ?? ""
                 ))
+            } else if let hint = hints[safe: loggedCount + current.count] {
+                current.append(PendingSetInput(weight: "", reps: "", rir: "", previous: hint))
             } else {
                 current.append(PendingSetInput(
                     weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
@@ -237,6 +255,57 @@ final class ActiveWorkoutViewModel: ObservableObject {
             current = Array(current.prefix(needed))
         }
         pendingSets[exercise.id] = current
+    }
+
+    /// Whether a pending set has enough to be logged as-is. Blank fields with a
+    /// previous-session hint count as filled in.
+    static func isReadyToLog(_ entry: PendingSetInput, trackingType: TrackingType) -> Bool {
+        if trackingType == .cardio {
+            return !entry.duration.isEmpty
+        }
+        return resolveStrength(weight: entry.weight, reps: entry.reps, rir: entry.rir,
+                               previous: entry.previous) != nil
+    }
+
+    /// Resolves a strength entry to concrete values. Blank fields fall back to
+    /// `previous` when present. Returns nil when the entry is not loggable.
+    static func resolveStrength(weight: String, reps: String, rir: String,
+                                previous: PreviousSetHint?) -> (weight: Double, reps: Int, rir: Int)? {
+        let w = weight.trimmingCharacters(in: .whitespacesAndNewlines)
+        let r = reps.trimmingCharacters(in: .whitespacesAndNewlines)
+        let i = rir.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let resolvedWeight: Double
+        if w.isEmpty {
+            resolvedWeight = previous?.weightLbs ?? 0
+        } else if w.uppercased() == "BW" {
+            resolvedWeight = 0
+        } else if let value = Double(w), value >= 0 {
+            resolvedWeight = value
+        } else {
+            return nil
+        }
+
+        let resolvedReps: Int
+        if r.isEmpty {
+            guard let previous else { return nil }
+            resolvedReps = previous.reps
+        } else if let value = Int(r), value >= 0 {
+            resolvedReps = value
+        } else {
+            return nil
+        }
+
+        let resolvedRir: Int
+        if i.isEmpty {
+            resolvedRir = previous?.rir ?? 2
+        } else if let value = Int(i), value >= 0 {
+            resolvedRir = value
+        } else {
+            resolvedRir = previous?.rir ?? 2
+        }
+
+        return (resolvedWeight, resolvedReps, resolvedRir)
     }
 
     /// Log the pending set at `index`, add it to loggedSets, and remove it from pendingSets.
@@ -268,17 +337,13 @@ final class ActiveWorkoutViewModel: ObservableObject {
                 inclineLevel: incline
             )
         } else {
-            // Strength: require reps, weight optional
-            let weight: Double
-            if entry.weight.isEmpty || entry.weight.uppercased() == "BW" {
-                weight = 0.0
-            } else if let w = Double(entry.weight), w > 0 {
-                weight = w
-            } else {
-                return nil
-            }
-            guard let reps = Int(entry.reps), reps > 0 else { return nil }
-            let rir = Int(entry.rir) ?? 2
+            // Strength: blank fields fall back to the previous-session hint
+            guard let resolved = Self.resolveStrength(
+                weight: entry.weight, reps: entry.reps, rir: entry.rir, previous: entry.previous
+            ) else { return nil }
+            let weight = resolved.weight
+            let reps = resolved.reps
+            let rir = resolved.rir
             workoutSet = WorkoutSet.create(
                 exerciseId: exerciseId,
                 setNumber: setNumber,
@@ -406,5 +471,11 @@ final class ActiveWorkoutViewModel: ObservableObject {
     deinit {
         stopTimer()
         restTimerClock?.invalidate()
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
