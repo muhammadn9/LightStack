@@ -80,4 +80,22 @@ final class RepeatSetResolutionTests: XCTestCase {
             XCTAssertEqual(row.previous, hints[i])
         }
     }
+
+    // MARK: - isReadyToLog (auto-log on Finish)
+
+    func testBlankEntryWithHintIsReadyToLog() {
+        let entry = PendingSetInput(weight: "", reps: "", rir: "",
+                                    previous: PreviousSetHint(weightLbs: 135, reps: 8, rir: 2))
+        XCTAssertTrue(ActiveWorkoutViewModel.isReadyToLog(entry, trackingType: .strength))
+    }
+
+    func testBlankEntryWithoutHintIsNotReadyToLog() {
+        let entry = PendingSetInput(weight: "", reps: "", rir: "")
+        XCTAssertFalse(ActiveWorkoutViewModel.isReadyToLog(entry, trackingType: .strength))
+    }
+
+    func testFilledEntryWithoutHintIsReadyToLog() {
+        let entry = PendingSetInput(weight: "100", reps: "10", rir: "")
+        XCTAssertTrue(ActiveWorkoutViewModel.isReadyToLog(entry, trackingType: .strength))
+    }
 }

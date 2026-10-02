@@ -33,10 +33,7 @@ struct MainTabView: View {
                 }
                 .tag(1)
 
-                // Re-enable scrolling for the History list itself; only the
-                // tab paging is disabled below.
                 HistoryListView()
-                    .scrollDisabled(false)
                     .tag(2)
 
                 ProfileView()
@@ -46,9 +43,6 @@ struct MainTabView: View {
                     .tag(4)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            // Tab paging swallows horizontal swipes, which blocks swipe-to-delete
-            // on History rows. Turn paging off there; the tab row still switches tabs.
-            .scrollDisabled(selectedTab == 2)
             .animation(.easeInOut(duration: 0.25), value: selectedTab)
         }
         .ignoresSafeArea(edges: .bottom)

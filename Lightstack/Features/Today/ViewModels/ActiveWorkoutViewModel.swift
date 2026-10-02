@@ -257,6 +257,16 @@ final class ActiveWorkoutViewModel: ObservableObject {
         pendingSets[exercise.id] = current
     }
 
+    /// Whether a pending set has enough to be logged as-is. Blank fields with a
+    /// previous-session hint count as filled in.
+    static func isReadyToLog(_ entry: PendingSetInput, trackingType: TrackingType) -> Bool {
+        if trackingType == .cardio {
+            return !entry.duration.isEmpty
+        }
+        return resolveStrength(weight: entry.weight, reps: entry.reps, rir: entry.rir,
+                               previous: entry.previous) != nil
+    }
+
     /// Resolves a strength entry to concrete values. Blank fields fall back to
     /// `previous` when present. Returns nil when the entry is not loggable.
     static func resolveStrength(weight: String, reps: String, rir: String,
