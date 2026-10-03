@@ -92,7 +92,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         }
 
         // Restore workout in session service
-        sessionService.startSession(workout: state.workout, exercises: state.exercises)
+        sessionService.resumeSession(workout: state.workout)
 
         logger.debug("Restored workout session: \(state.exercises.count) exercises, \(state.loggedSets.values.flatMap { $0 }.count) sets")
     }

@@ -144,6 +144,14 @@ final class WorkoutSessionService {
         workoutRepository.saveExercises(exercises, workoutId: workout.id)
     }
 
+    /// Re-attach to a workout restored from saved session state. Its exercises
+    /// are already in storage, so unlike `startSession` nothing is saved —
+    /// re-saving here created a duplicate copy on every app relaunch.
+    func resumeSession(workout: Workout) {
+        currentWorkout = workout
+        currentWorkoutId = workout.id
+    }
+
     /// Forget the current workout once it has been saved or discarded, so it is
     /// no longer treated as in progress.
     func clearCurrentWorkout() {

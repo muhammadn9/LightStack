@@ -89,6 +89,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
         self.authService = AuthService(client: supabaseClient)
         self.localStorageService = LocalStorageService()
+        localStorageService.removeDuplicateExercises()
         self.supabaseService = SupabaseService(client: supabaseClient)
         self.offlineQueueManager = OfflineQueueManager(supabaseService: supabaseService)
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
