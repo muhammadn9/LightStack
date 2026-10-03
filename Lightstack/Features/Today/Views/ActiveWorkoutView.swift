@@ -76,6 +76,7 @@ struct ActiveWorkoutView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                viewModel.syncElapsed()
                 viewModel.refreshRestTimers()
             }
         }
@@ -103,6 +104,7 @@ struct ActiveWorkoutView: View {
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
+                viewModel.cancelAllRestTimers()
                 todayViewModel.discardWorkout()
             }
             Button("Keep Going", role: .cancel) {}
@@ -311,30 +313,11 @@ struct ActiveWorkoutView: View {
                 .buttonStyle(.plain)
 
                 // Rest timer banner
-                if let restTime = viewModel.formattedRestTime(for: exercise.id) {
-                    HStack(spacing: 11) {
-                        RestTimerRing(progress: viewModel.restTimerProgress(for: exercise.id))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Rest Period")
-                                .font(AppTheme.caveat(15, weight: .bold))
-                                .foregroundStyle(AppTheme.textPrimary)
-                            if let next = nextExercise {
-                                Text("Next: \(next.name)")
-                                    .font(AppTheme.plexMono(10))
-                                    .foregroundStyle(AppTheme.textSecondary)
-                            }
-                        }
-                        Spacer()
-                        Text(restTime)
-                            .font(AppTheme.plexMono(16, weight: .medium))
-                            .foregroundStyle(AppTheme.accent)
-                    }
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 9)
-                    .background(AppTheme.surfaceElevated)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(AppTheme.border, lineWidth: 1)
+                if let target = viewModel.restTimerTargetDates[exercise.id] {
+                    RestBannerView(
+                        target: target,
+                        totalSeconds: viewModel.restTimerTotalSeconds[exercise.id] ?? 90,
+                        nextExerciseName: nextExercise?.name
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -368,6 +351,7 @@ struct ActiveWorkoutView: View {
     private var finishButton: some View {
         Button(action: {
             autoLogAllPendingSets()
+            viewModel.cancelAllRestTimers()
             todayViewModel.finishWorkout(userNote: nil)
         }) {
             HStack(spacing: 9) {
@@ -436,7 +420,7 @@ struct ActiveWorkoutView: View {
         )
     }
 
-    private func logSet(at index: Int, exerciseId: UUID) {
+    private func logSet(at index: Int, exerciseId: UUID, startRest: Bool = true) {
         let exercise = todayViewModel.exercises.first { $0.id == exerciseId }
         guard let workoutSet = viewModel.logPendingSet(at: index, exerciseId: exerciseId, exercise: exercise) else { return }
         let isPR = todayViewModel.logSet(workoutSet, exerciseId: exerciseId)
@@ -450,10 +434,18 @@ struct ActiveWorkoutView: View {
             }
         }
 
-        if let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }),
-           let rest = exercise.restSeconds, rest > 0 {
+        // Strength exercises without a rest time (e.g. repeated from an imported
+        // workout) fall back to 90s, matching manual entry.
+        if startRest,
+           let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }),
+           let rest = Self.restSeconds(for: exercise) {
             viewModel.startRestTimer(for: exerciseId, seconds: rest, exerciseName: exercise.name)
         }
+    }
+
+    static func restSeconds(for exercise: Exercise) -> Int? {
+        if let rest = exercise.restSeconds, rest > 0 { return rest }
+        return exercise.trackingType == .strength ? 90 : nil
     }
 
     private func autoLogAllPendingSets() {
@@ -463,7 +455,8 @@ struct ActiveWorkoutView: View {
             for _ in 0..<count {
                 guard let set = viewModel.pendingSets[exerciseId], !set.isEmpty else { break }
                 if ActiveWorkoutViewModel.isReadyToLog(set[0], trackingType: exercise.trackingType) {
-                    logSet(at: 0, exerciseId: exerciseId)
+                    // No rest timer: the workout is finishing.
+                    logSet(at: 0, exerciseId: exerciseId, startRest: false)
                 } else {
                     break
                 }
@@ -538,6 +531,47 @@ struct ActiveWorkoutView: View {
                     .disabled(newExerciseName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+        }
+    }
+}
+
+
+// MARK: - Rest Banner
+
+/// Rest countdown banner. Drives its own once-a-second refresh so the rest of
+/// the workout screen doesn't re-render on each tick.
+struct RestBannerView: View {
+    let target: Date
+    let totalSeconds: Int
+    let nextExerciseName: String?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 11) {
+                RestTimerRing(progress: ActiveWorkoutViewModel.restProgress(
+                    target: target, total: totalSeconds, now: context.date))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Rest Period")
+                        .font(AppTheme.caveat(15, weight: .bold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    if let nextExerciseName {
+                        Text("Next: \(nextExerciseName)")
+                            .font(AppTheme.plexMono(10))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+                Spacer()
+                Text(ActiveWorkoutViewModel.restText(target: target, now: context.date))
+                    .font(AppTheme.plexMono(16, weight: .medium))
+                    .foregroundStyle(AppTheme.accent)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .background(AppTheme.surfaceElevated)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(AppTheme.border, lineWidth: 1)
+            )
         }
     }
 }

@@ -23,6 +23,17 @@ struct PendingSetInput: Identifiable {
     var previous: PreviousSetHint? = nil
 }
 
+/// Ticking elapsed-time state, isolated from the view model so per-second
+/// updates only redraw views that observe the clock.
+final class WorkoutClock: ObservableObject {
+    @Published var elapsedSeconds = 0
+    @Published var isPaused = false
+
+    var formattedElapsedTime: String {
+        String(format: "%d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
+    }
+}
+
 /// Manages active workout state: current exercises, set logging,
 /// timer tracking, and workout completion.
 final class ActiveWorkoutViewModel: ObservableObject {
@@ -40,8 +51,18 @@ final class ActiveWorkoutViewModel: ObservableObject {
     @Published var restTimerTargetDates: [UUID: Date] = [:]    // exerciseId → target end date
     @Published var restTimerTotalSeconds: [UUID: Int] = [:]    // exerciseId → original duration
     @Published var activeRestExerciseId: UUID? = nil
-    @Published var elapsedSeconds: Int = 0
-    @Published var isPaused: Bool = false
+
+    /// Elapsed-time state. Deliberately not @Published so ticks don't invalidate observers of this view model.
+    let clock = WorkoutClock()
+
+    var elapsedSeconds: Int {
+        get { clock.elapsedSeconds }
+        set { clock.elapsedSeconds = newValue }
+    }
+    var isPaused: Bool {
+        get { clock.isPaused }
+        set { clock.isPaused = newValue }
+    }
 
     private var timer: Timer?
     private var restTimerClock: Timer?
@@ -62,48 +83,79 @@ final class ActiveWorkoutViewModel: ObservableObject {
         return volume
     }
 
-    /// Fractional progress of the rest timer for `exerciseId` (0…1).
-    func restTimerProgress(for exerciseId: UUID) -> Double {
-        guard let target = restTimerTargetDates[exerciseId] else { return 0 }
-        let total = Double(restTimerTotalSeconds[exerciseId] ?? 90)
-        let remaining = max(0, target.timeIntervalSinceNow)
-        return total > 0 ? (total - remaining) / total : 0
+    /// Fractional progress (0…1) of a rest countdown ending at `target`.
+    static func restProgress(target: Date, total: Int, now: Date = Date()) -> Double {
+        guard total > 0 else { return 0 }
+        let remaining = max(0, target.timeIntervalSince(now))
+        return min(1, max(0, (Double(total) - remaining) / Double(total)))
     }
 
-    var formattedElapsedTime: String {
-        let minutes = elapsedSeconds / 60
-        let seconds = elapsedSeconds % 60
-        return String(format: "%d:%02d", minutes, seconds)
+    /// "m:ss" (or "Ns" under a minute) for the time left until `target`.
+    static func restText(target: Date, now: Date = Date()) -> String {
+        let remaining = max(0, Int(target.timeIntervalSince(now).rounded()))
+        let minutes = remaining / 60
+        let seconds = remaining % 60
+        return minutes > 0 ? "\(minutes):\(String(format: "%02d", seconds))" : "\(seconds)s"
     }
+
+    var formattedElapsedTime: String { clock.formattedElapsedTime }
+
+    /// Elapsed time is derived from wall-clock dates rather than counted tick by
+    /// tick, so it keeps advancing while the app is in the background (iOS
+    /// suspends Timers there) and catches up on return.
+    private var accumulatedSeconds = 0
+    private var runningSince: Date?
 
     func startTimer(from initialSeconds: Int = 0) {
-        elapsedSeconds = initialSeconds
-        isPaused = false
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.elapsedSeconds += 1 }
-        }
+        timer?.invalidate()
+        accumulatedSeconds = initialSeconds
+        runningSince = Date()
+        clock.elapsedSeconds = initialSeconds
+        clock.isPaused = false
+        scheduleTick()
     }
 
     func stopTimer() {
+        syncElapsed()
+        accumulatedSeconds = clock.elapsedSeconds
+        runningSince = nil
         timer?.invalidate()
         timer = nil
     }
 
     func pauseTimer() {
-        isPaused = true
+        syncElapsed()
+        accumulatedSeconds = clock.elapsedSeconds
+        runningSince = nil
+        clock.isPaused = true
         timer?.invalidate()
         timer = nil
     }
 
     func resumeTimer() {
-        isPaused = false
+        runningSince = Date()
+        clock.isPaused = false
+        timer?.invalidate()
+        scheduleTick()
+    }
+
+    /// Recompute elapsed time from the dates. Call on app foreground return.
+    func syncElapsed(now: Date = Date()) {
+        guard let since = runningSince else { return }
+        let elapsed = accumulatedSeconds + max(0, Int(now.timeIntervalSince(since)))
+        if clock.elapsedSeconds != elapsed {
+            clock.elapsedSeconds = elapsed
+        }
+    }
+
+    private func scheduleTick() {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.elapsedSeconds += 1 }
+            DispatchQueue.main.async { self?.syncElapsed() }
         }
     }
 
     func togglePause() {
-        isPaused ? resumeTimer() : pauseTimer()
+        clock.isPaused ? resumeTimer() : pauseTimer()
     }
 
     /// Parse editing fields, create WorkoutSet, return it for logging.
@@ -445,8 +497,6 @@ final class ActiveWorkoutViewModel: ObservableObject {
                     t.invalidate()
                     self.restTimerClock = nil
                     self.onRestTimerCancel?()  // timer expired naturally
-                } else {
-                    self.objectWillChange.send()  // re-render timer display
                 }
             }
         }
@@ -454,18 +504,31 @@ final class ActiveWorkoutViewModel: ObservableObject {
         onRestTimerStart?(exerciseName, seconds)  // schedule new notification
     }
 
-    func formattedRestTime(for exerciseId: UUID) -> String? {
-        guard let target = restTimerTargetDates[exerciseId] else { return nil }
-        let remaining = max(0, Int(target.timeIntervalSinceNow.rounded()))
-        guard remaining > 0 else { return nil }
-        let minutes = remaining / 60
-        let seconds = remaining % 60
-        return minutes > 0 ? "\(minutes):\(String(format: "%02d", seconds))" : "\(seconds)s"
+    /// Call on app foreground return: clears any rest timer that expired while suspended.
+    func refreshRestTimers() {
+        let expired = restTimerTargetDates.filter { $0.value.timeIntervalSinceNow.rounded() <= 0 }.map(\.key)
+        guard !expired.isEmpty else { return }
+        for id in expired {
+            restTimerTargetDates.removeValue(forKey: id)
+            restTimerTotalSeconds.removeValue(forKey: id)
+            if activeRestExerciseId == id { activeRestExerciseId = nil }
+        }
+        if restTimerTargetDates.isEmpty {
+            restTimerClock?.invalidate()
+            restTimerClock = nil
+        }
+        onRestTimerCancel?()
     }
 
-    /// Call on app foreground return to refresh timer display after background suspension.
-    func refreshRestTimers() {
-        objectWillChange.send()
+    /// Stop every rest timer and cancel its pending notification. Call when the
+    /// workout ends (finish or discard) so no "rest over" alert fires afterwards.
+    func cancelAllRestTimers() {
+        restTimerClock?.invalidate()
+        restTimerClock = nil
+        restTimerTargetDates.removeAll()
+        restTimerTotalSeconds.removeAll()
+        activeRestExerciseId = nil
+        onRestTimerCancel?()
     }
 
     deinit {
