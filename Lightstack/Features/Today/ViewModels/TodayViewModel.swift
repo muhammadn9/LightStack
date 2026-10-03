@@ -32,6 +32,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var previousHints: [UUID: [PreviousSetHint]] = [:]
     /// Coach per-set targets (pyramids, ramps) by exercise id. Session-only.
     @Published var setTargets: [UUID: [SetTarget]] = [:]
+    /// Unlogged set rows and clock state handed between the active-workout
+    /// screen and session persistence (not published: no view renders them).
+    var pendingSetsSnapshot: [UUID: [PendingSetInput]] = [:]
+    var timerPaused = false
 
     let sessionService: WorkoutSessionService
     let workoutRepository: WorkoutRepository
@@ -75,7 +79,11 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         loggedSets = state.loggedSets
         previousHints = state.previousHints ?? [:]
         setTargets = state.setTargets ?? [:]
-        activeWorkoutElapsed = state.elapsedSeconds
+        pendingSetsSnapshot = state.pendingSets ?? [:]
+        timerPaused = state.isPaused ?? false
+        activeWorkoutElapsed = Self.restoredElapsed(
+            saved: state.elapsedSeconds, savedAt: state.savedAt, paused: timerPaused
+        )
 
         if state.phase == "active" {
             phase = .active
@@ -103,8 +111,17 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             userNote: nil,
             elapsedSeconds: activeWorkoutElapsed,
             previousHints: previousHints,
-            setTargets: setTargets
+            setTargets: setTargets,
+            pendingSets: pendingSetsSnapshot,
+            isPaused: timerPaused
         )
+    }
+
+    /// Elapsed time to resume from: the saved value plus however long the app
+    /// was closed, unless the clock was paused.
+    static func restoredElapsed(saved: Int, savedAt: Date?, paused: Bool, now: Date = Date()) -> Int {
+        guard !paused, let savedAt = savedAt else { return saved }
+        return saved + max(0, Int(now.timeIntervalSince(savedAt)))
     }
 
     func generatePlan(workoutType: String, time: Int, energy: Int, notes: String?) {
@@ -203,6 +220,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         loggedSets = [:]
         previousHints = [:]
         setTargets = [:]
+        pendingSetsSnapshot = [:]
+        timerPaused = false
         aiProgressionNote = nil
         errorMessage = nil
         isLoadingNote = false
