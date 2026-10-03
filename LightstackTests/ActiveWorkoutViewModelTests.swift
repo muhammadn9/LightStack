@@ -353,4 +353,17 @@ final class ActiveWorkoutViewModelTests: XCTestCase {
         XCTAssertEqual(vm.elapsedSeconds, paused)
         vm.stopTimer()
     }
+
+    func testCancelAllRestTimersClearsStateAndCancelsNotification() {
+        let vm = ActiveWorkoutViewModel()
+        var cancelCount = 0
+        vm.onRestTimerCancel = { cancelCount += 1 }
+        let id = UUID()
+        vm.startRestTimer(for: id, seconds: 90)
+        cancelCount = 0
+        vm.cancelAllRestTimers()
+        XCTAssertNil(vm.restTimerTargetDates[id])
+        XCTAssertNil(vm.activeRestExerciseId)
+        XCTAssertEqual(cancelCount, 1)
+    }
 }

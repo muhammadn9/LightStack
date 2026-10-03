@@ -104,6 +104,7 @@ struct ActiveWorkoutView: View {
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
+                viewModel.cancelAllRestTimers()
                 todayViewModel.discardWorkout()
             }
             Button("Keep Going", role: .cancel) {}
@@ -350,6 +351,7 @@ struct ActiveWorkoutView: View {
     private var finishButton: some View {
         Button(action: {
             autoLogAllPendingSets()
+            viewModel.cancelAllRestTimers()
             todayViewModel.finishWorkout(userNote: nil)
         }) {
             HStack(spacing: 9) {

@@ -520,6 +520,17 @@ final class ActiveWorkoutViewModel: ObservableObject {
         onRestTimerCancel?()
     }
 
+    /// Stop every rest timer and cancel its pending notification. Call when the
+    /// workout ends (finish or discard) so no "rest over" alert fires afterwards.
+    func cancelAllRestTimers() {
+        restTimerClock?.invalidate()
+        restTimerClock = nil
+        restTimerTargetDates.removeAll()
+        restTimerTotalSeconds.removeAll()
+        activeRestExerciseId = nil
+        onRestTimerCancel?()
+    }
+
     deinit {
         stopTimer()
         restTimerClock?.invalidate()
