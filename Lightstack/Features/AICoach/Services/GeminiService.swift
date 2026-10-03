@@ -12,9 +12,15 @@ final class GeminiService {
 
     private let apiKey: String
     private let session: URLSession
-    private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    /// Gemini model id, e.g. "gemini-3.5-flash". Each model gets its own
+    /// provider instance so a busy model can fall back to another.
+    let model: String
+    private var baseURL: String {
+        "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
+    }
 
-    init() {
+    init(model: String = "gemini-3.5-flash") {
+        self.model = model
         self.apiKey = Bundle.main.infoDictionary?["GEMINI_API_KEY"] as? String ?? ""
         self.session = URLSession.shared
     }
@@ -182,8 +188,8 @@ final class GeminiService {
 // MARK: - AIProvider Conformance
 
 extension GeminiService: AIProvider {
-    var name: String { "Gemini" }
-    var rateLimitKey: String { "gemini_rate_limit_until" }
+    var name: String { "Gemini (\(model))" }
+    var rateLimitKey: String { "gemini_rate_limit_until_\(model)" }
 
     var isAvailable: Bool {
         guard !apiKey.isEmpty else { return false }
