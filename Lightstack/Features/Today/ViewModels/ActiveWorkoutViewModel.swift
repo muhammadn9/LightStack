@@ -8,7 +8,7 @@ struct PreviousSetHint: Codable, Equatable {
 }
 
 /// One pending (not-yet-logged) set for an exercise, with editable fields.
-struct PendingSetInput: Identifiable {
+struct PendingSetInput: Identifiable, Codable {
     var id = UUID()
     // Strength fields
     var weight: String

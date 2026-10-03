@@ -46,7 +46,13 @@ struct ActiveWorkoutView: View {
         }
         .onAppear {
             viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
+            if todayViewModel.timerPaused { viewModel.pauseTimer() }
             viewModel.previousHints = todayViewModel.previousHints
+            // Restore typed-but-unlogged rows saved before the app was closed.
+            if !todayViewModel.pendingSetsSnapshot.isEmpty {
+                viewModel.pendingSets = todayViewModel.pendingSetsSnapshot
+                todayViewModel.pendingSetsSnapshot = [:]
+            }
             for exercise in todayViewModel.exercises {
                 viewModel.prefillTargets(for: exercise)
             }
@@ -59,9 +65,8 @@ struct ActiveWorkoutView: View {
             }
         }
         .onDisappear {
-            todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
+            persistSession()
             viewModel.stopTimer()
-            todayViewModel.saveSessionState()
         }
         .onChange(of: todayViewModel.exerciseListResetToken) { _, _ in
             currentExerciseIndex = 0
@@ -78,6 +83,10 @@ struct ActiveWorkoutView: View {
             if newPhase == .active {
                 viewModel.syncElapsed()
                 viewModel.refreshRestTimers()
+            } else {
+                // iOS may terminate the app once backgrounded; save typed
+                // rows and the clock so a relaunch picks up where we left off.
+                persistSession()
             }
         }
         .sheet(isPresented: $showChat) {
@@ -447,6 +456,14 @@ struct ActiveWorkoutView: View {
     static func restSeconds(for exercise: Exercise) -> Int? {
         if let rest = exercise.restSeconds, rest > 0 { return rest }
         return exercise.trackingType == .strength ? 90 : nil
+    }
+
+    private func persistSession() {
+        viewModel.syncElapsed()
+        todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
+        todayViewModel.timerPaused = viewModel.isPaused
+        todayViewModel.pendingSetsSnapshot = viewModel.pendingSets
+        todayViewModel.saveSessionState()
     }
 
     private func autoLogAllPendingSets() {

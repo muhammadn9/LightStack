@@ -23,6 +23,12 @@ final class WorkoutSessionPersistence {
         let previousHints: [UUID: [PreviousSetHint]]?
         /// Optional so sessions saved before per-set coach targets still decode.
         let setTargets: [UUID: [SetTarget]]?
+        /// Typed-but-unlogged set rows, so an app relaunch doesn't wipe them.
+        let pendingSets: [UUID: [PendingSetInput]]?
+        /// When this state was saved and whether the clock was paused, so the
+        /// restored timer can include time that passed while the app was closed.
+        let savedAt: Date?
+        let isPaused: Bool?
 
         var isActive: Bool {
             // Session is considered stale after 24 hours
@@ -40,7 +46,9 @@ final class WorkoutSessionPersistence {
         userNote: String?,
         elapsedSeconds: Int = 0,
         previousHints: [UUID: [PreviousSetHint]] = [:],
-        setTargets: [UUID: [SetTarget]] = [:]
+        setTargets: [UUID: [SetTarget]] = [:],
+        pendingSets: [UUID: [PendingSetInput]] = [:],
+        isPaused: Bool = false
     ) {
         let phaseString: String
         switch phase {
@@ -62,7 +70,10 @@ final class WorkoutSessionPersistence {
             userNote: userNote,
             elapsedSeconds: elapsedSeconds,
             previousHints: previousHints.isEmpty ? nil : previousHints,
-            setTargets: setTargets.isEmpty ? nil : setTargets
+            setTargets: setTargets.isEmpty ? nil : setTargets,
+            pendingSets: pendingSets.isEmpty ? nil : pendingSets,
+            savedAt: Date(),
+            isPaused: isPaused
         )
 
         do {

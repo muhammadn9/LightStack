@@ -217,7 +217,8 @@ final class CoachSetTargetsTests: XCTestCase {
         let state = WorkoutSessionPersistence.SessionState(
             workout: workout, exercises: [ex], loggedSets: [:], phase: "active",
             startTime: Date(), userNote: nil, elapsedSeconds: 0, previousHints: nil,
-            setTargets: [ex.id: [SetTarget(weight: "40 lbs", reps: "8", rir: "2")]]
+            setTargets: [ex.id: [SetTarget(weight: "40 lbs", reps: "8", rir: "2")]],
+            pendingSets: nil, savedAt: nil, isPaused: nil
         )
 
         let roundTrip = try JSONDecoder().decode(WorkoutSessionPersistence.SessionState.self,
@@ -230,5 +231,33 @@ final class CoachSetTargetsTests: XCTestCase {
                                               from: JSONSerialization.data(withJSONObject: object))
         XCTAssertNil(legacy.setTargets)
         XCTAssertEqual(legacy.exercises.count, 1)
+    }
+
+    // MARK: - Relaunch persistence
+
+    func testRestoredElapsedAddsTimeClosedWhenRunning() {
+        let savedAt = Date(timeIntervalSince1970: 1_000)
+        let now = savedAt.addingTimeInterval(240)
+        XCTAssertEqual(TodayViewModel.restoredElapsed(saved: 400, savedAt: savedAt, paused: false, now: now), 640)
+    }
+
+    func testRestoredElapsedIgnoresGapWhenPaused() {
+        let savedAt = Date(timeIntervalSince1970: 1_000)
+        let now = savedAt.addingTimeInterval(240)
+        XCTAssertEqual(TodayViewModel.restoredElapsed(saved: 400, savedAt: savedAt, paused: true, now: now), 400)
+    }
+
+    func testPendingSetsRoundTripThroughSessionState() throws {
+        let workout = Workout.create(userId: UUID(), workoutType: "Push", energyLevel: nil, timeAvailableMinutes: nil)
+        let exerciseId = UUID()
+        let rows = [PendingSetInput(weight: "110", reps: "5", rir: "2"), PendingSetInput(weight: "160", reps: "3", rir: "1")]
+        let state = WorkoutSessionPersistence.SessionState(
+            workout: workout, exercises: [], loggedSets: [:], phase: "active",
+            startTime: workout.createdAt, userNote: nil, elapsedSeconds: 60,
+            previousHints: nil, setTargets: nil, pendingSets: [exerciseId: rows],
+            savedAt: Date(), isPaused: false
+        )
+        let decoded = try JSONDecoder().decode(WorkoutSessionPersistence.SessionState.self, from: JSONEncoder().encode(state))
+        XCTAssertEqual(decoded.pendingSets?[exerciseId]?.map(\.weight), ["110", "160"])
     }
 }
