@@ -149,67 +149,26 @@ struct ActiveWorkoutView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 // Exercise header + navigation
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(exercise.name)
-                            .font(AppTheme.playfair(25, weight: .bold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        HStack(spacing: 4) {
-                            Text(exercise.muscleGroup)
-                                .font(AppTheme.caveat(17))
-                                .foregroundStyle(AppTheme.textSecondary)
-                            if let target = exercise.targetSets {
-                                Text("· \(target) sets")
-                                    .font(AppTheme.caveat(17))
-                                    .foregroundStyle(AppTheme.textSecondary)
-                            }
+                ExerciseHeaderView(
+                    exercise: exercise,
+                    currentIndex: currentExerciseIndex,
+                    totalCount: exercises.count,
+                    onPrevious: { withAnimation { currentExerciseIndex -= 1 } },
+                    onNext: { withAnimation { currentExerciseIndex += 1 } },
+                    onAdd: { showAddExercise = true },
+                    onFormDemo: { formDemoExercise = exercise },
+                    onRecordForm: { formCaptureExercise = exercise }
+                )
+                .contextMenu {
+                    Button(role: .destructive) {
+                        let id = exercise.id
+                        if currentExerciseIndex >= exercises.count - 1 {
+                            currentExerciseIndex = max(0, exercises.count - 2)
                         }
+                        todayViewModel.removeExercise(at: id)
+                    } label: {
+                        Label("Remove Exercise", systemImage: "trash")
                     }
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            let id = exercise.id
-                            if currentExerciseIndex >= exercises.count - 1 {
-                                currentExerciseIndex = max(0, exercises.count - 2)
-                            }
-                            todayViewModel.removeExercise(at: id)
-                        } label: {
-                            Label("Remove Exercise", systemImage: "trash")
-                        }
-                    }
-                    Spacer()
-                    // Form Guide & Watch Form
-                    if FeatureFlags.formAnalysisEnabled {
-                        HStack(spacing: 7) {
-                            Button(action: { formDemoExercise = exercise }) {
-                                Image(systemName: "figure.stand")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(AppTheme.accent)
-                                    .padding(7)
-                                    .background(AppTheme.surfaceElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
-                            }
-                            .accessibilityLabel("Form guide")
-                            Button(action: { formCaptureExercise = exercise }) {
-                                Image(systemName: "camera.fill")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(AppTheme.accent)
-                                    .padding(7)
-                                    .background(AppTheme.surfaceElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(AppTheme.border, lineWidth: 1))
-                            }
-                            .accessibilityLabel("Record form")
-                        }
-                    }
-                    // Exercise navigation
-                    ExerciseNavButtons(
-                        currentIndex: currentExerciseIndex,
-                        totalCount: exercises.count,
-                        onPrevious: { withAnimation { currentExerciseIndex -= 1 } },
-                        onNext: { withAnimation { currentExerciseIndex += 1 } },
-                        onAdd: { showAddExercise = true }
-                    )
                 }
 
                 InkDivider()
