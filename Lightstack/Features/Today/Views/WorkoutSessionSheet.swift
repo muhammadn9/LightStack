@@ -61,7 +61,6 @@ struct WorkoutSessionSheet: View {
             }
             .navigationTitle(workoutType)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { onDismiss() }

@@ -89,9 +89,15 @@ struct WorkoutDetailView: View {
         .navigationTitle(workout.workoutType)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isEditing)
+        .scrollDismissesKeyboard(.interactively)
         .onAppear { reload() }
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
             if isEditing {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { cancelEditing() }

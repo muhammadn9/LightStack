@@ -45,7 +45,7 @@ struct MainTabView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut(duration: 0.25), value: selectedTab)
         }
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)  // keep keyboard avoidance
         .themedBackground()
         .onAppear {
             setupAppearance()

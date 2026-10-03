@@ -59,7 +59,6 @@ struct SettingsView: View {
             .background(AppTheme.backgroundGradient.ignoresSafeArea())
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 }
