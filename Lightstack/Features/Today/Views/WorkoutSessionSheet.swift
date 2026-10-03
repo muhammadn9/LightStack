@@ -96,6 +96,7 @@ struct WorkoutSessionSheet: View {
                     vm.onRestTimerCancel = {
                         environment.notificationService.cancelPendingRestAlerts()
                     }
+                    vm.setTargetsProvider = { [weak today = todayViewModel] id in today?.setTargets[id] }
                     activeWorkoutViewModel = vm
                     if case .repeatExisting = mode {
                         todayViewModel.exercises.forEach { vm.prefillTargets(for: $0) }

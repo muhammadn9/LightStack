@@ -193,6 +193,7 @@ private struct TodayTabContent: View {
                     vm.onRestTimerCancel = {
                         environment.notificationService.cancelPendingRestAlerts()
                     }
+                    vm.setTargetsProvider = { [weak today = viewModel] id in today?.setTargets[id] }
                     activeWorkoutViewModel = vm
                 }
             }

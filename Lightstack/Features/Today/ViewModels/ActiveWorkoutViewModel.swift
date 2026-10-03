@@ -71,6 +71,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
     var onRestTimerStart: ((String, Int) -> Void)?
     /// Called when a rest timer completes or is cancelled
     var onRestTimerCancel: (() -> Void)?
+    /// Coach per-set targets for an exercise id (pyramids, ramps). Wired to
+    /// `TodayViewModel.setTargets` where this view model is created.
+    var setTargetsProvider: ((UUID) -> [SetTarget]?)?
 
     /// Total volume (lbs × reps) across all logged sets, given the current exercise list.
     func runningVolume(exercises: [Exercise]) -> Double {
@@ -241,10 +244,24 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
         let needed = max(0, (exercise.targetSets ?? 0) - (loggedSets[exercise.id]?.count ?? 0))
         let existing = pendingSets[exercise.id] ?? []
+        let loggedCount = loggedSets[exercise.id]?.count ?? 0
         pendingSets[exercise.id] = (0..<needed).map { i in
-            // Rows carrying a hint keep it (and their blank text) untouched.
-            if i < existing.count, existing[i].previous != nil { return existing[i] }
-            return PendingSetInput(weight: weight, reps: reps, rir: rir)
+            let target = coachTarget(for: exercise, setIndex: loggedCount + i)
+            // Rows carrying a hint keep it; a coach target still fills their text.
+            if i < existing.count, existing[i].previous != nil {
+                var row = existing[i]
+                if let target {
+                    row.weight = target.prefillWeight
+                    row.reps = target.prefillReps
+                    row.rir = target.prefillRir
+                }
+                return row
+            }
+            return PendingSetInput(
+                weight: Self.nonEmpty(target?.prefillWeight) ?? weight,
+                reps: Self.nonEmpty(target?.prefillReps) ?? reps,
+                rir: Self.nonEmpty(target?.prefillRir) ?? rir
+            )
         }
     }
 
@@ -293,14 +310,15 @@ final class ActiveWorkoutViewModel: ObservableObject {
                     incline: last?.inclineLevel.map { String(format: "%g", $0) } ?? ""
                 ))
             } else if let hint = hints[safe: loggedCount + current.count] {
-                current.append(PendingSetInput(weight: "", reps: "", rir: "", previous: hint))
-            } else {
+                let target = coachTarget(for: exercise, setIndex: loggedCount + current.count)
                 current.append(PendingSetInput(
-                    weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
-                        ?? prefillWeightValue(from: exercise),
-                    reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-                    rir: last.map { $0.rir.map(String.init) ?? "" } ?? prefillRirValue(from: exercise)
+                    weight: target?.prefillWeight ?? "",
+                    reps: target?.prefillReps ?? "",
+                    rir: target?.prefillRir ?? "",
+                    previous: hint
                 ))
+            } else {
+                current.append(fallbackEntry(for: exercise, setIndex: loggedCount + current.count, last: last))
             }
         }
         if current.count > needed {
@@ -437,17 +455,40 @@ final class ActiveWorkoutViewModel: ObservableObject {
                 incline: last?.inclineLevel.map { String(format: "%g", $0) } ?? ""
             )
         } else {
-            entry = PendingSetInput(
-                weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
-                    ?? prefillWeightValue(from: exercise),
-                reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-                rir: last.map { $0.rir.map(String.init) ?? "" } ?? prefillRirValue(from: exercise)
-            )
+            let index = (loggedSets[exercise.id]?.count ?? 0) + (pendingSets[exercise.id]?.count ?? 0)
+            entry = fallbackEntry(for: exercise, setIndex: index, last: last)
         }
         pendingSets[exercise.id, default: []].append(entry)
     }
 
     // MARK: - Private prefill helpers
+
+    /// Coach target for the set at overall position `setIndex` (0-based, counting
+    /// logged sets), if the coach gave per-set targets that reach that far.
+    private func coachTarget(for exercise: Exercise, setIndex: Int) -> SetTarget? {
+        guard exercise.trackingType != .cardio else { return nil }
+        return setTargetsProvider?(exercise.id)?[safe: setIndex]
+    }
+
+    private static func nonEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// Row for a set with no hint: coach target for this position, then the last
+    /// logged set, then the exercise-level target. Each field falls back separately.
+    private func fallbackEntry(for exercise: Exercise, setIndex: Int, last: WorkoutSet?) -> PendingSetInput {
+        let target = coachTarget(for: exercise, setIndex: setIndex)
+        return PendingSetInput(
+            weight: Self.nonEmpty(target?.prefillWeight)
+                ?? last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
+                ?? prefillWeightValue(from: exercise),
+            reps: Self.nonEmpty(target?.prefillReps)
+                ?? last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
+            rir: Self.nonEmpty(target?.prefillRir)
+                ?? last.map { $0.rir.map(String.init) ?? "" } ?? prefillRirValue(from: exercise)
+        )
+    }
 
     private func prefillWeightValue(from exercise: Exercise) -> String {
         guard let cleaned = exercise.coachNoteParts.weight else { return "" }
