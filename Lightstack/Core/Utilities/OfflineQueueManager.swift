@@ -8,6 +8,8 @@ enum QueuedOperationType: String, Codable {
     case updateWorkout
     case deleteWorkout
     case deleteSet
+    case deleteExercise
+    case deleteExercises
     case insertExercises
     case insertSet
     case upsertProfile
@@ -16,6 +18,16 @@ enum QueuedOperationType: String, Codable {
     case insertMonthPlan
     case insertPlannedSessions
     case updatePlannedSession
+}
+
+/// Payload for `.deleteExercise` (delete a single exercise).
+struct DeleteExercisePayload: Codable {
+    let exerciseId: UUID
+}
+
+/// Payload for `.deleteExercises` (delete every exercise of a workout).
+struct DeleteExercisesPayload: Codable {
+    let workoutId: UUID
 }
 
 // MARK: - Queued Operation
@@ -69,6 +81,38 @@ actor OfflineQueueManager {
         saveQueue(current)
     }
 
+    /// Queue "delete all exercises of a workout" (part of a workout replace).
+    /// Any still-queued inserts for that workout's exercises/sets, and earlier
+    /// deleteExercises for it, are superseded by this replace and are dropped.
+    /// Without this, flush() would re-insert the old exercises (inserts run after
+    /// deleteExercises) alongside the new ones.
+    func enqueueDeleteExercises(workoutId: UUID) {
+        var staleExerciseIds = Set<UUID>()
+        var current = loadQueue()
+        current.removeAll { op in
+            switch op.type {
+            case .insertExercises:
+                guard let models = try? decoder.decode([Exercise].self, from: op.payload),
+                      models.contains(where: { $0.workoutId == workoutId }) else { return false }
+                models.forEach { staleExerciseIds.insert($0.id) }
+                return true
+            case .deleteExercises:
+                guard let model = try? decoder.decode(DeleteExercisesPayload.self, from: op.payload) else { return false }
+                return model.workoutId == workoutId
+            default:
+                return false
+            }
+        }
+        current.removeAll { op in
+            guard op.type == .insertSet,
+                  let model = try? decoder.decode(WorkoutSet.self, from: op.payload) else { return false }
+            return staleExerciseIds.contains(model.exerciseId)
+        }
+        guard let data = try? encoder.encode(DeleteExercisesPayload(workoutId: workoutId)) else { return }
+        current.append(QueuedOperation(type: .deleteExercises, payload: data))
+        saveQueue(current)
+    }
+
     /// Remove all queued operations.
     /// Called on sign-out to prevent a future session from flushing
     /// stale operations under the wrong user's JWT.
@@ -88,17 +132,23 @@ actor OfflineQueueManager {
         // Any type NOT in this list is sorted to the end — never silently dropped.
         let order: [QueuedOperationType] = [
             .insertWorkout, .updateWorkout,
+            // deleteExercises is a "clear before re-insert" step of a workout replace, so it
+            // must run after updateWorkout but BEFORE insertExercises/insertSet. If it sat with
+            // the other deletes (last) it would wipe the freshly inserted exercises.
+            // enqueueDeleteExercises() drops superseded inserts so repeated replaces don't duplicate.
+            .deleteExercises,
             .insertExercises, .insertSet,
             .upsertProfile, .insertPersonalRecord,
             .upsertContextSummary,
             .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession,
-            .deleteWorkout, .deleteSet  // Delete operations should be last
+            .deleteWorkout, .deleteSet, .deleteExercise  // Delete operations should be last
         ]
-        let sorted = current.sorted { a, b in
-            let ai = order.firstIndex(of: a.type) ?? order.count
-            let bi = order.firstIndex(of: b.type) ?? order.count
-            return ai < bi
-        }
+        // Stable sort (index tie-breaker) so same-kind ops keep FIFO order.
+        let sorted = current.enumerated().sorted { a, b in
+            let ai = order.firstIndex(of: a.element.type) ?? order.count
+            let bi = order.firstIndex(of: b.element.type) ?? order.count
+            return ai != bi ? ai < bi : a.offset < b.offset
+        }.map(\.element)
 
         var failed: [QueuedOperation] = []
         for var op in sorted {
@@ -156,6 +206,12 @@ actor OfflineQueueManager {
         case .deleteSet:
             let model = try decoder.decode(WorkoutSet.self, from: op.payload)
             try await supabaseService.deleteSet(setId: model.id)
+        case .deleteExercise:
+            let model = try decoder.decode(DeleteExercisePayload.self, from: op.payload)
+            try await supabaseService.deleteExercise(id: model.exerciseId)
+        case .deleteExercises:
+            let model = try decoder.decode(DeleteExercisesPayload.self, from: op.payload)
+            try await supabaseService.deleteExercises(workoutId: model.workoutId)
         }
     }
 
