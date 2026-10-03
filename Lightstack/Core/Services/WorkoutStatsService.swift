@@ -41,6 +41,7 @@ final class WorkoutStatsService {
             for cdExercise in exercises {
                 let sets = localStorage.fetchSets(exerciseId: cdExercise.id ?? UUID())
                 for cdSet in sets {
+                    guard cdSet.rir >= 0 else { continue }
                     totalRir += Double(cdSet.rir)
                     count += 1
                 }

@@ -6,7 +6,7 @@ final class RepeatSetResolutionTests: XCTestCase {
     private let hint = PreviousSetHint(weightLbs: 135, reps: 8, rir: 1)
 
     private func resolve(_ weight: String = "", _ reps: String = "", _ rir: String = "",
-                         hint: PreviousSetHint?) -> (weight: Double, reps: Int, rir: Int)? {
+                         hint: PreviousSetHint?) -> (weight: Double, reps: Int, rir: Int?)? {
         ActiveWorkoutViewModel.resolveStrength(weight: weight, reps: reps, rir: rir, previous: hint)
     }
 
@@ -44,6 +44,19 @@ final class RepeatSetResolutionTests: XCTestCase {
 
     func testBlankRirWithoutHintDefaultsToTwo() {
         XCTAssertEqual(resolve("100", "5", "", hint: nil)?.rir, 2)
+    }
+
+    func testTypedRirAboveTenBecomesNil() {
+        let result = resolve("100", "5", "11", hint: hint)
+        XCTAssertNotNil(result)
+        XCTAssertNil(result?.rir)
+    }
+
+    func testBlankRirWithNilRirHintStaysNil() {
+        let nilRirHint = PreviousSetHint(weightLbs: 135, reps: 8, rir: nil)
+        let result = resolve("", "", "", hint: nilRirHint)
+        XCTAssertNotNil(result)
+        XCTAssertNil(result?.rir)
     }
 
     func testGarbageWeightIsNil() {

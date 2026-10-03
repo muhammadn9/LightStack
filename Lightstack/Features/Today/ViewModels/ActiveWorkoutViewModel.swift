@@ -4,7 +4,7 @@ import Foundation
 struct PreviousSetHint: Codable, Equatable {
     let weightLbs: Double   // 0 = bodyweight
     let reps: Int
-    let rir: Int
+    let rir: Int?
 }
 
 /// One pending (not-yet-logged) set for an exercise, with editable fields.
@@ -201,7 +201,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
         if let lastSet = loggedSets[exercise.id]?.last {
             editingWeight[exercise.id] = lastSet.weightLbs == 0 ? "BW" : String(format: "%g", lastSet.weightLbs)
             editingReps[exercise.id] = String(lastSet.reps)
-            editingRir[exercise.id] = String(lastSet.rir)
+            editingRir[exercise.id] = lastSet.rir.map(String.init) ?? ""
             editingNote[exercise.id] = ""
         } else {
             editingWeight[exercise.id] = nil
@@ -247,7 +247,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                     weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
                         ?? prefillWeightValue(from: exercise),
                     reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-                    rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+                    rir: last.map { $0.rir.map(String.init) ?? "" } ?? prefillRirValue(from: exercise)
                 ))
             }
         }
@@ -270,7 +270,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
     /// Resolves a strength entry to concrete values. Blank fields fall back to
     /// `previous` when present. Returns nil when the entry is not loggable.
     static func resolveStrength(weight: String, reps: String, rir: String,
-                                previous: PreviousSetHint?) -> (weight: Double, reps: Int, rir: Int)? {
+                                previous: PreviousSetHint?) -> (weight: Double, reps: Int, rir: Int?)? {
         let w = weight.trimmingCharacters(in: .whitespacesAndNewlines)
         let r = reps.trimmingCharacters(in: .whitespacesAndNewlines)
         let i = rir.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -296,13 +296,13 @@ final class ActiveWorkoutViewModel: ObservableObject {
             return nil
         }
 
-        let resolvedRir: Int
+        let resolvedRir: Int?
         if i.isEmpty {
-            resolvedRir = previous?.rir ?? 2
+            resolvedRir = previous.map { $0.rir } ?? 2
         } else if let value = Int(i), value >= 0 {
-            resolvedRir = value
+            resolvedRir = value <= 10 ? value : nil
         } else {
-            resolvedRir = previous?.rir ?? 2
+            resolvedRir = previous.map { $0.rir } ?? 2
         }
 
         return (resolvedWeight, resolvedReps, resolvedRir)
@@ -389,7 +389,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
                 weight: last.map { $0.weightLbs == 0 ? "BW" : String(format: "%g", $0.weightLbs) }
                     ?? prefillWeightValue(from: exercise),
                 reps: last.map { String($0.reps) } ?? prefillRepsValue(from: exercise),
-                rir: last.map { String($0.rir) } ?? prefillRirValue(from: exercise)
+                rir: last.map { $0.rir.map(String.init) ?? "" } ?? prefillRirValue(from: exercise)
             )
         }
         pendingSets[exercise.id, default: []].append(entry)

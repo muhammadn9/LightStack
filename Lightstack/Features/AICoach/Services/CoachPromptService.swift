@@ -188,7 +188,7 @@ final class CoachPromptService {
             for s in exerciseSets {
                 let setLine = exercise.trackingType == .cardio
                     ? formatCardioSet(s)
-                    : "  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ RIR \(s.rir)"
+                    : "  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ \(s.rir.map { "RIR \($0)" } ?? "RIR not recorded")"
                 lines.append(setLine)
             }
             lines.append("")
@@ -271,7 +271,7 @@ final class CoachPromptService {
             lines.append("**\(exercise.name)** (\(exercise.muscleGroup))")
             let exerciseSets = (sets[exercise.id] ?? []).sorted { $0.setNumber < $1.setNumber }
             for s in exerciseSets {
-                lines.append("  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ RIR \(s.rir)")
+                lines.append("  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ \(s.rir.map { "RIR \($0)" } ?? "RIR not recorded")")
             }
             lines.append("")
         }

@@ -45,9 +45,10 @@ private struct StrengthLoggedSetRow: View {
             if workoutSet.isPR {
                 PRStamp()
             } else {
-                Text("✓ RIR \(workoutSet.rir)")
+                Text("✓ RIR \(workoutSet.rir.map(String.init) ?? "—")")
                     .font(AppTheme.caveat(12))
                     .foregroundStyle(AppTheme.success)
+                    .accessibilityLabel(workoutSet.rir.map { "RIR \($0)" } ?? "RIR not recorded")
             }
 
             Button(action: onDelete) {
@@ -169,13 +170,13 @@ struct StrengthPendingSetRow: View {
 
             // RIR field
             VStack(spacing: 3) {
-                TextField("RIR", text: $pendingSets[index].rir, prompt: hintPrompt(hint.map { String($0.rir) } ?? "RIR"))
+                TextField("RIR", text: $pendingSets[index].rir, prompt: hintPrompt(hint.map { $0.rir.map(String.init) ?? "—" } ?? "RIR"))
                     .keyboardType(.numberPad)
                     .font(AppTheme.plexMono(16))
                     .multilineTextAlignment(.center)
                     .frame(width: 56)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .accessibilityLabel(hint.map { "RIR, last time \($0.rir)" } ?? "RIR")
+                    .accessibilityLabel(hint.map { "RIR, last time \($0.rir.map(String.init) ?? "not recorded")" } ?? "RIR")
                 Rectangle()
                     .fill(AppTheme.border.opacity(0.5))
                     .frame(width: 56, height: 1.5)

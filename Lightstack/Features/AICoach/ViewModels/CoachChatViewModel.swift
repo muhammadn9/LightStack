@@ -124,7 +124,7 @@ final class CoachChatViewModel: ObservableObject {
                 if !sets.isEmpty {
                     contextInfo += " — Logged: \(sets.count) sets"
                     if let lastSet = sets.last {
-                        contextInfo += " (last: \(String(format: "%.0f", lastSet.weightLbs)) lbs x \(lastSet.reps) @ RIR \(lastSet.rir))"
+                        contextInfo += " (last: \(String(format: "%.0f", lastSet.weightLbs)) lbs x \(lastSet.reps) @ \(lastSet.rir.map { "RIR \($0)" } ?? "RIR not recorded"))"
                     }
                 }
             }

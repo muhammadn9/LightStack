@@ -10,7 +10,9 @@ struct WorkoutSet: Codable, Identifiable {
     var setNumber: Int
     var weightLbs: Double
     var reps: Int
-    var rir: Int
+    var rir: Int?
+    /// Core Data stores unknown RIR as -1 (the model attribute is non-optional Int32).
+    static let unknownRirStorage: Int32 = -1
     var userFeedback: String?
     var isPR: Bool
     var syncStatus: SyncStatus
@@ -46,7 +48,7 @@ struct WorkoutSet: Codable, Identifiable {
         setNumber = try c.decode(Int.self, forKey: .setNumber)
         weightLbs = try c.decode(Double.self, forKey: .weightLbs)
         reps = try c.decode(Int.self, forKey: .reps)
-        rir = try c.decode(Int.self, forKey: .rir)
+        rir = try c.decodeIfPresent(Int.self, forKey: .rir)
         userFeedback = try c.decodeIfPresent(String.self, forKey: .userFeedback)
         isPR = try c.decodeIfPresent(Bool.self, forKey: .isPR) ?? false
         recordedAt = try c.decode(Date.self, forKey: .recordedAt)
@@ -86,7 +88,7 @@ struct WorkoutSet: Codable, Identifiable {
         self.setNumber = Int(cdEntity.setNumber)
         self.weightLbs = cdEntity.weightLbs
         self.reps = Int(cdEntity.reps)
-        self.rir = Int(cdEntity.rir)
+        self.rir = cdEntity.rir < 0 ? nil : Int(cdEntity.rir)
         self.userFeedback = cdEntity.userFeedback
         self.isPR = cdEntity.isPR
         self.syncStatus = SyncStatus(rawValue: cdEntity.syncStatus ?? "pending") ?? .pending
@@ -102,7 +104,7 @@ struct WorkoutSet: Codable, Identifiable {
         entity.setNumber = Int32(setNumber)
         entity.weightLbs = weightLbs
         entity.reps = Int32(reps)
-        entity.rir = Int32(rir)
+        entity.rir = rir.map(Int32.init) ?? Self.unknownRirStorage
         entity.userFeedback = userFeedback
         entity.isPR = isPR
         entity.syncStatus = syncStatus.rawValue
@@ -119,7 +121,7 @@ struct WorkoutSet: Codable, Identifiable {
         setNumber: Int,
         weightLbs: Double,
         reps: Int,
-        rir: Int,
+        rir: Int?,
         userFeedback: String? = nil,
         durationSeconds: Int? = nil,
         distanceMiles: Double? = nil,
@@ -147,7 +149,7 @@ struct WorkoutSet: Codable, Identifiable {
 
     init(
         id: UUID, exerciseId: UUID, localId: String?, setNumber: Int,
-        weightLbs: Double, reps: Int, rir: Int, userFeedback: String?,
+        weightLbs: Double, reps: Int, rir: Int?, userFeedback: String?,
         isPR: Bool, syncStatus: SyncStatus, recordedAt: Date,
         durationSeconds: Int? = nil, distanceMiles: Double? = nil, inclineLevel: Double? = nil
     ) {

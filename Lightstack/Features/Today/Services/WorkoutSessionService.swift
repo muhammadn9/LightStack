@@ -391,7 +391,7 @@ final class WorkoutSessionService {
             if let mc = muscleCol, columns.count > mc, !columns[mc].isEmpty {
                 muscleGroup = columns[mc]
             } else {
-                muscleGroup = inferMuscleGroup(name)
+                muscleGroup = WorkoutSessionService.inferMuscleGroup(name)
             }
 
             let targetSets = parseFirstInt(setsStr)
@@ -456,7 +456,7 @@ final class WorkoutSessionService {
             case (nil, nil):    mergedNote = nil
             }
 
-            let muscleGroup = aiEx.muscleGroup.isEmpty ? inferMuscleGroup(name) : aiEx.muscleGroup
+            let muscleGroup = aiEx.muscleGroup.isEmpty ? WorkoutSessionService.inferMuscleGroup(name) : aiEx.muscleGroup
 
             exercises.append(Exercise.create(
                 workoutId: workoutId,
@@ -571,7 +571,7 @@ final class WorkoutSessionService {
         return value
     }
 
-    private func inferMuscleGroup(_ exerciseName: String) -> String {
+    static func inferMuscleGroup(_ exerciseName: String) -> String {
         let lower = exerciseName.lowercased()
         if lower.contains("bench") || lower.contains("chest") || lower.contains("fly") || lower.contains("push") {
             return "Chest"
