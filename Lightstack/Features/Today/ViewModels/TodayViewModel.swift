@@ -373,11 +373,12 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         case .removeExercise(let name):
             if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
                 let exerciseId = exercises[index].id
+                let removedName = exercises[index].name
                 exercises.remove(at: index)
                 if !preserveLoggedSets || loggedSets[exerciseId]?.isEmpty ?? true {
-                    loggedSets.removeValue(forKey: exerciseId)
+                    purgeExercise(id: exerciseId, name: removedName)
                 }
-                // Note: Already-logged sets are preserved in the dictionary if preserveLoggedSets is true
+                // Note: Already-logged sets are preserved (in memory and storage) if preserveLoggedSets is true
             }
 
         case .modifyExercise(let name, let newTargetSets, let newTargetReps, let newTargetRir, let newRest, let newTargetWeight, let note):
@@ -404,6 +405,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         case .replaceExercise(let oldName, let newName, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note):
             if let index = exercises.firstIndex(where: { $0.name.lowercased() == oldName.lowercased() }) {
                 let oldExerciseId = exercises[index].id
+                let oldName = exercises[index].name
                 let orderIndex = exercises[index].orderIndex
 
                 // Create new exercise
@@ -423,7 +425,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
                 // Remove logged sets for old exercise unless preserving
                 if !preserveLoggedSets || loggedSets[oldExerciseId]?.isEmpty ?? true {
-                    loggedSets.removeValue(forKey: oldExerciseId)
+                    purgeExercise(id: oldExerciseId, name: oldName)
                 }
             }
         }
@@ -478,9 +480,34 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     func removeExercise(at id: UUID) {
         guard let index = exercises.firstIndex(where: { $0.id == id }) else { return }
+        let name = exercises[index].name
         exercises.remove(at: index)
+        purgeExercise(id: id, name: name)
+        saveSessionState()
+    }
+
+    /// Forgets an exercise: drops its logged sets, deletes it (and its sets, via
+    /// cascade) from storage, and rebuilds its PR if any sets were lost.
+    private func purgeExercise(id: UUID, name: String) {
+        let hadSets = !(loggedSets[id]?.isEmpty ?? true)
         loggedSets.removeValue(forKey: id)
         workoutRepository.deleteExercise(id)
+        if hadSets, let userId = userId {
+            prRepository.recalculatePR(userId: userId, exerciseName: name)
+            if lastPR?.exerciseName == name { lastPR = nil }
+        }
+    }
+
+    /// Deletes a single logged set everywhere (memory, storage, Supabase) and
+    /// rebuilds the exercise's PR so a PR earned by this set doesn't linger.
+    func deleteLoggedSet(_ workoutSet: WorkoutSet, exerciseId: UUID) {
+        loggedSets[exerciseId]?.removeAll { $0.id == workoutSet.id }
+        workoutRepository.deleteSet(workoutSet)
+        if let userId = userId,
+           let exercise = exercises.first(where: { $0.id == exerciseId }) {
+            prRepository.recalculatePR(userId: userId, exerciseName: exercise.name)
+            if lastPR?.exerciseName == exercise.name { lastPR = nil }
+        }
         saveSessionState()
     }
 }

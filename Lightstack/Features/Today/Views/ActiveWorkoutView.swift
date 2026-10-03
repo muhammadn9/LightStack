@@ -223,6 +223,7 @@ struct ActiveWorkoutView: View {
                         exercise: exercise,
                         onDelete: {
                             viewModel.deleteSet(set, exerciseId: exercise.id)
+                            todayViewModel.deleteLoggedSet(set, exerciseId: exercise.id)
                             viewModel.syncPendingSets(for: exercise)
                         }
                     )

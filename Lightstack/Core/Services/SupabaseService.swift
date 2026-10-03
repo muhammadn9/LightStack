@@ -58,6 +58,14 @@ final class SupabaseService {
         // Postgres cascade delete will automatically remove related exercises and sets
     }
 
+    func deleteSet(setId: UUID) async throws {
+        try await client
+            .from("sets")
+            .delete()
+            .eq("id", value: setId.uuidString)
+            .execute()
+    }
+
     func fetchWorkoutsForUser(userId: UUID, limit: Int) async throws -> [Workout] {
         let response: [Workout] = try await client
             .from("workouts")

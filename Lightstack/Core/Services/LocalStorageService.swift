@@ -10,9 +10,12 @@ final class LocalStorageService {
     let container: NSPersistentContainer
     private let logger = Logger(subsystem: "org.lightstack.app", category: "LocalStorageService")
 
-    init() {
+    init(inMemory: Bool = false) {
         container = NSPersistentContainer(name: "Lightstack")
         if let description = container.persistentStoreDescriptions.first {
+            if inMemory {
+                description.url = URL(fileURLWithPath: "/dev/null")
+            }
             description.shouldMigrateStoreAutomatically = true
             description.shouldInferMappingModelAutomatically = true
         }
@@ -159,6 +162,15 @@ final class LocalStorageService {
         save()
     }
 
+    func deleteSet(setId: UUID) {
+        let request: NSFetchRequest<CDWorkoutSet> = CDWorkoutSet.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", setId as CVarArg)
+        request.fetchLimit = 1
+        guard let entity = try? context.fetch(request).first else { return }
+        context.delete(entity)
+        save()
+    }
+
     // MARK: - Month Plan
 
     func fetchMonthPlan(id: UUID) -> CDMonthPlan? {
@@ -299,6 +311,14 @@ final class LocalStorageService {
             exerciseName, userId as CVarArg
         )
         return (try? context.fetch(request)) ?? []
+    }
+
+    /// Distinct exercise names that have at least one set across a user's workouts.
+    func fetchExerciseNamesWithSets(userId: UUID) -> Set<String> {
+        let request: NSFetchRequest<CDWorkoutSet> = CDWorkoutSet.fetchRequest()
+        request.predicate = NSPredicate(format: "exercise.workout.userId == %@", userId as CVarArg)
+        let sets = (try? context.fetch(request)) ?? []
+        return Set(sets.compactMap { $0.exercise?.name })
     }
 
     // MARK: - Streak
