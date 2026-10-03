@@ -4,16 +4,57 @@ import SwiftUI
 /// Shows complete set log table, AI progression note, and user note.
 struct WorkoutDetailView: View {
     @EnvironmentObject var environment: AppEnvironment
-    let workout: Workout
     let viewModel: HistoryViewModel
 
+    /// Held in state so the header, title and sets refresh after a save.
+    @State private var workout: Workout
     @State private var repeatWorkoutContext: RepeatWorkoutContext?
+    @State private var draft: WorkoutEditDraft?
+    @State private var fieldErrors: [WorkoutEditDraft.DraftFieldError] = []
+    @State private var showAddExercise = false
+    @State private var showDeleteConfirm = false
+    @Environment(\.dismiss) private var dismiss
+
+    init(workout: Workout, viewModel: HistoryViewModel) {
+        _workout = State(initialValue: workout)
+        self.viewModel = viewModel
+    }
+
+    private var isEditing: Bool { draft != nil }
+
+    @State private var exercises: [Exercise] = []
+    @State private var setsByExercise: [UUID: [WorkoutSet]] = [:]
+    @State private var isInProgress = false
+
+    /// Loads exercises, sets and in-progress status once (not from `body`).
+    /// In-progress checks the live session service and the persisted session
+    /// (covers a cold start before the Today tab has restored it).
+    private func reload() {
+        let exs = viewModel.fetchExercises(workoutId: workout.id)
+        var sets: [UUID: [WorkoutSet]] = [:]
+        for ex in exs { sets[ex.id] = viewModel.fetchSets(exerciseId: ex.id) }
+        exercises = exs
+        setsByExercise = sets
+        isInProgress = environment.workoutSessionService.currentWorkoutId == workout.id
+            || environment.sessionPersistence.restoreSession()?.workout.id == workout.id
+    }
 
     var body: some View {
         ZStack {
             AppTheme.backgroundGradient.ignoresSafeArea()
 
             ScrollView {
+                if draft != nil {
+                    WorkoutEditForm(
+                        draft: Binding(
+                            get: { draft ?? WorkoutEditDraft(workout: workout, exercises: [], sets: [:]) },
+                            set: { draft = $0 }
+                        ),
+                        errors: fieldErrors,
+                        onAddExercise: { showAddExercise = true }
+                    )
+                    .padding(20)
+                } else {
                 VStack(spacing: AppTheme.sectionSpacing) {
                     headerSection
                     exercisesSection
@@ -36,15 +77,47 @@ struct WorkoutDetailView: View {
                         content: workout.aiProgressionNote
                     )
 
-                    repeatButton
-                        .padding(.bottom, 8)
+                    if !isEditing {
+                        repeatButton
+                            .padding(.bottom, 8)
+                    }
                 }
                 .padding(20)
+                }
             }
         }
         .navigationTitle(workout.workoutType)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isEditing)
+        .onAppear { reload() }
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            if isEditing {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { cancelEditing() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { attemptSave() }
+                        .fontWeight(.semibold)
+                }
+            } else if !isInProgress {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Edit") { startEditing() }
+                        .accessibilityLabel("Edit workout")
+                }
+            }
+        }
+        .sheet(isPresented: $showAddExercise) {
+            ExerciseCatalogPicker { name, muscleGroup in
+                draft?.addExercise(name: name, muscleGroup: muscleGroup)
+            }
+        }
+        .confirmationDialog("Delete this workout?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete Workout", role: .destructive) { deleteWorkout() }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("All exercises were removed, so the workout will be deleted.")
+        }
         .fullScreenCover(item: $repeatWorkoutContext) { ctx in
             WorkoutSessionSheet(
                 todayViewModel: ctx.todayViewModel,
@@ -54,6 +127,41 @@ struct WorkoutDetailView: View {
             )
             .environmentObject(environment)
         }
+    }
+
+    // MARK: - Editing
+
+    private func startEditing() {
+        fieldErrors = []
+        draft = WorkoutEditDraft(workout: workout, exercises: exercises, sets: setsByExercise)
+    }
+
+    private func cancelEditing() {
+        draft = nil
+        fieldErrors = []
+    }
+
+    private func attemptSave() {
+        guard let current = draft,
+              let userId = environment.authService.currentUser()?.userId else { return }
+        let errors = current.validate()
+        fieldErrors = errors
+        guard errors.isEmpty else { return }
+        if current.isEmpty {
+            showDeleteConfirm = true
+            return
+        }
+        if let updated = viewModel.saveEdits(original: workout, draft: current, userId: userId) {
+            workout = updated
+            draft = nil
+            reload()
+        }
+    }
+
+    private func deleteWorkout() {
+        guard let userId = environment.authService.currentUser()?.userId else { return }
+        viewModel.deleteWorkout(workout, userId: userId)
+        dismiss()
     }
 
     // MARK: - Repeat Button
@@ -148,12 +256,8 @@ struct WorkoutDetailView: View {
 
     // MARK: - Helpers
 
-    private var exercises: [Exercise] {
-        viewModel.fetchExercises(workoutId: workout.id)
-    }
-
     private func setsForExercise(_ exerciseId: UUID) -> [WorkoutSet] {
-        viewModel.fetchSets(exerciseId: exerciseId)
+        setsByExercise[exerciseId] ?? []
     }
 
     private var totalVolume: Double {

@@ -92,4 +92,34 @@ final class HistoryViewModel: ObservableObject {
             prRepository.recalculatePR(userId: userId, exerciseName: name)
         }
     }
+
+    // MARK: - Edit
+
+    /// Exercise names whose PRs need recalculating after an edit: old names plus new
+    /// names, de-duplicated, preserving first-seen order.
+    static func exerciseNamesToRecalculate(old: [String], new: [String]) -> [String] {
+        var seen = Set<String>()
+        return (old + new).filter { seen.insert($0).inserted }
+    }
+
+    /// Replaces the contents of `original` with the edited draft, recalculates PRs
+    /// for every affected exercise, reloads the list and returns the updated workout.
+    /// Returns nil if the draft is invalid.
+    @discardableResult
+    func saveEdits(original: Workout, draft: WorkoutEditDraft, userId: UUID) -> Workout? {
+        guard let built = draft.build(for: original) else { return nil }
+
+        // Capture old names before the replace removes the old exercises
+        let oldNames = workoutRepository.fetchExercises(workoutId: original.id).map { $0.name }
+
+        workoutRepository.replaceWorkoutContents(built.workout, exercises: built.exercises, sets: built.sets)
+
+        let names = Self.exerciseNamesToRecalculate(old: oldNames, new: built.exercises.map { $0.name })
+        for name in names {
+            prRepository.recalculatePR(userId: userId, exerciseName: name)
+        }
+
+        loadWorkouts(userId: userId)
+        return built.workout
+    }
 }
