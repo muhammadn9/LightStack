@@ -21,6 +21,8 @@ final class WorkoutSessionPersistence {
         let elapsedSeconds: Int
         /// Optional so sessions saved before repeat-last-session still decode.
         let previousHints: [UUID: [PreviousSetHint]]?
+        /// Optional so sessions saved before per-set coach targets still decode.
+        let setTargets: [UUID: [SetTarget]]?
 
         var isActive: Bool {
             // Session is considered stale after 24 hours
@@ -37,7 +39,8 @@ final class WorkoutSessionPersistence {
         phase: TodayPhase,
         userNote: String?,
         elapsedSeconds: Int = 0,
-        previousHints: [UUID: [PreviousSetHint]] = [:]
+        previousHints: [UUID: [PreviousSetHint]] = [:],
+        setTargets: [UUID: [SetTarget]] = [:]
     ) {
         let phaseString: String
         switch phase {
@@ -58,7 +61,8 @@ final class WorkoutSessionPersistence {
             startTime: workout.createdAt,
             userNote: userNote,
             elapsedSeconds: elapsedSeconds,
-            previousHints: previousHints.isEmpty ? nil : previousHints
+            previousHints: previousHints.isEmpty ? nil : previousHints,
+            setTargets: setTargets.isEmpty ? nil : setTargets
         )
 
         do {

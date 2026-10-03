@@ -85,6 +85,16 @@ final class CoachChatViewModel: ObservableObject {
               "note": "Optional note"
             },
             {
+              "action": "modify",
+              "name": "Pyramid Exercise",
+              "sets": [
+                {"weight": "40 lbs", "reps": "8", "rir": "2"},
+                {"weight": "45 lbs", "reps": "8", "rir": "1-2"},
+                {"weight": "50 lbs", "reps": "6", "rir": "0-1"}
+              ],
+              "note": "Short coaching cue only"
+            },
+            {
               "action": "replace",
               "old_name": "Old Exercise",
               "new_name": "New Exercise",
@@ -104,6 +114,15 @@ final class CoachChatViewModel: ObservableObject {
         - Omit optional fields (target_reps, target_rir, rest_seconds, target_weight, \
         note, new_*) when not relevant.
         - Weights are free-form strings including units, e.g. "135 lbs".
+        - When sets differ (pyramids, ramping, top sets, back-off sets), give one \
+        entry per set in "sets" (add, modify and replace all accept it) with that \
+        set's weight, reps and rir. The number of entries is the number of sets, so \
+        target_sets / new_target_sets may be omitted. Omit "sets" when every set is \
+        the same and use the single target_* / new_target_* fields.
+        - Keep "note" to a short coaching cue (e.g. "drive through the heels"). \
+        Never put the per-set numbers in the note; the app shows and fills them \
+        from "sets".
+        - RIR may be a range like "1-2"; the app prefills the lower number.
         - To change the weight on an exercise the athlete is already doing, use \
         "modify" with new_target_weight — not "replace".
         - If you are NOT suggesting any modifications, omit the JSON block entirely.
@@ -219,11 +238,21 @@ final class CoachChatViewModel: ObservableObject {
 
     /// Called when user confirms modifications.
     func confirmModifications(applyTo todayViewModel: TodayViewModel) {
-        for modification in pendingModifications {
+        let applied = pendingModifications
+        for modification in applied {
             todayViewModel.applyModification(modification, preserveLoggedSets: true)
+        }
+        // Never silent: say in the chat what changed.
+        if !applied.isEmpty {
+            messages.append(ChatMessage(role: .coach, content: Self.confirmationText(for: applied)))
         }
         pendingModifications = []
         showModificationConfirmation = false
+    }
+
+    /// Chat text confirming applied modifications, one line each.
+    static func confirmationText(for modifications: [WorkoutModification]) -> String {
+        modifications.map(\.appliedSummary).joined(separator: "\n")
     }
 
     /// Called when user rejects modifications.

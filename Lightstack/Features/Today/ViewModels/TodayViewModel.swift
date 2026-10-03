@@ -30,6 +30,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var lastPR: PersonalRecord?
     /// Last session's sets per new exercise id (repeat sessions only).
     @Published var previousHints: [UUID: [PreviousSetHint]] = [:]
+    /// Coach per-set targets (pyramids, ramps) by exercise id. Session-only.
+    @Published var setTargets: [UUID: [SetTarget]] = [:]
 
     let sessionService: WorkoutSessionService
     let workoutRepository: WorkoutRepository
@@ -72,6 +74,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         exercises = state.exercises
         loggedSets = state.loggedSets
         previousHints = state.previousHints ?? [:]
+        setTargets = state.setTargets ?? [:]
         activeWorkoutElapsed = state.elapsedSeconds
 
         if state.phase == "active" {
@@ -99,7 +102,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             phase: phase,
             userNote: nil,
             elapsedSeconds: activeWorkoutElapsed,
-            previousHints: previousHints
+            previousHints: previousHints,
+            setTargets: setTargets
         )
     }
 
@@ -198,6 +202,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         exercises = []
         loggedSets = [:]
         previousHints = [:]
+        setTargets = [:]
         aiProgressionNote = nil
         errorMessage = nil
         isLoadingNote = false
@@ -354,7 +359,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         guard let workoutId = sessionService.currentWorkoutId else { return }
 
         switch modification {
-        case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note):
+        case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note, let perSet):
             let newExercise = Exercise.create(
                 workoutId: workoutId,
                 name: name,
@@ -367,6 +372,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 coachNote: Self.coachNote(nil, weight: targetWeight, note: note)
             )
             exercises.append(newExercise)
+            storeSetTargets(perSet, for: newExercise.id)
             // Save the new exercise to the repository
             workoutRepository.saveExercises([newExercise], workoutId: workoutId)
 
@@ -378,14 +384,21 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 if !preserveLoggedSets || loggedSets[exerciseId]?.isEmpty ?? true {
                     purgeExercise(id: exerciseId, name: removedName)
                 }
+                setTargets[exerciseId] = nil
                 // Note: Already-logged sets are preserved (in memory and storage) if preserveLoggedSets is true
             }
 
-        case .modifyExercise(let name, let newTargetSets, let newTargetReps, let newTargetRir, let newRest, let newTargetWeight, let note):
+        case .modifyExercise(let name, let newTargetSets, let newTargetReps, let newTargetRir, let newRest, let newTargetWeight, let note, let perSet):
             if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
                 var exercise = exercises[index]
-                if let sets = newTargetSets {
+                if let sets = newTargetSets ?? (perSet.isEmpty ? nil : perSet.count) {
                     exercise.targetSets = sets
+                }
+                if !perSet.isEmpty {
+                    storeSetTargets(perSet, for: exercise.id)
+                } else if newTargetReps != nil || newTargetRir != nil || newTargetWeight != nil {
+                    // A new single target supersedes any earlier per-set plan.
+                    setTargets[exercise.id] = nil
                 }
                 if let reps = newTargetReps {
                     exercise.targetReps = reps
@@ -402,7 +415,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 exercises[index] = exercise
             }
 
-        case .replaceExercise(let oldName, let newName, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note):
+        case .replaceExercise(let oldName, let newName, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note, let perSet):
             if let index = exercises.firstIndex(where: { $0.name.lowercased() == oldName.lowercased() }) {
                 let oldExerciseId = exercises[index].id
                 let oldName = exercises[index].name
@@ -422,6 +435,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 )
 
                 exercises[index] = newExercise
+                setTargets[oldExerciseId] = nil
+                storeSetTargets(perSet, for: newExercise.id)
 
                 // Remove logged sets for old exercise unless preserving
                 if !preserveLoggedSets || loggedSets[oldExerciseId]?.isEmpty ?? true {
@@ -434,6 +449,11 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         saveSessionState()
         // Tell the active workout screen its already-filled inputs are stale.
         targetsRevision += 1
+    }
+
+    /// Stores per-set targets for an exercise, replacing any earlier ones. Empty clears.
+    private func storeSetTargets(_ targets: [SetTarget], for exerciseId: UUID) {
+        setTargets[exerciseId] = targets.isEmpty ? nil : targets
     }
 
     /// `coachNote` doubles as the target-weight carrier — generation writes

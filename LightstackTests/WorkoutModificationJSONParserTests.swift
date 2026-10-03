@@ -99,7 +99,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         """)
         let result = try parser.parse(text)
         XCTAssertEqual(result.count, 1)
-        guard case .addExercise(let name, let muscleGroup, let sets, let reps, let rir, let rest, _, let note) = result[0] else {
+        guard case .addExercise(let name, let muscleGroup, let sets, let reps, let rir, let rest, _, let note, _) = result[0] else {
             return XCTFail("Expected .addExercise")
         }
         XCTAssertEqual(name, "Bench Press")
@@ -122,7 +122,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         """)
         let result = try parser.parse(text)
         XCTAssertEqual(result.count, 1)
-        guard case .addExercise(let name, let muscleGroup, let sets, let reps, let rir, let rest, _, let note) = result[0] else {
+        guard case .addExercise(let name, let muscleGroup, let sets, let reps, let rir, let rest, _, let note, _) = result[0] else {
             return XCTFail("Expected .addExercise")
         }
         XCTAssertEqual(name, "Squat")
@@ -171,7 +171,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         """)
         let result = try parser.parse(text)
         XCTAssertEqual(result.count, 1)
-        guard case .modifyExercise(let name, let sets, let reps, let rir, let rest, _, let note) = result[0] else {
+        guard case .modifyExercise(let name, let sets, let reps, let rir, let rest, _, let note, _) = result[0] else {
             return XCTFail("Expected .modifyExercise")
         }
         XCTAssertEqual(name, "Bench Press")
@@ -188,7 +188,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         """)
         let result = try parser.parse(text)
         XCTAssertEqual(result.count, 1)
-        guard case .modifyExercise(let name, let sets, let reps, let rir, let rest, _, let note) = result[0] else {
+        guard case .modifyExercise(let name, let sets, let reps, let rir, let rest, _, let note, _) = result[0] else {
             return XCTFail("Expected .modifyExercise")
         }
         XCTAssertEqual(name, "Deadlift")
@@ -217,7 +217,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         """)
         let result = try parser.parse(text)
         XCTAssertEqual(result.count, 1)
-        guard case .replaceExercise(let oldName, let newName, let muscleGroup, let sets, let reps, let rir, let rest, _, let note) = result[0] else {
+        guard case .replaceExercise(let oldName, let newName, let muscleGroup, let sets, let reps, let rir, let rest, _, let note, _) = result[0] else {
             return XCTFail("Expected .replaceExercise")
         }
         XCTAssertEqual(oldName, "Bench Press")
@@ -253,7 +253,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         """
         let result = try parser.parse(text)
         XCTAssertEqual(result.count, 2)
-        guard case .addExercise(let addName, _, _, _, _, _, _, _) = result[0] else {
+        guard case .addExercise(let addName, _, _, _, _, _, _, _, _) = result[0] else {
             return XCTFail("Expected first result to be .addExercise")
         }
         guard case .removeExercise(let removeName) = result[1] else {
@@ -389,7 +389,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         let line = "[ADD] Bench Press | Chest | 4 | 8-10 | 2 | 90 | Note here"
         let result = pipeParser.parse(line)
         XCTAssertEqual(result.count, 1)
-        guard case .addExercise(let name, let muscleGroup, let sets, let reps, let rir, let rest, _, let note) = result[0] else {
+        guard case .addExercise(let name, let muscleGroup, let sets, let reps, let rir, let rest, _, let note, _) = result[0] else {
             return XCTFail("Expected .addExercise from pipe parser")
         }
         XCTAssertEqual(name, "Bench Press")
@@ -415,7 +415,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         let pipeParser = WorkoutModificationParser()
         let result = pipeParser.parse("[MODIFY] Squat | 5 | 5 | 1 | 120 | Heavier")
         XCTAssertEqual(result.count, 1)
-        guard case .modifyExercise(let name, let sets, _, _, _, _, _) = result[0] else {
+        guard case .modifyExercise(let name, let sets, _, _, _, _, _, _) = result[0] else {
             return XCTFail("Expected .modifyExercise from pipe parser")
         }
         XCTAssertEqual(name, "Squat")
@@ -426,7 +426,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         let pipeParser = WorkoutModificationParser()
         let result = pipeParser.parse("[REPLACE] Bench Press → Incline DB Press | Chest | 4")
         XCTAssertEqual(result.count, 1)
-        guard case .replaceExercise(let oldName, let newName, _, _, _, _, _, _, _) = result[0] else {
+        guard case .replaceExercise(let oldName, let newName, _, _, _, _, _, _, _, _) = result[0] else {
             return XCTFail("Expected .replaceExercise from pipe parser")
         }
         XCTAssertEqual(oldName, "Bench Press")
@@ -448,7 +448,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         }
         """)
         let result = try parser.parse(text)
-        guard case .addExercise(_, _, _, _, _, _, let weight, _) = result[0] else {
+        guard case .addExercise(_, _, _, _, _, _, let weight, _, _) = result[0] else {
             return XCTFail("Expected .addExercise")
         }
         XCTAssertEqual(weight, "35 lbs")
@@ -463,7 +463,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         }
         """)
         let result = try parser.parse(text)
-        guard case .modifyExercise(_, _, _, _, _, let weight, _) = result[0] else {
+        guard case .modifyExercise(_, _, _, _, _, let weight, _, _) = result[0] else {
             return XCTFail("Expected .modifyExercise")
         }
         XCTAssertEqual(weight, "145 lbs")
@@ -481,7 +481,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         }
         """)
         let result = try parser.parse(text)
-        guard case .replaceExercise(_, _, _, _, _, _, _, let weight, _) = result[0] else {
+        guard case .replaceExercise(_, _, _, _, _, _, _, let weight, _, _) = result[0] else {
             return XCTFail("Expected .replaceExercise")
         }
         XCTAssertEqual(weight, "60 lbs")
@@ -493,7 +493,7 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         { "action": "modify", "name": "Squat", "new_target_sets": 5 }
         """)
         let result = try parser.parse(text)
-        guard case .modifyExercise(_, let sets, _, _, _, let weight, _) = result[0] else {
+        guard case .modifyExercise(_, let sets, _, _, _, let weight, _, _) = result[0] else {
             return XCTFail("Expected .modifyExercise")
         }
         XCTAssertEqual(sets, 5)

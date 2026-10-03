@@ -25,23 +25,18 @@ struct CoachChatView: View {
                         .foregroundStyle(AppTheme.accent)
                 }
             }
-            .alert("Workout Modification", isPresented: $viewModel.showModificationConfirmation) {
-                Button("Apply Changes", role: .none) {
-                    viewModel.confirmModifications(applyTo: todayViewModel)
-                    dismiss()
-                }
-                Button("Cancel", role: .cancel) {
-                    viewModel.rejectModifications()
-                }
-            } message: {
-                Text(modificationMessage)
+            .sheet(isPresented: $viewModel.showModificationConfirmation) {
+                ModificationConfirmationSheet(
+                    modifications: viewModel.pendingModifications,
+                    onApply: {
+                        // Stay in the chat so the "✓ Updated …" line is seen.
+                        viewModel.confirmModifications(applyTo: todayViewModel)
+                    },
+                    onCancel: { viewModel.rejectModifications() }
+                )
+                .presentationDetents([.medium, .large])
             }
         }
-    }
-
-    private var modificationMessage: String {
-        let changes = viewModel.pendingModifications.map { $0.description }
-        return "The coach suggested these changes:\n\n" + changes.joined(separator: "\n")
     }
 
     // MARK: - System Banner

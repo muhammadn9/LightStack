@@ -23,6 +23,50 @@ private struct WorkoutModificationPayload: Decodable {
     let modifications: [WorkoutModificationDTO]
 }
 
+/// Lenient per-set list. Never throws: a malformed `sets` value just yields no
+/// per-set targets rather than discarding the whole modification.
+private struct LenientSets: Decodable {
+    let values: [SetTarget]
+
+    init(from decoder: Decoder) throws {
+        let elements = (try? [LenientSetTarget](from: decoder)) ?? []
+        values = elements.map(\.target)
+    }
+}
+
+private struct LenientSetTarget: Decodable {
+    let target: SetTarget
+
+    private enum Keys: String, CodingKey { case weight, reps, rir }
+
+    init(from decoder: Decoder) throws {
+        guard let c = try? decoder.container(keyedBy: Keys.self) else {
+            target = SetTarget()
+            return
+        }
+        target = SetTarget(
+            weight: Self.text(c, .weight),
+            reps: Self.text(c, .reps),
+            rir: Self.text(c, .rir)
+        )
+    }
+
+    /// Accepts strings or numbers; null, empty and "N/A"-style values become nil.
+    private static func text(_ c: KeyedDecodingContainer<Keys>, _ key: Keys) -> String? {
+        var raw: String?
+        if let string = try? c.decodeIfPresent(String.self, forKey: key) {
+            raw = string
+        } else if let int = try? c.decodeIfPresent(Int.self, forKey: key) {
+            raw = String(int)
+        } else if let double = try? c.decodeIfPresent(Double.self, forKey: key) {
+            raw = String(format: "%g", double)
+        }
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        let blanks: Set<String> = ["n/a", "na", "none", "null", "-", "—", "tbd"]
+        return blanks.contains(trimmed.lowercased()) ? nil : trimmed
+    }
+}
+
 /// Discriminated union — the `action` field drives which fields are required.
 private struct WorkoutModificationDTO: Decodable {
     let action: String
@@ -37,6 +81,8 @@ private struct WorkoutModificationDTO: Decodable {
     /// Free-form, e.g. "135 lbs" — matches how generation records weight.
     let targetWeight: String?
     let note: String?
+    /// Optional per-set targets (pyramids, ramps, top sets).
+    let sets: LenientSets?
 
     // removeExercise field
     // uses `name` for the exercise name
@@ -62,6 +108,7 @@ private struct WorkoutModificationDTO: Decodable {
         case restSeconds       = "rest_seconds"
         case targetWeight      = "target_weight"
         case note
+        case sets
         case newTargetSets     = "new_target_sets"
         case newTargetReps     = "new_target_reps"
         case newTargetRir      = "new_target_rir"
@@ -259,6 +306,12 @@ struct WorkoutModificationJSONParser {
         return try payload.modifications.map { try convert($0) }
     }
 
+    /// Non-empty per-set targets, or nil when the block carried none.
+    private func perSet(_ dto: WorkoutModificationDTO) -> [SetTarget]? {
+        guard let values = dto.sets?.values, !values.isEmpty else { return nil }
+        return values
+    }
+
     private func convert(_ dto: WorkoutModificationDTO) throws -> WorkoutModification {
         switch dto.action.lowercased() {
 
@@ -269,7 +322,7 @@ struct WorkoutModificationJSONParser {
             guard let muscleGroup = dto.muscleGroup, !muscleGroup.isEmpty else {
                 throw WorkoutModificationJSONParserError.invalidSchema(reason: "add action missing `muscle_group`")
             }
-            guard let sets = dto.targetSets else {
+            guard let sets = dto.targetSets ?? perSet(dto)?.count else {
                 throw WorkoutModificationJSONParserError.invalidSchema(reason: "add action missing `target_sets`")
             }
             return .addExercise(
@@ -280,7 +333,8 @@ struct WorkoutModificationJSONParser {
                 targetRir: dto.targetRir,
                 restSeconds: dto.restSeconds,
                 targetWeight: dto.targetWeight,
-                note: dto.note
+                note: dto.note,
+                sets: perSet(dto) ?? []
             )
 
         case "remove":
@@ -295,12 +349,13 @@ struct WorkoutModificationJSONParser {
             }
             return .modifyExercise(
                 name: name,
-                newTargetSets: dto.newTargetSets,
+                newTargetSets: dto.newTargetSets ?? perSet(dto)?.count,
                 newTargetReps: dto.newTargetReps,
                 newTargetRir: dto.newTargetRir,
                 newRest: dto.newRest,
                 newTargetWeight: dto.newTargetWeight,
-                note: dto.note
+                note: dto.note,
+                sets: perSet(dto) ?? []
             )
 
         case "replace":
@@ -313,7 +368,7 @@ struct WorkoutModificationJSONParser {
             guard let muscleGroup = dto.muscleGroup, !muscleGroup.isEmpty else {
                 throw WorkoutModificationJSONParserError.invalidSchema(reason: "replace action missing `muscle_group`")
             }
-            guard let sets = dto.targetSets else {
+            guard let sets = dto.targetSets ?? perSet(dto)?.count else {
                 throw WorkoutModificationJSONParserError.invalidSchema(reason: "replace action missing `target_sets`")
             }
             return .replaceExercise(
@@ -325,7 +380,8 @@ struct WorkoutModificationJSONParser {
                 targetRir: dto.targetRir,
                 restSeconds: dto.restSeconds,
                 targetWeight: dto.targetWeight,
-                note: dto.note
+                note: dto.note,
+                sets: perSet(dto) ?? []
             )
 
         default:
