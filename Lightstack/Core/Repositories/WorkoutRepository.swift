@@ -163,6 +163,17 @@ final class WorkoutRepository {
         }
     }
 
+    func deleteSet(_ workoutSet: WorkoutSet) {
+        localStorage.deleteSet(setId: workoutSet.id)
+        Task {
+            do {
+                try await supabaseService.deleteSet(setId: workoutSet.id)
+            } catch {
+                await offlineQueueManager.enqueue(.deleteSet, payload: workoutSet)
+            }
+        }
+    }
+
     func deleteWorkout(_ workout: Workout) {
         localStorage.deleteWorkout(workoutId: workout.id)
         Task {

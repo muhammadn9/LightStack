@@ -72,6 +72,7 @@
 		73D8B07D6458BCE19048CF3C /* FormFeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17477A887FB15B9B64E1F5B5 /* FormFeedbackView.swift */; };
 		7444F10EA824DF8283415E1B /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E833E6DD834D7E4E8ECF4F /* UserProfile.swift */; };
 		7DD3567AF9DFA8ABC4DFD269 /* PersonalRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57A9EFAE7E6214033CA3F739 /* PersonalRecord.swift */; };
+		7DFF5AA7ACF21F035C4E6BBF /* PRRecalculationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD30F1F7CB7E0DB560AAA996 /* PRRecalculationTests.swift */; };
 		817B687586782545AA7F2918 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA3C754CAD6B7891142B311 /* CameraPreviewView.swift */; };
 		843DF525C433A53DBA8254EF /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = E75F43C954C4BDE242435736 /* FeatureFlags.swift */; };
 		858DAEC887A7974446DC00D4 /* WorkoutSet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6D60ACAF13C1FFA581C85A /* WorkoutSet.swift */; };
@@ -232,6 +233,7 @@
 		A39DFEBDC9A9B312A50443A3 /* RepCounterServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepCounterServiceTests.swift; sourceTree = "<group>"; };
 		ACC6B4AE561E609B382622EC /* WorkoutImportDedupeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutImportDedupeTests.swift; sourceTree = "<group>"; };
 		AD0341D7637A1DAFC47F144D /* FormAnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormAnalysisResult.swift; sourceTree = "<group>"; };
+		AD30F1F7CB7E0DB560AAA996 /* PRRecalculationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PRRecalculationTests.swift; sourceTree = "<group>"; };
 		AE05AE523B9A6672FFBFD2AD /* CoachChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachChatView.swift; sourceTree = "<group>"; };
 		AECE0419B49FC2838485E794 /* ExerciseTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseTableView.swift; sourceTree = "<group>"; };
 		B38831FD06945E0E5CABD7DE /* PlannedSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannedSession.swift; sourceTree = "<group>"; };
@@ -598,6 +600,7 @@
 				36877BED95B2B42B65804173 /* FormFeedbackPromptTests.swift */,
 				5978A2C4BE49037F37E7CB12 /* HistoryFilterTests.swift */,
 				3BFCC405F7A98CF3F15D6B0F /* InputSanitizerTests.swift */,
+				AD30F1F7CB7E0DB560AAA996 /* PRRecalculationTests.swift */,
 				A39DFEBDC9A9B312A50443A3 /* RepCounterServiceTests.swift */,
 				BD6BC82F3387CA9572E9C16D /* RepeatSetResolutionTests.swift */,
 				BECB36552A01C6C682AE2B7E /* StatusBadgeTests.swift */,
@@ -982,6 +985,7 @@
 				5EA5DD13C23D4285FACA01B2 /* FormFeedbackPromptTests.swift in Sources */,
 				89F8371D4C708436FE69A225 /* HistoryFilterTests.swift in Sources */,
 				B22918C2D9E3F72F4404DE1A /* InputSanitizerTests.swift in Sources */,
+				7DFF5AA7ACF21F035C4E6BBF /* PRRecalculationTests.swift in Sources */,
 				72A975F875165C43030E9716 /* RepCounterServiceTests.swift in Sources */,
 				3E72DC960081D97379DD958D /* RepeatSetResolutionTests.swift in Sources */,
 				FF21D936B874FBF11EAF7FD3 /* StatusBadgeTests.swift in Sources */,
@@ -1166,7 +1170,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = 7X8799T6N2;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Lightstack/Info.plist;
@@ -1190,7 +1194,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = 7X8799T6N2;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Lightstack/Info.plist;

@@ -65,7 +65,7 @@ final class ProfileViewModel: ObservableObject {
         setsPerMuscleGroup = statsService.setsPerMuscleGroup(userId: userId)
         volumePerMuscleGroup = statsService.volumePerMuscleGroup(userId: userId)
         topLifts = statsService.topLifts(userId: userId)
-        prRepository.cleanOrphanedPRs(userId: userId)
+        prRepository.recalculateAllPRs(userId: userId)
         personalRecords = prRepository.fetchAllPRs(userId: userId)
     }
 
