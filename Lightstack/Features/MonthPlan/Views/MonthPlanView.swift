@@ -296,6 +296,7 @@ private struct PlanBuilderWrapper: View {
         Group {
             if let vm = builderVM {
                 PlanBuilderChatView(viewModel: vm, onPlanGenerated: onPlanGenerated)
+                    .keyboardDoneButton()
             } else {
                 ProgressView()
                     .tint(AppTheme.accent)

@@ -39,6 +39,7 @@ struct ActiveWorkoutView: View {
 
             chatButton
         }
+        .scrollDismissesKeyboard(.interactively)
         .overlay(alignment: .top) {
             if let pr = todayViewModel.lastPR {
                 prToast(pr: pr)
@@ -91,6 +92,7 @@ struct ActiveWorkoutView: View {
         }
         .sheet(isPresented: $showChat) {
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
+                .keyboardDoneButton()
         }
         .sheet(item: $formDemoExercise) { exercise in
             ExerciseFormDemoView(exerciseName: exercise.name) {
@@ -110,6 +112,7 @@ struct ActiveWorkoutView: View {
         }
         .sheet(isPresented: $showAddExercise) {
             addExerciseSheet
+                .keyboardDoneButton()
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
@@ -119,18 +122,6 @@ struct ActiveWorkoutView: View {
             Button("Keep Going", role: .cancel) {}
         } message: {
             Text("All logged sets will be lost.")
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder),
-                        to: nil, from: nil, for: nil
-                    )
-                }
-                .foregroundStyle(AppTheme.accent)
-            }
         }
     }
 
