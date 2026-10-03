@@ -110,6 +110,63 @@ final class WorkoutRepository {
         }
     }
 
+    /// Replaces a workout's header, exercises and sets (used by editing past workouts).
+    /// Local: update workout, delete old exercises (sets cascade), save new exercises/sets.
+    /// Remote: one task, strictly ordered updateWorkout, deleteExercises, insertExercises,
+    /// insertSet...; on the first failure that step and all later ones are queued in order
+    /// (the queue replays deleteExercises before inserts; see OfflineQueueManager.flush).
+    func replaceWorkoutContents(_ workout: Workout, exercises: [Exercise], sets: [UUID: [WorkoutSet]]) {
+        localStorage.updateWorkout(workout)
+        localStorage.deleteExercises(workoutId: workout.id)
+        localStorage.saveExercises(exercises, workoutId: workout.id)
+        for exercise in exercises {
+            for set in sets[exercise.id] ?? [] {
+                localStorage.saveSet(set, exerciseId: exercise.id)
+            }
+        }
+
+        let orderedSets = exercises.flatMap { sets[$0.id] ?? [] }
+        Task {
+            var failed = false
+
+            do { try await supabaseService.updateWorkout(workout) } catch {
+                failed = true
+                await offlineQueueManager.enqueue(.updateWorkout, payload: workout)
+            }
+
+            if failed {
+                await offlineQueueManager.enqueueDeleteExercises(workoutId: workout.id)
+            } else {
+                do { try await supabaseService.deleteExercises(workoutId: workout.id) } catch {
+                    failed = true
+                    await offlineQueueManager.enqueueDeleteExercises(workoutId: workout.id)
+                }
+            }
+
+            if !exercises.isEmpty {
+                if failed {
+                    await offlineQueueManager.enqueue(.insertExercises, payload: exercises)
+                } else {
+                    do { try await supabaseService.insertExercises(exercises) } catch {
+                        failed = true
+                        await offlineQueueManager.enqueue(.insertExercises, payload: exercises)
+                    }
+                }
+            }
+
+            for set in orderedSets {
+                if failed {
+                    await offlineQueueManager.enqueue(.insertSet, payload: set)
+                } else {
+                    do { try await supabaseService.insertSet(set) } catch {
+                        failed = true
+                        await offlineQueueManager.enqueue(.insertSet, payload: set)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Update
 
     func updateWorkout(_ workout: Workout) {
@@ -150,6 +207,13 @@ final class WorkoutRepository {
 
     func deleteExercise(_ exerciseId: UUID) {
         localStorage.deleteExercise(exerciseId: exerciseId)
+        Task {
+            do {
+                try await supabaseService.deleteExercise(id: exerciseId)
+            } catch {
+                await offlineQueueManager.enqueue(.deleteExercise, payload: DeleteExercisePayload(exerciseId: exerciseId))
+            }
+        }
     }
 
     func deleteExercises(forWorkoutId workoutId: UUID) {

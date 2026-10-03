@@ -94,11 +94,13 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
         self.validationService = ValidationService()
 
-        // Initialize AI providers (priority order: Gemini → OpenAI → Claude)
-        self.geminiService = GeminiService()
-        let openAIService = OpenAIService()
-        let claudeService = ClaudeService()
-        self.aiServiceManager = AIServiceManager(providers: [geminiService, openAIService, claudeService])
+        // AI providers, tried in order. Only Gemini's free tier is set up, so the
+        // chain falls back between Gemini models rather than to OpenAI/Claude,
+        // which have no billing and only add a slow failure before the error.
+        // OpenAIService/ClaudeService remain available to re-add once funded.
+        self.geminiService = GeminiService(model: "gemini-3.5-flash")
+        let geminiFallback = GeminiService(model: "gemini-2.5-flash")
+        self.aiServiceManager = AIServiceManager(providers: [geminiService, geminiFallback])
 
         self.workoutStatsService = WorkoutStatsService(localStorage: localStorageService)
         self.sessionPersistence = WorkoutSessionPersistence()

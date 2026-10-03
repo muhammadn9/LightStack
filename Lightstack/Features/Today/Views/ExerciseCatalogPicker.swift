@@ -105,7 +105,6 @@ struct ExerciseCatalogPicker: View {
             .background(AppTheme.backgroundGradient.ignoresSafeArea())
             .navigationTitle("Exercise Catalog")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
