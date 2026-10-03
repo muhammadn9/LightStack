@@ -48,10 +48,11 @@ struct SetRowView: View {
                 .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
-            Text("RIR \(workoutSet.rir)")
+            Text("RIR \(workoutSet.rir.map(String.init) ?? "—")")
                 .font(AppTheme.caveat(13))
                 .fontWeight(.medium)
                 .foregroundStyle(AppTheme.textPrimary)
+                .accessibilityLabel(workoutSet.rir.map { "RIR \($0)" } ?? "RIR not recorded")
 
             Spacer()
 

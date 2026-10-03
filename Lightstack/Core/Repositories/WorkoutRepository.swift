@@ -66,6 +66,50 @@ final class WorkoutRepository {
         }
     }
 
+    /// Saves a fully-formed past workout. Everything is written locally first, then
+    /// synced to Supabase strictly in order (workout, exercises, sets) in ONE task so
+    /// foreign keys never fail. On the first failure the remaining items go to the
+    /// offline queue in the same order, using the same kinds as the single-item methods.
+    func importWorkout(_ workout: Workout, exercises: [Exercise], sets: [UUID: [WorkoutSet]]) {
+        localStorage.saveWorkout(workout)
+        localStorage.saveExercises(exercises, workoutId: workout.id)
+        for exercise in exercises {
+            for set in sets[exercise.id] ?? [] {
+                localStorage.saveSet(set, exerciseId: exercise.id)
+            }
+        }
+
+        let orderedSets = exercises.flatMap { sets[$0.id] ?? [] }
+        Task {
+            var failed = false
+
+            do { try await supabaseService.insertWorkout(workout) } catch {
+                failed = true
+                await offlineQueueManager.enqueue(.insertWorkout, payload: workout)
+            }
+
+            if failed {
+                await offlineQueueManager.enqueue(.insertExercises, payload: exercises)
+            } else {
+                do { try await supabaseService.insertExercises(exercises) } catch {
+                    failed = true
+                    await offlineQueueManager.enqueue(.insertExercises, payload: exercises)
+                }
+            }
+
+            for set in orderedSets {
+                if failed {
+                    await offlineQueueManager.enqueue(.insertSet, payload: set)
+                } else {
+                    do { try await supabaseService.insertSet(set) } catch {
+                        failed = true
+                        await offlineQueueManager.enqueue(.insertSet, payload: set)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Update
 
     func updateWorkout(_ workout: Workout) {

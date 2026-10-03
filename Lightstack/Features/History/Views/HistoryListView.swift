@@ -5,6 +5,7 @@ import SwiftUI
 struct HistoryListView: View {
     @EnvironmentObject var environment: AppEnvironment
     @State private var viewModel: HistoryViewModel?
+    @State private var showImport = false
 
     var body: some View {
         NavigationStack {
@@ -12,13 +13,33 @@ struct HistoryListView: View {
                 AppTheme.backgroundGradient.ignoresSafeArea()
 
                 if let vm = viewModel {
-                    HistoryContentView(viewModel: vm)
+                    HistoryContentView(viewModel: vm, onImport: { showImport = true })
                 } else {
                     ProgressView()
                         .tint(AppTheme.accent)
                 }
             }
             .navigationBarHidden(true)
+            .safeAreaInset(edge: .top) {
+                if viewModel != nil {
+                    HStack {
+                        Spacer()
+                        Button { showImport = true } label: {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.title3)
+                                .foregroundStyle(AppTheme.accent)
+                                .frame(minWidth: 44, minHeight: 44)
+                        }
+                        .accessibilityLabel("Import workouts")
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+            .sheet(isPresented: $showImport) {
+                if let userId = environment.authService.currentUser()?.userId {
+                    WorkoutImportView(userId: userId) { loadHistory() }
+                }
+            }
             .onAppear { loadHistory() }
         }
     }
@@ -40,6 +61,7 @@ struct HistoryListView: View {
 private struct HistoryContentView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: HistoryViewModel
+    let onImport: () -> Void
 
     var body: some View {
         if viewModel.workouts.isEmpty && !viewModel.isLoading {
@@ -95,6 +117,11 @@ private struct HistoryContentView: View {
                 .font(AppTheme.caveat(14))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
+            Button(action: onImport) {
+                Label("Import past workouts", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+            .padding(.top, 8)
         }
         .padding(40)
     }

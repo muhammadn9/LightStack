@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS sets (
   set_number     INTEGER NOT NULL,
   weight_lbs     DECIMAL(6,2) NOT NULL,
   reps           INTEGER NOT NULL,
-  rir            INTEGER NOT NULL CHECK(rir BETWEEN 0 AND 5),
+  rir            INTEGER CHECK(rir IS NULL OR (rir BETWEEN 0 AND 10)),
   user_feedback  TEXT,
   is_pr          BOOLEAN DEFAULT FALSE,
   recorded_at    TIMESTAMPTZ DEFAULT NOW()

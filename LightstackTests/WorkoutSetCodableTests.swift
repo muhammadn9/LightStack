@@ -17,6 +17,15 @@ final class WorkoutSetCodableTests: XCTestCase {
 
     // MARK: - Round-trip
 
+    func testNilRirRoundTripsAsNull() throws {
+        let original = WorkoutSet.create(exerciseId: UUID(), setNumber: 1, weightLbs: 100, reps: 5, rir: nil)
+        let data = try encoder.encode(original)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertTrue(object["rir"] is NSNull)
+        let decoded = try decoder.decode(WorkoutSet.self, from: data)
+        XCTAssertNil(decoded.rir)
+    }
+
     func testRoundTripFullyPopulatedWorkoutSet() throws {
         let id = UUID()
         let exerciseId = UUID()
