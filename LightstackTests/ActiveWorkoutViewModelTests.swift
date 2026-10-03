@@ -333,4 +333,24 @@ final class ActiveWorkoutViewModelTests: XCTestCase {
         viewModel.refreshTargets(for: ex)
         XCTAssertEqual(viewModel.pendingSets[ex.id]?.count, 2)
     }
+
+    // MARK: - Date-based clock
+
+    func testClockCatchesUpAfterBackgroundGap() {
+        let vm = ActiveWorkoutViewModel()
+        vm.startTimer(from: 10)
+        vm.syncElapsed(now: Date().addingTimeInterval(125))
+        XCTAssertEqual(vm.elapsedSeconds, 135)
+        vm.stopTimer()
+    }
+
+    func testPausedClockDoesNotAdvance() {
+        let vm = ActiveWorkoutViewModel()
+        vm.startTimer(from: 0)
+        vm.pauseTimer()
+        let paused = vm.elapsedSeconds
+        vm.syncElapsed(now: Date().addingTimeInterval(300))
+        XCTAssertEqual(vm.elapsedSeconds, paused)
+        vm.stopTimer()
+    }
 }

@@ -76,6 +76,7 @@ struct ActiveWorkoutView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                viewModel.syncElapsed()
                 viewModel.refreshRestTimers()
             }
         }
@@ -417,7 +418,7 @@ struct ActiveWorkoutView: View {
         )
     }
 
-    private func logSet(at index: Int, exerciseId: UUID) {
+    private func logSet(at index: Int, exerciseId: UUID, startRest: Bool = true) {
         let exercise = todayViewModel.exercises.first { $0.id == exerciseId }
         guard let workoutSet = viewModel.logPendingSet(at: index, exerciseId: exerciseId, exercise: exercise) else { return }
         let isPR = todayViewModel.logSet(workoutSet, exerciseId: exerciseId)
@@ -431,10 +432,18 @@ struct ActiveWorkoutView: View {
             }
         }
 
-        if let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }),
-           let rest = exercise.restSeconds, rest > 0 {
+        // Strength exercises without a rest time (e.g. repeated from an imported
+        // workout) fall back to 90s, matching manual entry.
+        if startRest,
+           let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }),
+           let rest = Self.restSeconds(for: exercise) {
             viewModel.startRestTimer(for: exerciseId, seconds: rest, exerciseName: exercise.name)
         }
+    }
+
+    static func restSeconds(for exercise: Exercise) -> Int? {
+        if let rest = exercise.restSeconds, rest > 0 { return rest }
+        return exercise.trackingType == .strength ? 90 : nil
     }
 
     private func autoLogAllPendingSets() {
@@ -444,7 +453,8 @@ struct ActiveWorkoutView: View {
             for _ in 0..<count {
                 guard let set = viewModel.pendingSets[exerciseId], !set.isEmpty else { break }
                 if ActiveWorkoutViewModel.isReadyToLog(set[0], trackingType: exercise.trackingType) {
-                    logSet(at: 0, exerciseId: exerciseId)
+                    // No rest timer: the workout is finishing.
+                    logSet(at: 0, exerciseId: exerciseId, startRest: false)
                 } else {
                     break
                 }

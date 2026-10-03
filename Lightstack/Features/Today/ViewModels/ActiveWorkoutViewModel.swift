@@ -100,33 +100,57 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     var formattedElapsedTime: String { clock.formattedElapsedTime }
 
+    /// Elapsed time is derived from wall-clock dates rather than counted tick by
+    /// tick, so it keeps advancing while the app is in the background (iOS
+    /// suspends Timers there) and catches up on return.
+    private var accumulatedSeconds = 0
+    private var runningSince: Date?
+
     func startTimer(from initialSeconds: Int = 0) {
         timer?.invalidate()
+        accumulatedSeconds = initialSeconds
+        runningSince = Date()
         clock.elapsedSeconds = initialSeconds
         clock.isPaused = false
         scheduleTick()
     }
 
     func stopTimer() {
+        syncElapsed()
+        accumulatedSeconds = clock.elapsedSeconds
+        runningSince = nil
         timer?.invalidate()
         timer = nil
     }
 
     func pauseTimer() {
+        syncElapsed()
+        accumulatedSeconds = clock.elapsedSeconds
+        runningSince = nil
         clock.isPaused = true
         timer?.invalidate()
         timer = nil
     }
 
     func resumeTimer() {
+        runningSince = Date()
         clock.isPaused = false
         timer?.invalidate()
         scheduleTick()
     }
 
+    /// Recompute elapsed time from the dates. Call on app foreground return.
+    func syncElapsed(now: Date = Date()) {
+        guard let since = runningSince else { return }
+        let elapsed = accumulatedSeconds + max(0, Int(now.timeIntervalSince(since)))
+        if clock.elapsedSeconds != elapsed {
+            clock.elapsedSeconds = elapsed
+        }
+    }
+
     private func scheduleTick() {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.clock.elapsedSeconds += 1 }
+            DispatchQueue.main.async { self?.syncElapsed() }
         }
     }
 
