@@ -311,30 +311,11 @@ struct ActiveWorkoutView: View {
                 .buttonStyle(.plain)
 
                 // Rest timer banner
-                if let restTime = viewModel.formattedRestTime(for: exercise.id) {
-                    HStack(spacing: 11) {
-                        RestTimerRing(progress: viewModel.restTimerProgress(for: exercise.id))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Rest Period")
-                                .font(AppTheme.caveat(15, weight: .bold))
-                                .foregroundStyle(AppTheme.textPrimary)
-                            if let next = nextExercise {
-                                Text("Next: \(next.name)")
-                                    .font(AppTheme.plexMono(10))
-                                    .foregroundStyle(AppTheme.textSecondary)
-                            }
-                        }
-                        Spacer()
-                        Text(restTime)
-                            .font(AppTheme.plexMono(16, weight: .medium))
-                            .foregroundStyle(AppTheme.accent)
-                    }
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 9)
-                    .background(AppTheme.surfaceElevated)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(AppTheme.border, lineWidth: 1)
+                if let target = viewModel.restTimerTargetDates[exercise.id] {
+                    RestBannerView(
+                        target: target,
+                        totalSeconds: viewModel.restTimerTotalSeconds[exercise.id] ?? 90,
+                        nextExerciseName: nextExercise?.name
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -538,6 +519,47 @@ struct ActiveWorkoutView: View {
                     .disabled(newExerciseName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+        }
+    }
+}
+
+
+// MARK: - Rest Banner
+
+/// Rest countdown banner. Drives its own once-a-second refresh so the rest of
+/// the workout screen doesn't re-render on each tick.
+struct RestBannerView: View {
+    let target: Date
+    let totalSeconds: Int
+    let nextExerciseName: String?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 11) {
+                RestTimerRing(progress: ActiveWorkoutViewModel.restProgress(
+                    target: target, total: totalSeconds, now: context.date))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Rest Period")
+                        .font(AppTheme.caveat(15, weight: .bold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    if let nextExerciseName {
+                        Text("Next: \(nextExerciseName)")
+                            .font(AppTheme.plexMono(10))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+                Spacer()
+                Text(ActiveWorkoutViewModel.restText(target: target, now: context.date))
+                    .font(AppTheme.plexMono(16, weight: .medium))
+                    .foregroundStyle(AppTheme.accent)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+            .background(AppTheme.surfaceElevated)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(AppTheme.border, lineWidth: 1)
+            )
         }
     }
 }

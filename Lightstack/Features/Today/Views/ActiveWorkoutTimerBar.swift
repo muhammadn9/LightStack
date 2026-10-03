@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Top bar showing workout type, elapsed time, pause/cancel controls, and running volume.
 struct ActiveWorkoutTimerBar: View {
-    @ObservedObject var viewModel: ActiveWorkoutViewModel
+    let viewModel: ActiveWorkoutViewModel
     let workoutType: String?
     let runningVolume: Double
     let onCancel: () -> Void
@@ -24,16 +24,7 @@ struct ActiveWorkoutTimerBar: View {
                     }
                     .accessibilityLabel("Cancel workout")
                     .accessibilityHint("Ends the current workout session")
-                    Text(viewModel.formattedElapsedTime)
-                        .font(AppTheme.plexMono(18, weight: .medium))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .monospacedDigit()
-                    Button(action: { viewModel.togglePause() }) {
-                        Image(systemName: viewModel.isPaused ? "play.fill" : "pause.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(AppTheme.accent)
-                    }
-                    .accessibilityLabel(viewModel.isPaused ? "Resume workout" : "Pause workout")
+                    ElapsedClockView(clock: viewModel.clock, onTogglePause: { viewModel.togglePause() })
                 }
             }
 
@@ -57,6 +48,25 @@ struct ActiveWorkoutTimerBar: View {
         .overlay(alignment: .bottom) {
             InkDivider()
         }
+    }
+}
+
+/// Elapsed time + pause button. Owns the per-second observation of the clock.
+private struct ElapsedClockView: View {
+    @ObservedObject var clock: WorkoutClock
+    let onTogglePause: () -> Void
+
+    var body: some View {
+        Text(clock.formattedElapsedTime)
+            .font(AppTheme.plexMono(18, weight: .medium))
+            .foregroundStyle(AppTheme.textPrimary)
+            .monospacedDigit()
+        Button(action: onTogglePause) {
+            Image(systemName: clock.isPaused ? "play.fill" : "pause.fill")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.accent)
+        }
+        .accessibilityLabel(clock.isPaused ? "Resume workout" : "Pause workout")
     }
 }
 

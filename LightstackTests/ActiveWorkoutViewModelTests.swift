@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import Lightstack
 
 final class ActiveWorkoutViewModelTests: XCTestCase {
@@ -224,6 +225,54 @@ final class ActiveWorkoutViewModelTests: XCTestCase {
     func testFormattedElapsedTime3725Seconds() {
         viewModel.elapsedSeconds = 3725
         XCTAssertEqual(viewModel.formattedElapsedTime, "62:05")
+    }
+
+    // MARK: - WorkoutClock isolation
+
+    func testClockTicksDoNotEmitViewModelObjectWillChange() {
+        var emissions = 0
+        let cancellable = viewModel.objectWillChange.sink { emissions += 1 }
+        viewModel.clock.elapsedSeconds = 42
+        viewModel.clock.isPaused = true
+        XCTAssertEqual(emissions, 0)
+        XCTAssertEqual(viewModel.elapsedSeconds, 42)
+        XCTAssertTrue(viewModel.isPaused)
+        XCTAssertEqual(viewModel.formattedElapsedTime, "0:42")
+        cancellable.cancel()
+    }
+
+    func testClockEmitsOwnObjectWillChange() {
+        var emissions = 0
+        let cancellable = viewModel.clock.objectWillChange.sink { emissions += 1 }
+        viewModel.clock.elapsedSeconds = 1
+        XCTAssertEqual(emissions, 1)
+        cancellable.cancel()
+    }
+
+    // MARK: - Rest banner helpers
+
+    func testRestTextFormatting() {
+        let now = Date()
+        XCTAssertEqual(ActiveWorkoutViewModel.restText(target: now.addingTimeInterval(90), now: now), "1:30")
+        XCTAssertEqual(ActiveWorkoutViewModel.restText(target: now.addingTimeInterval(45), now: now), "45s")
+        XCTAssertEqual(ActiveWorkoutViewModel.restText(target: now.addingTimeInterval(-5), now: now), "0s")
+    }
+
+    func testRestProgress() {
+        let now = Date()
+        XCTAssertEqual(ActiveWorkoutViewModel.restProgress(target: now.addingTimeInterval(60), total: 120, now: now), 0.5, accuracy: 0.001)
+        XCTAssertEqual(ActiveWorkoutViewModel.restProgress(target: now.addingTimeInterval(-1), total: 120, now: now), 1)
+        XCTAssertEqual(ActiveWorkoutViewModel.restProgress(target: now, total: 0, now: now), 0)
+    }
+
+    func testRefreshRestTimersClearsExpired() {
+        let id = UUID()
+        viewModel.restTimerTargetDates[id] = Date().addingTimeInterval(-10)
+        viewModel.restTimerTotalSeconds[id] = 90
+        viewModel.activeRestExerciseId = id
+        viewModel.refreshRestTimers()
+        XCTAssertNil(viewModel.restTimerTargetDates[id])
+        XCTAssertNil(viewModel.activeRestExerciseId)
     }
 
     // MARK: - refreshTargets
