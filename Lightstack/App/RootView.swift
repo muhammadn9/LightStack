@@ -19,6 +19,7 @@ struct RootView: View {
                 MainTabView()
             }
         }
+        .keyboardDoneButton()
         .animation(.easeInOut(duration: 0.3), value: environment.isAuthenticated)
         .animation(.easeInOut(duration: 0.3), value: environment.needsEmailVerification)
         .animation(.easeInOut(duration: 0.3), value: environment.hasCompletedOnboarding)

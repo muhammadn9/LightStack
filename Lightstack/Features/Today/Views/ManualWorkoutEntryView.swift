@@ -44,6 +44,7 @@ struct ManualWorkoutEntryView: View {
                 ExerciseCatalogPicker { name, muscleGroup in
                     exercises.append(ManualExercise(name: name, muscleGroup: muscleGroup, targetSets: 3))
                 }
+                .keyboardDoneButton()
             }
         }
     }

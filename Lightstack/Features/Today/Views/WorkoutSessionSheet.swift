@@ -61,6 +61,7 @@ struct WorkoutSessionSheet: View {
             }
             .navigationTitle(workoutType)
             .navigationBarTitleDisplayMode(.inline)
+            .keyboardDoneButton()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Close") { onDismiss() }

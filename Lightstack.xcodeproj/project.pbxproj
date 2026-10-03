@@ -101,6 +101,7 @@
 		A8D3D44140B990BB93BB23D8 /* WorkoutEditDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A36EBDFFCD76C8A16FCD3B3 /* WorkoutEditDraftTests.swift */; };
 		ADFEF822E7E6AB5A5B263698 /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC654469C47BC74D1CF942BA /* HistoryViewModel.swift */; };
 		AE4C263835B9E1565F60CBA9 /* OfflineQueueManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943DDDDBD93BD87F949E45E2 /* OfflineQueueManager.swift */; };
+		AEEE6DC847B8330BB56F3BBC /* KeyboardDoneButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B5769A04FC7EFFAC489ACE /* KeyboardDoneButton.swift */; };
 		B0644410F3E1729FA98C69B8 /* CoachChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE05AE523B9A6672FFBFD2AD /* CoachChatView.swift */; };
 		B22918C2D9E3F72F4404DE1A /* InputSanitizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BFCC405F7A98CF3F15D6B0F /* InputSanitizerTests.swift */; };
 		B30FB3CE1441852B4B988484 /* FormFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 762A6756070D4A5EFD3B1407 /* FormFeedbackService.swift */; };
@@ -160,6 +161,7 @@
 		080CD96138F0AC191E99AEF1 /* PRRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PRRepository.swift; sourceTree = "<group>"; };
 		0FBEF4BBBE0A525AA2C190BD /* SetRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetRowView.swift; sourceTree = "<group>"; };
 		0FCEB04776246C1DE3A4DEDD /* WorkoutModificationJSONParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutModificationJSONParser.swift; sourceTree = "<group>"; };
+		13B5769A04FC7EFFAC489ACE /* KeyboardDoneButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDoneButton.swift; sourceTree = "<group>"; };
 		141492EF9B5CB291F9A21074 /* WorkoutDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailView.swift; sourceTree = "<group>"; };
 		15F81ADA726FB96F616EB4E4 /* ActiveWorkoutViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkoutViewModelTests.swift; sourceTree = "<group>"; };
 		173AACE39DC28FCC095B3696 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
@@ -425,6 +427,7 @@
 			children = (
 				410B6C5178A19D60B2F8C3DC /* AppTheme.swift */,
 				8FC9617A9073CA859D021BBE /* CardStyle.swift */,
+				13B5769A04FC7EFFAC489ACE /* KeyboardDoneButton.swift */,
 				F5DBF98B887DA0578EDB784F /* Motion.swift */,
 				A049A3CB8EED029EB74346C4 /* NotebookComponents.swift */,
 				6B1FAA56C4ACF0C74378B84A /* StatusBadge.swift */,
@@ -930,6 +933,7 @@
 				ADFEF822E7E6AB5A5B263698 /* HistoryViewModel.swift in Sources */,
 				2CA9314FFE753807345AAE69 /* IdealFormData.swift in Sources */,
 				71341092DB3C3458F5D40655 /* InputSanitizer.swift in Sources */,
+				AEEE6DC847B8330BB56F3BBC /* KeyboardDoneButton.swift in Sources */,
 				282B22E382342ECBB488BA94 /* KeychainService.swift in Sources */,
 				013383C23AAFD428C65A00A4 /* Lightstack.xcdatamodeld in Sources */,
 				E8595107FFB5AF3CEF8825F8 /* LightstackApp.swift in Sources */,
