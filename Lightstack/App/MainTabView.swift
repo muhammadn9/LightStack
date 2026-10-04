@@ -24,14 +24,16 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
-                Group {
-                    if let monthVM = monthPlanViewModel {
-                        MonthPlanView(viewModel: monthVM, selectedTab: $selectedTab)
-                    } else {
-                        AppTheme.background
+                if FeatureFlags.monthTabEnabled {
+                    Group {
+                        if let monthVM = monthPlanViewModel {
+                            MonthPlanView(viewModel: monthVM, selectedTab: $selectedTab)
+                        } else {
+                            AppTheme.background
+                        }
                     }
+                    .tag(1)
                 }
-                .tag(1)
 
                 HistoryListView()
                     .tag(2)
@@ -49,6 +51,8 @@ struct MainTabView: View {
         .themedBackground()
         .onAppear {
             setupAppearance()
+            // The saved tab may point at the hidden Month tab.
+            if !FeatureFlags.monthTabEnabled && selectedTab == 1 { selectedTab = 0 }
             if todayViewModel == nil {
                 todayViewModel = environment.makeTodayViewModel()
             }
@@ -80,21 +84,24 @@ struct NotebookTabRow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Namespace private var indicator
-    private let tabs = ["Today", "Month", "History", "Profile", "Settings"]
+    /// (tag, title). Tags stay fixed so hiding a tab doesn't shift the others.
+    private let tabs: [(tag: Int, title: String)] = [
+        (0, "Today"), (1, "Month"), (2, "History"), (3, "Profile"), (4, "Settings")
+    ].filter { FeatureFlags.monthTabEnabled || $0.0 != 1 }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                ForEach(tabs.indices, id: \.self) { i in
+                ForEach(tabs, id: \.tag) { tab in
                     Button {
                         withAnimation(reduceMotion ? nil : AppMotion.tabSwitch) {
-                            selectedTab = i
+                            selectedTab = tab.tag
                         }
                     } label: {
                         VStack(spacing: 0) {
-                            Text(tabs[i])
+                            Text(tab.title)
                                 .font(.footnote.weight(.semibold))
-                                .foregroundStyle(i == selectedTab ? AppTheme.accent : AppTheme.textSecondary)
+                                .foregroundStyle(tab.tag == selectedTab ? AppTheme.accent : AppTheme.textSecondary)
                                 .padding(.vertical, 10)
                                 .frame(maxWidth: .infinity)
 
@@ -102,7 +109,7 @@ struct NotebookTabRow: View {
                                 Capsule()
                                     .fill(Color.clear)
                                     .frame(height: 3)
-                                if i == selectedTab {
+                                if tab.tag == selectedTab {
                                     Capsule()
                                         .fill(AppTheme.accent)
                                         .frame(height: 3)
@@ -113,10 +120,10 @@ struct NotebookTabRow: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(tabs[i])
-                    .accessibilityHint("Shows the \(tabs[i]) screen")
+                    .accessibilityLabel(tab.title)
+                    .accessibilityHint("Shows the \(tab.title) screen")
                     .accessibilityAddTraits(
-                        i == selectedTab ? [.isButton, .isSelected] : .isButton
+                        tab.tag == selectedTab ? [.isButton, .isSelected] : .isButton
                     )
                 }
             }
