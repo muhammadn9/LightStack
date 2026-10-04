@@ -351,7 +351,7 @@ enum WorkoutDetailGrouping {
 
     /// Splits ordered exercises into single exercises and valid supersets.
     static func sections(from exercises: [Exercise]) -> [Section] {
-        let byId = Dictionary(uniqueKeysWithValues: exercises.map { ($0.id, $0) })
+        let byId = Dictionary(exercises.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return SupersetGroup.pages(from: exercises).compactMap { page in
             let members = page.exerciseIds.compactMap { byId[$0] }
             if page.isSuperset { return .superset(members) }

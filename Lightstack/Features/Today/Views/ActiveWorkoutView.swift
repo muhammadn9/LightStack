@@ -158,11 +158,17 @@ struct ActiveWorkoutView: View {
     // MARK: - Current Page View
 
     /// One page per exercise, or per superset (rows interleaved round by round).
+    @ViewBuilder
     private var currentExerciseView: some View {
-        let exercises = todayViewModel.exercises
-        let pages = SupersetGroup.pages(from: exercises)
+        let pages = SupersetGroup.pages(from: todayViewModel.exercises)
         let safeIndex = min(currentExerciseIndex, max(0, pages.count - 1))
-        let page = pages[safeIndex]
+        if let page = pages[safe: safeIndex] {
+            pageView(page, pages: pages, safeIndex: safeIndex)
+        }
+    }
+
+    private func pageView(_ page: SupersetPage, pages: [SupersetPage], safeIndex: Int) -> some View {
+        let exercises = todayViewModel.exercises
         let members = page.exerciseIds.compactMap { id in exercises.first { $0.id == id } }
         let nextName: String? = safeIndex + 1 < pages.count
             ? exercises.first { $0.id == pages[safeIndex + 1].exerciseIds.first }?.name
@@ -254,7 +260,7 @@ struct ActiveWorkoutView: View {
     /// and each row is captioned with its exercise's name.
     @ViewBuilder
     private func pageRows(rows: [SupersetRow], members: [Exercise], isSuperset: Bool) -> some View {
-        let byId = Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0) })
+        let byId = Dictionary(members.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let headers = columnHeaderRowIds(rows: rows, byId: byId)
         VStack(alignment: .leading, spacing: 12) {
             ForEach(rows) { row in

@@ -577,7 +577,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     /// Adopts new grouping/order and persists the exercises that changed (the repository upserts).
     private func applyGrouping(_ updated: [Exercise]) {
-        let before = Dictionary(uniqueKeysWithValues: exercises.map { ($0.id, $0) })
+        let before = Dictionary(exercises.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let changed = updated.filter { new in
             guard let old = before[new.id] else { return true }
             return old.supersetGroupId != new.supersetGroupId || old.orderIndex != new.orderIndex
