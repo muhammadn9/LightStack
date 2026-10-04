@@ -212,14 +212,6 @@ struct EditProfileEquipmentSection: View {
                     RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
-                .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") {
-                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        }
-                    }
-                }
         }
         .cardStyle()
     }

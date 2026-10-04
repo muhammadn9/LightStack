@@ -92,12 +92,6 @@ struct WorkoutDetailView: View {
         .scrollDismissesKeyboard(.interactively)
         .onAppear { reload() }
         .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
             if isEditing {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { cancelEditing() }
@@ -117,6 +111,7 @@ struct WorkoutDetailView: View {
             ExerciseCatalogPicker { name, muscleGroup in
                 draft?.addExercise(name: name, muscleGroup: muscleGroup)
             }
+            .keyboardDoneButton()
         }
         .confirmationDialog("Delete this workout?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete Workout", role: .destructive) { deleteWorkout() }

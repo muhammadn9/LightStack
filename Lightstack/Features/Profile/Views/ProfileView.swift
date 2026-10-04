@@ -27,6 +27,7 @@ struct ProfileView: View {
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
                     EditProfileView(viewModel: vm, userId: userId, userEmail: environment.supabaseClient.auth.currentUser?.email ?? "")
+                        .keyboardDoneButton()
                         .onDisappear { vm.cancelEditing() }
                 }
             }
