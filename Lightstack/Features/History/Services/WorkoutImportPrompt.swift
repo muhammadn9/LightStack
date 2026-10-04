@@ -14,6 +14,7 @@ enum WorkoutImportPrompt {
     - Write one entry in "sets" for every set performed. "reps" is a whole number.
     - "rir" is reps in reserve. Keep ranges exactly as written, e.g. "1-2". If it is not recorded, write "N/A".
     - Put any notes I wrote into "notes", per exercise or per workout. If there are none, write "N/A".
+    - SUPERSETS: if two or more exercises were done back to back as a superset (alternating sets), list them as separate exercises, adjacent in order, and give each the same short "superset" label (e.g. "A"). Use a different label for each superset in a workout. At most 4 exercises per superset. Exercises that are not part of a superset get "superset": "N/A". Each exercise keeps its own sets (set 1 of each is one round).
     - Use "N/A" for ANY value that is not recorded in my records.
     - Do NOT invent, guess or fill in data that is not in my records. Do not add workouts, exercises or sets that I did not record.
 
@@ -23,7 +24,12 @@ enum WorkoutImportPrompt {
       {"date": "2026-09-14", "name": "Pull", "notes": "N/A",
        "exercises": [
          {"name": "Barbell Row", "muscle_group": "Back", "notes": "N/A",
-          "sets": [{"weight_lbs": 135, "reps": 8, "rir": "1-2"}]}
+          "superset": "N/A",
+          "sets": [{"weight_lbs": 135, "reps": 8, "rir": "1-2"}]},
+         {"name": "Skull Crusher", "muscle_group": "Arms", "notes": "N/A", "superset": "A",
+          "sets": [{"weight_lbs": 50, "reps": 15, "rir": 2}, {"weight_lbs": 60, "reps": 10, "rir": 2}]},
+         {"name": "Close Grip Press", "muscle_group": "Arms", "notes": "N/A", "superset": "A",
+          "sets": [{"weight_lbs": 50, "reps": 10, "rir": 1}, {"weight_lbs": 60, "reps": 8, "rir": 1}]}
        ]}
     ]}
 

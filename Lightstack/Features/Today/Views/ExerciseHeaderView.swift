@@ -1,18 +1,34 @@
 import SwiftUI
 
-/// Active-workout exercise header: full-width title, subtitle, optional coach
-/// note, then a single controls row (navigation left, tools right).
+/// Active-workout page header: title, subtitle, optional coach notes, superset
+/// actions, then a single controls row (navigation left, tools right).
+/// A page holds one exercise, or 2-4 members of a superset.
 struct ExerciseHeaderView: View {
-    let exercise: Exercise
+    let members: [Exercise]
     let currentIndex: Int
+    /// Number of pages (a superset counts once).
     let totalCount: Int
+    let canLinkWithNext: Bool
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onAdd: () -> Void
     let onFormDemo: () -> Void
     let onRecordForm: () -> Void
+    let onLinkWithNext: () -> Void
+    let onUnlink: () -> Void
+    /// Long-press "Remove" on a member's name. The caller confirms before removing.
+    let onRemove: (Exercise) -> Void
+
+    private var isSuperset: Bool { members.count > 1 }
 
     private var subtitle: String {
+        if isSuperset {
+            let groups = members.map(\.muscleGroup).reduce(into: [String]()) { acc, g in
+                if !acc.contains(g) { acc.append(g) }
+            }
+            return "Superset · " + groups.joined(separator: ", ")
+        }
+        guard let exercise = members.first else { return "" }
         if let target = exercise.targetSets {
             return "\(exercise.muscleGroup) · \(target) sets"
         }
@@ -21,25 +37,74 @@ struct ExerciseHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(exercise.name)
-                .font(AppTheme.playfair(25, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(members) { member in
+                    nameText(member)
+                }
+            }
+            .accessibilityElement(children: .contain)
 
             Text(subtitle)
                 .font(AppTheme.caveat(17))
                 .foregroundStyle(AppTheme.textSecondary)
-                .lineLimit(1)
+                .lineLimit(isSuperset ? 2 : 1)
                 .minimumScaleFactor(0.8)
 
-            if let message = exercise.coachNoteParts.message {
-                CoachNoteRow(message: message)
-                    .id(exercise.id) // collapse state resets per exercise
+            ForEach(members) { member in
+                if let message = member.coachNoteParts.message {
+                    CoachNoteRow(message: message, title: isSuperset ? "Coach note · \(member.name)" : "Coach note")
+                        .id(member.id) // collapse state resets per exercise
+                }
             }
 
+            supersetRow
             controlsRow
+        }
+    }
+
+    /// The long-press menu attaches to the name text only, so scrolling and taps
+    /// elsewhere on the header can never trigger a removal.
+    private func nameText(_ member: Exercise) -> some View {
+        Text(member.name)
+            .font(AppTheme.playfair(isSuperset ? 21 : 25, weight: .bold))
+            .foregroundStyle(AppTheme.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+            .contextMenu {
+                Button(role: .destructive) {
+                    onRemove(member)
+                } label: {
+                    Label("Remove Exercise", systemImage: "trash")
+                }
+            }
+    }
+
+    private var supersetRow: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { supersetButtons }
+            VStack(alignment: .leading, spacing: 8) { supersetButtons }
+        }
+    }
+
+    @ViewBuilder
+    private var supersetButtons: some View {
+        Button(action: onLinkWithNext) {
+            Label("Superset with next", systemImage: "link")
+        }
+        .buttonStyle(SupersetChipStyle())
+        .disabled(!canLinkWithNext)
+        .opacity(canLinkWithNext ? 1 : 0.4)
+        .accessibilityHint(canLinkWithNext
+                           ? "Alternates sets between this and the next exercise"
+                           : "Unavailable: no next exercise, or a superset can have at most 4 exercises")
+        if isSuperset {
+            Button(action: onUnlink) {
+                Label("Unlink", systemImage: "scissors")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(SupersetChipStyle())
+            .accessibilityHint("Splits the superset back into separate exercises")
         }
     }
 
@@ -80,9 +145,23 @@ struct ExerciseHeaderView: View {
     }
 }
 
+private struct SupersetChipStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(AppTheme.caveat(16, weight: .bold))
+            .foregroundStyle(AppTheme.accent)
+            .padding(.horizontal, 12)
+            .frame(minHeight: AppTheme.minTouchSize)
+            .background(AppTheme.surfaceElevated.opacity(configuration.isPressed ? 0.6 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
+    }
+}
+
 /// Collapsible coach note: 2-line preview, tap to expand.
 private struct CoachNoteRow: View {
     let message: String
+    var title: String = "Coach note"
     @State private var isExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -97,7 +176,7 @@ private struct CoachNoteRow: View {
                     Image(systemName: "sparkles")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(AppTheme.accent)
-                    Text("Coach note")
+                    Text(title)
                         .font(AppTheme.caveat(17))
                         .foregroundStyle(AppTheme.accent)
                     Spacer()
@@ -122,7 +201,7 @@ private struct CoachNoteRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Coach note")
+        .accessibilityLabel(title)
         .accessibilityValue(isExpanded ? "Expanded. \(message)" : "Collapsed. \(message)")
         .accessibilityHint(isExpanded ? "Double tap to collapse" : "Double tap to expand")
     }

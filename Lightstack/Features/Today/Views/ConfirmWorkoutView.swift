@@ -63,14 +63,16 @@ struct ConfirmWorkoutView: View {
                     .foregroundStyle(AppTheme.textSecondary)
             }
 
+            let supersetIds = Set(SupersetGroup.pages(from: todayViewModel.exercises)
+                .filter(\.isSuperset).flatMap(\.exerciseIds))
             ForEach(todayViewModel.exercises) { exercise in
-                exerciseCard(exercise)
+                exerciseCard(exercise, isInSuperset: supersetIds.contains(exercise.id))
             }
         }
         .lsCard()
     }
 
-    private func exerciseCard(_ exercise: Exercise) -> some View {
+    private func exerciseCard(_ exercise: Exercise, isInSuperset: Bool) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 // Name + muscle group
@@ -93,6 +95,8 @@ struct ConfirmWorkoutView: View {
 
                 // Per-set rows
                 setRows(for: exercise)
+
+                supersetControls(for: exercise, isInSuperset: isInSuperset)
             }
 
             Spacer()
@@ -114,6 +118,39 @@ struct ConfirmWorkoutView: View {
         .padding(12)
         .background(AppTheme.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+    }
+
+    /// "Superset" tag plus link/unlink actions for one exercise card.
+    private func supersetControls(for exercise: Exercise, isInSuperset: Bool) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) { supersetControlItems(for: exercise, isInSuperset: isInSuperset) }
+            VStack(alignment: .leading, spacing: 4) { supersetControlItems(for: exercise, isInSuperset: isInSuperset) }
+        }
+    }
+
+    @ViewBuilder
+    private func supersetControlItems(for exercise: Exercise, isInSuperset: Bool) -> some View {
+        if isInSuperset {
+            Label("Superset", systemImage: "link")
+                .font(AppTheme.caveat(13, weight: .bold))
+                .foregroundStyle(AppTheme.accent)
+            if let gid = exercise.supersetGroupId {
+                Button("Unlink") { todayViewModel.unlinkSuperset(groupId: gid) }
+                    .font(AppTheme.caveat(13, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(minHeight: AppTheme.minTouchSize)
+                    .accessibilityLabel("Unlink \(exercise.name) from its superset")
+            }
+        }
+        if todayViewModel.canLinkWithNext(exercise.id) {
+            Button(isInSuperset ? "Add next" : "Superset with next") {
+                todayViewModel.linkWithNext(exercise.id)
+            }
+            .font(AppTheme.caveat(13, weight: .bold))
+            .foregroundStyle(AppTheme.accent)
+            .frame(minHeight: AppTheme.minTouchSize)
+            .accessibilityLabel("Superset \(exercise.name) with the next exercise")
+        }
     }
 
     /// Renders one row per target set showing weight × reps @ RIR.

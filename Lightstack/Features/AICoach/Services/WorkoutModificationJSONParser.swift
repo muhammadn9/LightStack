@@ -83,6 +83,8 @@ private struct WorkoutModificationDTO: Decodable {
     let note: String?
     /// Optional per-set targets (pyramids, ramps, top sets).
     let sets: LenientSets?
+    /// Optional superset label: entries sharing a label form one superset.
+    let superset: String?
 
     // removeExercise field
     // uses `name` for the exercise name
@@ -109,6 +111,7 @@ private struct WorkoutModificationDTO: Decodable {
         case targetWeight      = "target_weight"
         case note
         case sets
+        case superset
         case newTargetSets     = "new_target_sets"
         case newTargetReps     = "new_target_reps"
         case newTargetRir      = "new_target_rir"
@@ -303,7 +306,16 @@ struct WorkoutModificationJSONParser {
             throw WorkoutModificationJSONParserError.malformedJSON(underlying: error)
         }
 
-        return try payload.modifications.map { try convert($0) }
+        let converted = try payload.modifications.map { try convert($0) }
+        let entries: [(label: String?, name: String)] = zip(payload.modifications, converted).compactMap { dto, mod in
+            switch mod {
+            case .addExercise(let name, _, _, _, _, _, _, _, _): return (dto.superset, name)
+            case .replaceExercise(_, let newName, _, _, _, _, _, _, _, _): return (dto.superset, newName)
+            case .modifyExercise(let name, _, _, _, _, _, _, _): return (dto.superset, name)
+            case .removeExercise, .groupSuperset: return nil
+            }
+        }
+        return converted + WorkoutModification.supersetGroups(from: entries)
     }
 
     /// Non-empty per-set targets, or nil when the block carried none.

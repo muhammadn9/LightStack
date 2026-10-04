@@ -55,6 +55,38 @@ final class WorkoutImportService {
         return ImportPreview(toImport: deduped.toImport, duplicateCount: deduped.duplicates, skipped: result.skipped)
     }
 
+    // MARK: - Superset grouping
+
+    /// Assigns one fresh group id per superset label within a workout. Members are pulled
+    /// adjacent to the first member; groups are capped at 4 (extra members stay ungrouped)
+    /// and labels with a single member are ignored.
+    static func assignGroups(_ exercises: [ImportedExercise]) -> [(exercise: ImportedExercise, groupId: UUID?)] {
+        func key(_ e: ImportedExercise) -> String? {
+            guard let l = e.supersetLabel?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                  !l.isEmpty else { return nil }
+            return l
+        }
+        var members: [String: [Int]] = [:]
+        for (i, e) in exercises.enumerated() { if let k = key(e) { members[k, default: []].append(i) } }
+        var groupIds: [String: UUID] = [:]
+        var result: [(exercise: ImportedExercise, groupId: UUID?)] = []
+        var placed = Set<Int>()
+        for (i, e) in exercises.enumerated() where !placed.contains(i) {
+            guard let k = key(e), let idxs = members[k], idxs.count >= SupersetGroup.minMembers else {
+                result.append((e, nil))
+                placed.insert(i)
+                continue
+            }
+            let gid = groupIds[k] ?? UUID()
+            groupIds[k] = gid
+            for (n, idx) in idxs.enumerated() {
+                result.append((exercises[idx], n < SupersetGroup.maxMembers ? gid : nil))
+                placed.insert(idx)
+            }
+        }
+        return result
+    }
+
     // MARK: - Import
 
     func importWorkouts(_ workouts: [ImportedWorkout]) {
@@ -69,11 +101,13 @@ final class WorkoutImportService {
             )
             var exercises: [Exercise] = []
             var setsByExercise: [UUID: [WorkoutSet]] = [:]
-            for (index, ie) in imported.exercises.enumerated() {
+            for (index, assigned) in Self.assignGroups(imported.exercises).enumerated() {
+                let ie = assigned.exercise
                 let exercise = Exercise.create(
                     workoutId: workout.id, name: ie.name, muscleGroup: ie.muscleGroup,
                     orderIndex: index, targetSets: ie.sets.count,
-                    targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: ie.notes
+                    targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: ie.notes,
+                    supersetGroupId: assigned.groupId
                 )
                 exercises.append(exercise)
                 setsByExercise[exercise.id] = ie.sets.enumerated().map { offset, s in

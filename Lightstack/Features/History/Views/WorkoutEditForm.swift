@@ -63,6 +63,11 @@ struct WorkoutEditForm: View {
     private func exerciseCard(_ exercise: Binding<WorkoutEditDraft.DraftExercise>) -> some View {
         let ex = exercise.wrappedValue
         return VStack(alignment: .leading, spacing: 12) {
+            if let label = draft.supersetLabel(for: ex.id) {
+                Label(label, systemImage: "link")
+                    .font(AppTheme.caveat(12))
+                    .foregroundStyle(AppTheme.accentSecondary)
+            }
             HStack(spacing: 8) {
                 Text(ex.name)
                     .font(AppTheme.playfairItalic(16, weight: .bold))
