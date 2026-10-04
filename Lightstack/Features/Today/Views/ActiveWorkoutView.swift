@@ -219,6 +219,7 @@ struct ActiveWorkoutView: View {
                     .frame(minHeight: AppTheme.minTouchSize, alignment: .leading)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("addSetButton")
 
                 // Rest timer banner (a superset's timer is keyed by the member that triggered it)
                 if let restId = members.first(where: { viewModel.restTimerTargetDates[$0.id] != nil })?.id,
@@ -347,6 +348,7 @@ struct ActiveWorkoutView: View {
                     setNumber: loggedCount + index + 1,
                     pendingSets: binding,
                     exerciseId: exercise.id,
+                    idPrefix: "setRow.\(exerciseIndex(of: exercise)).\(index)",
                     onLog: { logSet(at: index, exerciseId: exercise.id) },
                     onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
                 )
@@ -356,6 +358,7 @@ struct ActiveWorkoutView: View {
                     setNumber: loggedCount + index + 1,
                     pendingSets: binding,
                     exerciseId: exercise.id,
+                    idPrefix: "setRow.\(exerciseIndex(of: exercise)).\(index)",
                     onLog: { logSet(at: index, exerciseId: exercise.id) },
                     onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
                 )
@@ -388,6 +391,7 @@ struct ActiveWorkoutView: View {
             )
             .shadow(color: AppTheme.accent.opacity(0.3), radius: 2, x: 1, y: 2)
         }
+        .accessibilityIdentifier("finishWorkoutButton")
         .padding(.horizontal, 18)
         .padding(.vertical, 11)
         .background(AppTheme.background)
@@ -464,6 +468,10 @@ struct ActiveWorkoutView: View {
     static func restSeconds(for exercise: Exercise) -> Int? {
         if let rest = exercise.restSeconds, rest > 0 { return rest }
         return exercise.trackingType == .strength ? 90 : nil
+    }
+
+    private func exerciseIndex(of exercise: Exercise) -> Int {
+        todayViewModel.exercises.firstIndex { $0.id == exercise.id } ?? 0
     }
 
     private func clampPageIndex() {

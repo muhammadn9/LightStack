@@ -157,6 +157,7 @@ struct PostWorkoutView: View {
             }
         }
         .buttonStyle(WaxSealButtonStyle(isSecondary: false))
+        .accessibilityIdentifier("saveWorkoutButton")
         .disabled(todayViewModel.isLoadingNote)
         .opacity(todayViewModel.isLoadingNote ? 0.6 : 1)
     }

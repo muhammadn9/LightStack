@@ -16,6 +16,12 @@ final class LocalStorageService {
             if inMemory {
                 description.url = URL(fileURLWithPath: "/dev/null")
             }
+            #if DEBUG
+            if !inMemory && UITestMode.isActive {
+                UITestMode.prepareStore()
+                description.url = UITestMode.storeURL
+            }
+            #endif
             description.shouldMigrateStoreAutomatically = true
             description.shouldInferMappingModelAutomatically = true
         }

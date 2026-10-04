@@ -95,14 +95,17 @@ struct WorkoutDetailView: View {
             if isEditing {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { cancelEditing() }
+                        .accessibilityIdentifier("editCancelButton")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { attemptSave() }
                         .fontWeight(.semibold)
+                        .accessibilityIdentifier("editSaveButton")
                 }
             } else if !isInProgress {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Edit") { startEditing() }
+                        .accessibilityIdentifier("editWorkoutButton")
                         .accessibilityLabel("Edit workout")
                 }
             }

@@ -7,7 +7,11 @@ final class WorkoutSessionPersistence {
 
     private let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionPersistence")
     private let userDefaults = UserDefaults.standard
+    #if DEBUG
+    private let stateKey = UITestMode.isActive ? UITestMode.sessionStateKey : "com.lightstack.activeWorkoutSession"
+    #else
     private let stateKey = "com.lightstack.activeWorkoutSession"
+    #endif
 
     // MARK: - Session State
 

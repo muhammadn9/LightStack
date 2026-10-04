@@ -120,6 +120,7 @@ struct NotebookTabRow: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("tab.\(tab.title)")
                     .accessibilityLabel(tab.title)
                     .accessibilityHint("Shows the \(tab.title) screen")
                     .accessibilityAddTraits(

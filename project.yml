@@ -69,6 +69,20 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Lightstack.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Lightstack"
         PRODUCT_BUNDLE_IDENTIFIER: com.muhammadn9.lightstack.tests
 
+  LightstackUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: LightstackUITests
+    dependencies:
+      - target: Lightstack
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Lightstack
+        PRODUCT_BUNDLE_IDENTIFIER: com.muhammadn9.lightstack.uitests
+
 schemes:
   Lightstack:
     build:
@@ -81,3 +95,12 @@ schemes:
         - Lightstack
       targets:
         - LightstackTests
+
+  LightstackUITests:
+    build:
+      targets:
+        Lightstack: all
+        LightstackUITests: [test]
+    test:
+      targets:
+        - LightstackUITests

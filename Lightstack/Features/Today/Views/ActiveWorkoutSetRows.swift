@@ -115,6 +115,8 @@ struct StrengthPendingSetRow: View {
     let setNumber: Int
     @Binding var pendingSets: [PendingSetInput]
     let exerciseId: UUID
+    /// Prefix for UI-test accessibility identifiers, e.g. "setRow.0.1".
+    var idPrefix: String = ""
     let onLog: () -> Void
     let onDelete: () -> Void
 
@@ -159,6 +161,7 @@ struct StrengthPendingSetRow: View {
                     .multilineTextAlignment(.center)
                     .frame(width: 78)
                     .foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityIdentifier("\(idPrefix).weight")
                     .accessibilityLabel(hint.map { "Weight, last time \($0.weightLbs == 0 ? "bodyweight" : String(format: "%g", $0.weightLbs))" } ?? "Weight")
                 Rectangle()
                     .fill(entry.weight.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
@@ -178,6 +181,7 @@ struct StrengthPendingSetRow: View {
                     .multilineTextAlignment(.center)
                     .frame(width: 67)
                     .foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityIdentifier("\(idPrefix).reps")
                     .accessibilityLabel(hint.map { "Reps, last time \($0.reps)" } ?? "Reps")
                 Rectangle()
                     .fill(entry.reps.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
@@ -193,6 +197,7 @@ struct StrengthPendingSetRow: View {
                     .multilineTextAlignment(.center)
                     .frame(width: 56)
                     .foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityIdentifier("\(idPrefix).rir")
                     .accessibilityLabel(hint.map { "RIR, last time \($0.rir.map(String.init) ?? "not recorded")" } ?? "RIR")
                 Rectangle()
                     .fill(AppTheme.border.opacity(0.5))
@@ -214,6 +219,7 @@ struct StrengthPendingSetRow: View {
                 .shadow(color: AppTheme.accent.opacity(!canLog ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
             .disabled(!canLog)
+            .accessibilityIdentifier("\(idPrefix).log")
             .accessibilityLabel("Log set")
 
             // Delete pending
@@ -222,6 +228,7 @@ struct StrengthPendingSetRow: View {
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
                     .font(.body)
             }
+            .accessibilityIdentifier("\(idPrefix).remove")
             .accessibilityLabel("Remove set")
             .accessibilityHint("Removes this pending set from the exercise")
         }
@@ -234,6 +241,8 @@ struct CardioPendingSetRow: View {
     let setNumber: Int
     @Binding var pendingSets: [PendingSetInput]
     let exerciseId: UUID
+    /// Prefix for UI-test accessibility identifiers, e.g. "setRow.0.1".
+    var idPrefix: String = ""
     let onLog: () -> Void
     let onDelete: () -> Void
 
@@ -318,6 +327,7 @@ struct CardioPendingSetRow: View {
                 .shadow(color: AppTheme.accent.opacity(entry.duration.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
             .disabled(entry.duration.isEmpty)
+            .accessibilityIdentifier("\(idPrefix).log")
             .accessibilityLabel("Log set")
 
             // Delete pending
@@ -326,6 +336,7 @@ struct CardioPendingSetRow: View {
                     .foregroundStyle(AppTheme.warning.opacity(0.7))
                     .font(.body)
             }
+            .accessibilityIdentifier("\(idPrefix).remove")
             .accessibilityLabel("Remove set")
             .accessibilityHint("Removes this pending set from the exercise")
         }
