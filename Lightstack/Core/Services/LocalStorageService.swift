@@ -109,7 +109,8 @@ final class LocalStorageService {
     func saveExercises(_ exercises: [Exercise], workoutId: UUID) {
         guard let workoutEntity = fetchWorkout(id: workoutId) else { return }
         for exercise in exercises {
-            let entity = CDExercise(context: context)
+            // Upsert by id: saving the same exercise twice must not duplicate it.
+            let entity = fetchExerciseEntity(id: exercise.id) ?? CDExercise(context: context)
             exercise.applyToCoreData(entity)
             entity.workout = workoutEntity
         }
@@ -147,7 +148,11 @@ final class LocalStorageService {
         request.fetchLimit = 1
         guard let exerciseEntity = try? context.fetch(request).first else { return }
 
-        let entity = CDWorkoutSet(context: context)
+        // Upsert by id: saving the same set twice must not duplicate it.
+        let setRequest: NSFetchRequest<CDWorkoutSet> = CDWorkoutSet.fetchRequest()
+        setRequest.predicate = NSPredicate(format: "id == %@", workoutSet.id as CVarArg)
+        setRequest.fetchLimit = 1
+        let entity = (try? context.fetch(setRequest).first) ?? CDWorkoutSet(context: context)
         workoutSet.applyToCoreData(entity)
         entity.exercise = exerciseEntity
         save()
@@ -363,6 +368,43 @@ final class LocalStorageService {
     }
 
     // MARK: - Private
+
+    private func fetchExerciseEntity(id: UUID) -> CDExercise? {
+        let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try? context.fetch(request).first
+    }
+
+    /// One-off repair for copies created before saves were upserts: merges
+    /// exercises (and sets) that share an id, keeping one of each.
+    /// Returns the number of duplicate exercises removed.
+    @discardableResult
+    func removeDuplicateExercises() -> Int {
+        let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()
+        guard let all = try? context.fetch(request) else { return 0 }
+        var keeperById: [UUID: CDExercise] = [:]
+        var removed = 0
+        for entity in all {
+            guard let id = entity.id else { continue }
+            guard let keeper = keeperById[id] else {
+                keeperById[id] = entity
+                continue
+            }
+            let keptSetIds = Set((keeper.sets as? Set<CDWorkoutSet> ?? []).compactMap(\.id))
+            for set in entity.sets as? Set<CDWorkoutSet> ?? [] {
+                if let setId = set.id, keptSetIds.contains(setId) {
+                    context.delete(set)
+                } else {
+                    set.exercise = keeper
+                }
+            }
+            context.delete(entity)
+            removed += 1
+        }
+        if removed > 0 { save() }
+        return removed
+    }
 
     private func save() {
         guard context.hasChanges else { return }
