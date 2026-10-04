@@ -22,6 +22,7 @@ struct ActiveWorkoutTimerBar: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
+                    .accessibilityIdentifier("cancelWorkoutButton")
                     .accessibilityLabel("Cancel workout")
                     .accessibilityHint("Ends the current workout session")
                     ElapsedClockView(clock: viewModel.clock, onTogglePause: { viewModel.togglePause() })

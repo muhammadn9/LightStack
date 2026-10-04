@@ -139,6 +139,7 @@ struct ConfirmWorkoutView: View {
                     .font(AppTheme.caveat(13, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(minHeight: AppTheme.minTouchSize)
+                    .accessibilityIdentifier("confirm.unlink")
                     .accessibilityLabel("Unlink \(exercise.name) from its superset")
             }
         }
@@ -149,6 +150,7 @@ struct ConfirmWorkoutView: View {
             .font(AppTheme.caveat(13, weight: .bold))
             .foregroundStyle(AppTheme.accent)
             .frame(minHeight: AppTheme.minTouchSize)
+            .accessibilityIdentifier("confirm.supersetWithNext")
             .accessibilityLabel("Superset \(exercise.name) with the next exercise")
         }
     }
@@ -226,6 +228,7 @@ struct ConfirmWorkoutView: View {
                 }
             }
             .buttonStyle(WaxSealButtonStyle(isSecondary: false))
+            .accessibilityIdentifier("startWorkoutButton")
         }
         .padding(.horizontal, 4)
     }

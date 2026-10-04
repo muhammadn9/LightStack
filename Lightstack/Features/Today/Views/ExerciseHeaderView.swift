@@ -93,6 +93,7 @@ struct ExerciseHeaderView: View {
             Label("Superset with next", systemImage: "link")
         }
         .buttonStyle(SupersetChipStyle())
+        .accessibilityIdentifier("supersetWithNextButton")
         .disabled(!canLinkWithNext)
         .opacity(canLinkWithNext ? 1 : 0.4)
         .accessibilityHint(canLinkWithNext
@@ -104,6 +105,7 @@ struct ExerciseHeaderView: View {
                     .labelStyle(.titleAndIcon)
             }
             .buttonStyle(SupersetChipStyle())
+            .accessibilityIdentifier("unlinkButton")
             .accessibilityHint("Splits the superset back into separate exercises")
         }
     }

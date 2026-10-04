@@ -90,6 +90,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.authService = AuthService(client: supabaseClient)
         self.localStorageService = LocalStorageService()
         localStorageService.removeDuplicateExercises()
+        #if DEBUG
+        if UITestMode.isActive { UITestMode.seedIfNeeded(localStorage: localStorageService) }
+        #endif
         self.supabaseService = SupabaseService(client: supabaseClient)
         self.offlineQueueManager = OfflineQueueManager(supabaseService: supabaseService)
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
@@ -101,7 +104,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         // OpenAIService/ClaudeService remain available to re-add once funded.
         self.geminiService = GeminiService(model: "gemini-3.5-flash")
         let geminiFallback = GeminiService(model: "gemini-2.5-flash")
-        self.aiServiceManager = AIServiceManager(providers: [geminiService, geminiFallback])
+        var providers: [AIProvider] = [geminiService, geminiFallback]
+        #if DEBUG
+        if UITestMode.isActive { providers = [UITestFakeAIProvider()] }
+        #endif
+        self.aiServiceManager = AIServiceManager(providers: providers)
 
         self.workoutStatsService = WorkoutStatsService(localStorage: localStorageService)
         self.sessionPersistence = WorkoutSessionPersistence()

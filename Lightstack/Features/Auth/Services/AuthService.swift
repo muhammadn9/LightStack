@@ -292,6 +292,9 @@ final class AuthService: NSObject {
     // MARK: - Current User
 
     func currentUser() -> UserProfile? {
+        #if DEBUG
+        if UITestMode.isActive { return UITestMode.testUser }
+        #endif
         guard let user = supabaseClient.auth.currentUser else {
             return nil
         }

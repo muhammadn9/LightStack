@@ -30,6 +30,7 @@ struct HistoryListView: View {
                                 .foregroundStyle(AppTheme.accent)
                                 .frame(minWidth: 44, minHeight: 44)
                         }
+                        .accessibilityIdentifier("importWorkoutsButton")
                         .accessibilityLabel("Import workouts")
                     }
                     .padding(.horizontal, 16)
@@ -76,6 +77,7 @@ private struct HistoryContentView: View {
                         NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: viewModel)) {
                             workoutCard(workout: workout)
                         }
+                        .accessibilityIdentifier("historyRow.\(workout.workoutType)")
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -122,6 +124,7 @@ private struct HistoryContentView: View {
                 Label("Import past workouts", systemImage: "square.and.arrow.down")
             }
             .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+            .accessibilityIdentifier("importWorkoutsEmptyButton")
             .padding(.top, 8)
         }
         .padding(40)

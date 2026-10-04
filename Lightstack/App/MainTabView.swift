@@ -45,7 +45,8 @@ struct MainTabView: View {
                     .tag(4)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(.easeInOut(duration: 0.25), value: selectedTab)
+            // Tab taps already animate via withAnimation in NotebookTabRow; a second
+            // implicit animation here doubled the page transition.
         }
         .ignoresSafeArea(.container, edges: .bottom)  // keep keyboard avoidance
         .themedBackground()
@@ -120,6 +121,7 @@ struct NotebookTabRow: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("tab.\(tab.title)")
                     .accessibilityLabel(tab.title)
                     .accessibilityHint("Shows the \(tab.title) screen")
                     .accessibilityAddTraits(

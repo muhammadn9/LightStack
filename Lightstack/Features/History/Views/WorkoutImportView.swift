@@ -70,6 +70,7 @@ struct WorkoutImportView: View {
                 .scrollContentBackground(.hidden)
                 .padding(8)
                 .background(AppTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityIdentifier("importTextEditor")
                 .accessibilityLabel("Pasted AI reply")
                 .onChange(of: pastedText) { _, _ in
                     preview = nil
@@ -95,6 +96,7 @@ struct WorkoutImportView: View {
                 Label("Check", systemImage: "checkmark.circle")
             }
             .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+            .accessibilityIdentifier("importCheckButton")
             .disabled(pastedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             if let errorMessage {
@@ -120,6 +122,7 @@ struct WorkoutImportView: View {
                         Text("Import \(n) workout\(n == 1 ? "" : "s")")
                     }
                     .buttonStyle(WaxSealButtonStyle())
+                    .accessibilityIdentifier("importConfirmButton")
                 }
             }
         }

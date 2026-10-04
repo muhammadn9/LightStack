@@ -165,6 +165,7 @@ struct WorkoutSetupView: View {
                         }
                     }
                     .buttonStyle(WaxSealButtonStyle(isSecondary: false))
+                    .accessibilityIdentifier("generateButton")
                     .disabled(viewModel.selectedWorkoutType.isEmpty)
                     .opacity(viewModel.selectedWorkoutType.isEmpty ? 0.55 : 1)
 
@@ -175,6 +176,7 @@ struct WorkoutSetupView: View {
                         }
                     }
                     .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+                    .accessibilityIdentifier("logManuallyButton")
 
                     if let last = lastSessionMatch, !viewModel.selectedWorkoutType.isEmpty {
                         Button(action: { todayViewModel.repeatLastSession(ofType: viewModel.selectedWorkoutType) }) {
@@ -184,6 +186,7 @@ struct WorkoutSetupView: View {
                             }
                         }
                         .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+                        .accessibilityIdentifier("repeatLastButton")
                         .accessibilityHint("Starts with the same exercises as last time, no AI coaching")
                     }
                 }

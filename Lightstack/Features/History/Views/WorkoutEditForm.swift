@@ -103,16 +103,18 @@ struct WorkoutEditForm: View {
     private func setRow(number: Int, exerciseId: UUID, exerciseName: String,
                         set: Binding<WorkoutEditDraft.DraftSet>) -> some View {
         let setId = set.wrappedValue.id
+        let exIndex = draft.exercises.firstIndex { $0.id == exerciseId } ?? 0
+        let idPrefix = "editSet.\(exIndex).\(number - 1)"
         return HStack(alignment: .bottom, spacing: 10) {
             Text("\(number)")
                 .font(AppTheme.plexMono(12))
                 .foregroundStyle(AppTheme.textSecondary)
                 .accessibilityHidden(true)
-            field("lbs", label: "Weight", text: set.weight, keyboard: .decimalPad,
+            field("lbs", label: "Weight", text: set.weight, keyboard: .decimalPad, id: "\(idPrefix).weight",
                   hasError: hasError(exerciseId, setId, .weight))
-            field("reps", label: "Reps", text: set.reps, keyboard: .numberPad,
+            field("reps", label: "Reps", text: set.reps, keyboard: .numberPad, id: "\(idPrefix).reps",
                   hasError: hasError(exerciseId, setId, .reps))
-            field("RIR", label: "RIR", text: set.rir, keyboard: .numberPad,
+            field("RIR", label: "RIR", text: set.rir, keyboard: .numberPad, id: "\(idPrefix).rir",
                   hasError: hasError(exerciseId, setId, .rir))
             Button {
                 draft.removeSet(exerciseId: exerciseId, setId: setId)
@@ -126,13 +128,14 @@ struct WorkoutEditForm: View {
     }
 
     private func field(_ placeholder: String, label: String, text: Binding<String>,
-                       keyboard: UIKeyboardType, hasError: Bool) -> some View {
+                       keyboard: UIKeyboardType, id: String, hasError: Bool) -> some View {
         VStack(spacing: 3) {
             TextField(placeholder, text: text)
                 .keyboardType(keyboard)
                 .font(AppTheme.plexMono(16, weight: .bold))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(hasError ? AppTheme.warning : AppTheme.textPrimary)
+                .accessibilityIdentifier(id)
                 .accessibilityLabel(hasError ? "\(label), invalid" : label)
             Rectangle()
                 .fill(hasError ? AppTheme.warning : AppTheme.accent.opacity(0.7))
