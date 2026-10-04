@@ -11,4 +11,9 @@ enum FeatureFlags {
     /// on-device validation. Gates: form-demo and form-capture buttons in
     /// ActiveWorkoutView.
     static let formAnalysisEnabled: Bool = true
+
+    /// Month plan tab. Hidden while the owner isn't using it; MonthPlan code
+    /// is untouched. Gates: the Month entry in NotebookTabRow and its page in
+    /// MainTabView.
+    static let monthTabEnabled: Bool = false
 }
