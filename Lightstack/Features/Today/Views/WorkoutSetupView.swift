@@ -154,13 +154,6 @@ struct WorkoutSetupView: View {
                                 .foregroundStyle(AppTheme.border)
                         )
                         .lineLimit(2...5)
-                        .toolbar {
-                            ToolbarItemGroup(placement: .keyboard) {
-                                Spacer()
-                                Button("Done") { hideKeyboard() }
-                                    .foregroundStyle(AppTheme.accent)
-                            }
-                        }
                 }
 
                 // Buttons
@@ -214,6 +207,7 @@ struct WorkoutSetupView: View {
         .sheet(isPresented: $showManualEntry) {
             if let userId = environment.authService.currentUser()?.userId {
                 ManualWorkoutEntryView(todayViewModel: todayViewModel, userId: userId)
+                    .keyboardDoneButton()
             }
         }
     }
@@ -226,9 +220,5 @@ struct WorkoutSetupView: View {
             energy: params.energy,
             notes: params.notes
         )
-    }
-
-    private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

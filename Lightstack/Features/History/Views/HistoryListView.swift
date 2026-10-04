@@ -38,6 +38,7 @@ struct HistoryListView: View {
             .sheet(isPresented: $showImport) {
                 if let userId = environment.authService.currentUser()?.userId {
                     WorkoutImportView(userId: userId) { loadHistory() }
+                        .keyboardDoneButton()
                 }
             }
             .onAppear { loadHistory() }
