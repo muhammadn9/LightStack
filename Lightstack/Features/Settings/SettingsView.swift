@@ -7,8 +7,17 @@ struct SettingsView: View {
     @AppStorage("defaultRestSeconds") private var defaultRestSeconds = 90
     @AppStorage("weightUnit") private var weightUnit = "lbs"
 
+    // No NavigationStack: Settings never pushes, and a visible navigation bar
+    // inside the paged tab container crashed UIKit (UINavigationBar layout
+    // assertion) and drew its title white-on-white in Light mode.
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            Text("Settings")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .accessibilityAddTraits(.isHeader)
             List {
                 Section("Appearance") {
                     Picker("Theme", selection: $colorScheme) {
@@ -56,9 +65,7 @@ struct SettingsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(AppTheme.backgroundGradient.ignoresSafeArea())
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .background(AppTheme.backgroundGradient.ignoresSafeArea())
     }
 }

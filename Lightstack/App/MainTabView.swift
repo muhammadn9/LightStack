@@ -45,7 +45,8 @@ struct MainTabView: View {
                     .tag(4)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(.easeInOut(duration: 0.25), value: selectedTab)
+            // Tab taps already animate via withAnimation in NotebookTabRow; a second
+            // implicit animation here doubled the page transition.
         }
         .ignoresSafeArea(.container, edges: .bottom)  // keep keyboard avoidance
         .themedBackground()
