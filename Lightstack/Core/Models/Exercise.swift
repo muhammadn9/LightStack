@@ -22,6 +22,8 @@ struct Exercise: Codable, Identifiable {
     var targetRir: String?
     var restSeconds: Int?
     var coachNote: String?
+    /// Exercises sharing a non-nil id form a superset (2-4 adjacent members).
+    var supersetGroupId: UUID?
     var syncStatus: SyncStatus
 
     enum CodingKeys: String, CodingKey {
@@ -36,6 +38,7 @@ struct Exercise: Codable, Identifiable {
         case targetRir = "target_rir"
         case restSeconds = "rest_seconds"
         case coachNote = "coach_note"
+        case supersetGroupId = "superset_group_id"
     }
 
     // syncStatus is local-only
@@ -53,6 +56,7 @@ struct Exercise: Codable, Identifiable {
         targetRir = try c.decodeIfPresent(String.self, forKey: .targetRir)
         restSeconds = try c.decodeIfPresent(Int.self, forKey: .restSeconds)
         coachNote = try c.decodeIfPresent(String.self, forKey: .coachNote)
+        supersetGroupId = try c.decodeIfPresent(UUID.self, forKey: .supersetGroupId)
         syncStatus = .synced
     }
 
@@ -69,6 +73,7 @@ struct Exercise: Codable, Identifiable {
         try c.encodeIfPresent(targetRir, forKey: .targetRir)
         try c.encodeIfPresent(restSeconds, forKey: .restSeconds)
         try c.encodeIfPresent(coachNote, forKey: .coachNote)
+        try c.encodeIfPresent(supersetGroupId, forKey: .supersetGroupId)
     }
 
     func toSupabase() -> Exercise {
@@ -89,6 +94,7 @@ struct Exercise: Codable, Identifiable {
         self.targetRir = cdEntity.targetRir
         self.restSeconds = cdEntity.restSeconds == 0 ? nil : Int(cdEntity.restSeconds)
         self.coachNote = cdEntity.coachNote
+        self.supersetGroupId = cdEntity.supersetGroupId
         self.syncStatus = SyncStatus(rawValue: cdEntity.syncStatus ?? "pending") ?? .pending
     }
 
@@ -103,6 +109,7 @@ struct Exercise: Codable, Identifiable {
         entity.targetRir = targetRir
         entity.restSeconds = Int32(restSeconds ?? 0)
         entity.coachNote = coachNote
+        entity.supersetGroupId = supersetGroupId
         entity.syncStatus = syncStatus.rawValue
     }
 
@@ -124,7 +131,8 @@ struct Exercise: Codable, Identifiable {
         targetReps: String?,
         targetRir: String?,
         restSeconds: Int?,
-        coachNote: String?
+        coachNote: String?,
+        supersetGroupId: UUID? = nil
     ) -> Exercise {
         Exercise(
             id: UUID(),
@@ -138,7 +146,8 @@ struct Exercise: Codable, Identifiable {
             targetRir: targetRir,
             restSeconds: restSeconds,
             coachNote: coachNote,
-            syncStatus: .pending
+            syncStatus: .pending,
+            supersetGroupId: supersetGroupId
         )
     }
 
@@ -148,7 +157,8 @@ struct Exercise: Codable, Identifiable {
         id: UUID, workoutId: UUID, localId: String?, name: String,
         muscleGroup: String, orderIndex: Int, targetSets: Int?,
         targetReps: String?, targetRir: String?, restSeconds: Int?,
-        coachNote: String?, syncStatus: SyncStatus
+        coachNote: String?, syncStatus: SyncStatus,
+        supersetGroupId: UUID? = nil
     ) {
         self.id = id
         self.workoutId = workoutId
@@ -161,6 +171,7 @@ struct Exercise: Codable, Identifiable {
         self.targetRir = targetRir
         self.restSeconds = restSeconds
         self.coachNote = coachNote
+        self.supersetGroupId = supersetGroupId
         self.syncStatus = syncStatus
     }
 }

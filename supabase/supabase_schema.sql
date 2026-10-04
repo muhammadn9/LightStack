@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   target_reps    TEXT,
   target_rir     TEXT,
   rest_seconds   INTEGER,
-  coach_note     TEXT
+  coach_note     TEXT,
+  superset_group_id UUID  -- exercises sharing an id form one superset
 );
 
 -- ============================================================

@@ -68,7 +68,8 @@ final class CoachChatViewModel: ObservableObject {
               "target_rir": "2",
               "rest_seconds": 90,
               "target_weight": "135 lbs",
-              "note": "Optional note"
+              "note": "Optional note",
+              "superset": "A"
             },
             {
               "action": "remove",
@@ -123,6 +124,11 @@ final class CoachChatViewModel: ObservableObject {
         Never put the per-set numbers in the note; the app shows and fills them \
         from "sets".
         - RIR may be a range like "1-2"; the app prefills the lower number.
+        - Supersets: "add", "replace" and "modify" accept an optional "superset" \
+        label. Entries sharing a label are linked into one new superset (2-4 \
+        exercises, at most 4). Use it only when the athlete asks for a superset or \
+        it suits their goal; omit it otherwise. Exercises already marked as a \
+        superset in the session list stay linked unless you remove them.
         - To change the weight on an exercise the athlete is already doing, use \
         "modify" with new_target_weight — not "replace".
         - If you are NOT suggesting any modifications, omit the JSON block entirely.
@@ -133,10 +139,12 @@ final class CoachChatViewModel: ObservableObject {
 
         // Add workout context as an initial system-like context message
         if messages.isEmpty {
+            let supersetTags = Self.supersetTags(for: exercises)
             var contextInfo = "Current workout: \(workoutType)\n\nExercises:"
             for exercise in exercises {
                 let sets = loggedSets[exercise.id] ?? []
                 contextInfo += "\n- \(exercise.name) (\(exercise.muscleGroup))"
+                if let tag = supersetTags[exercise.id] { contextInfo += " [\(tag)]" }
                 if let target = exercise.targetSets {
                     contextInfo += " — Target: \(target) sets"
                 }
@@ -223,6 +231,18 @@ final class CoachChatViewModel: ObservableObject {
                 self.messages.append(errorMessage)
             }
         }
+    }
+
+    /// "Superset A", "Superset B"... per exercise id, for valid supersets only.
+    static func supersetTags(for exercises: [Exercise]) -> [UUID: String] {
+        var tags: [UUID: String] = [:]
+        var letter = 0
+        for page in SupersetGroup.pages(from: exercises) where page.isSuperset {
+            let name = "Superset \(Character(UnicodeScalar(UInt8(65 + letter % 26))))"
+            letter += 1
+            page.exerciseIds.forEach { tags[$0] = name }
+        }
+        return tags
     }
 
     /// True when the reply contains a markdown table separator row (`|---|---|`).

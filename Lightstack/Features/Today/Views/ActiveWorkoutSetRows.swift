@@ -118,8 +118,8 @@ struct StrengthPendingSetRow: View {
     let onLog: () -> Void
     let onDelete: () -> Void
 
-    private var hint: PreviousSetHint? { pendingSets[index].previous }
-    private var canLog: Bool { !pendingSets[index].reps.isEmpty || hint != nil }
+    private var hint: PreviousSetHint? { entry.previous }
+    private var canLog: Bool { !entry.reps.isEmpty || hint != nil }
 
     private func hintPrompt(_ text: String) -> Text {
         Text(text).foregroundStyle(AppTheme.textSecondary.opacity(0.6))
@@ -130,13 +130,30 @@ struct StrengthPendingSetRow: View {
         return hint.weightLbs == 0 ? "BW" : String(format: "%g", hint.weightLbs)
     }
 
+    /// Rows can briefly outlive their entry (e.g. while fading out after Finish
+    /// logs every pending set at once), so never subscript `pendingSets` blindly.
+    private var isValid: Bool { pendingSets.indices.contains(index) }
+    private var entry: PendingSetInput {
+        isValid ? pendingSets[index] : PendingSetInput(weight: "", reps: "", rir: "")
+    }
+    private func field(_ keyPath: WritableKeyPath<PendingSetInput, String>) -> Binding<String> {
+        Binding(
+            get: { isValid ? pendingSets[index][keyPath: keyPath] : "" },
+            set: { if isValid { pendingSets[index][keyPath: keyPath] = $0 } }
+        )
+    }
+
     var body: some View {
+        if isValid { content }
+    }
+
+    private var content: some View {
         HStack(spacing: 9) {
             SetNumberCircle(number: setNumber, isLogged: false)
 
             // Weight field
             VStack(spacing: 3) {
-                TextField("lbs", text: $pendingSets[index].weight, prompt: hintPrompt(weightHintText))
+                TextField("lbs", text: field(\.weight), prompt: hintPrompt(weightHintText))
                     .keyboardType(.decimalPad)
                     .font(AppTheme.plexMono(16, weight: .bold))
                     .multilineTextAlignment(.center)
@@ -144,9 +161,9 @@ struct StrengthPendingSetRow: View {
                     .foregroundStyle(AppTheme.textPrimary)
                     .accessibilityLabel(hint.map { "Weight, last time \($0.weightLbs == 0 ? "bodyweight" : String(format: "%g", $0.weightLbs))" } ?? "Weight")
                 Rectangle()
-                    .fill(pendingSets[index].weight.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                    .fill(entry.weight.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 78, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].weight.isEmpty)
+                    .animation(.easeInOut(duration: 0.2), value: entry.weight.isEmpty)
             }
 
             Text("×")
@@ -155,7 +172,7 @@ struct StrengthPendingSetRow: View {
 
             // Reps field
             VStack(spacing: 3) {
-                TextField("reps", text: $pendingSets[index].reps, prompt: hintPrompt(hint.map { String($0.reps) } ?? "reps"))
+                TextField("reps", text: field(\.reps), prompt: hintPrompt(hint.map { String($0.reps) } ?? "reps"))
                     .keyboardType(.numberPad)
                     .font(AppTheme.plexMono(16, weight: .bold))
                     .multilineTextAlignment(.center)
@@ -163,14 +180,14 @@ struct StrengthPendingSetRow: View {
                     .foregroundStyle(AppTheme.textPrimary)
                     .accessibilityLabel(hint.map { "Reps, last time \($0.reps)" } ?? "Reps")
                 Rectangle()
-                    .fill(pendingSets[index].reps.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                    .fill(entry.reps.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 67, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].reps.isEmpty)
+                    .animation(.easeInOut(duration: 0.2), value: entry.reps.isEmpty)
             }
 
             // RIR field
             VStack(spacing: 3) {
-                TextField("RIR", text: $pendingSets[index].rir, prompt: hintPrompt(hint.map { $0.rir.map(String.init) ?? "—" } ?? "RIR"))
+                TextField("RIR", text: field(\.rir), prompt: hintPrompt(hint.map { $0.rir.map(String.init) ?? "—" } ?? "RIR"))
                     .keyboardType(.numberPad)
                     .font(AppTheme.plexMono(16))
                     .multilineTextAlignment(.center)
@@ -220,22 +237,39 @@ struct CardioPendingSetRow: View {
     let onLog: () -> Void
     let onDelete: () -> Void
 
+    /// Rows can briefly outlive their entry (e.g. while fading out after Finish
+    /// logs every pending set at once), so never subscript `pendingSets` blindly.
+    private var isValid: Bool { pendingSets.indices.contains(index) }
+    private var entry: PendingSetInput {
+        isValid ? pendingSets[index] : PendingSetInput(weight: "", reps: "", rir: "")
+    }
+    private func field(_ keyPath: WritableKeyPath<PendingSetInput, String>) -> Binding<String> {
+        Binding(
+            get: { isValid ? pendingSets[index][keyPath: keyPath] : "" },
+            set: { if isValid { pendingSets[index][keyPath: keyPath] = $0 } }
+        )
+    }
+
     var body: some View {
+        if isValid { content }
+    }
+
+    private var content: some View {
         HStack(spacing: 9) {
             SetNumberCircle(number: setNumber, isLogged: false)
 
             // Time field
             VStack(spacing: 3) {
-                TextField("mm:ss", text: $pendingSets[index].duration)
+                TextField("mm:ss", text: field(\.duration))
                     .keyboardType(.numbersAndPunctuation)
                     .font(AppTheme.plexMono(16, weight: .bold))
                     .multilineTextAlignment(.center)
                     .frame(width: 78)
                     .foregroundStyle(AppTheme.textPrimary)
                 Rectangle()
-                    .fill(pendingSets[index].duration.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                    .fill(entry.duration.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 78, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].duration.isEmpty)
+                    .animation(.easeInOut(duration: 0.2), value: entry.duration.isEmpty)
             }
 
             Text("·")
@@ -244,21 +278,21 @@ struct CardioPendingSetRow: View {
 
             // Distance field
             VStack(spacing: 3) {
-                TextField("mi", text: $pendingSets[index].distance)
+                TextField("mi", text: field(\.distance))
                     .keyboardType(.decimalPad)
                     .font(AppTheme.plexMono(16, weight: .bold))
                     .multilineTextAlignment(.center)
                     .frame(width: 67)
                     .foregroundStyle(AppTheme.textPrimary)
                 Rectangle()
-                    .fill(pendingSets[index].distance.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
+                    .fill(entry.distance.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 67, height: 1.5)
-                    .animation(.easeInOut(duration: 0.2), value: pendingSets[index].distance.isEmpty)
+                    .animation(.easeInOut(duration: 0.2), value: entry.distance.isEmpty)
             }
 
             // Incline field
             VStack(spacing: 3) {
-                TextField("%", text: $pendingSets[index].incline)
+                TextField("%", text: field(\.incline))
                     .keyboardType(.decimalPad)
                     .font(AppTheme.plexMono(16))
                     .multilineTextAlignment(.center)
@@ -273,17 +307,17 @@ struct CardioPendingSetRow: View {
             Button(action: onLog) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(pendingSets[index].duration.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
+                        .fill(entry.duration.isEmpty ? AppTheme.surfaceElevated : AppTheme.accent)
                         .frame(width: 31, height: 31)
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(pendingSets[index].duration.isEmpty
+                        .foregroundStyle(entry.duration.isEmpty
                                          ? AppTheme.textSecondary
                                          : AppTheme.background)
                 }
-                .shadow(color: AppTheme.accent.opacity(pendingSets[index].duration.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
+                .shadow(color: AppTheme.accent.opacity(entry.duration.isEmpty ? 0 : 0.3), radius: 2, x: 1, y: 2)
             }
-            .disabled(pendingSets[index].duration.isEmpty)
+            .disabled(entry.duration.isEmpty)
             .accessibilityLabel("Log set")
 
             // Delete pending

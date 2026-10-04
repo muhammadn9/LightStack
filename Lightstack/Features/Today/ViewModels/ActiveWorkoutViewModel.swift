@@ -461,6 +461,12 @@ final class ActiveWorkoutViewModel: ObservableObject {
         pendingSets[exercise.id, default: []].append(entry)
     }
 
+    /// Add one more round: a pending set for every member of the page (a single
+    /// exercise's page has one member, so this is just `addPendingSet`).
+    func addRound(for members: [Exercise]) {
+        for member in members { addPendingSet(for: member) }
+    }
+
     // MARK: - Private prefill helpers
 
     /// Coach target for the set at overall position `setIndex` (0-based, counting

@@ -238,8 +238,15 @@ final class WorkoutSessionService {
         // Reconcile: delete any Core Data exercises that were removed by the user
         let storedExercises = workoutRepository.fetchExercises(workoutId: workout.id)
         let finalIds = Set(exercises.map { $0.id })
-        for ex in storedExercises where !finalIds.contains(ex.id) {
-            workoutRepository.deleteExercise(ex.id)
+        let doomed = Self.exerciseIdsToDelete(
+            stored: storedExercises,
+            keeping: finalIds,
+            hasLoggedSets: { id in
+                !(sets[id]?.isEmpty ?? true) || !self.workoutRepository.fetchSets(exerciseId: id).isEmpty
+            }
+        )
+        for id in doomed {
+            workoutRepository.deleteExercise(id)
         }
 
         markMatchingPlannedSessionCompleted(workout: workout)
@@ -257,6 +264,16 @@ final class WorkoutSessionService {
         }
 
         delegate?.sessionServiceDidSaveWorkout(self)
+    }
+
+    /// Stored exercises that may be deleted at finish: not in the final list AND with no
+    /// logged sets. An exercise with sets is real history and is never deleted here.
+    static func exerciseIdsToDelete(
+        stored: [Exercise],
+        keeping finalIds: Set<UUID>,
+        hasLoggedSets: (UUID) -> Bool
+    ) -> [UUID] {
+        stored.filter { !finalIds.contains($0.id) && !hasLoggedSets($0.id) }.map(\.id)
     }
 
     // MARK: - Planned Session Completion
@@ -428,6 +445,20 @@ final class WorkoutSessionService {
 
     func parseWorkoutPlanJSON(_ text: String) -> [Exercise]? {
         guard let workoutId = currentWorkoutId else { return nil }
+        return Self.exercises(
+            fromPlanJSON: text,
+            workoutId: workoutId,
+            sanitizeLabel: { self.validationService.sanitizeLabel($0) }
+        )
+    }
+
+    /// Pure plan-JSON decoding, kept separate so it can be tested without a session.
+    static func exercises(
+        fromPlanJSON text: String,
+        workoutId: UUID,
+        sanitizeLabel: (String) -> String
+    ) -> [Exercise]? {
+        let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionService")
 
         // Strip accidental markdown code-fences some providers emit
         var jsonString = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -448,10 +479,15 @@ final class WorkoutSessionService {
 
         guard !decoded.exercises.isEmpty else { return nil }
 
+        // Same "superset" label within the plan -> same new group id.
+        let usable = decoded.exercises.filter {
+            !sanitizeLabel($0.name).isEmpty && $0.sets > 0
+        }
+        let groupIds = SupersetGroup.groupIds(forLabels: usable.map(\.superset))
+
         var exercises: [Exercise] = []
-        for (index, aiEx) in decoded.exercises.enumerated() {
-            let name = validationService.sanitizeLabel(aiEx.name)
-            guard !name.isEmpty, aiEx.sets > 0 else { continue }
+        for (index, aiEx) in usable.enumerated() {
+            let name = sanitizeLabel(aiEx.name)
 
             // Preserve "Target: {weight}" prefix convention that
             // ActiveWorkoutViewModel.prefillWeightValue depends on
@@ -464,7 +500,7 @@ final class WorkoutSessionService {
             case (nil, nil):    mergedNote = nil
             }
 
-            let muscleGroup = aiEx.muscleGroup.isEmpty ? WorkoutSessionService.inferMuscleGroup(name) : aiEx.muscleGroup
+            let muscleGroup = aiEx.muscleGroup.isEmpty ? inferMuscleGroup(name) : aiEx.muscleGroup
 
             exercises.append(Exercise.create(
                 workoutId: workoutId,
@@ -475,9 +511,12 @@ final class WorkoutSessionService {
                 targetReps: aiEx.reps,
                 targetRir: aiEx.rir,
                 restSeconds: aiEx.restSeconds,
-                coachNote: mergedNote
+                coachNote: mergedNote,
+                supersetGroupId: groupIds[index]
             ))
         }
+        // Members of a label are pulled together; out-of-range groups are dropped.
+        exercises = SupersetGroup.normalized(exercises)
         return exercises.isEmpty ? nil : exercises
     }
 
@@ -631,8 +670,10 @@ private struct AIExercise: Decodable {
     let rir: String?
     let restSeconds: Int?
     let coachNote: String?
+    /// Optional label; exercises sharing one form a superset.
+    let superset: String?
     enum CodingKeys: String, CodingKey {
-        case name, sets, reps, rir
+        case name, sets, reps, rir, superset
         case muscleGroup  = "muscle_group"
         case targetWeight = "target_weight"
         case restSeconds  = "rest_seconds"

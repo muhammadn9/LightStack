@@ -46,11 +46,16 @@ final class CoachPromptService {
               "reps": "string or null (e.g. '8-12')",
               "rir": "string or null (e.g. '1-2')",
               "rest_seconds": integer or null,
-              "coach_note": "string or null"
+              "coach_note": "string or null",
+              "superset": "string or null (e.g. 'A')"
             }
           ],
           "coaching_notes": "string"
         }
+        Supersets: set "superset" only when the athlete asks for one or it clearly \
+        suits the goal or time available; otherwise use null. Exercises sharing the \
+        same label form one superset (alternating sets), listed next to each other, \
+        at most 4 per label.
         For any other request (progression notes, summaries, questions), reply in \
         plain prose with no JSON and no markdown fences.
         """ : """

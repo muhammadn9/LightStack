@@ -73,6 +73,26 @@ enum WorkoutModification {
     case removeExercise(name: String)
     case modifyExercise(name: String, newTargetSets: Int?, newTargetReps: String?, newTargetRir: String?, newRest: Int?, newTargetWeight: String?, note: String?, sets: [SetTarget] = [])
     case replaceExercise(oldName: String, newName: String, muscleGroup: String, targetSets: Int, targetReps: String?, targetRir: String?, restSeconds: Int?, targetWeight: String?, note: String?, sets: [SetTarget] = [])
+    /// Puts 2-4 exercises (by name, as they will exist after the other modifications
+    /// apply) into one superset. Produced from the optional `"superset"` label.
+    case groupSuperset(names: [String])
+
+    /// Collects `(label, exercise name)` pairs, in order, into one `.groupSuperset` per
+    /// label (case-insensitive). Labels with fewer than 2 or more than 4 names are ignored.
+    static func supersetGroups(from entries: [(label: String?, name: String)]) -> [WorkoutModification] {
+        var order: [String] = []
+        var names: [String: [String]] = [:]
+        for entry in entries {
+            guard let key = entry.label?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                  !key.isEmpty else { continue }
+            if names[key] == nil { order.append(key) }
+            names[key, default: []].append(entry.name)
+        }
+        return order.compactMap { key in
+            guard let members = names[key], SupersetGroup.isValidSize(members.count) else { return nil }
+            return .groupSuperset(names: members)
+        }
+    }
 
     /// Short header for a confirmation card, e.g. "Modify · Dumbbell Shoulder Press".
     var title: String {
@@ -81,13 +101,14 @@ enum WorkoutModification {
         case .removeExercise(let name): return "Remove · \(name)"
         case .modifyExercise(let name, _, _, _, _, _, _, _): return "Modify · \(name)"
         case .replaceExercise(let oldName, let newName, _, _, _, _, _, _, _, _): return "Replace · \(oldName) → \(newName)"
+        case .groupSuperset(let names): return "Superset · \(names.joined(separator: " + "))"
         }
     }
 
     /// Bullet lines under the title: per-set lines when sets exist, else the target summary.
     var detailLines: [String] {
         switch self {
-        case .removeExercise:
+        case .removeExercise, .groupSuperset:
             return []
         case .addExercise(_, let muscleGroup, let sets, let reps, let rir, _, let weight, _, let perSet):
             return Self.details(setCount: sets, reps: reps, rir: rir, weight: weight, perSet: perSet, muscleGroup: muscleGroup)
@@ -105,7 +126,7 @@ enum WorkoutModification {
         let raw: String?
         switch self {
         case .addExercise(_, _, _, _, _, _, _, let note, _): raw = note
-        case .removeExercise: raw = nil
+        case .removeExercise, .groupSuperset: raw = nil
         case .modifyExercise(_, _, _, _, _, _, let note, _): raw = note
         case .replaceExercise(_, _, _, _, _, _, _, _, let note, _): raw = note
         }
@@ -126,6 +147,8 @@ enum WorkoutModification {
             return tail.isEmpty ? "✓ Updated \(name)" : "✓ Updated \(name): \(tail)"
         case .replaceExercise(let oldName, let newName, _, let sets, _, _, _, let weight, _, let perSet):
             return "✓ Replaced \(oldName) with \(newName): " + Self.shortTargets(setCount: sets, weight: weight, perSet: perSet)
+        case .groupSuperset(let names):
+            return "✓ Superset: \(names.joined(separator: " + "))"
         }
     }
 
@@ -182,6 +205,8 @@ enum WorkoutModification {
             var text = "Replace \(oldName) with \(newName) (\(muscleGroup)) - \(sets) sets"
             if let weight = weight { text += " @ \(weight)" }
             return text
+        case .groupSuperset(let names):
+            return "Superset \(names.joined(separator: " + "))"
         }
     }
 }

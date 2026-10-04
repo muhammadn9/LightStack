@@ -27,6 +27,8 @@ struct WorkoutEditDraft {
         var sets: [DraftSet]
         /// Source exercise for items that existed before editing; nil for added exercises.
         var original: Exercise? = nil
+        /// Superset group carried from the source exercise; nil for added or ungrouped exercises.
+        var supersetGroupId: UUID? = nil
     }
 
     enum Field { case weight, reps, rir }
@@ -59,7 +61,8 @@ struct WorkoutEditDraft {
                             original: s
                         )
                     }
-                return DraftExercise(id: ex.id, name: ex.name, muscleGroup: ex.muscleGroup, sets: draftSets, original: ex)
+                return DraftExercise(id: ex.id, name: ex.name, muscleGroup: ex.muscleGroup, sets: draftSets, original: ex,
+                                     supersetGroupId: ex.supersetGroupId)
             }
     }
 
@@ -87,6 +90,27 @@ struct WorkoutEditDraft {
 
     mutating func removeExercise(_ exerciseId: UUID) {
         exercises.removeAll { $0.id == exerciseId }
+        dissolveSingletons()
+    }
+
+    /// Clears the group id of any group left with fewer than 2 members that still have sets.
+    mutating func dissolveSingletons() {
+        let counts = Dictionary(grouping: exercises.filter { !$0.sets.isEmpty }.compactMap(\.supersetGroupId),
+                                by: { $0 }).mapValues(\.count)
+        for i in exercises.indices {
+            if let gid = exercises[i].supersetGroupId, (counts[gid] ?? 0) < SupersetGroup.minMembers {
+                exercises[i].supersetGroupId = nil
+            }
+        }
+    }
+
+    /// Label like "Superset · Row + Curl" for a grouped draft exercise, else nil.
+    func supersetLabel(for exerciseId: UUID) -> String? {
+        guard let ex = exercises.first(where: { $0.id == exerciseId }),
+              let gid = ex.supersetGroupId else { return nil }
+        let names = exercises.filter { $0.supersetGroupId == gid && !$0.sets.isEmpty }.map(\.name)
+        guard names.count >= SupersetGroup.minMembers else { return nil }
+        return "Superset · " + names.joined(separator: " + ")
     }
 
     // MARK: - Parsing
@@ -157,7 +181,8 @@ struct WorkoutEditDraft {
                 targetReps: ex.original?.targetReps,
                 targetRir: ex.original?.targetRir,
                 restSeconds: ex.original?.restSeconds,
-                coachNote: ex.original?.coachNote
+                coachNote: ex.original?.coachNote,
+                supersetGroupId: ex.supersetGroupId
             )
             var sets: [WorkoutSet] = []
             for (n, s) in ex.sets.enumerated() {
@@ -179,6 +204,7 @@ struct WorkoutEditDraft {
             builtExercises.append(exercise)
             builtSets[exercise.id] = sets
         }
+        builtExercises = SupersetGroup.dissolveSingletons(in: builtExercises)
         return (workout, builtExercises, builtSets)
     }
 }

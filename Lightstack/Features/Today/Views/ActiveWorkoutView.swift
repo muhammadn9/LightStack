@@ -11,6 +11,7 @@ struct ActiveWorkoutView: View {
     @State private var showChat = false
     @State private var showCancelAlert = false
     @State private var currentExerciseIndex = 0
+    @State private var exercisePendingRemoval: Exercise?
     @State private var showAddExercise = false
     @State private var newExerciseName = ""
     @State private var newMuscleGroup = ""
@@ -76,9 +77,7 @@ struct ActiveWorkoutView: View {
             for exercise in todayViewModel.exercises {
                 viewModel.refreshTargets(for: exercise)
             }
-            if currentExerciseIndex >= todayViewModel.exercises.count {
-                currentExerciseIndex = max(0, todayViewModel.exercises.count - 1)
-            }
+            clampPageIndex()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -114,6 +113,26 @@ struct ActiveWorkoutView: View {
             addExerciseSheet
                 .keyboardDoneButton()
         }
+        .alert(
+            "Remove \(exercisePendingRemoval?.name ?? "exercise")?",
+            isPresented: Binding(
+                get: { exercisePendingRemoval != nil },
+                set: { if !$0 { exercisePendingRemoval = nil } }
+            ),
+            presenting: exercisePendingRemoval
+        ) { exercise in
+            Button("Remove", role: .destructive) {
+                todayViewModel.removeExercise(at: exercise.id)
+                clampPageIndex()
+                exercisePendingRemoval = nil
+            }
+            Button("Cancel", role: .cancel) { exercisePendingRemoval = nil }
+        } message: { exercise in
+            let count = viewModel.loggedSets[exercise.id]?.count ?? 0
+            Text(count > 0
+                 ? "This also deletes its \(count) logged \(count == 1 ? "set" : "sets")."
+                 : "It will be removed from this workout.")
+        }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
                 viewModel.cancelAllRestTimers()
@@ -136,153 +155,84 @@ struct ActiveWorkoutView: View {
         )
     }
 
-    // MARK: - Current Exercise View
+    // MARK: - Current Page View
 
+    /// One page per exercise, or per superset (rows interleaved round by round).
+    @ViewBuilder
     private var currentExerciseView: some View {
+        let pages = SupersetGroup.pages(from: todayViewModel.exercises)
+        let safeIndex = min(currentExerciseIndex, max(0, pages.count - 1))
+        if let page = pages[safe: safeIndex] {
+            pageView(page, pages: pages, safeIndex: safeIndex)
+        }
+    }
+
+    private func pageView(_ page: SupersetPage, pages: [SupersetPage], safeIndex: Int) -> some View {
         let exercises = todayViewModel.exercises
-        let safeIndex = min(currentExerciseIndex, max(0, exercises.count - 1))
-        let exercise = exercises[safeIndex]
-        let nextExercise: Exercise? = safeIndex + 1 < exercises.count
-            ? exercises[safeIndex + 1]
+        let members = page.exerciseIds.compactMap { id in exercises.first { $0.id == id } }
+        let nextName: String? = safeIndex + 1 < pages.count
+            ? exercises.first { $0.id == pages[safeIndex + 1].exerciseIds.first }?.name
             : nil
+        let rows = SupersetRounds.rows(
+            memberIds: page.exerciseIds,
+            logged: viewModel.loggedSets,
+            pending: viewModel.pendingSets
+        )
+        let loggedTotal = members.reduce(0) { $0 + (viewModel.loggedSets[$1.id]?.count ?? 0) }
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                // Exercise header + navigation
                 ExerciseHeaderView(
-                    exercise: exercise,
-                    currentIndex: currentExerciseIndex,
-                    totalCount: exercises.count,
-                    onPrevious: { withAnimation { currentExerciseIndex -= 1 } },
-                    onNext: { withAnimation { currentExerciseIndex += 1 } },
+                    members: members,
+                    currentIndex: safeIndex,
+                    totalCount: pages.count,
+                    canLinkWithNext: members.last.map { todayViewModel.canLinkWithNext($0.id) } ?? false,
+                    onPrevious: { withAnimation { currentExerciseIndex = max(0, safeIndex - 1) } },
+                    onNext: { withAnimation { currentExerciseIndex = safeIndex + 1 } },
                     onAdd: { showAddExercise = true },
-                    onFormDemo: { formDemoExercise = exercise },
-                    onRecordForm: { formCaptureExercise = exercise }
+                    onFormDemo: { formDemoExercise = members.first },
+                    onRecordForm: { formCaptureExercise = members.first },
+                    onLinkWithNext: {
+                        if let last = members.last { todayViewModel.linkWithNext(last.id) }
+                    },
+                    onUnlink: {
+                        if let gid = page.groupId { todayViewModel.unlinkSuperset(groupId: gid) }
+                    },
+                    onRemove: { exercisePendingRemoval = $0 }
                 )
-                .contextMenu {
-                    Button(role: .destructive) {
-                        let id = exercise.id
-                        if currentExerciseIndex >= exercises.count - 1 {
-                            currentExerciseIndex = max(0, exercises.count - 2)
-                        }
-                        todayViewModel.removeExercise(at: id)
-                    } label: {
-                        Label("Remove Exercise", systemImage: "trash")
-                    }
-                }
 
                 InkDivider()
 
-                // Logged sets
-                let logged = viewModel.loggedSets[exercise.id] ?? []
-                ForEach(Array(logged.enumerated()), id: \.element.id) { index, set in
-                    LoggedSetRow(
-                        workoutSet: set,
-                        number: index + 1,
-                        exercise: exercise,
-                        onDelete: {
-                            viewModel.deleteSet(set, exerciseId: exercise.id)
-                            todayViewModel.deleteLoggedSet(set, exerciseId: exercise.id)
-                            viewModel.syncPendingSets(for: exercise)
-                        }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .top).combined(with: .opacity),
-                        removal: .opacity
-                    ))
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: logged.count)
-
-                // Pending set inputs
-                let pending = viewModel.pendingSets[exercise.id] ?? []
-                if !pending.isEmpty {
-                    // Column headers — branch on tracking type
-                    if exercise.trackingType == .cardio {
-                        HStack(spacing: 9) {
-                            Text("").frame(width: 22)
-                            Text("Time")
-                                .font(AppTheme.caveat(11))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .frame(width: 78)
-                            Text("Distance")
-                                .font(AppTheme.caveat(11))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .frame(width: 67)
-                            Text("Incline")
-                                .font(AppTheme.caveat(11))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .frame(width: 56)
-                            Spacer()
-                        }
-                        .padding(.top, 2)
-                    } else {
-                        HStack(spacing: 9) {
-                            Text("").frame(width: 22)
-                            Text("lbs")
-                                .font(AppTheme.caveat(11))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .frame(width: 78)
-                            Text("reps")
-                                .font(AppTheme.caveat(11))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .frame(width: 67)
-                            Text("RIR")
-                                .font(AppTheme.caveat(11))
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .frame(width: 56)
-                            Spacer()
-                        }
-                        .padding(.top, 2)
-                    }
-                }
-
-                let pendingBinding = pendingSetsBinding(for: exercise.id)
-                ForEach(Array(pending.enumerated()), id: \.element.id) { index, _ in
-                    if exercise.trackingType == .cardio {
-                        CardioPendingSetRow(
-                            index: index,
-                            setNumber: logged.count + index + 1,
-                            pendingSets: pendingBinding,
-                            exerciseId: exercise.id,
-                            onLog: { logSet(at: index, exerciseId: exercise.id) },
-                            onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
-                        )
-                    } else {
-                        StrengthPendingSetRow(
-                            index: index,
-                            setNumber: logged.count + index + 1,
-                            pendingSets: pendingBinding,
-                            exerciseId: exercise.id,
-                            onLog: { logSet(at: index, exerciseId: exercise.id) },
-                            onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
-                        )
-                    }
-                }
+                pageRows(rows: rows, members: members, isSuperset: page.isSuperset)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: loggedTotal)
 
                 InkDivider()
 
-                // Add set button
-                Button(action: { viewModel.addPendingSet(for: exercise) }) {
+                // Add set (a round, on a superset page)
+                Button(action: { viewModel.addRound(for: members) }) {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle")
-                        Text("Add Set")
+                        Text(page.isSuperset ? "Add Round" : "Add Set")
                     }
                     .font(AppTheme.caveat(13, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
+                    .frame(minHeight: AppTheme.minTouchSize, alignment: .leading)
                 }
                 .buttonStyle(.plain)
 
-                // Rest timer banner
-                if let target = viewModel.restTimerTargetDates[exercise.id] {
+                // Rest timer banner (a superset's timer is keyed by the member that triggered it)
+                if let restId = members.first(where: { viewModel.restTimerTargetDates[$0.id] != nil })?.id,
+                   let target = viewModel.restTimerTargetDates[restId] {
                     RestBannerView(
                         target: target,
-                        totalSeconds: viewModel.restTimerTotalSeconds[exercise.id] ?? 90,
-                        nextExerciseName: nextExercise?.name
+                        totalSeconds: viewModel.restTimerTotalSeconds[restId] ?? 90,
+                        nextExerciseName: nextName
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.activeRestExerciseId == exercise.id)
+            .animation(.spring(response: 0.4, dampingFraction: 0.8),
+                       value: members.contains { viewModel.activeRestExerciseId == $0.id })
             .padding(18)
             .padding(.bottom, 67)
         }
@@ -291,7 +241,7 @@ struct ActiveWorkoutView: View {
             DragGesture(minimumDistance: 40, coordinateSpace: .local)
                 .onEnded { value in
                     guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                    let count = todayViewModel.exercises.count
+                    let count = SupersetGroup.pages(from: todayViewModel.exercises).count
                     if value.translation.width < -40, currentExerciseIndex < count - 1 {
                         withAnimation(.easeInOut(duration: 0.25)) { currentExerciseIndex += 1 }
                     } else if value.translation.width > 40, currentExerciseIndex > 0 {
@@ -302,6 +252,113 @@ struct ActiveWorkoutView: View {
         .onChange(of: exercises.count) { _, _ in
             for ex in exercises {
                 viewModel.prefillTargets(for: ex)
+            }
+        }
+    }
+
+    /// Logged and pending rows. On a superset page rows are grouped under "Round N"
+    /// and each row is captioned with its exercise's name.
+    @ViewBuilder
+    private func pageRows(rows: [SupersetRow], members: [Exercise], isSuperset: Bool) -> some View {
+        let byId = Dictionary(members.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let headers = columnHeaderRowIds(rows: rows, byId: byId)
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(rows) { row in
+                if let exercise = byId[row.exerciseId] {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if isSuperset, isFirstRowOfRound(row, in: rows) {
+                            Text("Round \(row.round + 1)")
+                                .font(AppTheme.caveat(15, weight: .bold))
+                                .foregroundStyle(AppTheme.accent)
+                                .accessibilityAddTraits(.isHeader)
+                                .padding(.top, row.round == 0 ? 0 : 4)
+                        }
+                        if isSuperset {
+                            Text(exercise.name)
+                                .font(AppTheme.caveat(13))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .lineLimit(2)
+                        }
+                        if headers.contains(row.id) {
+                            columnHeaders(for: exercise)
+                        }
+                        setRow(row, exercise: exercise)
+                    }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+                }
+            }
+        }
+    }
+
+    private func isFirstRowOfRound(_ row: SupersetRow, in rows: [SupersetRow]) -> Bool {
+        rows.first { $0.round == row.round }?.id == row.id
+    }
+
+    /// Ids of pending rows that get a column-header line: the first pending row, and
+    /// any later one whose tracking type differs from the pending row before it.
+    private func columnHeaderRowIds(rows: [SupersetRow], byId: [UUID: Exercise]) -> Set<UUID> {
+        var ids = Set<UUID>()
+        var previous: TrackingType?
+        for row in rows where row.isPending {
+            guard let type = byId[row.exerciseId]?.trackingType else { continue }
+            if previous != type { ids.insert(row.id) }
+            previous = type
+        }
+        return ids
+    }
+
+    private func columnHeaders(for exercise: Exercise) -> some View {
+        let labels = exercise.trackingType == .cardio ? ["Time", "Distance", "Incline"] : ["lbs", "reps", "RIR"]
+        return HStack(spacing: 9) {
+            Text("").frame(width: 22)
+            Text(labels[0]).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary).frame(width: 78)
+            Text(labels[1]).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary).frame(width: 67)
+            Text(labels[2]).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary).frame(width: 56)
+            Spacer()
+        }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func setRow(_ row: SupersetRow, exercise: Exercise) -> some View {
+        switch row.kind {
+        case .logged(let index):
+            if let set = viewModel.loggedSets[exercise.id]?[safe: index] {
+                LoggedSetRow(
+                    workoutSet: set,
+                    number: index + 1,
+                    exercise: exercise,
+                    onDelete: {
+                        viewModel.deleteSet(set, exerciseId: exercise.id)
+                        todayViewModel.deleteLoggedSet(set, exerciseId: exercise.id)
+                        viewModel.syncPendingSets(for: exercise)
+                    }
+                )
+            }
+        case .pending(let index):
+            let loggedCount = viewModel.loggedSets[exercise.id]?.count ?? 0
+            let binding = pendingSetsBinding(for: exercise.id)
+            if exercise.trackingType == .cardio {
+                CardioPendingSetRow(
+                    index: index,
+                    setNumber: loggedCount + index + 1,
+                    pendingSets: binding,
+                    exerciseId: exercise.id,
+                    onLog: { logSet(at: index, exerciseId: exercise.id) },
+                    onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
+                )
+            } else {
+                StrengthPendingSetRow(
+                    index: index,
+                    setNumber: loggedCount + index + 1,
+                    pendingSets: binding,
+                    exerciseId: exercise.id,
+                    onLog: { logSet(at: index, exerciseId: exercise.id) },
+                    onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
+                )
             }
         }
     }
@@ -396,16 +453,22 @@ struct ActiveWorkoutView: View {
 
         // Strength exercises without a rest time (e.g. repeated from an imported
         // workout) fall back to 90s, matching manual entry.
+        // In a superset, only the last member's row in a round starts rest, using
+        // the longest rest among the members.
         if startRest,
-           let exercise = todayViewModel.exercises.first(where: { $0.id == exerciseId }),
-           let rest = Self.restSeconds(for: exercise) {
-            viewModel.startRestTimer(for: exerciseId, seconds: rest, exerciseName: exercise.name)
+           let plan = SupersetRounds.restPlan(afterLogging: exerciseId, in: todayViewModel.exercises) {
+            viewModel.startRestTimer(for: exerciseId, seconds: plan.seconds, exerciseName: plan.name)
         }
     }
 
     static func restSeconds(for exercise: Exercise) -> Int? {
         if let rest = exercise.restSeconds, rest > 0 { return rest }
         return exercise.trackingType == .strength ? 90 : nil
+    }
+
+    private func clampPageIndex() {
+        let count = SupersetGroup.pages(from: todayViewModel.exercises).count
+        currentExerciseIndex = min(currentExerciseIndex, max(0, count - 1))
     }
 
     private func persistSession() {
@@ -491,7 +554,7 @@ struct ActiveWorkoutView: View {
                             name: name,
                             muscleGroup: group.isEmpty ? "Other" : group
                         )
-                        currentExerciseIndex = todayViewModel.exercises.count - 1
+                        currentExerciseIndex = max(0, SupersetGroup.pages(from: todayViewModel.exercises).count - 1)
                         newExerciseName = ""
                         newMuscleGroup = ""
                         showAddExercise = false
@@ -541,5 +604,11 @@ struct RestBannerView: View {
                     .stroke(AppTheme.border, lineWidth: 1)
             )
         }
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }

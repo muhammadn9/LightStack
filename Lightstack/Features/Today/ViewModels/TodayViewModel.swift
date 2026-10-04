@@ -274,6 +274,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         guard let userId = userId else { return }
         let newWorkout = Workout.create(userId: userId, workoutType: workoutType, energyLevel: nil, timeAvailableMinutes: nil)
         // Re-create exercises bound to the new workout id, preserving targets
+        let groupIds = SupersetGroup.freshGroupIds(copying: exercises)
         let newExercises = exercises.enumerated().map { index, ex in
             Exercise.create(
                 workoutId: newWorkout.id,
@@ -284,7 +285,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetReps: ex.targetReps,
                 targetRir: ex.targetRir,
                 restSeconds: ex.restSeconds,
-                coachNote: ex.coachNote
+                coachNote: ex.coachNote,
+                supersetGroupId: groupIds[index]
             )
         }
         workoutRepository.createWorkout(newWorkout)
@@ -319,6 +321,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         let sourceExercises = workoutRepository.fetchExercises(workoutId: source.id)
             .sorted { $0.orderIndex < $1.orderIndex }
 
+        let groupIds = SupersetGroup.freshGroupIds(copying: sourceExercises)
         var hints: [UUID: [PreviousSetHint]] = [:]
         var newExercises: [Exercise] = []
         for (index, ex) in sourceExercises.enumerated() {
@@ -337,7 +340,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetReps: first.map { String($0.reps) } ?? ex.targetReps,
                 targetRir: ex.targetRir,
                 restSeconds: ex.restSeconds,
-                coachNote: coachNote
+                coachNote: coachNote,
+                supersetGroupId: groupIds[index]
             )
             if newExercise.trackingType == .strength, !sets.isEmpty {
                 hints[newExercise.id] = sets.map {
@@ -383,7 +387,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 workoutId: workoutId,
                 name: name,
                 muscleGroup: muscleGroup,
-                orderIndex: exercises.count,
+                orderIndex: nextOrderIndex,
                 targetSets: targetSets,
                 targetReps: targetReps,
                 targetRir: targetRir,
@@ -404,6 +408,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     purgeExercise(id: exerciseId, name: removedName)
                 }
                 setTargets[exerciseId] = nil
+                dissolveSingletonGroups()
                 // Note: Already-logged sets are preserved (in memory and storage) if preserveLoggedSets is true
             }
 
@@ -439,6 +444,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 let oldExerciseId = exercises[index].id
                 let oldName = exercises[index].name
                 let orderIndex = exercises[index].orderIndex
+                let groupId = exercises[index].supersetGroupId
 
                 // Create new exercise
                 let newExercise = Exercise.create(
@@ -450,7 +456,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     targetReps: targetReps,
                     targetRir: targetRir,
                     restSeconds: restSeconds,
-                    coachNote: Self.coachNote(nil, weight: targetWeight, note: note)
+                    coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
+                    supersetGroupId: groupId
                 )
 
                 exercises[index] = newExercise
@@ -461,6 +468,14 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 if !preserveLoggedSets || loggedSets[oldExerciseId]?.isEmpty ?? true {
                     purgeExercise(id: oldExerciseId, name: oldName)
                 }
+            }
+
+        case .groupSuperset(let names):
+            let ids = names.compactMap { name in
+                exercises.first { $0.name.lowercased() == name.lowercased() }?.id
+            }
+            if let grouped = SupersetGroup.group(ids: ids, in: exercises) {
+                applyGrouping(grouped)
             }
         }
 
@@ -505,7 +520,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             workoutId: workoutId,
             name: name,
             muscleGroup: muscleGroup,
-            orderIndex: exercises.count,
+            orderIndex: nextOrderIndex,
             targetSets: 3,
             targetReps: "8-12",
             targetRir: "2",
@@ -522,7 +537,55 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         let name = exercises[index].name
         exercises.remove(at: index)
         purgeExercise(id: id, name: name)
+        dissolveSingletonGroups()
         saveSessionState()
+    }
+
+    // MARK: - Supersets
+
+    private var nextOrderIndex: Int {
+        (exercises.map(\.orderIndex).max() ?? -1) + 1
+    }
+
+    /// True when the exercise (and its group, if any) can be linked with what follows it.
+    func canLinkWithNext(_ exerciseId: UUID) -> Bool {
+        SupersetGroup.link(current: exerciseId, withNext: exercises) != nil
+    }
+
+    /// Links the exercise's page with the next page into one superset (max 4 members).
+    @discardableResult
+    func linkWithNext(_ exerciseId: UUID) -> Bool {
+        guard let linked = SupersetGroup.link(current: exerciseId, withNext: exercises) else { return false }
+        applyGrouping(linked)
+        saveSessionState()
+        return true
+    }
+
+    /// Splits a superset back into separate exercises.
+    func unlinkSuperset(groupId: UUID) {
+        applyGrouping(SupersetGroup.unlink(groupId: groupId, in: exercises))
+        saveSessionState()
+    }
+
+    /// Dissolves groups reduced below two members by a removal, and persists the change.
+    private func dissolveSingletonGroups() {
+        let cleaned = SupersetGroup.dissolveSingletons(in: exercises)
+        if cleaned.map(\.supersetGroupId) != exercises.map(\.supersetGroupId) {
+            applyGrouping(cleaned)
+        }
+    }
+
+    /// Adopts new grouping/order and persists the exercises that changed (the repository upserts).
+    private func applyGrouping(_ updated: [Exercise]) {
+        let before = Dictionary(exercises.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let changed = updated.filter { new in
+            guard let old = before[new.id] else { return true }
+            return old.supersetGroupId != new.supersetGroupId || old.orderIndex != new.orderIndex
+        }
+        exercises = updated
+        if let workoutId = sessionService.currentWorkoutId, !changed.isEmpty {
+            workoutRepository.saveExercises(changed, workoutId: workoutId)
+        }
     }
 
     /// Forgets an exercise: drops its logged sets, deletes it (and its sets, via

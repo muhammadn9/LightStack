@@ -228,31 +228,74 @@ struct WorkoutDetailView: View {
 
     private var exercisesSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ForEach(exercises) { exercise in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(exercise.name)
-                            .font(AppTheme.playfairItalic(16, weight: .bold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Spacer()
-                        Text(exercise.muscleGroup)
-                            .font(AppTheme.caveat(11))
-                            .foregroundStyle(AppTheme.accentSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AppTheme.accent.opacity(0.2))
-                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                    }
+            ForEach(Array(WorkoutDetailGrouping.sections(from: exercises).enumerated()), id: \.offset) { _, section in
+                switch section {
+                case .single(let exercise):
+                    exerciseBlock(exercise)
+                case .superset(let members):
+                    supersetBlock(members)
+                }
+            }
+        }
+        .cardStyle()
+    }
 
-                    VStack(spacing: 4) {
-                        ForEach(setsForExercise(exercise.id)) { set in
-                            SetRowView(workoutSet: set)
+    private func exerciseHeader(_ exercise: Exercise) -> some View {
+        HStack {
+            Text(exercise.name)
+                .font(AppTheme.playfairItalic(16, weight: .bold))
+                .foregroundStyle(AppTheme.textPrimary)
+            Spacer()
+            Text(exercise.muscleGroup)
+                .font(AppTheme.caveat(11))
+                .foregroundStyle(AppTheme.accentSecondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AppTheme.accent.opacity(0.2))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        }
+    }
+
+    private func exerciseBlock(_ exercise: Exercise) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            exerciseHeader(exercise)
+            VStack(spacing: 4) {
+                ForEach(setsForExercise(exercise.id)) { set in
+                    SetRowView(workoutSet: set)
+                }
+            }
+        }
+    }
+
+    /// Members of a superset, shown round by round under a "Superset" label.
+    private func supersetBlock(_ members: [Exercise]) -> some View {
+        let rounds = WorkoutDetailGrouping.rounds(setsByMember: members.map { setsForExercise($0.id) })
+        return VStack(alignment: .leading, spacing: 10) {
+            Label("Superset · " + members.map(\.name).joined(separator: " + "), systemImage: "link")
+                .font(AppTheme.caveat(13))
+                .foregroundStyle(AppTheme.accentSecondary)
+            ForEach(Array(rounds.enumerated()), id: \.offset) { roundIndex, round in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Round \(roundIndex + 1)")
+                        .font(AppTheme.plexMono(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                    ForEach(round, id: \.set.id) { entry in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(members[entry.member].name)
+                                .font(AppTheme.caveat(11))
+                                .foregroundStyle(AppTheme.textSecondary)
+                            SetRowView(workoutSet: entry.set)
                         }
                     }
                 }
             }
         }
-        .cardStyle()
+        .padding(12)
+        .background(AppTheme.surfaceElevated.opacity(0.5))
+        .overlay(alignment: .leading) {
+            Rectangle().fill(AppTheme.accent).frame(width: 3)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 
     // MARK: - Helpers
@@ -291,4 +334,39 @@ private struct RepeatWorkoutContext: Identifiable {
     let id = UUID()
     let todayViewModel: TodayViewModel
     let workoutType: String
+}
+
+// MARK: - Superset grouping (pure)
+
+enum WorkoutDetailGrouping {
+    enum Section {
+        case single(Exercise)
+        case superset([Exercise])
+    }
+
+    struct RoundEntry {
+        let member: Int
+        let set: WorkoutSet
+    }
+
+    /// Splits ordered exercises into single exercises and valid supersets.
+    static func sections(from exercises: [Exercise]) -> [Section] {
+        let byId = Dictionary(exercises.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return SupersetGroup.pages(from: exercises).compactMap { page in
+            let members = page.exerciseIds.compactMap { byId[$0] }
+            if page.isSuperset { return .superset(members) }
+            return members.first.map { .single($0) }
+        }
+    }
+
+    /// Round r holds each member's r-th set (members with fewer sets drop out).
+    static func rounds(setsByMember: [[WorkoutSet]]) -> [[RoundEntry]] {
+        let sorted = setsByMember.map { $0.sorted { $0.setNumber < $1.setNumber } }
+        let maxCount = sorted.map(\.count).max() ?? 0
+        return (0..<maxCount).map { r in
+            sorted.enumerated().compactMap { m, sets in
+                r < sets.count ? RoundEntry(member: m, set: sets[r]) : nil
+            }
+        }
+    }
 }

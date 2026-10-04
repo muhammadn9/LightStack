@@ -11,6 +11,8 @@ struct ImportedExercise: Equatable {
     let muscleGroup: String
     let notes: String?
     let sets: [ImportedSet]
+    /// Exercises in one workout sharing a label form a superset; nil = not in a superset.
+    var supersetLabel: String? = nil
 }
 
 struct ImportedWorkout: Equatable {
@@ -66,7 +68,8 @@ enum WorkoutImportParser {
                 skipped.append(.noDate(workoutName: rawName))
                 continue
             }
-            let exercises = ((dict["exercises"] as? [Any]) ?? []).compactMap { parseExercise($0) }
+            var combinedCounter = 0
+            let exercises = ((dict["exercises"] as? [Any]) ?? []).flatMap { parseExercises($0, combinedCounter: &combinedCounter) }
             if exercises.isEmpty {
                 skipped.append(.noExercises(workoutName: rawName, date: date))
                 continue
@@ -138,12 +141,80 @@ enum WorkoutImportParser {
         return iso.date(from: s)
     }
 
+    private static func parseExercises(_ raw: Any, combinedCounter: inout Int) -> [ImportedExercise] {
+        if let combined = parseCombined(raw, counter: &combinedCounter) { return combined }
+        return parseExercise(raw).map { [$0] } ?? []
+    }
+
     private static func parseExercise(_ raw: Any) -> ImportedExercise? {
         guard let dict = raw as? [String: Any], let name = string(dict["name"]) else { return nil }
         let sets = ((dict["sets"] as? [Any]) ?? []).compactMap { parseSet($0) }
         guard !sets.isEmpty else { return nil }
         let muscle = string(dict["muscle_group"]) ?? WorkoutSessionService.inferMuscleGroup(name)
-        return ImportedExercise(name: name, muscleGroup: muscle, notes: string(dict["notes"]), sets: sets)
+        return ImportedExercise(name: name, muscleGroup: muscle, notes: string(dict["notes"]), sets: sets,
+                                supersetLabel: string(dict["superset"]))
+    }
+
+    // MARK: - Combined superset form ("A x B" with "setA / setB" entries)
+
+    private static func parseCombined(_ raw: Any, counter: inout Int) -> [ImportedExercise]? {
+        guard let dict = raw as? [String: Any], let rawName = string(dict["name"]),
+              let entries = dict["sets"] as? [Any], !entries.isEmpty else { return nil }
+        let names = splitName(rawName)
+        guard names.count >= SupersetGroup.minMembers, names.count <= SupersetGroup.maxMembers else { return nil }
+
+        var perExercise = Array(repeating: [ImportedSet](), count: names.count)
+        for entry in entries {
+            guard let text = entry as? String else { return nil }
+            let parts = text.components(separatedBy: " / ")
+            guard parts.count == names.count else { return nil }
+            var parsed: [ImportedSet] = []
+            for part in parts {
+                guard let set = parseSetText(part) else { return nil }
+                parsed.append(set)
+            }
+            for (k, set) in parsed.enumerated() { perExercise[k].append(set) }
+        }
+
+        counter += 1
+        let label = "__combined\(counter)"
+        let notes = string(dict["notes"])
+        return names.enumerated().map { k, name in
+            ImportedExercise(name: name, muscleGroup: WorkoutSessionService.inferMuscleGroup(name),
+                             notes: k == 0 ? notes : nil, sets: perExercise[k], supersetLabel: label)
+        }
+    }
+
+    /// Splits "A x B" on a case-insensitive, space-surrounded "x"; trims trailing colons.
+    private static func splitName(_ name: String) -> [String] {
+        let cleaned = name.trimmingCharacters(in: CharacterSet(charactersIn: ": ").union(.whitespacesAndNewlines))
+        let parts = cleaned.replacingOccurrences(of: #"\s+[xX]\s+"#, with: "\u{1F}", options: .regularExpression)
+            .components(separatedBy: "\u{1F}")
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ": ").union(.whitespacesAndNewlines)) }
+        return parts.contains(where: { $0.isEmpty }) ? [cleaned] : parts
+    }
+
+    /// Parses text like "50 x 15 abt 2 rir" (weight x reps, optional RIR).
+    static func parseSetText(_ text: String) -> ImportedSet? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let m = t.range(of: #"^(bw|\d+(?:\.\d+)?)\s*(?:lbs?|kgs?)?\s*[xX]\s*(\d+)"#,
+                              options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let head = String(t[m])
+        let headParts = head.components(separatedBy: CharacterSet(charactersIn: "xX"))
+        guard let repsText = headParts.last?.trimmingCharacters(in: .whitespaces), let reps = Int(repsText) else { return nil }
+        let weightMatch = head.range(of: #"^\d+(?:\.\d+)?"#, options: .regularExpression)
+        let weight = weightMatch.flatMap { Double(head[$0]) } ?? 0
+        let rest = String(t[m.upperBound...])
+        var rir: Int?
+        if let r = rest.range(of: #"(?:abt|about|~|@)?\s*(\d+)\s*rir"#, options: [.regularExpression, .caseInsensitive]),
+           let n = rest[r].range(of: #"\d+"#, options: .regularExpression) {
+            rir = Int(rest[r][n])
+        } else if let r = rest.range(of: #"rir\s*(\d+)"#, options: [.regularExpression, .caseInsensitive]),
+                  let n = rest[r].range(of: #"\d+"#, options: .regularExpression) {
+            rir = Int(rest[r][n])
+        }
+        if let v = rir, !(0...10).contains(v) { rir = nil }
+        return ImportedSet(weightLbs: weight, reps: reps, rir: rir)
     }
 
     private static func parseSet(_ raw: Any) -> ImportedSet? {
