@@ -12,6 +12,19 @@ final class WorkoutSetupViewModel: ObservableObject {
     @Published var energyLevel: Int = 7
     @Published var additionalNotes: String = ""
     @Published var splitDays: [String] = []
+    /// Past workout names not in the split (e.g. imported ones), most recent first.
+    @Published var historyWorkoutNames: [String] = []
+    @Published var showAllHistory = false
+
+    /// How many history chips show before "Show all".
+    static let historyChipLimit = 8
+
+    /// Names visible given the collapsed/expanded state.
+    var visibleHistoryNames: [String] {
+        showAllHistory ? historyWorkoutNames : Array(historyWorkoutNames.prefix(Self.historyChipLimit))
+    }
+
+    var hasHiddenHistory: Bool { historyWorkoutNames.count > Self.historyChipLimit }
 
     static let timePresets = [30, 45, 60, 75, 90]
 

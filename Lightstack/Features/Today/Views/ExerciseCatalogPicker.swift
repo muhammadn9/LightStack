@@ -3,6 +3,9 @@ import SwiftUI
 /// Searchable, filterable exercise catalog presented as a sheet.
 struct ExerciseCatalogPicker: View {
 
+    /// Exercises the user has done before, shown first as "Your exercises".
+    var loadYourExercises: (() -> [HistoryExercise])? = nil
+    @State private var yourExercises: [HistoryExercise] = []
     let onSelect: (String, String) -> Void  // (name, muscleGroup)
     @Environment(\.dismiss) private var dismiss
 
@@ -19,6 +22,10 @@ struct ExerciseCatalogPicker: View {
             classification: selectedClassification,
             search: searchText
         )
+    }
+
+    private var filteredYourExercises: [HistoryExercise] {
+        HistoryExercise.filtered(yourExercises, search: searchText)
     }
 
     private var groupedExercises: [(String, [CatalogExercise])] {
@@ -38,6 +45,7 @@ struct ExerciseCatalogPicker: View {
                     TextField("Search exercises…", text: $searchText)
                         .font(AppTheme.caveat(18))
                         .foregroundStyle(AppTheme.textPrimary)
+                        .accessibilityIdentifier("exerciseSearchField")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -64,6 +72,22 @@ struct ExerciseCatalogPicker: View {
                 // Exercise list
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        if !filteredYourExercises.isEmpty {
+                            Section {
+                                ForEach(filteredYourExercises) { item in
+                                    yourExerciseRow(item)
+                                }
+                            } header: {
+                                Text("Your exercises")
+                                    .font(AppTheme.playfair(14, weight: .bold))
+                                    .foregroundStyle(AppTheme.accent)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 6)
+                                    .background(AppTheme.background)
+                                    .accessibilityIdentifier("yourExercisesHeader")
+                            }
+                        }
                         ForEach(groupedExercises, id: \.0) { letter, exercises in
                             Section {
                                 ForEach(exercises) { exercise in
@@ -103,6 +127,7 @@ struct ExerciseCatalogPicker: View {
                 .padding(.vertical, 12)
             }
             .background(AppTheme.backgroundGradient.ignoresSafeArea())
+            .onAppear { yourExercises = loadYourExercises?() ?? [] }
             .navigationTitle("Exercise Catalog")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -163,6 +188,34 @@ struct ExerciseCatalogPicker: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
             }
+
+            InkDivider()
+                .padding(.horizontal, 16)
+        }
+    }
+
+    private func yourExerciseRow(_ item: HistoryExercise) -> some View {
+        VStack(spacing: 0) {
+            Button(action: {
+                onSelect(item.name, item.muscleGroup)
+                dismiss()
+            }) {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.name)
+                            .font(AppTheme.caveat(18))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text(item.muscleGroup)
+                            .font(AppTheme.plexMono(11, weight: .regular))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("yourExercise.\(item.name)")
 
             InkDivider()
                 .padding(.horizontal, 16)

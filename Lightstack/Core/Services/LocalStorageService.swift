@@ -84,6 +84,18 @@ final class LocalStorageService {
         return (try? context.fetch(request)) ?? []
     }
 
+    /// Every exercise the user has logged, most recent workout first (duplicates included).
+    func fetchExerciseHistory(userId: UUID) -> [(name: String, muscleGroup: String)] {
+        let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()
+        request.predicate = NSPredicate(format: "workout.userId == %@", userId as CVarArg)
+        request.sortDescriptors = [
+            NSSortDescriptor(key: "workout.date", ascending: false),
+            NSSortDescriptor(key: "orderIndex", ascending: true)
+        ]
+        let entities = (try? context.fetch(request)) ?? []
+        return entities.map { ($0.name ?? "", $0.muscleGroup ?? "") }
+    }
+
     func saveWorkout(_ workout: Workout) {
         let entity = CDWorkout(context: context)
         workout.applyToCoreData(entity)

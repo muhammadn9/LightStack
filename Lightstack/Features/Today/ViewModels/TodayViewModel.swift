@@ -191,7 +191,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             userId: userId,
             userNote: userNote,
             exercises: exercises,
-            allSets: loggedSets
+            allSets: loggedSets,
+            activeSeconds: activeWorkoutElapsed
         )
     }
 
@@ -514,8 +515,11 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     // MARK: - Manual Exercise Management
 
-    func addExerciseManually(name: String, muscleGroup: String) {
-        guard let workoutId = sessionService.currentWorkoutId else { return }
+    /// Adds an exercise. With `afterPageIndex` it goes right after that page (after the
+    /// whole superset when the page is one); otherwise at the end. Returns its id.
+    @discardableResult
+    func addExerciseManually(name: String, muscleGroup: String, afterPageIndex: Int? = nil) -> UUID? {
+        guard let workoutId = sessionService.currentWorkoutId else { return nil }
         let newExercise = Exercise.create(
             workoutId: workoutId,
             name: name,
@@ -527,9 +531,38 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             restSeconds: 90,
             coachNote: nil
         )
-        exercises.append(newExercise)
-        workoutRepository.saveExercises([newExercise], workoutId: workoutId)
+        if let afterPageIndex {
+            // Persists the new exercise plus any whose orderIndex shifted.
+            applyGrouping(ExerciseOrdering.inserting(newExercise, afterUnit: afterPageIndex, in: exercises))
+        } else {
+            exercises.append(newExercise)
+            workoutRepository.saveExercises([newExercise], workoutId: workoutId)
+        }
         saveSessionState()
+        return newExercise.id
+    }
+
+    /// Applies a new unit order (single exercises or whole supersets), renumbering
+    /// `orderIndex` and persisting the exercises that moved.
+    func reorderExercises(unitOrder: [[UUID]]) {
+        applyGrouping(ExerciseOrdering.reordered(exercises, unitOrder: unitOrder))
+        saveSessionState()
+    }
+
+    /// Distinct exercise names from past workouts, most recent first.
+    func historyExercises() -> [HistoryExercise] {
+        guard let userId else { return [] }
+        return workoutRepository.fetchDistinctExerciseNames(userId: userId)
+    }
+
+    /// Past workout names (not in `splitDays`) that have a repeatable session, most recent first.
+    func historyWorkoutNames(excluding splitDays: [String]) -> [String] {
+        guard let userId else { return [] }
+        let names = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 200)
+            .sorted { $0.date > $1.date }
+            .map(\.workoutType)
+        return HistoryWorkoutNames.distinct(names, excluding: splitDays)
+            .filter { lastSession(ofType: $0) != nil }
     }
 
     func removeExercise(at id: UUID) {

@@ -5,7 +5,9 @@ struct ProfileView: View {
     @EnvironmentObject var environment: AppEnvironment
 
     @State private var viewModel: ProfileViewModel?
+    @AppStorage("selectedTab") private var selectedTab: Int = 0
     @State private var showEditSheet = false
+    @State private var showAllPRs = false
     @State private var streak: Int = 0
     @State private var totalSessions: Int = 0
     @State private var totalVolume: Double = 0
@@ -24,6 +26,10 @@ struct ProfileView: View {
             .themedBackground()
             .navigationBarHidden(true)
             .onAppear { loadProfileData() }
+            // The paging TabView can keep this page alive, so reload whenever it becomes the visible tab.
+            .onChange(of: selectedTab) { _, tab in
+                if tab == 3 { loadProfileData() }
+            }
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
                     EditProfileView(viewModel: vm, userId: userId, userEmail: environment.supabaseClient.auth.currentUser?.email ?? "")
@@ -96,13 +102,13 @@ struct ProfileView: View {
                 .padding(.bottom, 8)
 
             VStack(spacing: 0) {
-                statRow(label: "Total Workouts", value: "\(totalSessions)")
+                statRow(id: "totalWorkouts", label: "Total Workouts", value: "\(totalSessions)")
                 InkDivider()
-                statRow(label: "This Month", value: "\(thisMonthSessions)")
+                statRow(id: "thisMonth", label: "This Month", value: "\(thisMonthSessions)")
                 InkDivider()
-                statRow(label: "Volume (Total)", value: formatVolume(totalVolume))
+                statRow(id: "volume", label: "Volume (Total)", value: formatVolume(totalVolume))
                 InkDivider()
-                statRow(label: "Avg Duration", value: "\(averageSessionDuration) min")
+                statRow(id: "avgDuration", label: "Avg Duration", value: "\(averageSessionDuration) min")
             }
             .padding(.bottom, 12)
 
@@ -111,9 +117,27 @@ struct ProfileView: View {
                 InkDivider()
                     .padding(.vertical, 10)
 
-                Text("Personal Records")
-                    .notebookSectionHeader()
-                    .padding(.bottom, 8)
+                HStack {
+                    Text("Personal Records")
+                        .notebookSectionHeader()
+                    Spacer()
+                    Button("See all") { showAllPRs = true }
+                        .font(AppTheme.caveat(13))
+                        .foregroundStyle(AppTheme.accent)
+                        .accessibilityIdentifier("profile.seeAllPRs")
+                }
+                .padding(.bottom, 8)
+                .sheet(isPresented: $showAllPRs) {
+                    NavigationStack {
+                        PersonalRecordsListView(records: vm.personalRecords)
+                            .toolbar {
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("Done") { showAllPRs = false }
+                                        .accessibilityIdentifier("prList.done")
+                                }
+                            }
+                    }
+                }
 
                 VStack(spacing: 6) {
                     ForEach(vm.personalRecords.prefix(5)) { pr in
@@ -159,7 +183,7 @@ struct ProfileView: View {
 
     // MARK: - Stat Row
 
-    private func statRow(label: String, value: String) -> some View {
+    private func statRow(id: String, label: String, value: String) -> some View {
         HStack {
             Text(label)
                 .font(AppTheme.caveat(13))
@@ -168,6 +192,7 @@ struct ProfileView: View {
             Text(value)
                 .font(AppTheme.plexMono(13, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
+                .accessibilityIdentifier("profile.stat.\(id)")
         }
         .padding(.vertical, 6)
     }
@@ -212,8 +237,7 @@ struct ProfileView: View {
         averageSessionDuration = vm.averageSessionDuration
         topLifts = vm.topLifts
 
-        // Count this month's sessions
-        thisMonthSessions = vm.totalSessions > 0 ? min(vm.totalSessions, 20) : 0 // approximation
+        thisMonthSessions = vm.thisMonthSessions
         viewModel = vm
     }
 

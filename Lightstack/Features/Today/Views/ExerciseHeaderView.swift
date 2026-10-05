@@ -18,6 +18,8 @@ struct ExerciseHeaderView: View {
     let onUnlink: () -> Void
     /// Long-press "Remove" on a member's name. The caller confirms before removing.
     let onRemove: (Exercise) -> Void
+    /// Opens the reorder sheet. The button only shows with two or more pages.
+    var onReorder: (() -> Void)? = nil
 
     private var isSuperset: Bool { members.count > 1 }
 
@@ -129,7 +131,12 @@ struct ExerciseHeaderView: View {
                 iconButton("figure.stand", label: "Form guide", action: onFormDemo)
                 iconButton("camera.fill", label: "Record form", action: onRecordForm)
             }
+            if let onReorder, totalCount > 1 {
+                iconButton("arrow.up.arrow.down", label: "Reorder exercises", action: onReorder)
+                    .accessibilityIdentifier("reorderExercisesButton")
+            }
             iconButton("plus", label: "Add exercise", action: onAdd)
+                .accessibilityIdentifier("addExerciseButton")
         }
     }
 

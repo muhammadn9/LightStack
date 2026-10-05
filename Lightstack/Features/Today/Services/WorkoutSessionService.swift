@@ -167,15 +167,27 @@ final class WorkoutSessionService {
 
     // MARK: - Finish Session
 
+    /// Whole minutes for a finished workout. Prefers the active timer (excludes paused time),
+    /// falls back to time since creation. Rounds, and never returns 0 so it isn't read as "no duration".
+    static func durationMinutes(activeSeconds: Int?, createdAt: Date, now: Date = Date()) -> Int {
+        let seconds: Double
+        if let activeSeconds, activeSeconds > 0 {
+            seconds = Double(activeSeconds)
+        } else {
+            seconds = max(0, now.timeIntervalSince(createdAt))
+        }
+        return max(1, Int((seconds / 60).rounded()))
+    }
+
     func finishSession(
         userId: UUID,
         userNote: String?,
         exercises: [Exercise],
-        allSets: [UUID: [WorkoutSet]]
+        allSets: [UUID: [WorkoutSet]],
+        activeSeconds: Int? = nil
     ) {
         guard var workout = currentWorkout else { return }
-        let durationMinutes = Int(Date().timeIntervalSince(workout.createdAt) / 60)
-        workout.durationMinutes = durationMinutes
+        workout.durationMinutes = Self.durationMinutes(activeSeconds: activeSeconds, createdAt: workout.createdAt)
         workout.userNote = userNote.map { validationService.sanitize($0) }
         currentWorkout = workout
 

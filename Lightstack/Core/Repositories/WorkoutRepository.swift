@@ -31,6 +31,11 @@ final class WorkoutRepository {
             .map { Workout(from: $0) }
     }
 
+    /// Distinct exercise names the user has done before, most recently used first.
+    func fetchDistinctExerciseNames(userId: UUID) -> [HistoryExercise] {
+        HistoryExercise.distinct(localStorage.fetchExerciseHistory(userId: userId))
+    }
+
     // MARK: - Create / Save
 
     func createWorkout(_ workout: Workout) {

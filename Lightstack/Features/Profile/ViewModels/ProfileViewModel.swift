@@ -9,6 +9,7 @@ final class ProfileViewModel: ObservableObject {
     @Published var streak: Int = 0
     @Published var totalSessions: Int = 0
     @Published var totalVolume: Double = 0
+    @Published var thisMonthSessions: Int = 0
     @Published var averageSessionDuration: Int = 0
     @Published var averageRIR: Double = 0
     @Published var weeklyFrequency: Double = 0
@@ -59,6 +60,7 @@ final class ProfileViewModel: ObservableObject {
         streak = workoutRepository.fetchStreak(userId: userId)
         totalSessions = statsService.totalSessions(userId: userId)
         totalVolume = statsService.totalVolume(userId: userId)
+        thisMonthSessions = statsService.workoutsThisMonth(userId: userId)
         averageSessionDuration = statsService.averageSessionDuration(userId: userId)
         averageRIR = statsService.averageRIR(userId: userId)
         weeklyFrequency = statsService.weeklyFrequency(userId: userId)
