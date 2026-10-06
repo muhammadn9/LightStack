@@ -1,18 +1,18 @@
 import SwiftUI
 
-/// Full, searchable list of every personal record.
+/// One line per exercise: only the best set, with spelling variants of the same
+/// exercise ("Hammer curl" / "hammer curls" / "DB hammer curl") merged together.
 struct PersonalRecordsListView: View {
     let records: [PersonalRecord]
 
     enum SortOrder: String, CaseIterable, Identifiable {
-        case name = "A–Z"
         case heaviest = "Heaviest"
-        case recent = "Recent"
+        case name = "A–Z"
         var id: String { rawValue }
     }
 
     @State private var searchText = ""
-    @State private var sortOrder: SortOrder = .name
+    @State private var sortOrder: SortOrder = .heaviest
 
     /// Epley estimate; nil when weight or reps is zero.
     static func estimatedOneRepMax(weight: Double, reps: Int) -> Double? {
@@ -20,22 +20,63 @@ struct PersonalRecordsListView: View {
         return weight * (1 + Double(reps) / 30)
     }
 
-    private var filtered: [PersonalRecord] {
-        let query = searchText.trimmingCharacters(in: .whitespaces)
-        let matches = query.isEmpty
-            ? records
-            : records.filter { $0.exerciseName.localizedCaseInsensitiveContains(query) }
-        switch sortOrder {
-        case .name:
-            return matches.sorted { $0.exerciseName.localizedCaseInsensitiveCompare($1.exerciseName) == .orderedAscending }
-        case .heaviest:
-            return matches.sorted {
-                (Self.estimatedOneRepMax(weight: $0.weightLbs, reps: $0.reps) ?? 0)
-                    > (Self.estimatedOneRepMax(weight: $1.weightLbs, reps: $1.reps) ?? 0)
+    /// Grouping key for an exercise name: case, spacing, punctuation, plurals and
+    /// common abbreviations are ignored, so variants of one lift share a key.
+    static func exerciseKey(_ name: String) -> String {
+        let aliases = ["db": "dumbbell", "dbs": "dumbbell", "bb": "barbell"]
+        let words = name.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .map { word -> String in
+                if let alias = aliases[word] { return alias }
+                // Plural -> singular ("curls" -> "curl"), but leave short words and "-ss" alone.
+                if word.count > 3, word.hasSuffix("s"), !word.hasSuffix("ss") {
+                    return String(word.dropLast())
+                }
+                return word
             }
-        case .recent:
-            return matches.sorted { $0.dateAchieved > $1.dateAchieved }
+        return words.joined(separator: " ")
+    }
+
+    /// The single best record per exercise (highest e1RM, then heaviest weight).
+    /// The displayed name is the one used most recently.
+    static func bestPerExercise(_ records: [PersonalRecord]) -> [PersonalRecord] {
+        var groups: [String: [PersonalRecord]] = [:]
+        for record in records {
+            groups[exerciseKey(record.exerciseName), default: []].append(record)
         }
+        return groups.values.compactMap { group in
+            let score: (PersonalRecord) -> (Double, Double) = {
+                (estimatedOneRepMax(weight: $0.weightLbs, reps: $0.reps) ?? 0, $0.weightLbs)
+            }
+            guard var best = group.max(by: { score($0) < score($1) }),
+                  let latest = group.max(by: { $0.dateAchieved < $1.dateAchieved }) else { return nil }
+            best.exerciseName = latest.exerciseName
+            return best
+        }
+    }
+
+    static func sorted(_ records: [PersonalRecord], by order: SortOrder) -> [PersonalRecord] {
+        switch order {
+        case .heaviest:
+            return records.sorted {
+                (estimatedOneRepMax(weight: $0.weightLbs, reps: $0.reps) ?? $0.weightLbs)
+                    > (estimatedOneRepMax(weight: $1.weightLbs, reps: $1.reps) ?? $1.weightLbs)
+            }
+        case .name:
+            return records.sorted {
+                $0.exerciseName.localizedCaseInsensitiveCompare($1.exerciseName) == .orderedAscending
+            }
+        }
+    }
+
+    private var visible: [PersonalRecord] {
+        let query = searchText.trimmingCharacters(in: .whitespaces)
+        let best = Self.bestPerExercise(records)
+        let matches = query.isEmpty
+            ? best
+            : best.filter { $0.exerciseName.localizedCaseInsensitiveContains(query) }
+        return Self.sorted(matches, by: sortOrder)
     }
 
     var body: some View {
@@ -46,16 +87,16 @@ struct PersonalRecordsListView: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("prList.sort")
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
 
-                if filtered.isEmpty {
+                if visible.isEmpty {
                     Text("No records found")
                         .font(AppTheme.caveat(14))
                         .foregroundStyle(AppTheme.textSecondary)
                         .padding(.vertical, 20)
                         .frame(maxWidth: .infinity)
                 } else {
-                    ForEach(filtered) { pr in
+                    ForEach(visible) { pr in
                         row(pr)
                         InkDivider()
                     }
@@ -71,36 +112,26 @@ struct PersonalRecordsListView: View {
             .padding(16)
         }
         .themedBackground()
-        .navigationTitle("Personal Records")
+        .navigationTitle("Top Lifts")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search exercises")
     }
 
+    /// One compact line: name on the left, best set on the right.
     private func row(_ pr: PersonalRecord) -> some View {
-        HStack(spacing: 8) {
-            PRStamp()
-                .frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(pr.exerciseName)
-                    .font(AppTheme.caveat(15))
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .accessibilityIdentifier("prList.row.\(pr.exerciseName)")
-                Text(pr.dateAchieved.formatted(date: .abbreviated, time: .omitted))
-                    .font(AppTheme.caveat(11))
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(String(format: "%.0f lbs × %d", pr.weightLbs, pr.reps))
-                    .font(AppTheme.plexMono(11, weight: .medium))
-                    .foregroundStyle(AppTheme.prStamp)
-                if let e1rm = Self.estimatedOneRepMax(weight: pr.weightLbs, reps: pr.reps) {
-                    Text(String(format: "e1RM %.0f", e1rm))
-                        .font(AppTheme.plexMono(10))
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(pr.exerciseName)
+                .font(AppTheme.caveat(15))
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityIdentifier("prList.row.\(pr.exerciseName)")
+            Spacer(minLength: 8)
+            Text(String(format: "%.0f × %d", pr.weightLbs, pr.reps))
+                .font(AppTheme.plexMono(13, weight: .medium))
+                .foregroundStyle(AppTheme.prStamp)
+                .accessibilityIdentifier("prList.value.\(pr.exerciseName)")
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 9)
     }
 }

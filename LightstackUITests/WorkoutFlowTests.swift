@@ -9,18 +9,32 @@ final class WorkoutFlowTests: LightstackUITestCase {
         waitFor(app.staticTexts["Barbell Bench Press"])
 
         // A tap during the first render can be lost, so retry until the sheet is up.
+        // The menu can also fail to open on a lost tap, so retry the whole step.
         for _ in 0..<3 where !app.buttons["reorderDoneButton"].exists {
-            tap(app.buttons["reorderExercisesButton"])
+            tap(app.buttons["moreActionsButton"])
+            let item = app.buttons["reorderExercisesButton"]
+            if item.waitForExistence(timeout: 3) { item.tap() }
             _ = app.buttons["reorderDoneButton"].waitForExistence(timeout: 6)
         }
         waitFor(app.buttons["reorderDoneButton"])
         shot("01-reorder-sheet")
-        tap(app.buttons["reorderDown.Barbell Bench Press"])
-        // After the move, Bench Press can no longer go up-first: its up button is enabled.
-        let up = app.buttons["reorderUp.Barbell Bench Press"]
-        XCTAssertTrue(NSPredicate(format: "isEnabled == true").evaluate(with: up) || up.waitForExistence(timeout: 3))
+        // A tap while the sheet is still sliding up can be swallowed: retry until
+        // Bench Press has really moved below Incline Dumbbell Press.
+        let down = app.buttons["reorderDown.Barbell Bench Press"]
+        let incline = app.buttons["reorderDown.Incline Dumbbell Press"]
+        for _ in 0..<3 where down.frame.minY < incline.frame.minY {
+            tap(down)
+            let moved = NSPredicate { _, _ in down.frame.minY > incline.frame.minY }
+            _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: moved, object: nil)], timeout: 3)
+        }
+        XCTAssertGreaterThan(down.frame.minY, incline.frame.minY, "Bench Press did not move down")
         shot("01b-after-down")
-        tap(app.buttons["reorderDoneButton"])
+        let done = app.buttons["reorderDoneButton"]
+        for _ in 0..<3 where done.exists {
+            done.tap()
+            _ = done.waitForNonExistence(timeout: 4)
+        }
+        XCTAssertFalse(done.exists, "Reorder sheet did not close")
 
         // Still on the same exercise, which is now second.
         waitFor(app.staticTexts["2 of 3"], "Reorder did not move the exercise")
@@ -86,5 +100,19 @@ final class WorkoutFlowTests: LightstackUITestCase {
         waitFor(app.staticTexts["1 of 2"])
         waitFor(app.staticTexts["Barbell Curl"])
         shot("06-arm-day-active")
+    }
+
+    /// Owner bug: on a narrower phone the active workout spilled off both screen edges
+    /// (title clipped on the left, controls cut off on the right). Run on a narrow device.
+    func testActiveWorkoutFitsScreenWidth() throws {
+        launchApp()
+        generateAndStartPushWorkout()
+        waitFor(app.staticTexts["1 of 3"])
+        let screen = app.windows.firstMatch.frame
+        let title = waitFor(app.staticTexts["Barbell Bench Press"])
+        let add = waitFor(app.buttons["addExerciseButton"])
+        shot("07-active-width")
+        XCTAssertGreaterThanOrEqual(title.frame.minX, screen.minX, "Exercise title is clipped on the left")
+        XCTAssertLessThanOrEqual(add.frame.maxX, screen.maxX, "Controls spill past the right edge")
     }
 }

@@ -118,7 +118,7 @@ struct ProfileView: View {
                     .padding(.vertical, 10)
 
                 HStack {
-                    Text("Personal Records")
+                    Text("Top Lifts")
                         .notebookSectionHeader()
                     Spacer()
                     Button("See all") { showAllPRs = true }
@@ -140,7 +140,7 @@ struct ProfileView: View {
                 }
 
                 VStack(spacing: 6) {
-                    ForEach(vm.personalRecords.prefix(5)) { pr in
+                    ForEach(PersonalRecordsListView.sorted(PersonalRecordsListView.bestPerExercise(vm.personalRecords), by: .heaviest).prefix(5)) { pr in
                         HStack(spacing: 8) {
                             PRStamp()
                                 .frame(width: 24, height: 24)
