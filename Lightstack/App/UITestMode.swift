@@ -72,7 +72,7 @@ enum UITestMode {
                                      energyLevel: 7, timeAvailableMinutes: 60)
         workout.date = yesterday
         workout.createdAt = yesterday
-        workout.durationMinutes = 45
+        // No duration: mimics an imported workout, which Avg Duration ignores.
         workout.syncStatus = .synced
         localStorage.saveWorkout(workout)
 
@@ -88,6 +88,28 @@ enum UITestMode {
             (bench, [(135, 8, 2), (135, 7, 1)]),
             (press, [(85, 8, 2), (85, 6, 1)])
         ]
+        seedSets(rows, localStorage: localStorage)
+
+        // An imported-style workout whose name is not a split day ("From history").
+        let earlier = Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date()
+        var armDay = Workout.create(userId: userId, workoutType: "Arm Day",
+                                    energyLevel: 7, timeAvailableMinutes: 45)
+        armDay.date = earlier
+        armDay.createdAt = earlier
+        armDay.syncStatus = .synced
+        localStorage.saveWorkout(armDay)
+        let curl = Exercise.create(workoutId: armDay.id, name: "Barbell Curl", muscleGroup: "Biceps",
+                                   orderIndex: 0, targetSets: 2, targetReps: "10", targetRir: "2",
+                                   restSeconds: 60, coachNote: nil)
+        let skull = Exercise.create(workoutId: armDay.id, name: "Skull Crusher", muscleGroup: "Triceps",
+                                    orderIndex: 1, targetSets: 2, targetReps: "10", targetRir: "2",
+                                    restSeconds: 60, coachNote: nil)
+        localStorage.saveExercises([curl, skull], workoutId: armDay.id)
+        seedSets([(curl, [(65, 10, 2), (65, 9, 1)]), (skull, [(55, 10, 2), (55, 9, 1)])],
+                 localStorage: localStorage)
+    }
+
+    private static func seedSets(_ rows: [(Exercise, [(Double, Int, Int)])], localStorage: LocalStorageService) {
         for (exercise, sets) in rows {
             for (index, entry) in sets.enumerated() {
                 let set = WorkoutSet.create(exerciseId: exercise.id, setNumber: index + 1,

@@ -13,8 +13,7 @@ struct ActiveWorkoutView: View {
     @State private var currentExerciseIndex = 0
     @State private var exercisePendingRemoval: Exercise?
     @State private var showAddExercise = false
-    @State private var newExerciseName = ""
-    @State private var newMuscleGroup = ""
+    @State private var showReorder = false
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
@@ -110,8 +109,15 @@ struct ActiveWorkoutView: View {
             FormFeedbackView(result: result)
         }
         .sheet(isPresented: $showAddExercise) {
-            addExerciseSheet
-                .keyboardDoneButton()
+            ExerciseCatalogPicker(loadYourExercises: { todayViewModel.historyExercises() }) { name, muscleGroup in
+                addExercise(name: name, muscleGroup: muscleGroup)
+            }
+            .keyboardDoneButton()
+        }
+        .sheet(isPresented: $showReorder) {
+            ReorderExercisesSheet(exercises: todayViewModel.exercises) { unitOrder in
+                applyReorder(unitOrder)
+            }
         }
         .alert(
             "Remove \(exercisePendingRemoval?.name ?? "exercise")?",
@@ -198,7 +204,8 @@ struct ActiveWorkoutView: View {
                     onUnlink: {
                         if let gid = page.groupId { todayViewModel.unlinkSuperset(groupId: gid) }
                     },
-                    onRemove: { exercisePendingRemoval = $0 }
+                    onRemove: { exercisePendingRemoval = $0 },
+                    onReorder: { showReorder = true }
                 )
 
                 InkDivider()
@@ -372,6 +379,8 @@ struct ActiveWorkoutView: View {
         Button(action: {
             autoLogAllPendingSets()
             viewModel.cancelAllRestTimers()
+            viewModel.syncElapsed()
+            todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
             todayViewModel.finishWorkout(userNote: nil)
         }) {
             HStack(spacing: 9) {
@@ -533,44 +542,37 @@ struct ActiveWorkoutView: View {
         .animation(.spring(response: 0.6, dampingFraction: 0.7), value: todayViewModel.lastPR != nil)
     }
 
-    // MARK: - Add Exercise Sheet
+    // MARK: - Add / Reorder
 
-    private var addExerciseSheet: some View {
-        NavigationStack {
-            Form {
-                Section("Exercise Details") {
-                    TextField("Exercise Name", text: $newExerciseName)
-                    TextField("Muscle Group (e.g. Chest)", text: $newMuscleGroup)
-                }
-            }
-            .navigationTitle("Add Exercise")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        newExerciseName = ""
-                        newMuscleGroup = ""
-                        showAddExercise = false
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        let name = newExerciseName.trimmingCharacters(in: .whitespaces)
-                        let group = newMuscleGroup.trimmingCharacters(in: .whitespaces)
-                        guard !name.isEmpty else { return }
-                        todayViewModel.addExerciseManually(
-                            name: name,
-                            muscleGroup: group.isEmpty ? "Other" : group
-                        )
-                        currentExerciseIndex = max(0, SupersetGroup.pages(from: todayViewModel.exercises).count - 1)
-                        newExerciseName = ""
-                        newMuscleGroup = ""
-                        showAddExercise = false
-                    }
-                    .disabled(newExerciseName.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
+    /// Adds an exercise right after the page being shown and jumps to it.
+    private func addExercise(name: String, muscleGroup: String) {
+        let pagesBefore = SupersetGroup.pages(from: todayViewModel.exercises)
+        let after = min(currentExerciseIndex, max(0, pagesBefore.count - 1))
+        guard let newId = todayViewModel.addExerciseManually(
+            name: name,
+            muscleGroup: muscleGroup,
+            afterPageIndex: pagesBefore.isEmpty ? nil : after
+        ) else { return }
+        if let newExercise = todayViewModel.exercises.first(where: { $0.id == newId }) {
+            viewModel.prefillTargets(for: newExercise)
         }
+        let pages = SupersetGroup.pages(from: todayViewModel.exercises)
+        currentExerciseIndex = pages.firstIndex { $0.exerciseIds.contains(newId) }
+            ?? max(0, pages.count - 1)
+        persistSession()
+    }
+
+    /// Applies the reorder sheet's result, staying on the exercise that was showing.
+    private func applyReorder(_ unitOrder: [[UUID]]) {
+        let pages = SupersetGroup.pages(from: todayViewModel.exercises)
+        let currentIds = Set(pages[safe: currentExerciseIndex]?.exerciseIds ?? [])
+        todayViewModel.reorderExercises(unitOrder: unitOrder)
+        let updated = SupersetGroup.pages(from: todayViewModel.exercises)
+        if let index = updated.firstIndex(where: { !currentIds.isDisjoint(with: $0.exerciseIds) }) {
+            currentExerciseIndex = index
+        }
+        clampPageIndex()
+        persistSession()
     }
 }
 

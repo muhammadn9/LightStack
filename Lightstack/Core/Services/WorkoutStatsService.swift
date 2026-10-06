@@ -15,6 +15,14 @@ final class WorkoutStatsService {
         localStorage.fetchRecentWorkouts(userId: userId, limit: 100000).count
     }
 
+    /// Workouts dated within the current calendar month.
+    func workoutsThisMonth(userId: UUID, now: Date = Date(), calendar: Calendar = .current) -> Int {
+        localStorage.fetchRecentWorkouts(userId: userId, limit: 100000).filter {
+            guard let date = $0.date else { return false }
+            return calendar.isDate(date, equalTo: now, toGranularity: .month)
+        }.count
+    }
+
     func totalVolume(userId: UUID) -> Double {
         let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
         var volume = 0.0

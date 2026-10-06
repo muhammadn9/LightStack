@@ -18,6 +18,8 @@ struct ExerciseHeaderView: View {
     let onUnlink: () -> Void
     /// Long-press "Remove" on a member's name. The caller confirms before removing.
     let onRemove: (Exercise) -> Void
+    /// Opens the reorder sheet. The button only shows with two or more pages.
+    var onReorder: (() -> Void)? = nil
 
     private var isSuperset: Bool { members.count > 1 }
 
@@ -125,23 +127,48 @@ struct ExerciseHeaderView: View {
                 .disabled(currentIndex >= totalCount - 1)
                 .opacity(currentIndex >= totalCount - 1 ? 0.35 : 1)
             Spacer(minLength: 8)
-            if FeatureFlags.formAnalysisEnabled {
-                iconButton("figure.stand", label: "Form guide", action: onFormDemo)
-                iconButton("camera.fill", label: "Record form", action: onRecordForm)
+            // Secondary actions share one menu: a button each pushed the row wider
+            // than narrow phones, spilling the whole workout page off both edges.
+            if showsMoreMenu {
+                Menu {
+                    if let onReorder, totalCount > 1 {
+                        Button(action: onReorder) {
+                            Label("Reorder exercises", systemImage: "arrow.up.arrow.down")
+                        }
+                        .accessibilityIdentifier("reorderExercisesButton")
+                    }
+                    if FeatureFlags.formAnalysisEnabled {
+                        Button(action: onFormDemo) { Label("Form guide", systemImage: "figure.stand") }
+                        Button(action: onRecordForm) { Label("Record form", systemImage: "camera.fill") }
+                    }
+                } label: {
+                    iconLabel("ellipsis")
+                }
+                .accessibilityLabel("More actions")
+                .accessibilityIdentifier("moreActionsButton")
             }
             iconButton("plus", label: "Add exercise", action: onAdd)
+                .accessibilityIdentifier("addExerciseButton")
         }
+    }
+
+    private var showsMoreMenu: Bool {
+        FeatureFlags.formAnalysisEnabled || (onReorder != nil && totalCount > 1)
+    }
+
+    private func iconLabel(_ systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(AppTheme.accent)
+            .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
+            .background(AppTheme.surfaceElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
     }
 
     private func iconButton(_ systemName: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(AppTheme.accent)
-                .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
-                .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
+            iconLabel(systemName)
         }
         .accessibilityLabel(label)
     }

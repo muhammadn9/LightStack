@@ -132,13 +132,18 @@ final class PRRepository {
 
         guard let best = bestSet else { return }
 
-        let pr = PersonalRecord.create(
+        var pr = PersonalRecord.create(
             userId: userId,
             exerciseName: exerciseName,
             weightLbs: best.weightLbs,
             reps: Int(best.reps),
             workoutId: best.exercise?.workout?.id
         )
+        // Date the PR by when the set was lifted, not when it was recalculated —
+        // imports would otherwise all show the import day.
+        if let lifted = best.exercise?.workout?.date ?? best.recordedAt {
+            pr.dateAchieved = lifted
+        }
         localStorage.savePersonalRecord(pr)
     }
 }

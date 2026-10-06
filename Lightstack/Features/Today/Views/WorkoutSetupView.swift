@@ -56,6 +56,10 @@ struct WorkoutSetupView: View {
                     }
                 }
 
+                if !viewModel.historyWorkoutNames.isEmpty {
+                    historySection
+                }
+
                 // Energy Level (5-dot scale)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Energy Level")
@@ -203,6 +207,7 @@ struct WorkoutSetupView: View {
             if let userId = environment.authService.currentUser()?.userId {
                 viewModel.loadSplitDays(userId: userId)
                 todayViewModel.setUserId(userId)
+                viewModel.historyWorkoutNames = todayViewModel.historyWorkoutNames(excluding: viewModel.splitDays)
             }
             let type = viewModel.selectedWorkoutType
             lastSessionMatch = type.isEmpty ? nil : todayViewModel.lastSession(ofType: type)
@@ -212,6 +217,38 @@ struct WorkoutSetupView: View {
                 ManualWorkoutEntryView(todayViewModel: todayViewModel, userId: userId)
                     .keyboardDoneButton()
             }
+        }
+    }
+
+    /// Past workout names outside the split. Picking one starts a fresh workout from
+    /// that workout's latest exercises, with no AI generation.
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("From history")
+                .notebookSectionHeader()
+                .accessibilityIdentifier("fromHistoryHeader")
+            FlowLayout(spacing: 6) {
+                ForEach(viewModel.visibleHistoryNames, id: \.self) { name in
+                    JournalChip(
+                        label: name,
+                        isSelected: false,
+                        action: { todayViewModel.repeatLastSession(ofType: name) }
+                    )
+                }
+                if viewModel.hasHiddenHistory {
+                    Button(viewModel.showAllHistory ? "Show less" : "Show all (\(viewModel.historyWorkoutNames.count))") {
+                        withAnimation { viewModel.showAllHistory.toggle() }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .accessibilityIdentifier("historyShowAllButton")
+                }
+            }
+            Text("Starts with the same exercises as last time, no AI coaching.")
+                .font(AppTheme.caveat(13))
+                .foregroundStyle(AppTheme.textSecondary)
         }
     }
 
