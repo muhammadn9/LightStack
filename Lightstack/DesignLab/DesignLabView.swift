@@ -92,7 +92,7 @@ struct DLTodayScreen: View {
                 LazyVGrid(columns: cols, spacing: 10) {
                     ForEach(sampleUse) { use in
                         VStack(spacing: 5) {
-                            EquipmentIcon(kind: use.kind, style: t.isNotebook ? .ink : .filled,
+                            DLEquipmentIcon(kind: use.kind, style: t.isNotebook ? .ink : .filled,
                                           intensity: use.intensity)
                                 .padding(.horizontal, 6)
                             Text(use.kind.name)
@@ -368,7 +368,7 @@ struct DLWorkoutScreen: View {
                             .foregroundStyle(t.subtext)
                     }
                     Spacer(minLength: 6)
-                    EquipmentIcon(kind: .barbell, style: t.isNotebook ? .ink : .filled, intensity: 0.8)
+                    DLEquipmentIcon(kind: .barbell, style: t.isNotebook ? .ink : .filled, intensity: 0.8)
                         .frame(width: 44, height: 44)
                 }
                 HStack(spacing: 8) {
@@ -447,7 +447,7 @@ struct DLWorkoutScreen: View {
     private var upNext: some View {
         DLCard(padding: 16) {
             HStack(spacing: 12) {
-                EquipmentIcon(kind: .dumbbells, style: t.isNotebook ? .ink : .filled, intensity: 0)
+                DLEquipmentIcon(kind: .dumbbells, style: t.isNotebook ? .ink : .filled, intensity: 0)
                     .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Up next").font(t.note(12)).foregroundStyle(t.subtext)

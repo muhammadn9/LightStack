@@ -107,6 +107,24 @@ enum UITestMode {
         localStorage.saveExercises([curl, skull], workoutId: armDay.id)
         seedSets([(curl, [(65, 10, 2), (65, 9, 1)]), (skull, [(55, 10, 2), (55, 9, 1)])],
                  localStorage: localStorage)
+
+        // Dated today so the current week always has equipment usage (cable + machine).
+        let now = Date()
+        var core = Workout.create(userId: userId, workoutType: "Core Day",
+                                  energyLevel: 7, timeAvailableMinutes: 30)
+        core.date = now
+        core.createdAt = now
+        core.syncStatus = .synced
+        localStorage.saveWorkout(core)
+        let pulldown = Exercise.create(workoutId: core.id, name: "Lat Pulldown", muscleGroup: "Back",
+                                       orderIndex: 0, targetSets: 3, targetReps: "10", targetRir: "2",
+                                       restSeconds: 60, coachNote: nil)
+        let legPress = Exercise.create(workoutId: core.id, name: "Leg Press", muscleGroup: "Legs",
+                                       orderIndex: 1, targetSets: 2, targetReps: "10", targetRir: "2",
+                                       restSeconds: 60, coachNote: nil)
+        localStorage.saveExercises([pulldown, legPress], workoutId: core.id)
+        seedSets([(pulldown, [(100, 10, 2), (100, 10, 2), (100, 9, 1)]), (legPress, [(180, 10, 2), (180, 9, 1)])],
+                 localStorage: localStorage)
     }
 
     private static func seedSets(_ rows: [(Exercise, [(Double, Int, Int)])], localStorage: LocalStorageService) {

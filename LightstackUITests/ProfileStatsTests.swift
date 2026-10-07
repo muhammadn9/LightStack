@@ -32,7 +32,7 @@ final class ProfileStatsTests: LightstackUITestCase {
         let avg = waitFor(app.staticTexts["profile.stat.avgDuration"])
         shot("profile-stats")
         XCTAssertNotEqual(avg.label, "0 min", "Avg Duration shows 0 min after an in-app workout")
-        XCTAssertEqual(app.staticTexts["profile.stat.totalWorkouts"].label, "3",  // 2 seeded + this one
+        XCTAssertEqual(app.staticTexts["profile.stat.totalWorkouts"].label, "4",  // 3 seeded + this one
                        "Profile did not refresh after the workout was saved")
     }
 
