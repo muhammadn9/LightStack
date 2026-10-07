@@ -37,10 +37,6 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>30</string>
-	<key>CLAUDE_API_KEY</key>
-	<string>$(CLAUDE_API_KEY)</string>
-	<key>GEMINI_API_KEY</key>
-	<string>$(GEMINI_API_KEY)</string>
 	<key>GOOGLE_CLIENT_ID</key>
 	<string>$(GOOGLE_CLIENT_ID)</string>
 	<key>GOOGLE_REVERSED_CLIENT_ID</key>
@@ -53,8 +49,6 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Lightstack uses your camera to analyze exercise form and count reps during your workout.</string>
-	<key>OPENAI_API_KEY</key>
-	<string>$(OPENAI_API_KEY)</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
 	<key>SUPABASE_URL</key>

@@ -8,6 +8,8 @@ struct LoginView: View {
     @State private var password = ""
     @State private var isSignUp = false
     @State private var errorMessage: String?
+    /// Raw nonce for the in-flight Apple request; its SHA-256 goes on the request.
+    @State private var appleNonce: String?
     @State private var showResetConfirmation = false
 
     var body: some View {
@@ -213,12 +215,21 @@ struct LoginView: View {
 
     private func configureAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
         request.requestedScopes = [.fullName, .email]
+        let nonce = AuthService.appleNonce()
+        appleNonce = nonce.raw
+        request.nonce = nonce.hashed
     }
 
     private func handleAppleResult(_ result: Result<ASAuthorization, Error>) {
         switch result {
-        case .success:
-            environment.authService.signInWithApple()
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let nonce = appleNonce else {
+                errorMessage = "Apple Sign-In failed. Please try again."
+                return
+            }
+            appleNonce = nil
+            environment.authService.signInWithApple(credential: credential, nonce: nonce)
         case .failure:
             errorMessage = "Apple Sign-In cancelled."
         }

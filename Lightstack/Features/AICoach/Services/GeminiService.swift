@@ -3,25 +3,40 @@ import os
 
 // MARK: - GeminiService
 
-/// Handles all Google Gemini API calls.
+/// Handles all Gemini calls.
 /// Single responsibility: send prompt, receive response.
 /// No context building — that's CoachContextBuilder's job.
+///
+/// The app never holds a Gemini key. Requests go to the `ai-proxy` Supabase Edge
+/// Function, signed with the user's session token; the function checks the user's
+/// rate limit and calls Gemini with a server-side key.
 final class GeminiService {
 
     private let logger = Logger(subsystem: "org.lightstack.app", category: "GeminiService")
 
-    private let apiKey: String
     private let session: URLSession
     /// Gemini model id, e.g. "gemini-3.5-flash". Each model gets its own
     /// provider instance so a busy model can fall back to another.
     let model: String
-    private var baseURL: String {
-        "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent"
-    }
+    /// `<SUPABASE_URL>/functions/v1/ai-proxy`; nil when Supabase isn't configured.
+    private let proxyURL: URL?
+    private let anonKey: String
+    /// The signed-in user's access token, or nil when signed out.
+    private let accessToken: () async -> String?
 
-    init(model: String = "gemini-3.5-flash") {
+    /// Error domain for refusals from ai-proxy itself (rate limit, not signed in).
+    static let proxyErrorDomain = "AIProxy"
+
+    init(
+        model: String = "gemini-3.5-flash",
+        proxyURL: URL? = nil,
+        anonKey: String = "",
+        accessToken: @escaping () async -> String? = { nil }
+    ) {
         self.model = model
-        self.apiKey = Bundle.main.infoDictionary?["GEMINI_API_KEY"] as? String ?? ""
+        self.proxyURL = proxyURL
+        self.anonKey = anonKey
+        self.accessToken = accessToken
         self.session = URLSession.shared
     }
 
@@ -39,34 +54,45 @@ final class GeminiService {
         logger.debug("System prompt: \(systemPrompt.count) chars")
         logger.debug("Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
 
-        guard !apiKey.isEmpty else {
-            DispatchQueue.main.async { completion(.failure(self.missingAPIKeyError())) }
-            return
-        }
-
-        guard let url = URL(string: "\(baseURL)?key=\(apiKey)") else {
+        guard let url = proxyURL else {
             DispatchQueue.main.async { completion(.failure(self.invalidURLError())) }
             return
         }
 
-        let body = buildChatRequestBody(
+        var body = buildChatRequestBody(
             systemPrompt: systemPrompt,
             messages: messages,
             expectsJSON: expectsJSON
         )
+        body["model"] = model
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
+        let httpBody: Data
         do {
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            httpBody = try JSONSerialization.data(withJSONObject: body)
         } catch {
             DispatchQueue.main.async { completion(.failure(error)) }
             return
         }
 
-        performWithRetry(request: request, attempt: 0, completion: completion)
+        Task {
+            guard let token = await accessToken() else {
+                DispatchQueue.main.async { completion(.failure(Self.proxyError(401, "Please sign in to use the AI coach."))) }
+                return
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.httpBody = httpBody
+            performWithRetry(request: request, attempt: 0, completion: completion)
+        }
+    }
+
+    /// A refusal from ai-proxy itself. The manager shows these as-is instead of
+    /// falling back to another model, which would be refused the same way.
+    static func proxyError(_ status: Int, _ message: String) -> NSError {
+        NSError(domain: proxyErrorDomain, code: status, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
     /// Executes the request, retrying on 503 with exponential backoff: 1s, 2s, 4s.
@@ -83,7 +109,15 @@ final class GeminiService {
                 return
             }
 
-            let httpStatus = (response as? HTTPURLResponse)?.statusCode ?? 200
+            let http = response as? HTTPURLResponse
+            let httpStatus = http?.statusCode ?? 200
+
+            // ai-proxy's own refusals (rate limit, signed out, …): surface the message.
+            if http?.value(forHTTPHeaderField: "x-ai-proxy-error") != nil {
+                let message = data.flatMap(Self.proxyMessage(from:)) ?? "The AI coach is unavailable right now."
+                DispatchQueue.main.async { completion(.failure(Self.proxyError(httpStatus, message))) }
+                return
+            }
 
             // Retry on 503 with exponential backoff: 1s → 2s → 4s (max 3 retries)
             if httpStatus == 503 && attempt < 3 {
@@ -108,6 +142,12 @@ final class GeminiService {
             }
         }
         task.resume()
+    }
+
+    static func proxyMessage(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any] else { return nil }
+        return error["message"] as? String
     }
 
     // MARK: - Private
@@ -192,7 +232,7 @@ extension GeminiService: AIProvider {
     var rateLimitKey: String { "gemini_rate_limit_until_\(model)" }
 
     var isAvailable: Bool {
-        guard !apiKey.isEmpty else { return false }
+        guard proxyURL != nil else { return false }
         if let rateLimitUntil = UserDefaults.standard.object(forKey: rateLimitKey) as? Date {
             return Date() >= rateLimitUntil
         }

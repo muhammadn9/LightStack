@@ -82,7 +82,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             supabaseKey: supabaseKey,
             options: .init(
                 auth: .init(
-                    redirectToURL: AuthService.redirectURL
+                    redirectToURL: AuthService.redirectURL,
+                    // PKCE: a callback link only completes sign-in if this app started
+                    // the flow (it holds the code verifier), so another app that
+                    // claims lightstack:// can't inject a session.
+                    flowType: .pkce
                 )
             )
         )
@@ -98,12 +102,16 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
         self.validationService = ValidationService()
 
-        // AI providers, tried in order. Only Gemini's free tier is set up, so the
-        // chain falls back between Gemini models rather than to OpenAI/Claude,
-        // which have no billing and only add a slow failure before the error.
-        // OpenAIService/ClaudeService remain available to re-add once funded.
-        self.geminiService = GeminiService(model: "gemini-3.5-flash")
-        let geminiFallback = GeminiService(model: "gemini-2.5-flash")
+        // AI providers, tried in order: Gemini models reached through the ai-proxy
+        // Edge Function. No AI keys ship in the app; the function holds the key and
+        // enforces the per-user rate limit.
+        let proxyURL = resolvedURL.appendingPathComponent("functions/v1/ai-proxy")
+        let client = supabaseClient
+        let accessToken: () async -> String? = { try? await client.auth.session.accessToken }
+        self.geminiService = GeminiService(model: "gemini-3.5-flash", proxyURL: proxyURL,
+                                           anonKey: supabaseKey, accessToken: accessToken)
+        let geminiFallback = GeminiService(model: "gemini-2.5-flash", proxyURL: proxyURL,
+                                           anonKey: supabaseKey, accessToken: accessToken)
         var providers: [AIProvider] = [geminiService, geminiFallback]
         #if DEBUG
         if UITestMode.isActive { providers = [UITestFakeAIProvider()] }

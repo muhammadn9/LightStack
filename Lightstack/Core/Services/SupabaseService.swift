@@ -248,16 +248,4 @@ final class SupabaseService {
         return response
     }
 
-    // MARK: - Rate Limit
-
-    func checkRateLimit(userId: UUID) async throws -> Bool {
-        struct RateLimitResult: Decodable {
-            let allowed: Bool
-        }
-        let result: RateLimitResult = try await client
-            .rpc("check_rate_limit", params: ["p_user_id": userId.uuidString])
-            .execute()
-            .value
-        return result.allowed
-    }
 }

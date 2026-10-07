@@ -88,23 +88,8 @@ final class WorkoutSessionService {
         )
 
         Task { @MainActor in
-            // Rate limit check before any writes or API calls
-            do {
-                let allowed = try await supabaseService.checkRateLimit(userId: userId)
-                if !allowed {
-                    let error = NSError(
-                        domain: "WorkoutSessionService",
-                        code: 429,
-                        userInfo: [NSLocalizedDescriptionKey: "Too many AI requests. Please wait a moment before trying again."]
-                    )
-                    delegate?.sessionServiceDidFail(self, error: error)
-                    return
-                }
-            } catch {
-                // Rate limit check failed (network issue) — proceed and let Gemini decide
-            }
-
-            // Write the workout record only after passing rate limit
+            // The per-user AI rate limit is enforced server-side by the ai-proxy
+            // Edge Function; a refusal arrives as the generation error below.
             currentWorkout = pendingWorkout
             currentWorkoutId = pendingWorkout.id
             workoutRepository.createWorkout(pendingWorkout)
@@ -196,17 +181,6 @@ final class WorkoutSessionService {
         workoutRepository.updateWorkout(workout)
 
         Task { @MainActor in
-            do {
-                let allowed = try await supabaseService.checkRateLimit(userId: userId)
-                if !allowed {
-                    // Rate-limited — let user stay on PostWorkoutView without an AI note
-                    self.handleProgressionNoteResponse("")
-                    return
-                }
-            } catch {
-                // Rate limit check failed — proceed without blocking
-            }
-
             let context = coachContextBuilder.buildContext(userId: userId)
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
             let userMessage = coachPromptService.buildPostSessionMessage(
