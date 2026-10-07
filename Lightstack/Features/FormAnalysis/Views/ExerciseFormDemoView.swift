@@ -101,7 +101,7 @@ struct ExerciseFormDemoView: View {
             }) {
                 Label("Start Recording", systemImage: "camera.fill")
                     .font(AppTheme.caveat(16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.onAccent)
                     .frame(maxWidth: .infinity)
                     .padding(16)
                     .background(

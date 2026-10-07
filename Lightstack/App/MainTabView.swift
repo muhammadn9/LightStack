@@ -1,73 +1,96 @@
 import SwiftUI
 
-/// Main app container: notebook-style tab row at top + content area below.
-/// Replaces the native iOS tab bar with an inline horizontal tab strip.
+/// Main app container: native bottom tab bar (Today · History · Progress · Profile).
 struct MainTabView: View {
     @EnvironmentObject var environment: AppEnvironment
+    /// 0 Today, 1 History, 2 Progress, 3 Profile (4 Month, only when its flag is on).
     @AppStorage("selectedTab") private var selectedTab: Int = 0
+    @AppStorage("selectedTabLayoutV2") private var tabLayoutMigrated = false
     @State private var todayViewModel: TodayViewModel?
     @State private var monthPlanViewModel: MonthPlanViewModel?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Notebook tab row
-            NotebookTabRow(selectedTab: $selectedTab)
+        TabView(selection: $selectedTab) {
+            Group {
+                if let todayVM = todayViewModel {
+                    TodayTabContent(viewModel: todayVM)
+                } else {
+                    AppTheme.background.ignoresSafeArea()
+                }
+            }
+            .tabItem { Label("Today", systemImage: "figure.strengthtraining.traditional") }
+            .tag(0)
 
-            // Content — TabView with page style for smooth swiping
-            TabView(selection: $selectedTab) {
+            HistoryListView()
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tag(1)
+
+            ProgressTabView()
+                .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(2)
+
+            ProfileView()
+                .tabItem { Label("Profile", systemImage: "person.crop.circle") }
+                .tag(3)
+
+            if FeatureFlags.monthTabEnabled {
                 Group {
-                    if let todayVM = todayViewModel {
-                        TodayTabContent(viewModel: todayVM)
+                    if let monthVM = monthPlanViewModel {
+                        MonthPlanView(viewModel: monthVM, selectedTab: $selectedTab)
                     } else {
                         AppTheme.background
                     }
                 }
-                .tag(0)
-
-                if FeatureFlags.monthTabEnabled {
-                    Group {
-                        if let monthVM = monthPlanViewModel {
-                            MonthPlanView(viewModel: monthVM, selectedTab: $selectedTab)
-                        } else {
-                            AppTheme.background
-                        }
-                    }
-                    .tag(1)
-                }
-
-                HistoryListView()
-                    .tag(2)
-
-                ProfileView()
-                    .tag(3)
-
-                SettingsView()
-                    .tag(4)
+                .tabItem { Label("Month", systemImage: "calendar") }
+                .tag(4)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            // Tab taps already animate via withAnimation in NotebookTabRow; a second
-            // implicit animation here doubled the page transition.
         }
-        .ignoresSafeArea(.container, edges: .bottom)  // keep keyboard avoidance
+        .tint(AppTheme.accent)
         .themedBackground()
+        .sensoryFeedback(.selection, trigger: selectedTab)
         .onAppear {
             setupAppearance()
-            // The saved tab may point at the hidden Month tab.
-            if !FeatureFlags.monthTabEnabled && selectedTab == 1 { selectedTab = 0 }
+            migrateStoredTab()
             if todayViewModel == nil {
                 todayViewModel = environment.makeTodayViewModel()
             }
-            if monthPlanViewModel == nil {
+            if monthPlanViewModel == nil && FeatureFlags.monthTabEnabled {
                 monthPlanViewModel = environment.makeMonthPlanViewModel()
             }
+        }
+    }
+
+    /// Old layout: 0 Today, 1 Month, 2 History, 3 Profile, 4 Settings.
+    private func migrateStoredTab() {
+        guard !tabLayoutMigrated else { return }
+        tabLayoutMigrated = true
+        switch selectedTab {
+        case 1: selectedTab = 0
+        case 2: selectedTab = 1
+        case 3, 4: selectedTab = 3
+        default: break
         }
     }
 
     // MARK: - UIKit Appearance
 
     private func setupAppearance() {
-        // Hide native tab bar entirely (custom tab row replaces it)
-        UITabBar.appearance().isHidden = true
+        let barColor = UIColor { $0.userInterfaceStyle == .dark ? UIColor(netHex: 0x111314) : .white }
+        let unselected = UIColor { $0.userInterfaceStyle == .dark ? UIColor(netHex: 0x8D9296) : UIColor(netHex: 0x555555) }
+        let selected = UIColor { $0.userInterfaceStyle == .dark ? UIColor(netHex: 0x3DDC4A) : UIColor(netHex: 0x1A7F2E) }
+
+        let tabAppearance = UITabBarAppearance()
+        tabAppearance.configureWithOpaqueBackground()
+        tabAppearance.backgroundColor = barColor
+        tabAppearance.shadowColor = UIColor { $0.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor.black.withAlphaComponent(0.1) }
+        for item in [tabAppearance.stackedLayoutAppearance, tabAppearance.inlineLayoutAppearance, tabAppearance.compactInlineLayoutAppearance] {
+            item.normal.iconColor = unselected
+            item.normal.titleTextAttributes = [.foregroundColor: unselected]
+            item.selected.iconColor = selected
+            item.selected.titleTextAttributes = [.foregroundColor: selected]
+        }
+        UITabBar.appearance().standardAppearance = tabAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabAppearance
 
         // Navigation bar styling — use system defaults
         let navAppearance = UINavigationBarAppearance()
@@ -78,68 +101,9 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - Notebook Tab Row
-
-struct NotebookTabRow: View {
-    @Binding var selectedTab: Int
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    @Namespace private var indicator
-    /// (tag, title). Tags stay fixed so hiding a tab doesn't shift the others.
-    private let tabs: [(tag: Int, title: String)] = [
-        (0, "Today"), (1, "Month"), (2, "History"), (3, "Profile"), (4, "Settings")
-    ].filter { FeatureFlags.monthTabEnabled || $0.0 != 1 }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach(tabs, id: \.tag) { tab in
-                    Button {
-                        withAnimation(reduceMotion ? nil : AppMotion.tabSwitch) {
-                            selectedTab = tab.tag
-                        }
-                    } label: {
-                        VStack(spacing: 0) {
-                            Text(tab.title)
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(tab.tag == selectedTab ? AppTheme.accent : AppTheme.textSecondary)
-                                .padding(.vertical, 10)
-                                .frame(maxWidth: .infinity)
-
-                            ZStack {
-                                Capsule()
-                                    .fill(Color.clear)
-                                    .frame(height: 3)
-                                if tab.tag == selectedTab {
-                                    Capsule()
-                                        .fill(AppTheme.accent)
-                                        .frame(height: 3)
-                                        .matchedGeometryEffect(id: "tabIndicator", in: indicator)
-                                }
-                            }
-                            .padding(.horizontal, 18)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("tab.\(tab.title)")
-                    .accessibilityLabel(tab.title)
-                    .accessibilityHint("Shows the \(tab.title) screen")
-                    .accessibilityAddTraits(
-                        tab.tag == selectedTab ? [.isButton, .isSelected] : .isButton
-                    )
-                }
-            }
-            InkDivider()
-        }
-        .accessibilityElement(children: .contain)
-        .background(.bar)
-        .sensoryFeedback(.selection, trigger: selectedTab)
-    }
-}
-
 // MARK: - Today Tab Content
 
-/// Wraps TodayViewModel lifecycle within the custom tab architecture.
+/// Wraps TodayViewModel lifecycle within the tab architecture.
 private struct TodayTabContent: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: TodayViewModel

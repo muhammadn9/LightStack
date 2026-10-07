@@ -151,7 +151,7 @@ struct ManualWorkoutEntryView: View {
         Button(action: { showAddExercise = true }) {
             Label("Add Exercise", systemImage: "plus.circle.fill")
                 .font(AppTheme.caveat(15, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.onAccent)
                 .frame(maxWidth: .infinity)
                 .padding(16)
                 .background(

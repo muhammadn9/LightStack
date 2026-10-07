@@ -180,7 +180,7 @@ struct WorkoutDetailView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(AppTheme.accentGradient)
-            .foregroundStyle(.white)
+            .foregroundStyle(AppTheme.onAccent)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }

@@ -19,7 +19,7 @@ struct SetRowView: View {
             // Set number badge
             Text("\(workoutSet.setNumber)")
                 .font(AppTheme.plexMono(10, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.onAccent)
                 .frame(width: 22, height: 22)
                 .background(AppTheme.accent)
                 .clipShape(Circle())
@@ -74,7 +74,7 @@ struct SetRowView: View {
             // Set number badge
             Text("\(workoutSet.setNumber)")
                 .font(AppTheme.plexMono(10, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.onAccent)
                 .frame(width: 22, height: 22)
                 .background(AppTheme.accent)
                 .clipShape(Circle())

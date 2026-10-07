@@ -120,7 +120,7 @@ struct OnboardingView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(isSelected ? AppTheme.accent : AppTheme.surface)
-                .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
+                .foregroundStyle(isSelected ? AppTheme.onAccent : AppTheme.textPrimary)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
@@ -271,7 +271,7 @@ struct OnboardingView: View {
                     }
                 }
                     .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.onAccent)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
                     .background(canProceedToNextStep ? AppTheme.accentGradient : LinearGradient(colors: [AppTheme.surfaceElevated], startPoint: .leading, endPoint: .trailing))
@@ -280,7 +280,7 @@ struct OnboardingView: View {
             } else {
                 Button("Finish") { completeOnboarding() }
                     .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.onAccent)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
                     .background(AppTheme.accentGradient)

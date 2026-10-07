@@ -8,6 +8,18 @@ struct RootView: View {
     @Environment(\.colorScheme) private var systemColorScheme
 
     var body: some View {
+        #if DEBUG
+        if DesignLabConfig.isEnabled {
+            DesignLabView()
+        } else {
+            appBody
+        }
+        #else
+        appBody
+        #endif
+    }
+
+    private var appBody: some View {
         Group {
             if environment.needsEmailVerification {
                 EmailVerificationView()

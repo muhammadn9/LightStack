@@ -90,14 +90,21 @@ class LightstackUITestCase: XCTestCase {
     }
 
     func openTab(_ title: String) {
-        let tab = waitFor(app.buttons["tab.\(title)"])
+        let tab = waitFor(app.tabBars.buttons[title])
         // A tap during the first render can be lost, so confirm the tab became selected.
-        for _ in 0..<3 where !tab.isSelected {
+        for _ in 0..<2 where !tab.isSelected {
             tab.tap()
             let selected = NSPredicate(format: "selected == true")
-            _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: selected, object: tab)], timeout: 5)
+            _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: selected, object: tab)], timeout: 3)
         }
-        XCTAssertTrue(tab.isSelected, "Tab \(title) was not selected")
+        // Native tab buttons do not always report `selected`; callers verify content.
+    }
+
+    /// Profile tab -> gear -> Settings.
+    func openSettings() {
+        openTab("Profile")
+        tap(app.buttons["profile.settings"])
+        waitFor(app.staticTexts["Rest Timer Alerts"])
     }
 
     // MARK: - Flows

@@ -8,6 +8,7 @@ struct ProfileView: View {
     @AppStorage("selectedTab") private var selectedTab: Int = 0
     @State private var showEditSheet = false
     @State private var showAllPRs = false
+    @State private var showSettings = false
     @State private var streak: Int = 0
     @State private var totalSessions: Int = 0
     @State private var totalVolume: Double = 0
@@ -24,11 +25,15 @@ struct ProfileView: View {
                 .padding(16)
             }
             .themedBackground()
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .statusBarBackdrop()
             .onAppear { loadProfileData() }
-            // The paging TabView can keep this page alive, so reload whenever it becomes the visible tab.
+            // Reload whenever this becomes the visible tab.
             .onChange(of: selectedTab) { _, tab in
                 if tab == 3 { loadProfileData() }
+            }
+            .navigationDestination(isPresented: $showSettings) {
+                SettingsView()
             }
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
@@ -57,7 +62,7 @@ struct ProfileView: View {
                         .frame(width: 48, height: 48)
                     Text(initials)
                         .font(AppTheme.playfair(20, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(AppTheme.onAccent)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -90,6 +95,16 @@ struct ProfileView: View {
                         .font(.title3)
                         .foregroundStyle(AppTheme.accent)
                 }
+                .accessibilityIdentifier("profile.edit")
+
+                // Settings button
+                Button(action: { showSettings = true }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.accent)
+                }
+                .accessibilityLabel("Settings")
+                .accessibilityIdentifier("profile.settings")
             }
             .padding(.bottom, 12)
 
@@ -157,19 +172,6 @@ struct ProfileView: View {
                 .padding(.bottom, 12)
             }
 
-            // Volume Progress
-            if let vm = viewModel, !vm.volumePerMuscleGroup.isEmpty {
-                InkDivider()
-                    .padding(.vertical, 10)
-
-                Text("Volume Progress")
-                    .notebookSectionHeader()
-                    .padding(.bottom, 8)
-
-                volumeProgressSection(vm: vm)
-                    .padding(.bottom, 12)
-            }
-
         }
         .padding(14)
         .background(AppTheme.surface)
@@ -195,33 +197,6 @@ struct ProfileView: View {
                 .accessibilityIdentifier("profile.stat.\(id)")
         }
         .padding(.vertical, 6)
-    }
-
-    // MARK: - Volume Progress
-
-    private func volumeProgressSection(vm: ProfileViewModel) -> some View {
-        let maxVolume = vm.volumePerMuscleGroup.values.max() ?? 1
-        let groups = vm.volumePerMuscleGroup.sorted { $0.value > $1.value }.prefix(4)
-
-        return VStack(spacing: 8) {
-            ForEach(Array(groups), id: \.key) { group, volume in
-                let progress = maxVolume > 0 ? volume / maxVolume : 0
-                let pct = Int(progress * 100)
-
-                VStack(spacing: 3) {
-                    HStack {
-                        Text(group)
-                            .font(AppTheme.caveat(11))
-                            .foregroundStyle(AppTheme.textSecondary)
-                        Spacer()
-                        Text("\(pct)%")
-                            .font(AppTheme.caveat(11))
-                            .foregroundStyle(pct >= 70 ? AppTheme.accent : AppTheme.textPrimary)
-                    }
-                    InkFillBar(progress: progress)
-                }
-            }
-        }
     }
 
     // MARK: - Helpers

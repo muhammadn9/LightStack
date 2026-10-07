@@ -20,7 +20,7 @@ struct PlanSwitcherChipsView: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(activePlanId == plan.id ? AppTheme.accent : AppTheme.surfaceElevated)
-                            .foregroundStyle(activePlanId == plan.id ? Color.white : AppTheme.textPrimary)
+                            .foregroundStyle(activePlanId == plan.id ? AppTheme.onAccent : AppTheme.textPrimary)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }

@@ -70,7 +70,7 @@ struct EditProfileGoalsSection: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(isSelected ? AppTheme.accent : AppTheme.surface)
-                .foregroundStyle(isSelected ? .white : AppTheme.textPrimary)
+                .foregroundStyle(isSelected ? AppTheme.onAccent : AppTheme.textPrimary)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
@@ -91,7 +91,7 @@ struct EditProfileGoalsSection: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(AppTheme.accent)
-        .foregroundStyle(.white)
+        .foregroundStyle(AppTheme.onAccent)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
     }
 

@@ -6,24 +6,27 @@ enum AppTheme {
 
     // MARK: - Adaptive Colors
 
-    /// System grouped backgrounds — adapt automatically to light/dark mode.
-    static let background = Color(.systemGroupedBackground)
-    static let surface     = Color(.secondarySystemGroupedBackground)
-    static let surfaceElevated = Color(.tertiarySystemGroupedBackground)
+    /// Variant A "Dark Gym": near-black canvas with lifted cards in dark mode,
+    /// system grouped look in light mode.
+    static let background = Color(adaptiveDark: 0x0B0D0E, light: 0xF2F2F7)
+    static let surface     = Color(adaptiveDark: 0x1C1E20, light: 0xFFFFFF)
+    static let surfaceElevated = Color(adaptiveDark: 0x26292B, light: 0xE9E9EE)
 
-    /// Amber gold (dark) / fountain-pen blue (light)
-    static let accent              = Color(adaptiveDark: 0xC8860A, light: 0x1B3A6B)
-    static let accentGradientStart = Color(adaptiveDark: 0xA06808, light: 0x1B3A6B)
-    static let accentGradientEnd   = Color(adaptiveDark: 0xE09818, light: 0x3A6AB0)
-    static let accentSecondary     = Color(adaptiveDark: 0xD4A040, light: 0x3A6AB0)
+    /// Lime (dark) / AA-contrast green on white (light).
+    static let accent              = Color(adaptiveDark: 0x3DDC4A, light: 0x1A7F2E)
+    static let accentGradientStart = accent
+    static let accentGradientEnd   = accent
+    static let accentSecondary     = Color(adaptiveDark: 0x7BE585, light: 0x2E9A44)
+    /// Text / icons drawn ON an accent fill.
+    static let onAccent            = Color(adaptiveDark: 0x0B0D0E, light: 0xFFFFFF)
 
     /// System label colors.
     static let textPrimary   = Color(.label)
     /// Darker in light mode than system secondaryLabel to meet WCAG AA (4.5:1) on system grouped backgrounds.
-    static let textSecondary = Color(adaptiveDark: 0x8E8E93, light: 0x555555)
+    static let textSecondary = Color(adaptiveDark: 0x8D9296, light: 0x555555)
 
     /// Hairline separator.
-    static let border = Color(.separator)
+    static let border = Color(adaptiveDark: 0x2A2D30, light: 0xD8D8DE)
 
     // Semantic
     static let success      = Color(.systemGreen)
@@ -33,6 +36,7 @@ enum AppTheme {
 
     // MARK: - Gradients
 
+    /// Effectively solid — the design uses flat lime pills.
     static let accentGradient = LinearGradient(
         colors: [accentGradientStart, accentGradientEnd],
         startPoint: .leading, endPoint: .trailing
@@ -43,30 +47,23 @@ enum AppTheme {
         startPoint: .top, endPoint: .bottom
     )
 
-    static let successGradient = LinearGradient(
-        colors: [Color(hex: 0x2A6A2A), Color(hex: 0x6AB040)],
-        startPoint: .leading, endPoint: .trailing
-    )
+    static let successGradient = accentGradient
 
-    /// Bright green gradient for success-action buttons (e.g. "Analyse Form").
-    static let successActionGradient = LinearGradient(
-        colors: [Color(red: 0.2, green: 0.75, blue: 0.2),
-                 Color(red: 0.1, green: 0.5,  blue: 0.1)],
-        startPoint: .leading, endPoint: .trailing
-    )
+    /// Success-action buttons (e.g. "Analyse Form") — same solid accent.
+    static let successActionGradient = accentGradient
 
     // MARK: - Notebook-specific Colors
 
-    static let bindingStrip    = Color(.secondarySystemGroupedBackground)
+    static let bindingStrip    = AppTheme.surface
     static let bindingHole     = Color(.tertiaryLabel)
     static let cornerFold      = Color.clear
-    static let timerTrack      = Color(.systemFill)
+    static let timerTrack      = AppTheme.surfaceElevated
     static let textHand        = AppTheme.textSecondary
     static let prStamp         = Color(hex: 0xB91C1C)
 
     // MARK: - Dimensions
 
-    static let cornerRadius: CGFloat = 14
+    static let cornerRadius: CGFloat = 20
     static let cardPadding: CGFloat  = 16
     static let sectionSpacing: CGFloat = 24
     static let minTouchSize: CGFloat = 50
@@ -102,8 +99,8 @@ enum AppTheme {
     static func playfair(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         let resolved: Font.Weight
         switch weight {
-        case .bold, .semibold, .heavy, .black: resolved = .bold
-        default:                               resolved = .semibold
+        case .bold, .semibold, .heavy, .black: resolved = .heavy
+        default:                               resolved = .bold
         }
         return .system(textStyle(for: size), design: .default, weight: resolved)
     }
@@ -211,7 +208,7 @@ struct AccentGradientBackground: ViewModifier {
 struct ThemedBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .background(AppTheme.background.ignoresSafeArea())
     }
 }
 
@@ -271,10 +268,10 @@ struct JournalChip: View {
         Button(action: action) {
             Text(label)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(isSelected ? Color.white : AppTheme.textSecondary)
+                .foregroundStyle(isSelected ? AppTheme.onAccent : AppTheme.textSecondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .background(isSelected ? AppTheme.accent : Color(.secondarySystemFill))
+                .background(isSelected ? AppTheme.accent : AppTheme.surfaceElevated)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -294,12 +291,12 @@ struct WaxSealButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundStyle(isSecondary ? AppTheme.accent : Color.white)
+            .foregroundStyle(isSecondary ? AppTheme.accent : AppTheme.onAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(
                 isSecondary ? AppTheme.accent.opacity(0.12) : AppTheme.accent,
-                in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
+                in: Capsule()
             )
             .opacity(configuration.isPressed ? 0.85 : 1.0)
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
@@ -332,6 +329,21 @@ extension View {
 
     func themedBackground() -> some View {
         modifier(ThemedBackground())
+    }
+
+    /// Solid strip behind the status bar for scroll screens without a navigation
+    /// bar, so scrolled content doesn't run under the clock.
+    func statusBarBackdrop() -> some View {
+        overlay(alignment: .top) {
+            // The reader starts at the top of the safe area, so shifting the strip up
+            // by the inset lands it exactly behind the status bar.
+            GeometryReader { proxy in
+                AppTheme.background
+                    .frame(height: proxy.safeAreaInsets.top)
+                    .offset(y: -proxy.safeAreaInsets.top)
+            }
+            .allowsHitTesting(false)
+        }
     }
 
     func notebookSectionHeader() -> some View {
