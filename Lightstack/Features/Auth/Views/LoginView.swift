@@ -118,7 +118,7 @@ struct LoginView: View {
             Button(action: handleEmailAuth) {
                 Text(isSignUp ? "Sign Up" : "Sign In")
                     .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.onAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(AppTheme.accentGradient)

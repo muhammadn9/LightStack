@@ -1,32 +1,29 @@
 import XCTest
 
-/// Regression: build 26 crashed (UINavigationBar layout assertion) when the owner
-/// swiped from History to Profile and then tapped Settings.
+/// Regression: build 26 crashed (UINavigationBar layout assertion) when moving
+/// between tabs and Settings. Settings now lives behind the gear in Profile.
 final class TabNavigationTests: LightstackUITestCase {
 
-    func testSwipeToProfileThenTapSettingsDoesNotCrash() {
+    func testProfileGearOpensSettingsDoesNotCrash() {
         launchApp()
         openTab("History")
-        app.swipeLeft()
-        XCTAssertTrue(app.buttons["tab.Profile"].waitForExistence(timeout: timeout))
-        tap(app.buttons["tab.Settings"])
-        shot("settings-after-swipe")
+        openSettings()
+        shot("settings-after-history")
 
-        // Still running, still on Settings, and the screen is usable.
-        XCTAssertEqual(app.state, .runningForeground, "App crashed switching to Settings")
-        XCTAssertTrue(app.staticTexts["Rest Timer Alerts"].waitForExistence(timeout: timeout))
+        XCTAssertEqual(app.state, .runningForeground, "App crashed opening Settings")
+        XCTAssertTrue(app.staticTexts["Rest Timer Alerts"].exists)
     }
 
     func testRapidTabSwitchingDoesNotCrash() {
         launchApp()
-        for title in ["History", "Profile", "Settings", "History", "Settings", "Profile", "Settings", "Today", "Settings"] {
-            app.buttons["tab.\(title)"].tap()
+        for title in ["History", "Progress", "Profile", "Today", "Profile", "History", "Progress", "Today", "Profile"] {
+            app.tabBars.buttons[title].tap()
         }
-        app.swipeRight()
-        app.swipeRight()
-        app.buttons["tab.Settings"].tap()
+        tap(app.buttons["profile.settings"])
+        app.tabBars.buttons["Today"].tap()
+        app.tabBars.buttons["Profile"].tap()
         XCTAssertEqual(app.state, .runningForeground, "App crashed during rapid tab switching")
-        XCTAssertTrue(app.staticTexts["Rest Timer Alerts"].waitForExistence(timeout: timeout))
+        XCTAssertTrue(app.tabBars.buttons["Profile"].exists)
     }
 
     /// Settings must have a readable heading in Light mode (it rendered white on white).
@@ -35,7 +32,8 @@ final class TabNavigationTests: LightstackUITestCase {
         application.launchArguments = ["-uiTesting", "-uiTestingReset", "-appColorScheme", "light"]
         application.launch()
         app = application
-        openTab("Settings")
+        shot("profile-light")
+        openSettings()
         shot("settings-light")
     }
 
@@ -44,7 +42,8 @@ final class TabNavigationTests: LightstackUITestCase {
         application.launchArguments = ["-uiTesting", "-uiTestingReset", "-appColorScheme", "dark"]
         application.launch()
         app = application
-        openTab("Settings")
+        shot("profile-dark")
+        openSettings()
         shot("settings-dark")
     }
 
@@ -54,11 +53,12 @@ final class TabNavigationTests: LightstackUITestCase {
         application.launchArguments = ["-uiTesting", "-uiTestingReset", "-appColorScheme", "dark"]
         application.launch()
         app = application
-        openTab("Settings")
+        openSettings()
         tap(app.buttons["Light"])
         shot("settings-switched-to-light")
-        openTab("Profile")
-        openTab("Settings")
+        app.navigationBars.buttons.firstMatch.tap()
+        openTab("History")
+        openSettings()
         shot("settings-switched-to-light-revisited")
     }
 }

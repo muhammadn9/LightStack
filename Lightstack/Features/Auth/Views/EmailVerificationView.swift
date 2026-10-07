@@ -78,12 +78,12 @@ struct EmailVerificationView: View {
                 HStack {
                     if isChecking {
                         ProgressView()
-                            .tint(.white)
+                            .tint(AppTheme.onAccent)
                     }
                     Text("I've verified my email")
                 }
                 .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.onAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(AppTheme.accentGradient)

@@ -12,7 +12,7 @@ struct MessageBubbleView: View {
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
                     .font(AppTheme.caveat(15))
-                    .foregroundStyle(message.role == .user ? .white : AppTheme.textPrimary)
+                    .foregroundStyle(message.role == .user ? AppTheme.onAccent : AppTheme.textPrimary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(

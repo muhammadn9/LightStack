@@ -62,7 +62,7 @@ struct PlanBuilderChatView: View {
                         Button(action: { viewModel.daysPerWeek = days }) {
                             Text("\(days)")
                                 .font(AppTheme.plexMono(14, weight: .medium))
-                                .foregroundStyle(viewModel.daysPerWeek == days ? .white : AppTheme.textSecondary)
+                                .foregroundStyle(viewModel.daysPerWeek == days ? AppTheme.onAccent : AppTheme.textSecondary)
                                 .frame(width: 44, height: 36)
                                 .background(viewModel.daysPerWeek == days ? AppTheme.accent : AppTheme.surfaceElevated)
                                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
@@ -109,7 +109,7 @@ struct PlanBuilderChatView: View {
                 Text("View Your Plan")
             }
             .font(AppTheme.playfairItalic(16, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(AppTheme.onAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(AppTheme.accentGradient)
@@ -133,14 +133,14 @@ struct PlanBuilderChatView: View {
                 HStack {
                     if viewModel.isGenerating {
                         ProgressView()
-                            .tint(.white)
+                            .tint(AppTheme.onAccent)
                     } else {
                         Image(systemName: "sparkles")
                     }
                     Text(viewModel.isGenerating ? "Generating..." : "Generate Plan")
                 }
                 .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.onAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(

@@ -121,7 +121,7 @@ struct FormCaptureView: View {
             }) {
                 HStack(spacing: 10) {
                     if captureIsAnalyzing {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(AppTheme.onAccent)
                         Text("Analyzing…")
                     } else {
                         Image(systemName: "stop.circle.fill")
@@ -129,7 +129,7 @@ struct FormCaptureView: View {
                     }
                 }
                 .font(.headline.bold())
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.onAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
                 .background(AppTheme.successActionGradient)

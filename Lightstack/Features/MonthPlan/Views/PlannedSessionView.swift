@@ -90,7 +90,7 @@ struct PlannedSessionView: View {
                         Text("Start This Workout")
                     }
                     .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.onAccent)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(AppTheme.accentGradient)

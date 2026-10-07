@@ -13,14 +13,14 @@ protocol LSCardStyle {
 
 // MARK: - Concrete Styles
 
-/// Translucent material card with a hairline border.
+/// Solid surface card with a hairline border.
 struct PlainCardStyle: LSCardStyle {
     func makeBody(content: AnyView) -> AnyView {
         AnyView(
             content
                 .padding(AppTheme.cardPadding)
-                .background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5))
+                .background(AppTheme.surface, in: shape)
+                .overlay(shape.strokeBorder(AppTheme.border, lineWidth: 0.5))
         )
     }
 
@@ -29,20 +29,20 @@ struct PlainCardStyle: LSCardStyle {
     }
 }
 
-/// Material card with a leading accent strip.
+/// Surface card with a leading accent strip.
 struct AccentedCardStyle: LSCardStyle {
     func makeBody(content: AnyView) -> AnyView {
         AnyView(
             content
                 .padding(AppTheme.cardPadding)
-                .background(.regularMaterial, in: shape)
+                .background(AppTheme.surface, in: shape)
                 .overlay(alignment: .leading) {
                     Rectangle()
                         .fill(AppTheme.accent.opacity(0.8))
                         .frame(width: 3)
                         .clipShape(shape)
                 }
-                .overlay(shape.strokeBorder(Color(.separator).opacity(0.4), lineWidth: 0.5))
+                .overlay(shape.strokeBorder(AppTheme.border, lineWidth: 0.5))
         )
     }
 
@@ -51,14 +51,14 @@ struct AccentedCardStyle: LSCardStyle {
     }
 }
 
-/// Material card lifted with a soft shadow.
+/// Surface card lifted with a soft shadow.
 struct ElevatedCardStyle: LSCardStyle {
     func makeBody(content: AnyView) -> AnyView {
         AnyView(
             content
                 .padding(AppTheme.cardPadding)
-                .background(.regularMaterial, in: shape)
-                .overlay(shape.strokeBorder(Color(.separator).opacity(0.3), lineWidth: 0.5))
+                .background(AppTheme.surface, in: shape)
+                .overlay(shape.strokeBorder(AppTheme.border, lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.10), radius: 8, y: 4)
         )
     }

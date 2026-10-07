@@ -44,8 +44,8 @@ struct WeekStripView: View {
 
 /// Shared look values for the Progress / Today components.
 enum ProgressStyle {
-    /// Text on accent fills. Fixed dark so it reads on the lime accent.
-    static let onAccent = Color(hex: 0x0B0D0E)
+    /// Text on accent fills (dark on lime, white on light-mode green).
+    static var onAccent: Color { AppTheme.onAccent }
     static let cardRadius: CGFloat = 22
     static var dim: Color { AppTheme.textSecondary.opacity(0.5) }
 }

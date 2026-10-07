@@ -30,7 +30,7 @@ struct ModificationConfirmationSheet: View {
                         Text("Apply Changes")
                             .font(AppTheme.caveat(18, weight: .semibold))
                             .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchSize)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(AppTheme.onAccent)
                             .background(AppTheme.accent, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     }
                     .accessibilityHint("Applies all suggested changes to your workout")

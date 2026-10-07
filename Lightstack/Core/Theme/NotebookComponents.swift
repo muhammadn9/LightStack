@@ -37,7 +37,7 @@ struct NoteCardView: View {
 struct InkDivider: View {
     var body: some View {
         Rectangle()
-            .fill(Color(.separator).opacity(0.6))
+            .fill(AppTheme.border)
             .frame(height: 0.5)
     }
 }
@@ -77,7 +77,7 @@ struct SetNumberCircle: View {
                 .stroke(isLogged ? AppTheme.accent : AppTheme.bindingHole, lineWidth: 1.5)
             Text("\(number)")
                 .font(AppTheme.plexMono(8, weight: .bold))
-                .foregroundStyle(isLogged ? Color.white : AppTheme.textSecondary)
+                .foregroundStyle(isLogged ? AppTheme.onAccent : AppTheme.textSecondary)
         }
         .frame(width: diameter, height: diameter)
         .accessibilityElement(children: .ignore)

@@ -389,7 +389,7 @@ struct ActiveWorkoutView: View {
                 Text("Finish Workout")
                     .font(AppTheme.playfairItalic(17, weight: .bold))
             }
-            .foregroundStyle(AppTheme.background)
+            .foregroundStyle(AppTheme.onAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(AppTheme.accentGradient)
@@ -426,7 +426,7 @@ struct ActiveWorkoutView: View {
         }) {
             Image(systemName: "text.bubble")
                 .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(AppTheme.background)
+                .foregroundStyle(AppTheme.onAccent)
                 .frame(width: 58, height: 58)
                 .background(AppTheme.accentGradient)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
