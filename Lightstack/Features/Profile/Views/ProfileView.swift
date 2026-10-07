@@ -26,6 +26,7 @@ struct ProfileView: View {
             }
             .themedBackground()
             .toolbar(.hidden, for: .navigationBar)
+            .statusBarBackdrop()
             .onAppear { loadProfileData() }
             // Reload whenever this becomes the visible tab.
             .onChange(of: selectedTab) { _, tab in

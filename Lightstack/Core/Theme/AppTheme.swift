@@ -331,6 +331,21 @@ extension View {
         modifier(ThemedBackground())
     }
 
+    /// Solid strip behind the status bar for scroll screens without a navigation
+    /// bar, so scrolled content doesn't run under the clock.
+    func statusBarBackdrop() -> some View {
+        overlay(alignment: .top) {
+            // The reader starts at the top of the safe area, so shifting the strip up
+            // by the inset lands it exactly behind the status bar.
+            GeometryReader { proxy in
+                AppTheme.background
+                    .frame(height: proxy.safeAreaInsets.top)
+                    .offset(y: -proxy.safeAreaInsets.top)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
     func notebookSectionHeader() -> some View {
         modifier(NotebookSectionHeader())
     }

@@ -40,6 +40,7 @@ struct ProgressTabView: View {
         }
         .scrollIndicators(.hidden)
         .background(AppTheme.background.ignoresSafeArea())
+        .statusBarBackdrop()
         .onAppear(perform: reload)
     }
 

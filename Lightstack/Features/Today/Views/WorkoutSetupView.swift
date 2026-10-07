@@ -182,6 +182,7 @@ struct WorkoutSetupView: View {
             .padding(.bottom, 24)
         }
         .themedBackground()
+        .statusBarBackdrop()
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: viewModel.selectedWorkoutType) { _, newType in
             lastSessionMatch = newType.isEmpty ? nil : todayViewModel.lastSession(ofType: newType)
