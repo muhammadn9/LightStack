@@ -13,6 +13,14 @@ struct LoggedSet {
 struct LoggedWorkout {
     let id: UUID
     let date: Date
+    var name: String = ""
+}
+
+/// What happened on one heatmap day: workout names, total sets, and whether it was a rest day.
+struct DaySummary: Equatable {
+    var workoutNames: [String] = []
+    var setCount = 0
+    var isRest = false
 }
 
 // MARK: - Output
@@ -57,6 +65,12 @@ struct ProgressSnapshot: Equatable {
     /// Start-of-day dates marked as rest days inside the heatmap window (13 weeks).
     /// Rest days count toward the streak only; never toward workouts, sets or heat levels.
     var restDays: Set<Date> = []
+    /// Start of the first heatmap cell (Monday of the oldest week).
+    var heatmapStart: Date?
+    /// Per-day detail for the heatmap window. Days with no workout and no rest are absent.
+    var daySummaries: [Date: DaySummary] = [:]
+    /// Monday of each week behind `LiftTrend.weeklyE1RM`, oldest first.
+    var liftWeekStarts: [Date] = []
 
     var daysTrainedThisWeek: Int { trainedWeekdays.count }
     var totalSetsThisWeek: Int { equipmentThisWeek.values.reduce(0, +) }
@@ -144,6 +158,47 @@ enum ProgressStats {
         return grid
     }
 
+    /// Monday of each of the last `weeks` weeks, oldest first.
+    static func weekStarts(weeks: Int = 8, now: Date, calendar: Calendar) -> [Date] {
+        let current = weekStart(of: now, calendar: calendar)
+        return (0..<weeks).reversed().compactMap { calendar.date(byAdding: .weekOfYear, value: -$0, to: current) }
+    }
+
+    /// Monday of the oldest heatmap week.
+    static func heatmapStart(weeks: Int = 13, now: Date, calendar: Calendar) -> Date {
+        calendar.date(byAdding: .weekOfYear, value: -(weeks - 1), to: weekStart(of: now, calendar: calendar))
+            ?? calendar.startOfDay(for: now)
+    }
+
+    /// Workout names, set counts and rest flags per start-of-day, limited to the heatmap window
+    /// (oldest Monday through today). Days with nothing logged are omitted.
+    static func daySummaries(sets: [LoggedSet], workouts: [LoggedWorkout], restDays: Set<Date>,
+                             weeks: Int = 13, now: Date, calendar: Calendar) -> [Date: DaySummary] {
+        let start = heatmapStart(weeks: weeks, now: now, calendar: calendar)
+        let today = calendar.startOfDay(for: now)
+        func inWindow(_ day: Date) -> Bool { day >= start && day <= today }
+        var result: [Date: DaySummary] = [:]
+        for workout in workouts {
+            let day = calendar.startOfDay(for: workout.date)
+            guard inWindow(day) else { continue }
+            let name = workout.name.trimmingCharacters(in: .whitespaces)
+            var summary = result[day] ?? DaySummary()
+            if !name.isEmpty, !summary.workoutNames.contains(name) { summary.workoutNames.append(name) }
+            result[day] = summary
+        }
+        for set in sets {
+            let day = calendar.startOfDay(for: set.date)
+            guard inWindow(day) else { continue }
+            result[day, default: DaySummary()].setCount += 1
+        }
+        for rest in restDays {
+            let day = calendar.startOfDay(for: rest)
+            guard inWindow(day) else { continue }
+            result[day, default: DaySummary()].isRest = true
+        }
+        return result
+    }
+
     /// Heatmap intensity 0...4 for a set count (-1 stays -1).
     static func heatLevel(_ count: Int) -> Int {
         switch count {
@@ -220,6 +275,10 @@ enum ProgressStats {
         let windowStart = calendar.date(byAdding: .weekOfYear, value: -12, to: weekStart(of: now, calendar: calendar))
             ?? calendar.startOfDay(for: now)
         snap.restDays = Set(restDays.map { calendar.startOfDay(for: $0) }.filter { $0 >= windowStart })
+        snap.liftWeekStarts = weekStarts(now: now, calendar: calendar)
+        snap.heatmapStart = heatmapStart(now: now, calendar: calendar)
+        snap.daySummaries = daySummaries(sets: sets, workouts: workouts, restDays: restDays,
+                                         now: now, calendar: calendar)
         return snap
     }
 }
@@ -239,7 +298,8 @@ final class ProgressStatsService {
         var workouts: [LoggedWorkout] = []
         for cdWorkout in localStorage.fetchRecentWorkouts(userId: userId, limit: 100000) {
             guard let date = cdWorkout.date, let workoutId = cdWorkout.id else { continue }
-            workouts.append(LoggedWorkout(id: workoutId, date: date))
+            workouts.append(LoggedWorkout(id: workoutId, date: date,
+                                          name: cdWorkout.workoutType ?? ""))
             for cdExercise in localStorage.fetchExercises(workoutId: workoutId) {
                 guard let exerciseId = cdExercise.id else { continue }
                 let name = cdExercise.name ?? ""

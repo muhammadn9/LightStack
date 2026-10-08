@@ -41,4 +41,71 @@ final class ProgressTests: LightstackUITestCase {
         waitFor(element("progress.equipmentWeeks"))
         shot("progress-equipment")
     }
+
+    /// Taps the heatmap cell of a seeded workout day and checks the callout names the date and workout.
+    func testHeatmapTapShowsDayDetail() throws {
+        launchApp(extraArguments: ["-uiTestingLiftHistory"])
+        openTab("Progress")
+        waitFor(element("progress.heatmap"))
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let cell = element("heatmap.\(Self.idString(yesterday))")
+        waitFor(cell, "Heatmap cell for yesterday missing")
+        let detail = element("heatmap.detail")
+        var shown = ""
+        for _ in 0..<3 {
+            cell.tap()
+            shown = detail.label
+            if shown.contains("Push") { break }
+        }
+        let expected = yesterday.formatted(.dateTime.month(.abbreviated).day())
+        XCTAssertTrue(shown.contains(expected), "Callout \(shown) lacks \(expected)")
+        XCTAssertTrue(shown.contains("Push"), "Callout \(shown) lacks workout name")
+        XCTAssertTrue(shown.contains("4 sets"), "Callout \(shown) lacks set count")
+        shot("heatmap-selected")
+
+        let rest = Calendar.current.date(byAdding: .day, value: -5, to: Date()) ?? Date()
+        let restCell = element("heatmap.\(Self.idString(rest))")
+        restCell.tap()
+        XCTAssertTrue(detail.label.contains("Rest day"), detail.label)
+        shot("heatmap-rest")
+    }
+
+    func testLiftChartSelectionShowsValue() throws {
+        launchApp(extraArguments: ["-uiTestingLiftHistory"])
+        openTab("Progress")
+        let chart = element("lift.chart.Bench Press")
+        waitFor(chart, "Lift chart missing")
+        for _ in 0..<4 where !chart.isHittable { app.swipeUp() }
+        shot("lift-chart")
+        chart.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        shot("lift-chart-selected")
+        tap(app.buttons["progress.segment.Lifts"])
+        waitFor(element("progress.liftsList"))
+        element("lift.sparkline.Bench Press").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .tap()
+        shot("lift-sparkline-selected")
+    }
+
+    private static func idString(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: date)
+    }
+
+    /// Dark theme pass over the selected heatmap day and selected chart point (screenshots only).
+    func testDarkSelectionScreenshots() throws {
+        launchApp(colorScheme: "dark", extraArguments: ["-uiTestingLiftHistory"])
+        openTab("Progress")
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        let cell = element("heatmap.\(Self.idString(yesterday))")
+        waitFor(cell)
+        cell.tap()
+        shot("dark-heatmap-selected")
+        let chart = element("lift.chart.Bench Press")
+        for _ in 0..<4 where !chart.isHittable { app.swipeUp() }
+        chart.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5)).tap()
+        shot("dark-chart-selected")
+    }
+
 }

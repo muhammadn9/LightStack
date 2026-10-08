@@ -13,10 +13,10 @@ class LightstackUITestCase: XCTestCase {
     // MARK: - Launch
 
     /// Launches the app in test mode. `reset` wipes and reseeds the test store first.
-    func launchApp(reset: Bool = true, colorScheme: String? = nil) {
+    func launchApp(reset: Bool = true, colorScheme: String? = nil, extraArguments: [String] = []) {
         let application = XCUIApplication()
         application.launchArguments = ["-uiTesting"] + (reset ? ["-uiTestingReset"] : [])
-            + (colorScheme.map { ["-appColorScheme", $0] } ?? [])
+            + (colorScheme.map { ["-appColorScheme", $0] } ?? []) + extraArguments
         application.launch()
         app = application
     }

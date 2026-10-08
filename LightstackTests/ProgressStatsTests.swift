@@ -125,4 +125,74 @@ final class ProgressStatsTests: XCTestCase {
         XCTAssertEqual(snap.workoutsPerWeek, [0, 0, 0, 0])
         XCTAssertTrue(snap.lifts.isEmpty)
     }
+
+    // MARK: - Heatmap day summaries
+
+    func testDaySummaryWorkoutDayHasNamesAndSets() {
+        let workouts = [LoggedWorkout(id: UUID(), date: date(2026, 10, 6), name: "Push")]
+        let sets = [set("Bench", date(2026, 10, 6)), set("Bench", date(2026, 10, 6)), set("Row", date(2026, 10, 6))]
+        let result = ProgressStats.daySummaries(sets: sets, workouts: workouts, restDays: [],
+                                                now: now, calendar: calendar)
+        XCTAssertEqual(result[calendar.startOfDay(for: date(2026, 10, 6))],
+                       DaySummary(workoutNames: ["Push"], setCount: 3, isRest: false))
+    }
+
+    func testDaySummaryMergesTwoWorkoutsOnOneDay() {
+        let workouts = [
+            LoggedWorkout(id: UUID(), date: date(2026, 10, 6), name: "Push"),
+            LoggedWorkout(id: UUID(), date: date(2026, 10, 6), name: "Core"),
+            LoggedWorkout(id: UUID(), date: date(2026, 10, 6), name: "Push")
+        ]
+        let result = ProgressStats.daySummaries(sets: [], workouts: workouts, restDays: [],
+                                                now: now, calendar: calendar)
+        XCTAssertEqual(result[calendar.startOfDay(for: date(2026, 10, 6))]?.workoutNames, ["Push", "Core"])
+    }
+
+    func testDaySummaryRestDay() {
+        let rest = date(2026, 10, 4)
+        let result = ProgressStats.daySummaries(sets: [], workouts: [], restDays: [calendar.startOfDay(for: rest)],
+                                                now: now, calendar: calendar)
+        XCTAssertEqual(result[calendar.startOfDay(for: rest)], DaySummary(workoutNames: [], setCount: 0, isRest: true))
+    }
+
+    func testDaySummaryEmptyDayIsAbsent() {
+        let workouts = [LoggedWorkout(id: UUID(), date: date(2026, 10, 6), name: "Push")]
+        let result = ProgressStats.daySummaries(sets: [], workouts: workouts, restDays: [],
+                                                now: now, calendar: calendar)
+        XCTAssertNil(result[calendar.startOfDay(for: date(2026, 10, 7))])
+        XCTAssertEqual(result.count, 1)
+    }
+
+    func testDaySummaryWindowBounds() {
+        // Window: Monday Jul 13 through today (Thu Oct 8).
+        let inside = date(2026, 7, 13)
+        let before = date(2026, 7, 12)
+        let future = date(2026, 10, 9)
+        let workouts = [inside, before, future].map { LoggedWorkout(id: UUID(), date: $0, name: "X") }
+        let sets = [inside, before, future].map { set("Squat", $0) }
+        let result = ProgressStats.daySummaries(sets: sets, workouts: workouts,
+                                                restDays: [calendar.startOfDay(for: before)],
+                                                now: now, calendar: calendar)
+        XCTAssertEqual(Set(result.keys), [calendar.startOfDay(for: inside)])
+        XCTAssertEqual(ProgressStats.heatmapStart(now: now, calendar: calendar), calendar.startOfDay(for: inside))
+    }
+
+    func testSnapshotCarriesSummariesAndWeekStarts() {
+        let workouts = [LoggedWorkout(id: UUID(), date: date(2026, 10, 6), name: "Push")]
+        let snap = ProgressStats.snapshot(sets: [set("Bench", date(2026, 10, 6))], workouts: workouts,
+                                          streak: 1, now: now, calendar: calendar)
+        XCTAssertEqual(snap.daySummaries.count, 1)
+        XCTAssertEqual(snap.liftWeekStarts.count, 8)
+        XCTAssertEqual(snap.liftWeekStarts.last, calendar.startOfDay(for: date(2026, 10, 5)))
+    }
+
+    func testHeatmapDetailText() {
+        let day = calendar.startOfDay(for: date(2026, 10, 6))
+        let text = HeatmapView.detailText(for: day, summary: DaySummary(workoutNames: ["Push"], setCount: 18),
+                                          calendar: calendar)
+        XCTAssertTrue(text.contains("Push") && text.contains("18 sets") && text.contains("Oct 6"), text)
+        XCTAssertTrue(HeatmapView.detailText(for: day, summary: DaySummary(isRest: true), calendar: calendar)
+            .hasSuffix("Rest day"))
+        XCTAssertTrue(HeatmapView.detailText(for: day, summary: nil, calendar: calendar).hasSuffix("No workout"))
+    }
 }
