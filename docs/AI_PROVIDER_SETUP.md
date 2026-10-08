@@ -1,103 +1,33 @@
-# Multi-Provider AI Setup
+# AI Setup
 
-This app automatically rotates between Gemini, OpenAI (ChatGPT), and Claude when rate limits are hit.
-
-## How It Works
-
-1. **Priority Order**: Gemini → OpenAI → Claude
-2. **Automatic Fallback**: When one provider hits rate limit, automatically tries the next
-3. **Rate Limit Tracking**: Remembers when each provider will be available again
-4. **Smart Retry**: Extracts retry-after time from API error responses
-
-## Setup Instructions
-
-### 1. Add New Files to Xcode
-
-Right-click on `Lightstack/Core/Services` folder in Xcode and select "Add Files to Lightstack":
-- `AIProvider.swift`
-- `AIServiceManager.swift`
-- `OpenAIService.swift`
-- `ClaudeService.swift`
-
-Make sure "Copy items if needed" is **unchecked** and target is **Lightstack**.
-
-### 2. Add API Keys to Secrets.xcconfig
-
-Edit `Lightstack/Secrets.xcconfig` and add:
+The app never contains an AI key. All AI calls go through the `ai-proxy` Supabase Edge Function.
 
 ```
-// Existing
-SUPABASE_URL = your_supabase_url
-SUPABASE_ANON_KEY = your_supabase_key
-GEMINI_API_KEY = your_gemini_key
-
-// NEW: Add these
-OPENAI_API_KEY = your_openai_key
-CLAUDE_API_KEY = your_claude_key
+App (GeminiService) ──Bearer <user session token>──▶ ai-proxy ──x-goog-api-key──▶ Gemini
+                                                       │
+                                                       └─ check_rate_limit()  (10/min, 100/day per user)
 ```
 
-### 3. Update Info.plist
+## How it works
 
-Add the new API keys to `Info.plist`:
+1. `GeminiService` posts `{ model, system_instruction, contents, generationConfig }` to `<SUPABASE_URL>/functions/v1/ai-proxy`, signed with the user's session.
+2. The function verifies the user and calls `check_rate_limit()` as that user. If the check itself fails, the request is refused.
+3. The function forwards the request to Gemini with the `GEMINI_API_KEY` secret in a header. It allows only `gemini-3.5-flash` and `gemini-2.5-flash` and caps output tokens.
+4. Gemini's response, including its status code, is passed straight back. The app keeps its existing parsing, 503 retry and model fallback (3.5 → 2.5).
+5. The function's own refusals (rate limit, not signed in) carry an `x-ai-proxy-error` header. The app shows those messages as-is and doesn't retry another model.
 
-```xml
-<key>OPENAI_API_KEY</key>
-<string>$(OPENAI_API_KEY)</string>
-<key>CLAUDE_API_KEY</key>
-<string>$(CLAUDE_API_KEY)</string>
-```
+## Changing the key
 
-### 4. Get Free Tier API Keys
+Supabase dashboard → project → **Edge Functions → Secrets** → edit `GEMINI_API_KEY`. No app release is needed.
 
-#### Gemini (Already have)
-- Free tier: 1,500 requests/day
-- Model: gemini-2.0-flash
+## Changing the limits
 
-#### OpenAI ChatGPT
-1. Go to https://platform.openai.com/api-keys
-2. Create new key
-3. Free tier: $5 credit for 3 months
-4. Model: gpt-4o-mini
+Edit `v_max_minute` / `v_max_day` in `supabase/migrations/harden_ai_rate_limit.sql` (mirrored in `supabase_schema.sql`) and run it in the SQL Editor.
 
-#### Claude
-1. Go to https://console.anthropic.com/settings/keys
-2. Create new key
-3. Free tier: Rate-limited but generous
-4. Model: claude-3-5-haiku
+## Redeploying the function
 
-## Testing
+Paste `supabase/functions/ai-proxy/index.ts` into the dashboard editor (Edge Functions → `ai-proxy`), or run `supabase functions deploy ai-proxy` with the Supabase CLI. Keep **JWT verification on**.
 
-1. Build and run the app
-2. Try generating a workout or month plan
-3. Watch console logs:
-   ```
-   [AIServiceManager] Starting chat generation with 3 providers available
-   [AIServiceManager] Trying provider: Gemini
-   [AIServiceManager] ❌ Failed with Gemini: rate limit
-   [AIServiceManager] Marked Gemini as rate limited until ...
-   [AIServiceManager] Trying provider: OpenAI
-   [AIServiceManager] ✅ Success with OpenAI
-   ```
+## Adding another provider
 
-## Rate Limit Reset
-
-Rate limits are stored in UserDefaults with keys:
-- `gemini_rate_limit_until`
-- `openai_rate_limit_until`
-- `claude_rate_limit_until`
-
-To manually clear:
-```swift
-UserDefaults.standard.removeObject(forKey: "gemini_rate_limit_until")
-```
-
-Or delete the app to clear all UserDefaults.
-
-## Current Usage
-
-The AIServiceManager is used by:
-- `WorkoutSessionService` (workout plan generation)
-- `MonthPlanService` (month plan generation)
-- `CoachChatViewModel` (AI coach chat)
-
-All AI requests automatically benefit from the fallback system!
+Add a branch in the Edge Function, with its key stored as another secret, and choose it by `model`. Never add a key to `Secrets.xcconfig` or `Info.plist`.
