@@ -123,7 +123,8 @@ struct ProgressTabView: View {
             ProgressCard {
                 VStack(alignment: .leading, spacing: 12) {
                     sectionTitle("Training", "last 13 weeks")
-                    HeatmapView(cells: snapshot.heatmap)
+                    HeatmapView(cells: snapshot.heatmap, start: snapshot.heatmapStart,
+                                summaries: snapshot.daySummaries)
                 }
             }
             trends
@@ -141,7 +142,7 @@ struct ProgressTabView: View {
                 }
                 ForEach(Array(snapshot.topLifts.enumerated()), id: \.element.id) { index, lift in
                     if index > 0 { Divider().overlay(AppTheme.border) }
-                    LiftTrendRow(lift: lift)
+                    LiftTrendRow(lift: lift, weekStarts: snapshot.liftWeekStarts, expanded: true)
                 }
             }
         }
@@ -210,7 +211,7 @@ struct ProgressTabView: View {
                 }
                 ForEach(Array(snapshot.lifts.enumerated()), id: \.element.id) { index, lift in
                     if index > 0 { Divider().overlay(AppTheme.border) }
-                    LiftTrendRow(lift: lift)
+                    LiftTrendRow(lift: lift, weekStarts: snapshot.liftWeekStarts)
                 }
             }
         }

@@ -9,6 +9,8 @@ import os
 ///  - `-uiTestingReset`  also wipes the test store and test session state, then reseeds.
 enum UITestMode {
     static let isActive: Bool = ProcessInfo.processInfo.arguments.contains("-uiTesting")
+    /// `-uiTestingLiftHistory` adds weekly Bench Press history and a rest day for chart tests.
+    static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -125,6 +127,31 @@ enum UITestMode {
         localStorage.saveExercises([pulldown, legPress], workoutId: core.id)
         seedSets([(pulldown, [(100, 10, 2), (100, 10, 2), (100, 9, 1)]), (legPress, [(180, 10, 2), (180, 9, 1)])],
                  localStorage: localStorage)
+
+        if wantsLiftHistory { seedLiftHistory(localStorage: localStorage) }
+    }
+
+    /// Six older weekly Bench Press sessions (progressing weight) and a rest day 5 days ago.
+    private static func seedLiftHistory(localStorage: LocalStorageService) {
+        let calendar = Calendar.current
+        for weeksAgo in 2...7 {
+            guard let day = calendar.date(byAdding: .day, value: -7 * weeksAgo - 1, to: Date()) else { continue }
+            var workout = Workout.create(userId: userId, workoutType: "Push",
+                                         energyLevel: 7, timeAvailableMinutes: 45)
+            workout.date = day
+            workout.createdAt = day
+            workout.syncStatus = .synced
+            localStorage.saveWorkout(workout)
+            let bench = Exercise.create(workoutId: workout.id, name: "Bench Press", muscleGroup: "Chest",
+                                        orderIndex: 0, targetSets: 2, targetReps: "8", targetRir: "2",
+                                        restSeconds: 90, coachNote: nil)
+            localStorage.saveExercises([bench], workoutId: workout.id)
+            let weight = Double(105 + (8 - weeksAgo) * 5)
+            seedSets([(bench, [(weight, 8, 2), (weight, 7, 1)])], localStorage: localStorage)
+        }
+        if let rest = calendar.date(byAdding: .day, value: -5, to: Date()) {
+            localStorage.addRestDay(userId: userId, date: rest)
+        }
     }
 
     private static func seedSets(_ rows: [(Exercise, [(Double, Int, Int)])], localStorage: LocalStorageService) {
