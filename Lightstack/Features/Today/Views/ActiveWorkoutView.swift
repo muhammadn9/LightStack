@@ -14,6 +14,8 @@ struct ActiveWorkoutView: View {
     @State private var exercisePendingRemoval: Exercise?
     @State private var showAddExercise = false
     @State private var showReorder = false
+    /// Scroll position of the card pager; mirrors `currentExerciseIndex`.
+    @State private var scrolledPage: Int? = 0
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
@@ -22,23 +24,15 @@ struct ActiveWorkoutView: View {
     @State private var formViewModel: FormAnalysisViewModel?
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 0) {
-                timerBar
-                if !todayViewModel.exercises.isEmpty {
-                    currentExerciseView
-                        .id(currentExerciseIndex)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
-                        .animation(.easeInOut(duration: 0.25), value: currentExerciseIndex)
-                }
-                finishButton
+        VStack(spacing: 0) {
+            timerBar
+            if !todayViewModel.exercises.isEmpty {
+                cardsPager
+                pageIndicator
             }
-
-            chatButton
+            bottomBar
         }
+        .themedBackground()
         .scrollDismissesKeyboard(.interactively)
         .overlay(alignment: .top) {
             if let pr = todayViewModel.lastPR {
@@ -163,14 +157,76 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Current Page View
 
-    /// One page per exercise, or per superset (rows interleaved round by round).
-    @ViewBuilder
-    private var currentExerciseView: some View {
+    /// One card per exercise, or per superset (rows interleaved round by round).
+    /// Cards sit side by side with the neighbours peeking in; swipe to page.
+    private var cardsPager: some View {
         let pages = SupersetGroup.pages(from: todayViewModel.exercises)
         let safeIndex = min(currentExerciseIndex, max(0, pages.count - 1))
-        if let page = pages[safe: safeIndex] {
-            pageView(page, pages: pages, safeIndex: safeIndex)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(Array(pages.enumerated()), id: \.offset) { index, page in
+                    let isCurrent = index == safeIndex
+                    pageView(page, pages: pages, safeIndex: index)
+                        .containerRelativeFrame(.horizontal)
+                        .scrollTransition(.interactive) { content, phase in
+                            content
+                                .scaleEffect(phase.isIdentity ? 1 : 0.94)
+                                .opacity(phase.isIdentity ? 1 : 0.7)
+                        }
+                        .allowsHitTesting(isCurrent)
+                        .overlay {
+                            // Neighbours are inert previews; tapping one brings it forward.
+                            // The overlay also keeps the peek area a valid swipe start.
+                            if !isCurrent {
+                                Color.clear
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { currentExerciseIndex = index }
+                            }
+                        }
+                        .accessibilityHidden(!isCurrent)
+                        .id(index)
+                }
+            }
+            .scrollTargetLayout()
         }
+        .contentMargins(.horizontal, 32, for: .scrollContent)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $scrolledPage)
+        .scrollClipDisabled()
+        .padding(.vertical, 8)
+        .onAppear { scrolledPage = safeIndex }
+        .onChange(of: scrolledPage) { _, newValue in
+            if let newValue, newValue != currentExerciseIndex, newValue < pages.count {
+                currentExerciseIndex = newValue
+            }
+        }
+        .onChange(of: currentExerciseIndex) { _, newValue in
+            if scrolledPage != newValue {
+                withAnimation(.easeInOut(duration: 0.3)) { scrolledPage = newValue }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: currentExerciseIndex)
+    }
+
+    private var pageIndicator: some View {
+        let count = SupersetGroup.pages(from: todayViewModel.exercises).count
+        let current = min(currentExerciseIndex, max(0, count - 1))
+        return VStack(spacing: 5) {
+            HStack(spacing: 6) {
+                ForEach(0..<count, id: \.self) { index in
+                    Capsule()
+                        .fill(index == current ? AppTheme.accent : AppTheme.border)
+                        .frame(width: index == current ? 16 : 6, height: 6)
+                }
+            }
+            .accessibilityHidden(true)
+            .animation(.easeOut(duration: 0.2), value: current)
+            Text("\(current + 1) of \(count)")
+                .font(AppTheme.plexMono(12))
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .combine)
     }
 
     private func pageView(_ page: SupersetPage, pages: [SupersetPage], safeIndex: Int) -> some View {
@@ -190,11 +246,8 @@ struct ActiveWorkoutView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ExerciseHeaderView(
                     members: members,
-                    currentIndex: safeIndex,
                     totalCount: pages.count,
                     canLinkWithNext: members.last.map { todayViewModel.canLinkWithNext($0.id) } ?? false,
-                    onPrevious: { withAnimation { currentExerciseIndex = max(0, safeIndex - 1) } },
-                    onNext: { withAnimation { currentExerciseIndex = safeIndex + 1 } },
                     onAdd: { showAddExercise = true },
                     onFormDemo: { formDemoExercise = members.first },
                     onRecordForm: { formCaptureExercise = members.first },
@@ -241,22 +294,16 @@ struct ActiveWorkoutView: View {
             }
             .animation(.spring(response: 0.4, dampingFraction: 0.8),
                        value: members.contains { viewModel.activeRestExerciseId == $0.id })
-            .padding(18)
+            .padding(16)
             .padding(.bottom, 67)
         }
-        .themedBackground()
-        .gesture(
-            DragGesture(minimumDistance: 40, coordinateSpace: .local)
-                .onEnded { value in
-                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                    let count = SupersetGroup.pages(from: todayViewModel.exercises).count
-                    if value.translation.width < -40, currentExerciseIndex < count - 1 {
-                        withAnimation(.easeInOut(duration: 0.25)) { currentExerciseIndex += 1 }
-                    } else if value.translation.width > 40, currentExerciseIndex > 0 {
-                        withAnimation(.easeInOut(duration: 0.25)) { currentExerciseIndex -= 1 }
-                    }
-                }
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(AppTheme.border, lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
         .onChange(of: exercises.count) { _, _ in
             for ex in exercises {
                 viewModel.prefillTargets(for: ex)
@@ -375,6 +422,19 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Finish Button (amber wax-seal style)
 
+    private var bottomBar: some View {
+        HStack(spacing: 10) {
+            finishButton
+            chatButton
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
+        .background(AppTheme.background)
+        .overlay(alignment: .top) {
+            InkDivider()
+        }
+    }
+
     private var finishButton: some View {
         Button(action: {
             autoLogAllPendingSets()
@@ -401,12 +461,6 @@ struct ActiveWorkoutView: View {
             .shadow(color: AppTheme.accent.opacity(0.3), radius: 2, x: 1, y: 2)
         }
         .accessibilityIdentifier("finishWorkoutButton")
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
-        .background(AppTheme.background)
-        .overlay(alignment: .top) {
-            InkDivider()
-        }
     }
 
     // MARK: - Chat Button
@@ -427,18 +481,15 @@ struct ActiveWorkoutView: View {
             Image(systemName: "text.bubble")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(AppTheme.onAccent)
-                .frame(width: 58, height: 58)
+                .frame(width: 56, height: 56)
                 .background(AppTheme.accentGradient)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.4), lineWidth: 1)
                 )
-                .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, x: 2, y: 4)
         }
         .accessibilityLabel("Chat with coach")
-        .padding(.trailing, 22)
-        .padding(.bottom, 88)
     }
 
     // MARK: - Helpers

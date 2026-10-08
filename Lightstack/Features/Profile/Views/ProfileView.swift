@@ -81,6 +81,7 @@ struct ProfileView: View {
                     Text("\(streak)")
                         .font(AppTheme.playfair(22, weight: .bold))
                         .foregroundStyle(AppTheme.accent)
+                        .accessibilityIdentifier("profile.streak")
                     Text("day streak")
                         .font(AppTheme.caveat(9))
                         .foregroundStyle(AppTheme.textSecondary)

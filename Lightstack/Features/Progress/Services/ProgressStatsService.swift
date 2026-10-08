@@ -52,6 +52,11 @@ struct ProgressSnapshot: Equatable {
     /// Most-logged lifts, best first.
     var lifts: [LiftTrend] = []
     var totalWorkouts = 0
+    /// Start-of-day dates that have at least one workout (all time).
+    var workoutDays: Set<Date> = []
+    /// Start-of-day dates marked as rest days inside the heatmap window (13 weeks).
+    /// Rest days count toward the streak only; never toward workouts, sets or heat levels.
+    var restDays: Set<Date> = []
 
     var daysTrainedThisWeek: Int { trainedWeekdays.count }
     var totalSetsThisWeek: Int { equipmentThisWeek.values.reduce(0, +) }
@@ -200,8 +205,8 @@ enum ProgressStats {
         }
     }
 
-    static func snapshot(sets: [LoggedSet], workouts: [LoggedWorkout], streak: Int, now: Date,
-                         calendar: Calendar) -> ProgressSnapshot {
+    static func snapshot(sets: [LoggedSet], workouts: [LoggedWorkout], restDays: Set<Date> = [],
+                         streak: Int, now: Date, calendar: Calendar) -> ProgressSnapshot {
         var snap = ProgressSnapshot()
         snap.equipmentThisWeek = equipmentSets(sets, now: now, calendar: calendar)
         snap.equipmentByWeek = (0..<4).reversed().map { equipmentSets(sets, weeksBack: $0, now: now, calendar: calendar) }
@@ -211,6 +216,10 @@ enum ProgressStats {
         snap.heatmap = heatmap(sets, now: now, calendar: calendar)
         snap.lifts = liftTrends(sets, now: now, calendar: calendar)
         snap.totalWorkouts = workouts.count
+        snap.workoutDays = Set(workouts.map { calendar.startOfDay(for: $0.date) })
+        let windowStart = calendar.date(byAdding: .weekOfYear, value: -12, to: weekStart(of: now, calendar: calendar))
+            ?? calendar.startOfDay(for: now)
+        snap.restDays = Set(restDays.map { calendar.startOfDay(for: $0) }.filter { $0 >= windowStart })
         return snap
     }
 }
@@ -240,8 +249,9 @@ final class ProgressStatsService {
                 }
             }
         }
+        let restDays = Set(localStorage.fetchRestDays(userId: userId).compactMap(\.date))
         return ProgressStats.snapshot(
-            sets: sets, workouts: workouts,
+            sets: sets, workouts: workouts, restDays: restDays,
             streak: localStorage.countConsecutiveWorkoutDays(userId: userId),
             now: now, calendar: ProgressStats.weekCalendar(calendar))
     }

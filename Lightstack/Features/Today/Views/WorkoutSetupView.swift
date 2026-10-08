@@ -8,6 +8,23 @@ struct WorkoutSetupView: View {
     @State private var showManualEntry = false
     @State private var lastSessionMatch: Workout?
     @State private var snapshot = ProgressSnapshot()
+    @State private var selectedDay: SelectedDay?
+    @State private var manualEntryDate: Date?
+
+    private struct SelectedDay: Identifiable {
+        let date: Date
+        var id: Date { date }
+    }
+
+    private var userId: UUID? { environment.authService.currentUser()?.userId }
+    private var todayStart: Date { Calendar.current.startOfDay(for: Date()) }
+    private var hasWorkoutToday: Bool { snapshot.workoutDays.contains(todayStart) }
+    private var isRestToday: Bool { snapshot.restDays.contains(todayStart) }
+
+    private func refreshSnapshot() {
+        guard let userId else { return }
+        snapshot = ProgressStatsService(localStorage: environment.localStorageService).snapshot(userId: userId)
+    }
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -48,7 +65,9 @@ struct WorkoutSetupView: View {
                 }
                 .padding(.top, 4)
 
-                WeekStripView(trainedDays: snapshot.trainedWeekdays)
+                WeekStripView(workoutDays: snapshot.workoutDays, restDays: snapshot.restDays) { date in
+                    selectedDay = SelectedDay(date: date)
+                }
 
                 EquipmentWeekCard(usage: snapshot.equipmentThisWeek)
 
@@ -163,6 +182,10 @@ struct WorkoutSetupView: View {
                     .buttonStyle(SetupSecondaryButtonStyle())
                     .accessibilityIdentifier("logManuallyButton")
 
+                    if !hasWorkoutToday || isRestToday {
+                        restTodayButton
+                    }
+
                     if let last = lastSessionMatch, !viewModel.selectedWorkoutType.isEmpty {
                         Button(action: { todayViewModel.repeatLastSession(ofType: viewModel.selectedWorkoutType) }) {
                             HStack(spacing: 8) {
@@ -188,9 +211,8 @@ struct WorkoutSetupView: View {
             lastSessionMatch = newType.isEmpty ? nil : todayViewModel.lastSession(ofType: newType)
         }
         .onAppear {
+            refreshSnapshot()
             if let userId = environment.authService.currentUser()?.userId {
-                snapshot = ProgressStatsService(localStorage: environment.localStorageService)
-                    .snapshot(userId: userId)
                 viewModel.loadSplitDays(userId: userId)
                 todayViewModel.setUserId(userId)
                 viewModel.historyWorkoutNames = todayViewModel.historyWorkoutNames(excluding: viewModel.splitDays)
@@ -198,12 +220,42 @@ struct WorkoutSetupView: View {
             let type = viewModel.selectedWorkoutType
             lastSessionMatch = type.isEmpty ? nil : todayViewModel.lastSession(ofType: type)
         }
-        .sheet(isPresented: $showManualEntry) {
+        .sheet(item: $selectedDay, onDismiss: {
+            refreshSnapshot()
+            if manualEntryDate != nil { showManualEntry = true }
+        }) { day in
+            if let userId {
+                DaySheetView(date: day.date, userId: userId, onChange: refreshSnapshot) { date in
+                    manualEntryDate = date
+                }
+                .presentationDetents([.medium, .large])
+            }
+        }
+        .sheet(isPresented: $showManualEntry, onDismiss: { manualEntryDate = nil }) {
             if let userId = environment.authService.currentUser()?.userId {
-                ManualWorkoutEntryView(todayViewModel: todayViewModel, userId: userId)
+                ManualWorkoutEntryView(todayViewModel: todayViewModel, userId: userId, logDate: manualEntryDate)
                     .keyboardDoneButton()
             }
         }
+    }
+
+    private var restTodayButton: some View {
+        Button {
+            guard let userId else { return }
+            if isRestToday {
+                environment.localStorageService.removeRestDay(userId: userId, date: Date())
+            } else {
+                environment.localStorageService.addRestDay(userId: userId, date: Date())
+            }
+            refreshSnapshot()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "moon.fill")
+                Text(isRestToday ? "Rest day \u{2713} \u{00B7} Undo" : "Mark today as rest day")
+            }
+        }
+        .buttonStyle(SetupSecondaryButtonStyle())
+        .accessibilityIdentifier("restTodayButton")
     }
 
     /// Past workout names outside the split. Picking one starts a fresh workout from

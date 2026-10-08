@@ -78,7 +78,7 @@ final class WorkoutFlowTests: LightstackUITestCase {
         shot("04-added-after-current")
 
         // The original second exercise is now third.
-        tap(app.buttons["Next exercise"])
+        app.swipeLeft()
         waitFor(app.staticTexts["3 of 4"])
         waitFor(app.staticTexts["Incline Dumbbell Press"])
     }
@@ -114,5 +114,34 @@ final class WorkoutFlowTests: LightstackUITestCase {
         shot("07-active-width")
         XCTAssertGreaterThanOrEqual(title.frame.minX, screen.minX, "Exercise title is clipped on the left")
         XCTAssertLessThanOrEqual(add.frame.maxX, screen.maxX, "Controls spill past the right edge")
+    }
+
+    /// Swiping the card pages between exercises.
+    func testSwipeBetweenExerciseCards() throws {
+        launchApp()
+        generateAndStartPushWorkout()
+        waitFor(app.staticTexts["1 of 3"])
+        waitFor(app.staticTexts["Barbell Bench Press"])
+        shot("08-cards-first")
+        app.swipeLeft()
+        waitFor(app.staticTexts["2 of 3"], "Swipe left did not advance")
+        waitFor(app.staticTexts["Incline Dumbbell Press"])
+        shot("08-cards-second")
+        app.swipeRight()
+        waitFor(app.staticTexts["1 of 3"], "Swipe right did not go back")
+        waitFor(app.staticTexts["Barbell Bench Press"])
+    }
+
+    func testCardsDarkScreenshot() throws { try cardsScreenshot("dark") }
+    func testCardsLightScreenshot() throws { try cardsScreenshot("light") }
+
+    private func cardsScreenshot(_ scheme: String) throws {
+        launchApp(colorScheme: scheme)
+        generateAndStartPushWorkout()
+        waitFor(app.staticTexts["1 of 3"])
+        shot("09-cards-\(scheme)")
+        app.swipeLeft()
+        waitFor(app.staticTexts["2 of 3"])
+        shot("09-cards-\(scheme)-2")
     }
 }
