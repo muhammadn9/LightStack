@@ -379,8 +379,15 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     // MARK: - Workout Modifications
 
     /// Apply a workout modification while preserving already-logged sets.
-    func applyModification(_ modification: WorkoutModification, preserveLoggedSets: Bool) {
-        guard let workoutId = sessionService.currentWorkoutId else { return }
+    /// Applies one coach modification. Returns false when it names an exercise that
+    /// isn't in this workout, so the caller can say so instead of claiming success.
+    @discardableResult
+    func applyModification(_ modification: WorkoutModification, preserveLoggedSets: Bool) -> Bool {
+        guard let workoutId = sessionService.currentWorkoutId else { return false }
+        if let target = modification.targetExerciseName,
+           Self.exerciseIndex(named: target, in: exercises) == nil {
+            return false
+        }
 
         switch modification {
         case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note, let perSet):
@@ -401,7 +408,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             workoutRepository.saveExercises([newExercise], workoutId: workoutId)
 
         case .removeExercise(let name):
-            if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+            if let index = Self.exerciseIndex(named: name, in: exercises) {
                 let exerciseId = exercises[index].id
                 let removedName = exercises[index].name
                 exercises.remove(at: index)
@@ -414,7 +421,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             }
 
         case .modifyExercise(let name, let newTargetSets, let newTargetReps, let newTargetRir, let newRest, let newTargetWeight, let note, let perSet):
-            if let index = exercises.firstIndex(where: { $0.name.lowercased() == name.lowercased() }) {
+            if let index = Self.exerciseIndex(named: name, in: exercises) {
                 var exercise = exercises[index]
                 if let sets = newTargetSets ?? (perSet.isEmpty ? nil : perSet.count) {
                     exercise.targetSets = sets
@@ -441,7 +448,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             }
 
         case .replaceExercise(let oldName, let newName, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note, let perSet):
-            if let index = exercises.firstIndex(where: { $0.name.lowercased() == oldName.lowercased() }) {
+            if let index = Self.exerciseIndex(named: oldName, in: exercises) {
                 let oldExerciseId = exercises[index].id
                 let oldName = exercises[index].name
                 let orderIndex = exercises[index].orderIndex
@@ -473,7 +480,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
         case .groupSuperset(let names):
             let ids = names.compactMap { name in
-                exercises.first { $0.name.lowercased() == name.lowercased() }?.id
+                Self.exerciseIndex(named: name, in: exercises).map { exercises[$0].id }
             }
             if let grouped = SupersetGroup.group(ids: ids, in: exercises) {
                 applyGrouping(grouped)
@@ -484,6 +491,27 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         saveSessionState()
         // Tell the active workout screen its already-filled inputs are stale.
         targetsRevision += 1
+        return true
+    }
+
+    /// Finds the exercise the coach means. The model often shortens or re-cases
+    /// names ("Bench Press" for "Barbell Bench Press"), so after an exact match try
+    /// the normalised key (case, plurals, DB/BB), then a unique containment match.
+    static func exerciseIndex(named name: String, in exercises: [Exercise]) -> Int? {
+        let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !wanted.isEmpty else { return nil }
+        if let exact = exercises.firstIndex(where: { $0.name.lowercased() == wanted }) {
+            return exact
+        }
+        let key = PersonalRecordsListView.exerciseKey(name)
+        let keyed = exercises.indices.filter { PersonalRecordsListView.exerciseKey(exercises[$0].name) == key }
+        if keyed.count == 1 { return keyed[0] }
+        guard !key.isEmpty else { return nil }
+        let contained = exercises.indices.filter {
+            let other = PersonalRecordsListView.exerciseKey(exercises[$0].name)
+            return other.contains(key) || key.contains(other)
+        }
+        return contained.count == 1 ? contained[0] : nil
     }
 
     /// Stores per-set targets for an exercise, replacing any earlier ones. Empty clears.

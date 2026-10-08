@@ -160,6 +160,9 @@ final class UITestFakeAIProvider: AIProvider {
             reply = Self.planJSON
         } else if last.contains("progression note") {
             reply = "Solid session. Everything moved well, so add 5 lbs to the first lift next time."
+        } else if last.lowercased().contains("heavier bench") {
+            // Uses a shorter name than the workout's "Barbell Bench Press", like the real model does.
+            reply = Self.benchModificationReply
         } else if last.contains("rolling summary") {
             reply = "Steady push session with all target weights hit. Add a little load next time."
         } else {
@@ -167,6 +170,14 @@ final class UITestFakeAIProvider: AIProvider {
         }
         DispatchQueue.main.async { completion(.success(reply)) }
     }
+
+    static let benchModificationReply = """
+    Bumping bench to 155 for 10.
+
+    ```json
+    {"modifications": [{"action": "modify", "name": "Bench Press", "new_target_weight": "155 lbs", "new_target_reps": "10"}]}
+    ```
+    """
 
     static let planJSON = """
     {
