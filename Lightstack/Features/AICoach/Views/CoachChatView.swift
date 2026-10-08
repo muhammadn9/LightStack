@@ -111,6 +111,8 @@ struct CoachChatView: View {
                     )
             }
             .disabled(viewModel.inputText.trimmingCharacters(in: .whitespaces).isEmpty || viewModel.isLoading)
+            .accessibilityLabel("Send")
+            .accessibilityIdentifier("chatSendButton")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

@@ -50,8 +50,12 @@ final class CoachChatViewModel: ObservableObject {
 
         WORKOUT MODIFICATIONS
         You can suggest modifications to the current workout if the athlete asks.
-        Always explain WHY you are suggesting the change in natural language first.
-        The athlete will be asked to confirm before any changes are applied.
+        When you change the workout, keep the prose to one or two short sentences \
+        that say what changes (e.g. "Bumping bench to 155 for 10."). Skip the \
+        reasoning unless the athlete asks why. The athlete confirms before anything \
+        is applied.
+        In the JSON block, write each existing exercise's "name" / "old_name" exactly \
+        as written in the current workout's "Exercises" list.
 
         If — and only if — you are suggesting modifications, append a single fenced \
         JSON code block at the very end of your response using this exact schema:
@@ -258,13 +262,23 @@ final class CoachChatViewModel: ObservableObject {
 
     /// Called when user confirms modifications.
     func confirmModifications(applyTo todayViewModel: TodayViewModel) {
-        let applied = pendingModifications
-        for modification in applied {
-            todayViewModel.applyModification(modification, preserveLoggedSets: true)
+        var applied: [WorkoutModification] = []
+        var missing: [String] = []
+        for modification in pendingModifications {
+            if todayViewModel.applyModification(modification, preserveLoggedSets: true) {
+                applied.append(modification)
+            } else if let name = modification.targetExerciseName {
+                missing.append(name)
+            }
         }
-        // Never silent: say in the chat what changed.
-        if !applied.isEmpty {
-            messages.append(ChatMessage(role: .coach, content: Self.confirmationText(for: applied)))
+        // Never silent: say in the chat what changed, and what couldn't be found.
+        var lines: [String] = []
+        if !applied.isEmpty { lines.append(Self.confirmationText(for: applied)) }
+        if !missing.isEmpty {
+            lines.append("Couldn't find \(missing.joined(separator: ", ")) in this workout, so nothing changed for it.")
+        }
+        if !lines.isEmpty {
+            messages.append(ChatMessage(role: .coach, content: lines.joined(separator: "\n")))
         }
         pendingModifications = []
         showModificationConfirmation = false

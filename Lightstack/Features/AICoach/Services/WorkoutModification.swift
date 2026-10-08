@@ -134,6 +134,17 @@ enum WorkoutModification {
         return trimmed
     }
 
+    /// The existing exercise this change acts on, or nil for adds and supersets
+    /// (a superset may name exercises another modification is about to add).
+    var targetExerciseName: String? {
+        switch self {
+        case .removeExercise(let name): return name
+        case .modifyExercise(let name, _, _, _, _, _, _, _): return name
+        case .replaceExercise(let oldName, _, _, _, _, _, _, _, _, _): return oldName
+        case .addExercise, .groupSuperset: return nil
+        }
+    }
+
     /// One-line confirmation shown in chat after applying,
     /// e.g. "✓ Updated Dumbbell Shoulder Press: 3 sets — 40 / 45 / 50 lbs".
     var appliedSummary: String {
