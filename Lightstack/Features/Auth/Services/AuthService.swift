@@ -1,5 +1,6 @@
 import Foundation
 import AuthenticationServices
+import CryptoKit
 import Supabase
 import GoogleSignIn
 import UIKit
@@ -164,6 +165,11 @@ final class AuthService: NSObject {
             _ = GIDSignIn.sharedInstance.handle(url)
             return
         }
+        // Only our own auth callback reaches Supabase; anything else is ignored.
+        guard Self.isAuthCallback(url) else {
+            logger.info("Ignored unexpected deep link")
+            return
+        }
         Task {
             do {
                 let session = try await supabaseClient.auth.session(from: url)
@@ -174,6 +180,12 @@ final class AuthService: NSObject {
                 self.logger.error("Deep link session error: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// `lightstack://auth-callback?…` — the redirect Supabase uses for email links.
+    static func isAuthCallback(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == redirectURL.scheme?.lowercased()
+            && url.host?.lowercased() == redirectURL.host?.lowercased()
     }
 
     // MARK: - Google Sign-In
@@ -264,16 +276,20 @@ final class AuthService: NSObject {
 
     // MARK: - Apple Sign-In
 
-    func signInWithApple() {
-        let provider = ASAuthorizationAppleIDProvider()
-        let request = provider.createRequest()
-        request.requestedScopes = [.fullName, .email]
+    /// Signs in with the credential from `SignInWithAppleButton`. `nonce` is the raw
+    /// value whose SHA-256 was put on the request (see `appleNonce()`); Supabase checks
+    /// it against the ID token so a stolen token can't be replayed.
+    func signInWithApple(credential: ASAuthorizationAppleIDCredential, nonce: String) {
+        handleAppleCredential(credential, nonce: nonce)
+    }
 
-        let controller = ASAuthorizationController(
-            authorizationRequests: [request]
-        )
-        controller.delegate = self
-        controller.performRequests()
+    /// A fresh random nonce, and its SHA-256 for `ASAuthorizationAppleIDRequest.nonce`.
+    static func appleNonce() -> (raw: String, hashed: String) {
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
+        var generator = SystemRandomNumberGenerator()
+        let raw = String((0..<32).map { _ in charset[Int.random(in: 0..<charset.count, using: &generator)] })
+        let hashed = SHA256.hash(data: Data(raw.utf8)).map { String(format: "%02x", $0) }.joined()
+        return (raw, hashed)
     }
 
     // MARK: - Sign Out
@@ -340,7 +356,8 @@ final class AuthService: NSObject {
     }
 
     private func handleAppleCredential(
-        _ credential: ASAuthorizationAppleIDCredential
+        _ credential: ASAuthorizationAppleIDCredential,
+        nonce: String
     ) {
         guard let identityToken = credential.identityToken,
               let tokenString = String(data: identityToken, encoding: .utf8)
@@ -358,7 +375,8 @@ final class AuthService: NSObject {
                 try await supabaseClient.auth.signInWithIdToken(
                     credentials: .init(
                         provider: .apple,
-                        idToken: tokenString
+                        idToken: tokenString,
+                        nonce: nonce
                     )
                 )
                 await notifySignIn()
@@ -366,28 +384,5 @@ final class AuthService: NSObject {
                 await notifyError(error)
             }
         }
-    }
-}
-
-// MARK: - ASAuthorizationControllerDelegate
-
-extension AuthService: ASAuthorizationControllerDelegate {
-
-    func authorizationController(
-        controller: ASAuthorizationController,
-        didCompleteWithAuthorization authorization: ASAuthorization
-    ) {
-        guard let credential = authorization.credential
-                as? ASAuthorizationAppleIDCredential else {
-            return
-        }
-        handleAppleCredential(credential)
-    }
-
-    func authorizationController(
-        controller: ASAuthorizationController,
-        didCompleteWithError error: Error
-    ) {
-        Task { @MainActor in notifyError(error) }
     }
 }

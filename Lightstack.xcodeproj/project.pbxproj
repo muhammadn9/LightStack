@@ -33,7 +33,6 @@
 		282B22E382342ECBB488BA94 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81EF96ABA2922F4DAC4477B0 /* KeychainService.swift */; };
 		29D3DAA53EDE1D6453B6F86F /* WorkoutImportDedupeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACC6B4AE561E609B382622EC /* WorkoutImportDedupeTests.swift */; };
 		2B574A17544EEADEB6C00DAA /* ProfileRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780431D2E39A0FC8C268510A /* ProfileRepository.swift */; };
-		2BA166F93CD5607472D67977 /* OpenAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D1EFEC45A4B5C7F7C78894 /* OpenAIService.swift */; };
 		2CA9314FFE753807345AAE69 /* IdealFormData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234696FEEBB3988DCEC407D9 /* IdealFormData.swift */; };
 		2D6BD18B526DC2AEC26604E4 /* HistoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB04CE824A0DE50FBF43E22B /* HistoryListView.swift */; };
 		2DC44638CC400946E4768A88 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = D016A83D4E910B369882863F /* Supabase */; };
@@ -51,7 +50,6 @@
 		3FB5910C68745D47BB407900 /* ProgressStatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF50A364CF380DE4380E3D2 /* ProgressStatsService.swift */; };
 		434F8F17280F02F3382F11A4 /* ActiveWorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4077AF94F18B8DC9E42FDC29 /* ActiveWorkoutViewModel.swift */; };
 		43A4896536FDD8BFEFD0A55E /* LiftTrendViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BDDFB8A82A45863514BEE9A /* LiftTrendViews.swift */; };
-		470B28C009029D80D64A879E /* ClaudeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF79E72A57FB39580EC90835 /* ClaudeService.swift */; };
 		47F1C8E6C7C01C3C0B5ADAD9 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD7FAD3D73C29C60902B298C /* LoginView.swift */; };
 		48DA432507C3A1429580665D /* WorkoutModification.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03178C1E3B8074F9760BDE28 /* WorkoutModification.swift */; };
 		4A030AB7DF5AA22E37E594C9 /* ActiveWorkoutTimerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37F72C74353B0328763D5383 /* ActiveWorkoutTimerBar.swift */; };
@@ -139,6 +137,7 @@
 		B4C096DCC6D14973731B51E5 /* BodyPose.swift in Sources */ = {isa = PBXBuildFile; fileRef = D35D72A261CD1E432EF17A30 /* BodyPose.swift */; };
 		BDE3E9C11FBC1FA52756310F /* WorkoutSessionPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78EBC0FC94B1766B6AB6DF5D /* WorkoutSessionPersistence.swift */; };
 		BF87EAF5FC14EA8D1FB389AF /* LightstackUITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05193E2C6FBA1AE92A095F81 /* LightstackUITestCase.swift */; };
+		BFC3D3C9E2C9D0692CFE6C7A /* SecurityHardeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1237C3764D9207309F8EFD3 /* SecurityHardeningTests.swift */; };
 		BFC70BCF10747FCC78C6DF66 /* SupersetGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DEA2B77860749685CB5A8D9 /* SupersetGroup.swift */; };
 		C18D30ECF32923C50FE57FE3 /* SupersetGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0D954B8085C043CCEBD83A /* SupersetGroupTests.swift */; };
 		C1F0A4D1B715AA5CC5DC1D07 /* EmailVerificationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7999CFCF9A4BC83C11B6B8A /* EmailVerificationView.swift */; };
@@ -315,6 +314,7 @@
 		9EF0EEBF8892875CE61F6BAC /* BodyPose3D.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyPose3D.swift; sourceTree = "<group>"; };
 		A030BEB883DA759A9F8AE48A /* PlanBuilderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanBuilderViewModel.swift; sourceTree = "<group>"; };
 		A049A3CB8EED029EB74346C4 /* NotebookComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookComponents.swift; sourceTree = "<group>"; };
+		A1237C3764D9207309F8EFD3 /* SecurityHardeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityHardeningTests.swift; sourceTree = "<group>"; };
 		A21439901BE53CEAA4F2C880 /* LightstackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightstackApp.swift; sourceTree = "<group>"; };
 		A3264910149F2F98B80397B0 /* ModificationConfirmationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModificationConfirmationSheet.swift; sourceTree = "<group>"; };
 		A39DFEBDC9A9B312A50443A3 /* RepCounterServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepCounterServiceTests.swift; sourceTree = "<group>"; };
@@ -340,7 +340,6 @@
 		BECB36552A01C6C682AE2B7E /* StatusBadgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBadgeTests.swift; sourceTree = "<group>"; };
 		BF0DFE8492128FA612750BE3 /* FinishWorkoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinishWorkoutTests.swift; sourceTree = "<group>"; };
 		BF6D60ACAF13C1FFA581C85A /* WorkoutSet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutSet.swift; sourceTree = "<group>"; };
-		BF79E72A57FB39580EC90835 /* ClaudeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeService.swift; sourceTree = "<group>"; };
 		C34121902218FA929D4CA2EB /* GeminiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiService.swift; sourceTree = "<group>"; };
 		C36C0EAACD6D6D70D4F7503E /* Workout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workout.swift; sourceTree = "<group>"; };
 		C3E0E24537C18724016DBCEA /* WorkoutEditDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEditDraft.swift; sourceTree = "<group>"; };
@@ -353,7 +352,6 @@
 		D0F3610212DE9B047C649205 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		D1246336455EAB944BBCD0D7 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		D2A525AFA143BAA2CA880FE1 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
-		D2D1EFEC45A4B5C7F7C78894 /* OpenAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIService.swift; sourceTree = "<group>"; };
 		D35D72A261CD1E432EF17A30 /* BodyPose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BodyPose.swift; sourceTree = "<group>"; };
 		D4B5AF5BFEAAAA626BF9876A /* SkeletonSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonSceneView.swift; sourceTree = "<group>"; };
 		D5ABE1748E32FBB842C3F56C /* DateFormatter+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DateFormatter+Extensions.swift"; sourceTree = "<group>"; };
@@ -515,11 +513,9 @@
 			children = (
 				67A38787ECD15188BFA3A03C /* AIProvider.swift */,
 				8C0F3137974BADD31CC68007 /* AIServiceManager.swift */,
-				BF79E72A57FB39580EC90835 /* ClaudeService.swift */,
 				82C30C461A8B624C54F7C655 /* EquipmentClassifier.swift */,
 				024F1EDD97F21B6014FF7EF6 /* LocalStorageService.swift */,
 				46D2264EF3EA64FCBB8FF061 /* NotificationService.swift */,
-				D2D1EFEC45A4B5C7F7C78894 /* OpenAIService.swift */,
 				1C48010D6E8588D794E4A142 /* SupabaseService.swift */,
 				2340377433B04F09D517D24E /* SyncService.swift */,
 				246C661744A8F0F458CF4900 /* ValidationService.swift */,
@@ -803,6 +799,7 @@
 				AD30F1F7CB7E0DB560AAA996 /* PRRecalculationTests.swift */,
 				A39DFEBDC9A9B312A50443A3 /* RepCounterServiceTests.swift */,
 				BD6BC82F3387CA9572E9C16D /* RepeatSetResolutionTests.swift */,
+				A1237C3764D9207309F8EFD3 /* SecurityHardeningTests.swift */,
 				BECB36552A01C6C682AE2B7E /* StatusBadgeTests.swift */,
 				3E0D954B8085C043CCEBD83A /* SupersetGroupTests.swift */,
 				5EF3257A28254FC6A32A81D3 /* SupersetImportEditTests.swift */,
@@ -1111,7 +1108,6 @@
 				A6A6E13BA1F21FD0A8553CD4 /* CardStyle.swift in Sources */,
 				66841ECE2939A6742FBE068C /* CardioFormatting.swift in Sources */,
 				EE5B3C02A4B490A77D1D4F00 /* ChatMessage.swift in Sources */,
-				470B28C009029D80D64A879E /* ClaudeService.swift in Sources */,
 				B0644410F3E1729FA98C69B8 /* CoachChatView.swift in Sources */,
 				D4D893A8C0574762F0B80EB9 /* CoachChatViewModel.swift in Sources */,
 				625B0022E2CA23DBC6DC4784 /* CoachContextBuilder.swift in Sources */,
@@ -1173,7 +1169,6 @@
 				8A87F39CC901230D31EDADF6 /* NotificationService.swift in Sources */,
 				AE4C263835B9E1565F60CBA9 /* OfflineQueueManager.swift in Sources */,
 				EDF9C0EF3DF4668882D87609 /* OnboardingView.swift in Sources */,
-				2BA166F93CD5607472D67977 /* OpenAIService.swift in Sources */,
 				15BFA33868E0625E2B28A468 /* PRRepository.swift in Sources */,
 				7DD3567AF9DFA8ABC4DFD269 /* PersonalRecord.swift in Sources */,
 				74F7952994966A9AE56D1FBE /* PersonalRecordsListView.swift in Sources */,
@@ -1252,6 +1247,7 @@
 				35D669B21CE950765EA92D15 /* ProgressStatsTests.swift in Sources */,
 				72A975F875165C43030E9716 /* RepCounterServiceTests.swift in Sources */,
 				3E72DC960081D97379DD958D /* RepeatSetResolutionTests.swift in Sources */,
+				BFC3D3C9E2C9D0692CFE6C7A /* SecurityHardeningTests.swift in Sources */,
 				FF21D936B874FBF11EAF7FD3 /* StatusBadgeTests.swift in Sources */,
 				C18D30ECF32923C50FE57FE3 /* SupersetGroupTests.swift in Sources */,
 				88B9BB8E22B723D8ACB72C75 /* SupersetImportEditTests.swift in Sources */,
@@ -1498,7 +1494,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 30;
+				CURRENT_PROJECT_VERSION = 31;
 				DEVELOPMENT_TEAM = 7X8799T6N2;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Lightstack/Info.plist;
@@ -1522,7 +1518,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 30;
+				CURRENT_PROJECT_VERSION = 31;
 				DEVELOPMENT_TEAM = 7X8799T6N2;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Lightstack/Info.plist;

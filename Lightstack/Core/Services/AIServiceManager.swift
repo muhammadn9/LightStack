@@ -2,7 +2,7 @@ import Foundation
 import os
 
 /// Manages multiple AI providers and automatically rotates between them
-/// when rate limits are hit. Prioritizes providers in order: Gemini → OpenAI → Claude.
+/// when rate limits are hit (Gemini models, all reached through the ai-proxy Edge Function).
 final class AIServiceManager {
 
     private var providers: [AIProvider]
@@ -67,6 +67,13 @@ final class AIServiceManager {
 
             case .failure(let error):
                 self.logger.error("❌ Failed with \(availableProvider.name): \(error.localizedDescription)")
+
+                // ai-proxy refusals (per-user rate limit, signed out) apply to every
+                // model, so show them as-is instead of trying the next provider.
+                if (error as NSError).domain == GeminiService.proxyErrorDomain {
+                    completion(.failure(error))
+                    return
+                }
 
                 // Check if this is a rate limit error
                 if self.isRateLimitError(error) {

@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-/// Protocol for AI service providers (Gemini, OpenAI, Claude).
+/// Protocol for AI service providers (Gemini models via the ai-proxy Edge Function).
 /// Allows rotation between providers when rate limits are hit.
 protocol AIProvider {
     /// Provider name for logging and identification
@@ -20,8 +20,8 @@ protocol AIProvider {
     /// Generate chat completion with system prompt and messages.
     ///
     /// - Parameter expectsJSON: when true the provider constrains the response
-    ///   to a JSON object. Prose callers MUST pass false — Gemini and OpenAI
-    ///   enforce this at the API level, so a prompt asking for plain text is
+    ///   to a JSON object. Prose callers MUST pass false — Gemini
+    ///   enforces this at the API level, so a prompt asking for plain text is
     ///   ignored and the caller gets raw JSON back.
     func generateChat(
         systemPrompt: String,

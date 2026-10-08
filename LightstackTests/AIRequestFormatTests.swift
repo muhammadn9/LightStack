@@ -1,7 +1,7 @@
 import XCTest
 @testable import Lightstack
 
-/// JSON mode is enforced by the Gemini and OpenAI APIs, not by the prompt. If it
+/// JSON mode is enforced by the Gemini API, not by the prompt. If it
 /// leaks onto prose calls the athlete sees raw JSON, so pin it to `expectsJSON`.
 final class AIRequestFormatTests: XCTestCase {
 
@@ -34,31 +34,5 @@ final class AIRequestFormatTests: XCTestCase {
             XCTAssertEqual(config["temperature"] as? Double, 0.7)
             XCTAssertEqual(config["maxOutputTokens"] as? Int, 8192)
         }
-    }
-
-    // MARK: - OpenAI
-
-    private func openAIBody(expectsJSON: Bool) -> [String: Any] {
-        OpenAIService().buildRequestBody(
-            systemPrompt: "system",
-            messages: messages,
-            expectsJSON: expectsJSON
-        )
-    }
-
-    func testOpenAIRequestsJSONObjectWhenJSONExpected() {
-        let format = openAIBody(expectsJSON: true)["response_format"] as? [String: String]
-        XCTAssertEqual(format?["type"], "json_object")
-    }
-
-    func testOpenAIOmitsResponseFormatForProse() {
-        XCTAssertNil(openAIBody(expectsJSON: false)["response_format"])
-    }
-
-    func testOpenAIKeepsSystemPromptAsFirstMessage() {
-        let body = openAIBody(expectsJSON: false)
-        let chat = body["messages"] as? [[String: String]]
-        XCTAssertEqual(chat?.first?["role"], "system")
-        XCTAssertEqual(chat?.first?["content"], "system")
     }
 }
