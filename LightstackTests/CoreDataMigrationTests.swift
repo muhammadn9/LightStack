@@ -81,4 +81,56 @@ final class CoreDataMigrationTests: XCTestCase {
         XCTAssertEqual(sets.first?.id, setId)
         XCTAssertEqual(sets.first?.reps, 8)
     }
+
+    /// v2 store (existing workout) opens with the current model (v3, adds CDRestDay) and keeps its data.
+    func testMigratesV2StoreToV3AddsRestDay() throws {
+        let bundle = Bundle(for: LocalStorageService.self)
+        let v2URL = try XCTUnwrap(bundle.url(forResource: "Lightstack 2", withExtension: "mom", subdirectory: "Lightstack.momd"))
+        let v3URL = try XCTUnwrap(bundle.url(forResource: "Lightstack 3", withExtension: "mom", subdirectory: "Lightstack.momd"))
+        let v2Model = try XCTUnwrap(NSManagedObjectModel(contentsOf: v2URL))
+        let v3Model = try XCTUnwrap(NSManagedObjectModel(contentsOf: v3URL))
+        XCTAssertNil(v2Model.entitiesByName["CDRestDay"])
+        XCTAssertNotNil(v3Model.entitiesByName["CDRestDay"])
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("migration-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let storeURL = dir.appendingPathComponent("Lightstack.sqlite")
+        let workoutId = UUID()
+
+        do {
+            let coordinator = NSPersistentStoreCoordinator(managedObjectModel: v2Model)
+            let store = try coordinator.addPersistentStore(ofType: NSSQLiteStoreType, configurationName: nil, at: storeURL, options: nil)
+            let ctx = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+            ctx.persistentStoreCoordinator = coordinator
+            try ctx.performAndWait {
+                let w = NSEntityDescription.insertNewObject(forEntityName: "CDWorkout", into: ctx)
+                w.setValue(workoutId, forKey: "id"); w.setValue(UUID(), forKey: "userId")
+                w.setValue(Date(), forKey: "date"); w.setValue("Pull", forKey: "workoutType")
+                w.setValue(Date(), forKey: "createdAt")
+                try ctx.save()
+            }
+            try coordinator.remove(store)
+        }
+
+        let container = NSPersistentContainer(name: "Lightstack")
+        let desc = NSPersistentStoreDescription(url: storeURL)
+        desc.shouldMigrateStoreAutomatically = true
+        desc.shouldInferMappingModelAutomatically = true
+        container.persistentStoreDescriptions = [desc]
+        var loadError: Error?
+        container.loadPersistentStores { _, error in loadError = error }
+        XCTAssertNil(loadError, "Migration failed: \(String(describing: loadError))")
+
+        let ctx = container.viewContext
+        let workouts = try ctx.fetch(CDWorkout.fetchRequest() as NSFetchRequest<CDWorkout>)
+        XCTAssertEqual(workouts.first?.id, workoutId)
+        XCTAssertEqual(workouts.first?.workoutType, "Pull")
+        XCTAssertEqual(try ctx.count(for: CDRestDay.fetchRequest() as NSFetchRequest<CDRestDay>), 0)
+
+        let rest = CDRestDay(context: ctx)
+        rest.id = UUID(); rest.userId = UUID(); rest.date = Date(); rest.createdAt = Date()
+        try ctx.save()
+        XCTAssertEqual(try ctx.count(for: CDRestDay.fetchRequest() as NSFetchRequest<CDRestDay>), 1)
+    }
 }

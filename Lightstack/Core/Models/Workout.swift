@@ -116,14 +116,15 @@ struct Workout: Codable, Identifiable {
         workoutType: String,
         energyLevel: Int?,
         timeAvailableMinutes: Int?,
-        setupNote: String? = nil
+        setupNote: String? = nil,
+        date: Date = Date()
     ) -> Workout {
         let localId = UUID().uuidString
         return Workout(
             id: UUID(),
             userId: userId,
             localId: localId,
-            date: Date(),
+            date: date,
             workoutType: workoutType,
             durationMinutes: nil,
             energyLevel: energyLevel,

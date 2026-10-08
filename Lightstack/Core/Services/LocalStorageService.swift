@@ -346,27 +346,30 @@ final class LocalStorageService {
 
     // MARK: - Streak
 
+    /// Consecutive days ending today or yesterday where each day has a workout OR a rest day.
     func countConsecutiveWorkoutDays(userId: UUID) -> Int {
         let request: NSFetchRequest<CDWorkout> = CDWorkout.fetchRequest()
         request.predicate = NSPredicate(format: "userId == %@", userId as CVarArg)
-        request.sortDescriptors = [NSSortDescriptor(key: "date", ascending: false)]
-
-        guard let workouts = try? context.fetch(request), !workouts.isEmpty else {
-            return 0
-        }
+        let workouts = (try? context.fetch(request)) ?? []
+        let restDays = fetchRestDays(userId: userId)
 
         let calendar = Calendar.current
-        var dates = Set<Date>()
+        var days = Set<Date>()
         for w in workouts {
-            if let d = w.date {
-                dates.insert(calendar.startOfDay(for: d))
-            }
+            if let d = w.date { days.insert(calendar.startOfDay(for: d)) }
         }
+        for r in restDays {
+            if let d = r.date { days.insert(calendar.startOfDay(for: d)) }
+        }
+        return Self.streak(days: days, now: Date(), calendar: calendar)
+    }
 
-        let sorted = dates.sorted(by: >)
+    /// Streak over a set of active days (start-of-day dates). The most recent day
+    /// must be today or yesterday.
+    static func streak(days: Set<Date>, now: Date, calendar: Calendar) -> Int {
+        let sorted = days.map { calendar.startOfDay(for: $0) }.sorted(by: >)
         guard let mostRecent = sorted.first else { return 0 }
-
-        let today = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: now)
         guard let yesterday = calendar.date(byAdding: .day, value: -1, to: today) else { return 0 }
         guard mostRecent >= yesterday else { return 0 }
 
@@ -381,8 +384,50 @@ final class LocalStorageService {
                 break
             }
         }
-
         return streak
+    }
+
+    // MARK: - Rest days
+    // Local-only for now: rest days are not synced to Supabase.
+
+    /// Rest days for a user, optionally limited to an inclusive start-of-day range.
+    func fetchRestDays(userId: UUID, in range: ClosedRange<Date>? = nil) -> [CDRestDay] {
+        let request: NSFetchRequest<CDRestDay> = CDRestDay.fetchRequest()
+        if let range {
+            request.predicate = NSPredicate(
+                format: "userId == %@ AND date >= %@ AND date <= %@",
+                userId as CVarArg, range.lowerBound.startOfDay as CVarArg, range.upperBound.startOfDay as CVarArg
+            )
+        } else {
+            request.predicate = NSPredicate(format: "userId == %@", userId as CVarArg)
+        }
+        request.sortDescriptors = [NSSortDescriptor(key: "date", ascending: false)]
+        return (try? context.fetch(request)) ?? []
+    }
+
+    func isRestDay(userId: UUID, date: Date) -> Bool {
+        let day = date.startOfDay
+        return !fetchRestDays(userId: userId, in: day...day).isEmpty
+    }
+
+    /// Marks a day as a rest day. Idempotent per day.
+    func addRestDay(userId: UUID, date: Date) {
+        let day = date.startOfDay
+        guard fetchRestDays(userId: userId, in: day...day).isEmpty else { return }
+        let entity = CDRestDay(context: context)
+        entity.id = UUID()
+        entity.userId = userId
+        entity.date = day
+        entity.createdAt = Date()
+        save()
+    }
+
+    func removeRestDay(userId: UUID, date: Date) {
+        let day = date.startOfDay
+        let found = fetchRestDays(userId: userId, in: day...day)
+        guard !found.isEmpty else { return }
+        found.forEach { context.delete($0) }
+        save()
     }
 
     // MARK: - Private

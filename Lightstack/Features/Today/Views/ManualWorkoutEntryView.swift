@@ -5,6 +5,8 @@ struct ManualWorkoutEntryView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var todayViewModel: TodayViewModel
     let userId: UUID
+    /// Day the workout is logged for. Nil means now.
+    var logDate: Date? = nil
 
     @State private var workoutType = ""
     @State private var exercises: [ManualExercise] = []
@@ -24,7 +26,7 @@ struct ManualWorkoutEntryView: View {
                     .padding(20)
                 }
             }
-            .navigationTitle("Manual Workout")
+            .navigationTitle(logDate.map { "Log \($0.formatted(.dateTime.month(.abbreviated).day()))" } ?? "Manual Workout")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -171,12 +173,20 @@ struct ManualWorkoutEntryView: View {
         !workoutType.trimmingCharacters(in: .whitespaces).isEmpty && !exercises.isEmpty
     }
 
+    /// Noon on the given day, or now when that day is today.
+    private static func timestamp(on day: Date) -> Date {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) { return Date() }
+        return calendar.date(bySettingHour: 12, minute: 0, second: 0, of: day) ?? day
+    }
+
     private func startManualWorkout() {
         let workout = Workout.create(
             userId: userId,
             workoutType: workoutType.trimmingCharacters(in: .whitespaces),
             energyLevel: nil,
-            timeAvailableMinutes: nil
+            timeAvailableMinutes: nil,
+            date: logDate.map { Self.timestamp(on: $0) } ?? Date()
         )
 
         let exerciseModels = exercises.enumerated().map { index, ex in

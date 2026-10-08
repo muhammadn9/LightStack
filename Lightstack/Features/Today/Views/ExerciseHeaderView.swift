@@ -5,12 +5,9 @@ import SwiftUI
 /// A page holds one exercise, or 2-4 members of a superset.
 struct ExerciseHeaderView: View {
     let members: [Exercise]
-    let currentIndex: Int
     /// Number of pages (a superset counts once).
     let totalCount: Int
     let canLinkWithNext: Bool
-    let onPrevious: () -> Void
-    let onNext: () -> Void
     let onAdd: () -> Void
     let onFormDemo: () -> Void
     let onRecordForm: () -> Void
@@ -39,18 +36,23 @@ struct ExerciseHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(members) { member in
-                    nameText(member)
-                }
-            }
-            .accessibilityElement(children: .contain)
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(members) { member in
+                            nameText(member)
+                        }
+                    }
+                    .accessibilityElement(children: .contain)
 
-            Text(subtitle)
-                .font(AppTheme.caveat(17))
-                .foregroundStyle(AppTheme.textSecondary)
-                .lineLimit(isSuperset ? 2 : 1)
-                .minimumScaleFactor(0.8)
+                    Text(subtitle)
+                        .font(AppTheme.caveat(17))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .lineLimit(isSuperset ? 2 : 1)
+                        .minimumScaleFactor(0.8)
+                }
+                controlsRow
+            }
 
             ForEach(members) { member in
                 if let message = member.coachNoteParts.message {
@@ -60,7 +62,6 @@ struct ExerciseHeaderView: View {
             }
 
             supersetRow
-            controlsRow
         }
     }
 
@@ -114,19 +115,6 @@ struct ExerciseHeaderView: View {
 
     private var controlsRow: some View {
         HStack(spacing: 6) {
-            iconButton("chevron.left", label: "Previous exercise", action: onPrevious)
-                .disabled(currentIndex <= 0)
-                .opacity(currentIndex <= 0 ? 0.35 : 1)
-            Text("\(currentIndex + 1) of \(totalCount)")
-                .font(AppTheme.plexMono(14))
-                .foregroundStyle(AppTheme.textSecondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(minWidth: 52)
-            iconButton("chevron.right", label: "Next exercise", action: onNext)
-                .disabled(currentIndex >= totalCount - 1)
-                .opacity(currentIndex >= totalCount - 1 ? 0.35 : 1)
-            Spacer(minLength: 8)
             // Secondary actions share one menu: a button each pushed the row wider
             // than narrow phones, spilling the whole workout page off both edges.
             if showsMoreMenu {
