@@ -23,7 +23,8 @@ final class FormFeedbackService {
         aiServiceManager.generateChat(
             systemPrompt: Self.systemPrompt,
             messages: messages,
-            expectsJSON: false
+            expectsJSON: false,
+            options: .forTask(.formFeedback)
         ) { aiResult in
             switch aiResult {
             case .success(let text):

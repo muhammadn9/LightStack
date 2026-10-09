@@ -22,6 +22,16 @@ final class CoachChatViewModel: ObservableObject {
     private var systemPrompt: String = ""
     private var currentExercises: [Exercise] = []
     private var currentLoggedSets: [UUID: [WorkoutSet]] = [:]
+    private var knownExerciseNames: [String] = []
+
+    /// How many recent messages (after the workout-context message) go to the AI.
+    static let historyWindow = 6
+
+    /// The context message plus the last few messages. The full history stays on screen.
+    static func windowedMessages(_ messages: [ChatMessage], window: Int = historyWindow) -> [ChatMessage] {
+        guard messages.count > window + 1, let context = messages.first else { return messages }
+        return [context] + messages.suffix(window)
+    }
 
     init(
         aiServiceManager: AIServiceManager,
@@ -43,103 +53,13 @@ final class CoachChatViewModel: ObservableObject {
         self.currentLoggedSets = loggedSets
 
         let context = coachContextBuilder.buildContext(userId: userId, workoutType: workoutType)
-        systemPrompt = coachPromptService.buildSystemPrompt(
-            profile: context.profile,
-            includeWorkoutPlanFormat: false
-        ) + """
+        systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .chat)
 
-        WORKOUT MODIFICATIONS
-        You can suggest modifications to the current workout if the athlete asks.
-        When you change the workout, keep the prose to one or two short sentences \
-        that say what changes (e.g. "Bumping bench to 155 for 10."). Skip the \
-        reasoning unless the athlete asks why. The athlete confirms before anything \
-        is applied.
-        In the JSON block, write each existing exercise's "name" / "old_name" exactly \
-        as written in the current workout's "Exercises" list.
-
-        If — and only if — you are suggesting modifications, append a single fenced \
-        JSON code block at the very end of your response using this exact schema:
-
-        ```json
-        {
-          "modifications": [
-            {
-              "action": "add",
-              "name": "Exercise Name",
-              "muscle_group": "Muscle Group",
-              "target_sets": 3,
-              "target_reps": "8-10",
-              "target_rir": "2",
-              "rest_seconds": 90,
-              "target_weight": "135 lbs",
-              "note": "Optional note",
-              "superset": "A"
-            },
-            {
-              "action": "remove",
-              "name": "Exercise Name"
-            },
-            {
-              "action": "modify",
-              "name": "Exercise Name",
-              "new_target_sets": 4,
-              "new_target_reps": "6-8",
-              "new_target_rir": "1",
-              "new_rest": 120,
-              "new_target_weight": "145 lbs",
-              "note": "Optional note"
-            },
-            {
-              "action": "modify",
-              "name": "Pyramid Exercise",
-              "sets": [
-                {"weight": "40 lbs", "reps": "8", "rir": "2"},
-                {"weight": "45 lbs", "reps": "8", "rir": "1-2"},
-                {"weight": "50 lbs", "reps": "6", "rir": "0-1"}
-              ],
-              "note": "Short coaching cue only"
-            },
-            {
-              "action": "replace",
-              "old_name": "Old Exercise",
-              "new_name": "New Exercise",
-              "muscle_group": "Muscle Group",
-              "target_sets": 3,
-              "target_reps": "8-10",
-              "target_rir": "2",
-              "rest_seconds": 90,
-              "note": "Optional note"
-            }
-          ]
-        }
-        ```
-
-        Rules:
-        - Include only the modifications you are actually suggesting (any mix of actions).
-        - Omit optional fields (target_reps, target_rir, rest_seconds, target_weight, \
-        note, new_*) when not relevant.
-        - Weights are free-form strings including units, e.g. "135 lbs".
-        - When sets differ (pyramids, ramping, top sets, back-off sets), give one \
-        entry per set in "sets" (add, modify and replace all accept it) with that \
-        set's weight, reps and rir. The number of entries is the number of sets, so \
-        target_sets / new_target_sets may be omitted. Omit "sets" when every set is \
-        the same and use the single target_* / new_target_* fields.
-        - Keep "note" to a short coaching cue (e.g. "drive through the heels"). \
-        Never put the per-set numbers in the note; the app shows and fills them \
-        from "sets".
-        - RIR may be a range like "1-2"; the app prefills the lower number.
-        - Supersets: "add", "replace" and "modify" accept an optional "superset" \
-        label. Entries sharing a label are linked into one new superset (2-4 \
-        exercises, at most 4). Use it only when the athlete asks for a superset or \
-        it suits their goal; omit it otherwise. Exercises already marked as a \
-        superset in the session list stay linked unless you remove them.
-        - To change the weight on an exercise the athlete is already doing, use \
-        "modify" with new_target_weight — not "replace".
-        - If you are NOT suggesting any modifications, omit the JSON block entirely.
-        - Do NOT include the JSON block for general questions or advice without workout changes.
-        - Never present changes as a markdown table. A table does nothing; only \
-        the JSON block actually updates the workout.
-        """
+        // Names the athlete could swap in without asking the AI: their recent history
+        // plus the built-in catalog.
+        var names = Set(ExerciseCatalog.exercises.map(\.name))
+        for list in context.recentSessionSets.values { list.forEach { names.insert($0.name) } }
+        knownExerciseNames = names.sorted()
 
         // Add workout context as an initial system-like context message
         if messages.isEmpty {
@@ -179,12 +99,22 @@ final class CoachChatViewModel: ObservableObject {
         inputText = ""
         let userMessage = ChatMessage(role: .user, content: text)
         messages.append(userMessage)
+
+        // Simple, unambiguous commands are handled locally: no AI call.
+        if let command = LocalChatCommandParser.parse(text, exercises: currentExercises, knownNames: knownExerciseNames) {
+            messages.append(ChatMessage(role: .coach, content: command.reply))
+            pendingModifications = command.modifications
+            showModificationConfirmation = true
+            return
+        }
+
         isLoading = true
 
         aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
-            messages: messages,
-            expectsJSON: false
+            messages: Self.windowedMessages(messages),
+            expectsJSON: false,
+            options: .forTask(.chat)
         ) { [weak self] result in
             guard let self = self else { return }
             self.isLoading = false
@@ -271,6 +201,8 @@ final class CoachChatViewModel: ObservableObject {
                 missing.append(name)
             }
         }
+        // Keep local command matching in step with the workout after changes.
+        currentExercises = todayViewModel.exercises
         // Never silent: say in the chat what changed, and what couldn't be found.
         var lines: [String] = []
         if !applied.isEmpty { lines.append(Self.confirmationText(for: applied)) }

@@ -45,7 +45,7 @@ final class MonthPlanService {
         let endDate = Calendar.current.date(byAdding: .month, value: 1, to: startDate) ?? startDate
 
         let context = coachContextBuilder.buildContext(userId: userId)
-        let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
+        let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .monthPlan)
         let userMessage = coachPromptService.buildMonthPlanRequestMessage(
             targetGoal: targetGoal,
             daysPerWeek: daysPerWeek,
@@ -55,7 +55,8 @@ final class MonthPlanService {
 
         aiServiceManager.generateChat(
             systemPrompt: systemPrompt,
-            messages: [ChatMessage(role: .user, content: userMessage)]
+            messages: [ChatMessage(role: .user, content: userMessage)],
+            options: .forTask(.monthPlan)
         ) { [weak self] result in
             guard let self = self else { return }
 

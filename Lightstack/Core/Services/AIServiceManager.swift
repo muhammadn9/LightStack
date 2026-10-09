@@ -23,6 +23,7 @@ final class AIServiceManager {
         systemPrompt: String,
         messages: [ChatMessage],
         expectsJSON: Bool = true,
+        options: AIRequestOptions = .default,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         logger.debug("Starting chat generation with \(self.providers.count) providers available")
@@ -30,6 +31,7 @@ final class AIServiceManager {
             systemPrompt: systemPrompt,
             messages: messages,
             expectsJSON: expectsJSON,
+            options: options,
             attemptedProviders: [],
             completion: completion
         )
@@ -41,6 +43,7 @@ final class AIServiceManager {
         systemPrompt: String,
         messages: [ChatMessage],
         expectsJSON: Bool,
+        options: AIRequestOptions,
         attemptedProviders: [String],
         completion: @escaping (Result<String, Error>) -> Void
     ) {
@@ -56,7 +59,8 @@ final class AIServiceManager {
         availableProvider.generateChat(
             systemPrompt: systemPrompt,
             messages: messages,
-            expectsJSON: expectsJSON
+            expectsJSON: expectsJSON,
+            options: options
         ) { [weak self] result in
             guard let self = self else { return }
 
@@ -85,6 +89,7 @@ final class AIServiceManager {
                         systemPrompt: systemPrompt,
                         messages: messages,
                         expectsJSON: expectsJSON,
+                        options: options,
                         attemptedProviders: attempted,
                         completion: completion
                     )

@@ -45,6 +45,10 @@ struct SettingsView: View {
                     .listRowBackground(AppTheme.surface)
                 }
 
+                #if DEBUG
+                AIUsageDebugSection()
+                #endif
+
                 Section("Account") {
                     Button(action: { environment.authService.signOut() }) {
                         HStack {
@@ -66,3 +70,36 @@ struct SettingsView: View {
         .accessibilityIdentifier("settings.screen")
     }
 }
+
+#if DEBUG
+/// Today's AI calls and tokens per task (from Gemini usageMetadata). Debug builds only.
+private struct AIUsageDebugSection: View {
+    @State private var rows: [(task: AITask, entry: AIUsageTracker.Entry)] = []
+
+    var body: some View {
+        Section("AI usage (debug)") {
+            if rows.isEmpty {
+                Text("No AI calls today").foregroundStyle(AppTheme.textSecondary)
+                    .listRowBackground(AppTheme.surface)
+            }
+            ForEach(rows, id: \.task) { row in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(row.task.label): \(row.entry.calls) calls")
+                    Text("prompt \(row.entry.prompt) · out \(row.entry.candidates) · think \(row.entry.thoughts) · total \(row.entry.total)")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .listRowBackground(AppTheme.surface)
+            }
+            Button("Refresh") { rows = AIUsageTracker.shared.snapshot() }
+                .listRowBackground(AppTheme.surface)
+            Button("Reset", role: .destructive) {
+                AIUsageTracker.shared.reset()
+                rows = AIUsageTracker.shared.snapshot()
+            }
+            .listRowBackground(AppTheme.surface)
+        }
+        .onAppear { rows = AIUsageTracker.shared.snapshot() }
+    }
+}
+#endif

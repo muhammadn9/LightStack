@@ -97,6 +97,21 @@ final class SupabaseService {
             .execute()
     }
 
+    /// Sets `exercises.name` for the given rows (used when merging duplicate exercise names).
+    func updateExerciseNames(ids: [UUID], name: String) async throws {
+        let chunkSize = 50
+        var start = 0
+        while start < ids.count {
+            let chunk = ids[start..<min(start + chunkSize, ids.count)].map(\.uuidString)
+            try await client
+                .from("exercises")
+                .update(["name": name])
+                .in("id", values: chunk)
+                .execute()
+            start += chunkSize
+        }
+    }
+
     func deleteExercises(workoutId: UUID) async throws {
         try await client
             .from("exercises")

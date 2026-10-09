@@ -48,6 +48,7 @@ final class GeminiService {
         systemPrompt: String,
         messages: [ChatMessage],
         expectsJSON: Bool = true,
+        options: AIRequestOptions = .default,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         logger.debug("🔵 API CALL INITIATED - This counts against quota!")
@@ -62,9 +63,25 @@ final class GeminiService {
         var body = buildChatRequestBody(
             systemPrompt: systemPrompt,
             messages: messages,
-            expectsJSON: expectsJSON
+            expectsJSON: expectsJSON,
+            options: options
         )
         body["model"] = model
+
+        // If Gemini rejects the thinking field for this model, the same request is
+        // retried once without it (see `performWithRetry`).
+        var plainBody: Data?
+        if options.minimalThinking {
+            var plain = buildChatRequestBody(
+                systemPrompt: systemPrompt,
+                messages: messages,
+                expectsJSON: expectsJSON,
+                options: options,
+                includeThinking: false
+            )
+            plain["model"] = model
+            plainBody = try? JSONSerialization.data(withJSONObject: plain)
+        }
 
         let httpBody: Data
         do {
@@ -85,7 +102,11 @@ final class GeminiService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue(anonKey, forHTTPHeaderField: "apikey")
             request.httpBody = httpBody
-            performWithRetry(request: request, attempt: 0, completion: completion)
+            #if DEBUG
+            AIUsageTracker.shared.recordCall(task: options.task)
+            #endif
+            performWithRetry(request: request, attempt: 0, task: options.task,
+                             thinkingFallbackBody: plainBody, expectsJSON: expectsJSON, completion: completion)
         }
     }
 
@@ -99,6 +120,9 @@ final class GeminiService {
     private func performWithRetry(
         request: URLRequest,
         attempt: Int,
+        task: AITask,
+        thinkingFallbackBody: Data?,
+        expectsJSON: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         let task = session.dataTask(with: request) { [weak self] data, response, error in
@@ -119,12 +143,25 @@ final class GeminiService {
                 return
             }
 
+            // The thinking field is model-specific. If Gemini rejects it, retry once without.
+            if httpStatus == 400, let fallback = thinkingFallbackBody, let data,
+               Self.isThinkingRejection(data) {
+                var plain = request
+                plain.httpBody = fallback
+                self.logger.debug("400 mentioning thinking, retrying without thinkingConfig")
+                self.performWithRetry(request: plain, attempt: attempt, task: task,
+                                      thinkingFallbackBody: nil, expectsJSON: expectsJSON, completion: completion)
+                return
+            }
+
             // Retry on 503 with exponential backoff: 1s → 2s → 4s (max 3 retries)
             if httpStatus == 503 && attempt < 3 {
                 let delay = pow(2.0, Double(attempt))   // 1, 2, 4 seconds
                 self.logger.debug("503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/3)")
                 DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
-                    self?.performWithRetry(request: request, attempt: attempt + 1, completion: completion)
+                    self?.performWithRetry(request: request, attempt: attempt + 1, task: task,
+                                           thinkingFallbackBody: thinkingFallbackBody, expectsJSON: expectsJSON,
+                                           completion: completion)
                 }
                 return
             }
@@ -135,13 +172,27 @@ final class GeminiService {
             }
 
             do {
-                let text = try self.parseResponse(data)
+                let text = try self.parseResponse(data, task: task, expectsJSON: expectsJSON)
                 DispatchQueue.main.async { completion(.success(text)) }
             } catch {
                 DispatchQueue.main.async { completion(.failure(error)) }
             }
         }
         task.resume()
+    }
+
+    /// True when a Gemini 400 body complains about the thinking settings.
+    static func isThinkingRejection(_ data: Data) -> Bool {
+        guard let message = proxyMessage(from: data)?.lowercased() else { return false }
+        return message.contains("thinking")
+    }
+
+    /// Smallest thinking setting per model family. Gemini 2.5 takes a token budget
+    /// (0 turns thinking off); Gemini 3.x takes a level.
+    static func thinkingConfig(forModel model: String) -> [String: Any]? {
+        if model.hasPrefix("gemini-2.5") { return ["thinkingBudget": 0] }
+        if model.hasPrefix("gemini-3") { return ["thinkingLevel": "minimal"] }
+        return nil
     }
 
     static func proxyMessage(from data: Data) -> String? {
@@ -155,7 +206,9 @@ final class GeminiService {
     func buildChatRequestBody(
         systemPrompt: String,
         messages: [ChatMessage],
-        expectsJSON: Bool
+        expectsJSON: Bool,
+        options: AIRequestOptions = .default,
+        includeThinking: Bool = true
     ) -> [String: Any] {
         var contents: [[String: Any]] = []
 
@@ -168,9 +221,13 @@ final class GeminiService {
         }
 
         var generationConfig: [String: Any] = [
-            "temperature": 0.7,
-            "maxOutputTokens": 8192
+            "temperature": options.temperature,
+            "maxOutputTokens": options.maxOutputTokens
         ]
+        if options.minimalThinking, includeThinking,
+           let thinking = Self.thinkingConfig(forModel: model) {
+            generationConfig["thinkingConfig"] = thinking
+        }
         // Only constrain the response for callers that decode JSON. Setting this
         // unconditionally forces JSON on prose replies too, which no prompt can
         // override — that is how raw JSON ended up in Coach Chat.
@@ -187,7 +244,7 @@ final class GeminiService {
         ]
     }
 
-    private func parseResponse(_ data: Data) throws -> String {
+    func parseResponse(_ data: Data, task: AITask = .other, expectsJSON: Bool = false) throws -> String {
         if let responseString = String(data: data, encoding: .utf8) {
             logger.debug("Raw API response: \(responseString)")
         }
@@ -203,6 +260,12 @@ final class GeminiService {
             throw apiResponseError(message)
         }
 
+        #if DEBUG
+        if let usage = AIUsage.from(response: json) {
+            AIUsageTracker.shared.recordUsage(task: task, usage: usage)
+        }
+        #endif
+
         guard let candidates = json["candidates"] as? [[String: Any]] else {
             logger.error("No 'candidates' array in response. Keys: \(String(describing: json.keys))")
             throw parseError("no candidates")
@@ -211,6 +274,12 @@ final class GeminiService {
         guard let firstCandidate = candidates.first else {
             logger.error("Candidates array is empty")
             throw parseError("empty candidates")
+        }
+
+        // A JSON reply cut off by the token cap is not a valid plan/note: fail instead of parsing it.
+        if expectsJSON, (firstCandidate["finishReason"] as? String) == "MAX_TOKENS" {
+            logger.error("finishReason MAX_TOKENS on a JSON task (\(task.rawValue)); discarding truncated reply")
+            throw parseError("response truncated (MAX_TOKENS)")
         }
 
         guard let content = firstCandidate["content"] as? [String: Any],
@@ -245,10 +314,22 @@ extension GeminiService: AIProvider {
         expectsJSON: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        generateChat(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON,
+                     options: .default, completion: completion)
+    }
+
+    func generateChat(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool,
+        options: AIRequestOptions,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
         generateChatAsync(
             systemPrompt: systemPrompt,
             messages: messages,
             expectsJSON: expectsJSON,
+            options: options,
             completion: completion
         )
     }
