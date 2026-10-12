@@ -43,7 +43,7 @@ struct ManualWorkoutEntryView: View {
                 }
             }
             .sheet(isPresented: $showAddExercise) {
-                ExerciseCatalogPicker { name, muscleGroup in
+                ExerciseCatalogPicker(loadKnownExercises: { todayViewModel.historyExercises() }) { name, muscleGroup in
                     exercises.append(ManualExercise(name: name, muscleGroup: muscleGroup, targetSets: 3))
                 }
                 .keyboardDoneButton()

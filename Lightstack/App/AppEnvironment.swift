@@ -56,6 +56,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let workoutRepository: WorkoutRepository
     let profileRepository: ProfileRepository
     let prRepository: PRRepository
+    let exerciseMergeService: ExerciseMergeService
     let monthPlanRepository: MonthPlanRepository
 
     // MARK: - AI + Session Services
@@ -135,6 +136,12 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             localStorage: localStorageService,
             supabaseService: supabaseService,
             offlineQueueManager: offlineQueueManager
+        )
+        self.exerciseMergeService = ExerciseMergeService(
+            localStorage: localStorageService,
+            supabaseService: supabaseService,
+            offlineQueueManager: offlineQueueManager,
+            prRepository: prRepository
         )
         self.monthPlanRepository = MonthPlanRepository(
             localStorage: localStorageService,

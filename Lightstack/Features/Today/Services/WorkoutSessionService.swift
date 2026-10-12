@@ -34,6 +34,12 @@ final class WorkoutSessionService {
     private(set) var currentWorkout: Workout?
     private(set) var currentWorkoutId: UUID?
 
+    /// Rolling summary from the merged post-workout AI call, held until the
+    /// athlete actually saves the workout (a discarded workout stores nothing).
+    private var pendingSummary: (userId: UUID, workoutType: String, text: String)?
+    private var summaryWantedFor: (userId: UUID, workoutType: String)?
+    private var finishToken = UUID()
+
     var currentWorkoutCreatedAt: Date? {
         currentWorkout?.createdAt
     }
@@ -95,7 +101,7 @@ final class WorkoutSessionService {
             workoutRepository.createWorkout(pendingWorkout)
 
             let context = coachContextBuilder.buildContext(userId: userId, workoutType: sanitizedType)
-            let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
+            let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .plan)
             let userMessage = coachPromptService.buildWorkoutRequestMessage(
                 workoutType: sanitizedType,
                 time: time,
@@ -108,7 +114,8 @@ final class WorkoutSessionService {
 
             aiServiceManager.generateChat(
                 systemPrompt: systemPrompt,
-                messages: [ChatMessage(role: .user, content: userMessage)]
+                messages: [ChatMessage(role: .user, content: userMessage)],
+                options: .forTask(.plan)
             ) { [weak self] result in
                 guard let self = self else { return }
                 switch result {
@@ -142,6 +149,9 @@ final class WorkoutSessionService {
     func clearCurrentWorkout() {
         currentWorkout = nil
         currentWorkoutId = nil
+        // A saved workout may still be waiting for its summary; a discarded one is not.
+        pendingSummary = nil
+        if summaryWantedFor == nil { finishToken = UUID() }
     }
 
     // MARK: - Log Set
@@ -180,24 +190,36 @@ final class WorkoutSessionService {
         // waiting for the AI note, the duration is already saved in Core Data.
         workoutRepository.updateWorkout(workout)
 
+        // One AI call returns both the progression note and the rolling summary.
+        let token = UUID()
+        finishToken = token
+        pendingSummary = nil
+        summaryWantedFor = nil
+        let workoutType = workout.workoutType
+
         Task { @MainActor in
             let context = coachContextBuilder.buildContext(userId: userId)
-            let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
-            let userMessage = coachPromptService.buildPostSessionMessage(
+            let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .postWorkout)
+            let userMessage = coachPromptService.buildPostWorkoutMessage(
+                workoutType: workoutType,
                 exercises: exercises,
                 sets: allSets
             )
 
-            // Progression notes are shown to the athlete verbatim.
             aiServiceManager.generateChat(
                 systemPrompt: systemPrompt,
                 messages: [ChatMessage(role: .user, content: userMessage)],
-                expectsJSON: false
+                expectsJSON: true,
+                options: .forTask(.postWorkout)
             ) { [weak self] result in
                 guard let self = self else { return }
                 switch result {
                 case .success(let responseText):
-                    self.handleProgressionNoteResponse(responseText)
+                    let reply = PostWorkoutReply.parse(responseText)
+                    if self.finishToken == token, let summary = reply.summary, !exercises.isEmpty {
+                        self.receiveSummary(userId: userId, workoutType: workoutType, text: summary)
+                    }
+                    self.handleProgressionNoteResponse(reply.note)
                 case .failure:
                     // AI call failed — let user stay on PostWorkoutView without an AI note
                     self.handleProgressionNoteResponse("")
@@ -240,13 +262,14 @@ final class WorkoutSessionService {
         let workoutType = workout.workoutType
         let userId = workout.userId
 
+        // The summary came with the post-workout note; store it now that the
+        // workout is saved (or as soon as it arrives, if it is still on its way).
         if !exercises.isEmpty {
-            generateContextSummary(
-                userId: userId,
-                workoutType: workoutType,
-                exercises: exercises,
-                sets: sets
-            )
+            summaryWantedFor = (userId, workoutType)
+            if let pending = pendingSummary {
+                pendingSummary = nil
+                storeSummary(userId: pending.userId, workoutType: pending.workoutType, text: pending.text)
+            }
         }
 
         delegate?.sessionServiceDidSaveWorkout(self)
@@ -281,50 +304,32 @@ final class WorkoutSessionService {
 
     // MARK: - Context Summary Generation
 
-    private func generateContextSummary(
-        userId: UUID,
-        workoutType: String,
-        exercises: [Exercise],
-        sets: [UUID: [WorkoutSet]]
-    ) {
-        let context = coachContextBuilder.buildContext(userId: userId)
-        let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile)
-        let userMessage = coachPromptService.buildContextSummaryMessage(
+    private func receiveSummary(userId: UUID, workoutType: String, text: String) {
+        if let wanted = summaryWantedFor, wanted.userId == userId, wanted.workoutType == workoutType {
+            summaryWantedFor = nil
+            storeSummary(userId: userId, workoutType: workoutType, text: text)
+        } else {
+            pendingSummary = (userId, workoutType, text)
+        }
+    }
+
+    private func storeSummary(userId: UUID, workoutType: String, text: String) {
+        let existing = localStorage.fetchContextSummary(userId: userId, workoutType: workoutType)
+        let sessionsCovered = existing.map { Int($0.sessionsCovered) + 1 } ?? 1
+
+        let summary = AIContextSummary.create(
+            userId: userId,
             workoutType: workoutType,
-            exercises: exercises,
-            sets: sets
+            summaryText: text,
+            sessionsCovered: sessionsCovered
         )
+        localStorage.saveContextSummary(summary)
 
-        // The rolling summary is prose fed back into later prompts.
-        aiServiceManager.generateChat(
-            systemPrompt: systemPrompt,
-            messages: [ChatMessage(role: .user, content: userMessage)],
-            expectsJSON: false
-        ) { [weak self] result in
-            guard let self = self else { return }
-
-            switch result {
-            case .success(let summaryText):
-                let existing = self.localStorage.fetchContextSummary(userId: userId, workoutType: workoutType)
-                let sessionsCovered = existing.map { Int($0.sessionsCovered) + 1 } ?? 1
-
-                let summary = AIContextSummary.create(
-                    userId: userId,
-                    workoutType: workoutType,
-                    summaryText: summaryText,
-                    sessionsCovered: sessionsCovered
-                )
-                self.localStorage.saveContextSummary(summary)
-
-                Task {
-                    do {
-                        try await self.supabaseService.upsertContextSummary(summary)
-                    } catch {
-                        await self.offlineQueueManager.enqueue(.upsertContextSummary, payload: summary)
-                    }
-                }
-            case .failure(let error):
-                self.logger.error("Context summary generation failed: \(error.localizedDescription)")
+        Task {
+            do {
+                try await supabaseService.upsertContextSummary(summary)
+            } catch {
+                await offlineQueueManager.enqueue(.upsertContextSummary, payload: summary)
             }
         }
     }

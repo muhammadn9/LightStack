@@ -6,15 +6,27 @@ struct ExerciseCatalogPicker: View {
     /// Exercises the user has done before, shown first as "Your exercises".
     var loadYourExercises: (() -> [HistoryExercise])? = nil
     @State private var yourExercises: [HistoryExercise] = []
+    /// Past exercise names used only for "Did you mean" suggestions on custom names
+    /// (does not add the "Your exercises" section). Defaults to `loadYourExercises`.
+    var loadKnownExercises: (() -> [HistoryExercise])? = nil
+    @State private var knownExercises: [HistoryExercise] = []
+    @State private var nameSuggestion: NameSuggestion?
     let onSelect: (String, String) -> Void  // (name, muscleGroup)
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
     @State private var selectedMuscleGroup = "All"
     @State private var selectedClassification = "All"
-    @State private var showCustomAlert = false
+    @State private var showCustomForm = false
     @State private var customName = ""
     @State private var customMuscleGroup = "Chest"
+
+    /// A custom name that closely matches something already logged.
+    struct NameSuggestion: Equatable {
+        let typed: String
+        let typedMuscleGroup: String
+        let existing: HistoryExercise
+    }
 
     private var filteredExercises: [CatalogExercise] {
         ExerciseCatalog.filtered(
@@ -106,8 +118,32 @@ struct ExerciseCatalogPicker: View {
                     }
                 }
 
+                if let suggestion = nameSuggestion {
+                    ExerciseNameSuggestionRow(
+                        existingName: suggestion.existing.name,
+                        onUse: {
+                            onSelect(suggestion.existing.name, suggestion.existing.muscleGroup)
+                            nameSuggestion = nil
+                            dismiss()
+                        },
+                        onKeep: {
+                            onSelect(suggestion.typed, suggestion.typedMuscleGroup)
+                            nameSuggestion = nil
+                            dismiss()
+                        }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                }
+
+                if showCustomForm && nameSuggestion == nil {
+                    customForm
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                }
+
                 // Add custom exercise button
-                Button(action: { showCustomAlert = true }) {
+                Button(action: { showCustomForm = true }) {
                     HStack(spacing: 8) {
                         Image(systemName: "plus.circle.fill")
                         Text("Add Custom Exercise")
@@ -123,11 +159,15 @@ struct ExerciseCatalogPicker: View {
                             .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                     )
                 }
+                .accessibilityIdentifier("addCustomExerciseButton")
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
             .background(AppTheme.backgroundGradient.ignoresSafeArea())
-            .onAppear { yourExercises = loadYourExercises?() ?? [] }
+            .onAppear {
+                yourExercises = loadYourExercises?() ?? []
+                knownExercises = loadKnownExercises?() ?? yourExercises
+            }
             .navigationTitle("Exercise Catalog")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -136,25 +176,57 @@ struct ExerciseCatalogPicker: View {
                         .foregroundStyle(AppTheme.accent)
                 }
             }
-            .alert("Add Custom Exercise", isPresented: $showCustomAlert) {
-                TextField("Exercise name", text: $customName)
+        }
+    }
+
+    // MARK: - Custom exercise
+
+    private var customForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("Exercise name", text: $customName)
+                .font(AppTheme.caveat(18))
+                .foregroundStyle(AppTheme.textPrimary)
+                .padding(10)
+                .background(AppTheme.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .accessibilityIdentifier("customExerciseNameField")
+            HStack {
                 Picker("Muscle Group", selection: $customMuscleGroup) {
                     ForEach(ExerciseCatalog.muscleGroups, id: \.self) { group in
                         Text(group).tag(group)
                     }
                 }
-                Button("Add") {
-                    let name = customName.trimmingCharacters(in: .whitespaces)
-                    guard !name.isEmpty else { return }
-                    onSelect(name, customMuscleGroup)
-                    customName = ""
-                    dismiss()
-                }
-                Button("Cancel", role: .cancel) { customName = "" }
-            } message: {
-                Text("Enter the exercise name and select a muscle group.")
+                .tint(AppTheme.accent)
+                Spacer()
+                Button("Add", action: submitCustomName)
+                    .font(AppTheme.playfairItalic(15, weight: .bold))
+                    .foregroundStyle(AppTheme.onAccent)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 8)
+                    .background(AppTheme.accent)
+                    .clipShape(Capsule())
+                    .accessibilityIdentifier("customExerciseAddButton")
             }
         }
+        .padding(12)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.border, lineWidth: 1))
+    }
+
+    private func submitCustomName() {
+        let name = customName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        let known = knownExercises.map(\.name)
+        if let match = ExerciseNameResolver.suggestions(for: name, among: known).first,
+           let existing = knownExercises.first(where: { $0.name == match }) {
+            nameSuggestion = NameSuggestion(typed: name, typedMuscleGroup: customMuscleGroup, existing: existing)
+            customName = ""
+            return
+        }
+        onSelect(name, customMuscleGroup)
+        customName = ""
+        dismiss()
     }
 
     // MARK: - Subviews

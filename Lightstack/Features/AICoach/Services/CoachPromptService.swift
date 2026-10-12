@@ -11,120 +11,122 @@ final class CoachPromptService {
         self.validationService = validationService
     }
 
-    /// Build the full system prompt with profile data injected.
-    ///
-    /// - Parameter includeWorkoutPlanFormat: whether to include the bare-JSON
-    ///   workout plan schema. Generation paths need it; the coach chat must not
-    ///   have it, or a request like "change the weights" gets answered with a
-    ///   raw plan JSON object in the conversation instead of prose.
+    /// Which AI task a system prompt is for. Each task gets only the sections it needs,
+    /// because the system prompt is sent on every call.
+    enum PromptTask {
+        case plan, chat, postWorkout, monthPlan
+    }
+
+    /// Back-compat entry point: `true` is the plan prompt, `false` the chat prompt.
     func buildSystemPrompt(profile: UserProfile?, includeWorkoutPlanFormat: Bool = true) -> String {
-        let name = sanitize(profile?.displayName ?? "Athlete")
-        let age = profile?.age.map { String($0) } ?? "Unknown"
-        let weight = profile?.weightLbs.map { String(format: "%.0f", $0) } ?? "Unknown"
-        let height = profile?.heightInches.map { String(format: "%.0f", $0) } ?? "Unknown"
-        let trainingAge = profile?.trainingAgeMonths.map { String($0) } ?? "Unknown"
-        let goals = sanitize((profile?.primaryGoals ?? []).joined(separator: ", "))
-        let avoid = sanitize((profile?.avoidExercises ?? []).joined(separator: ", "))
-        let equip = formatEquipment(profile?.equipment ?? [:])
-        let notes = sanitize(profile?.notesToCoach ?? "None")
+        buildSystemPrompt(profile: profile, task: includeWorkoutPlanFormat ? .plan : .chat)
+    }
 
-        // "Respond with a table" belongs to generation only. In chat it competes
-        // with the modifications block and the model emits a table instead.
-        let tableRule = includeWorkoutPlanFormat ? " Always respond with a workout table." : ""
-
-        let planFormat = includeWorkoutPlanFormat ? """
-        WORKOUT PLAN FORMAT
-        When asked to generate a workout plan, return ONLY a JSON object matching \
-        this exact schema — no markdown fences, no other text:
-        {
-          "exercises": [
-            {
-              "name": "string",
-              "muscle_group": "string",
-              "sets": integer,
-              "target_weight": "string or null",
-              "reps": "string or null (e.g. '8-12')",
-              "rir": "string or null (e.g. '1-2')",
-              "rest_seconds": integer or null,
-              "coach_note": "string or null",
-              "superset": "string or null (e.g. 'A')"
-            }
-          ],
-          "coaching_notes": "string"
+    /// Build the system prompt for one task with profile data injected.
+    func buildSystemPrompt(profile: UserProfile?, task: PromptTask) -> String {
+        var sections: [String]
+        switch task {
+        case .plan:
+            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples, Self.planFormat]
+        case .chat:
+            sections = [Self.identityShort, profileLine(profile), Self.chatFormat, Self.modificationsRules]
+        case .postWorkout:
+            sections = [Self.identityShort, profileLine(profile), Self.postWorkoutRules]
+        case .monthPlan:
+            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples]
         }
-        Supersets: set "superset" only when the athlete asks for one or it clearly \
-        suits the goal or time available; otherwise use null. Exercises sharing the \
-        same label form one superset (alternating sets), listed next to each other, \
-        at most 4 per label.
-        For any other request (progression notes, summaries, questions), reply in \
-        plain prose with no JSON and no markdown fences.
-        """ : """
-        CONVERSATION FORMAT
-        The athlete is mid-session and reads your reply as conversation. Write in \
-        plain prose — no workout plan JSON, no exercise arrays, and never a \
-        markdown table of exercises.
+        return sections.joined(separator: "\n\n")
+    }
 
-        The single exception is the fenced modifications block described below: \
-        that block is how changes actually reach the app, so when you are \
-        proposing changes you must include it. Describing a change in prose \
-        without it means nothing happens.
-        """
+    // MARK: - Prompt sections
 
-        return """
-        You are the Lightstack Coach — a personal strength and hypertrophy coach \
-        with expertise in bodybuilding, powerbuilding, and physique-focused training.
+    static let identityShort = """
+    COACHING IDENTITY
+    You are the Lightstack Coach, a direct, realistic strength and hypertrophy coach. \
+    Reference the athlete's actual lifts and numbers. Say what is achievable, not what \
+    they want to hear; scale back when they are struggling.
+    """
 
-        COACHING IDENTITY
-        You treat every interaction as an ongoing coaching relationship, not a \
-        one-time plan request. You remember what the athlete has done, reference \
-        their specific lifts and numbers, and adjust every session based on their \
-        history, recovery, and stated goals for today.
+    static let trainingPrinciples = """
+    TRAINING PRINCIPLES
+    - Intensity is RIR (reps in reserve): 0 = failure, 1-2 = target, 3+ = too easy for hypertrophy.
+    - Progressive overload drives programming.
+    - Time: 30 min = 3-4 exercises (supersets ok); 45 = 4-5; 60 = 5-6 with full rest.
+    - Energy: 1-4 = higher RIR, less volume; 5-7 = standard; 8-10 = push harder, lower RIR.
+    - Cardio or non-strength requests (run, HIIT, ...): don't refuse; give a complementary \
+    strength or conditioning workout that fits time and energy.
+    """
 
-        Your tone is direct, realistic, and motivating. You tell the athlete what \
-        is actually achievable — not what they want to hear. If a weight jump is \
-        too aggressive, you say so. If they are having a rough week, you acknowledge \
-        it and scale back intelligently.
+    static let planFormat = """
+    WORKOUT PLAN FORMAT
+    Return ONLY this JSON object, no markdown fences, no other text:
+    {"exercises": [{"name": "str", "muscle_group": "str", "sets": int, "target_weight": "str|null", \
+    "reps": "str|null (e.g. 8-12)", "rir": "str|null (e.g. 1-2)", "rest_seconds": int|null, \
+    "coach_note": "str|null", "superset": "str|null (e.g. A)"}], "coaching_notes": "str"}
+    Supersets: set "superset" only when asked or clearly useful, else null. Exercises sharing \
+    a label alternate sets, are listed adjacent, max 4 per label. Keep coach_note and \
+    coaching_notes to one short sentence.
+    """
 
-        ATHLETE PROFILE
-        - Name: \(name)
-        - Age: \(age) | Weight: \(weight) lbs | Height: \(height) in
-        - Training age: \(trainingAge) months
-        - Primary goals: \(goals)
-        - Exercises to avoid: \(avoid.isEmpty ? "None" : avoid)
-        - Available equipment: \(equip)
-        - Athlete notes: \(notes)
+    static let chatFormat = """
+    CONVERSATION FORMAT
+    The athlete is mid-session and reads your reply as conversation. Be brief: plain prose, \
+    no workout plan JSON, no exercise arrays, never a markdown table of exercises.
 
-        TRAINING PRINCIPLES
-        1. Use RIR (Reps In Reserve) as the intensity metric for all sets. \
-        RIR 0 = absolute failure. RIR 1-2 = target working intensity. \
-        RIR 3+ = too far from failure for hypertrophy stimulus.
+    The single exception is the fenced modifications block described below: that block is \
+    how changes reach the app, so include it when proposing changes. Describing a change in \
+    prose without it means nothing happens.
+    """
 
-        2. Progressive overload drives all programming decisions.
+    static let modificationsRules = """
+    WORKOUT MODIFICATIONS
+    When the athlete asks for a change, say what changes in one or two short sentences (e.g. \
+    "Bumping bench to 155 for 10."); skip reasoning unless asked. They confirm before anything \
+    applies. Write existing exercises' "name" / "old_name" exactly as in the workout's Exercises list.
+    If, and only if, you suggest changes, end with one fenced json block:
+    {"modifications": [
+     {"action": "add", "name": "", "muscle_group": "", "target_sets": 3, "target_reps": "8-10", "target_rir": "2", "rest_seconds": 90, "target_weight": "135 lbs", "note": "", "superset": "A"},
+     {"action": "remove", "name": ""},
+     {"action": "modify", "name": "", "new_target_sets": 4, "new_target_reps": "6-8", "new_target_rir": "1", "new_rest": 120, "new_target_weight": "145 lbs", "note": ""},
+     {"action": "modify", "name": "", "sets": [{"weight": "40 lbs", "reps": "8", "rir": "2"}, {"weight": "45 lbs", "reps": "6", "rir": "0-1"}]},
+     {"action": "replace", "old_name": "", "new_name": "", "muscle_group": "", "target_sets": 3, "target_reps": "8-10", "target_rir": "2", "rest_seconds": 90, "note": ""}
+    ]}
+    Rules:
+    - Include only the changes you suggest, in any mix; omit unused optional fields.
+    - Weights are strings with units ("135 lbs"). RIR may be a range ("1-2"); the app prefills the lower number.
+    - When sets differ (pyramid, ramp, top/back-off), give one "sets" entry per set (add, modify, replace); its length is the set count. Otherwise use the single target_* / new_* fields.
+    - "note" is a short cue only ("drive through the heels"), never the per-set numbers.
+    - "superset" label (add/replace/modify) links 2-4 exercises sharing it; use only when asked or it suits the goal.
+    - To change weight on an exercise already in the workout use "modify" with new_target_weight, not "replace".
+    - No changes suggested means no JSON block. Never present changes as a markdown table.
+    """
 
-        3. Time scales the plan:
-           - 30 min: 3-4 exercises, supersets allowed
-           - 45 min: 4-5 exercises, standard rest
-           - 60 min: 5-6 exercises, full rest periods
+    static let postWorkoutRules = """
+    POST-WORKOUT OUTPUT
+    Reply with ONLY a JSON object: {"note": "...", "summary": "..."}
+    - note: the progression note, at most 3 sentences. No greeting, no name. Lead with what \
+    happened, end with one specific target for next session (exact weight, reps or duration). Plain text.
+    - summary: factual rolling summary for future planning, at most 80 words: key lifts and \
+    working weights, trend (up/down/plateau), next target. Numbers first.
+    """
 
-        4. Energy scales the intensity:
-           - Low (1-4): higher RIR targets, reduced volume
-           - Normal (5-7): standard programming
-           - High (8-10): push harder, lower RIR targets
-
-        WORKOUT TYPE HANDLING
-        If the requested workout type is a cardio or non-strength session \
-        (e.g., run, cycle, swim, HIIT, long run), do not refuse — instead \
-        provide a complementary strength or conditioning workout that fits \
-        the available time and energy level.\(tableRule)
-
-        \(planFormat)
-
-        PROGRESSION NOTE
-        After reviewing completed sets, write a concise progression note (2-3 sentences). \
-        No greeting, do not address the athlete by name, no preamble. Lead with what \
-        happened in this session, then end with one specific target for next session \
-        (exact weight, reps, or duration). Plain prose only — no JSON, no markdown.
-        """
+    /// One-line athlete profile; unknown fields are left out.
+    private func profileLine(_ profile: UserProfile?) -> String {
+        var parts: [String] = []
+        let name = sanitize(profile?.displayName ?? "")
+        if !name.isEmpty { parts.append(name) }
+        if let age = profile?.age { parts.append("age \(age)") }
+        if let w = profile?.weightLbs { parts.append(String(format: "%.0f lb", w)) }
+        if let h = profile?.heightInches { parts.append(String(format: "%.0f in", h)) }
+        if let t = profile?.trainingAgeMonths { parts.append("\(t) mo training") }
+        let goals = sanitize((profile?.primaryGoals ?? []).joined(separator: ", "))
+        if !goals.isEmpty { parts.append("goals: \(goals)") }
+        let avoid = sanitize((profile?.avoidExercises ?? []).joined(separator: ", "))
+        if !avoid.isEmpty { parts.append("avoid: \(avoid)") }
+        parts.append("equipment: \(formatEquipment(profile?.equipment ?? [:]))")
+        let notes = sanitize(profile?.notesToCoach ?? "")
+        if !notes.isEmpty, notes != "None" { parts.append("notes: \(notes)") }
+        return "ATHLETE: " + parts.joined(separator: " | ")
     }
 
     /// Build the user message requesting a workout plan.
@@ -172,40 +174,34 @@ final class CoachPromptService {
             }
         }
 
-        message += "\n\nGenerate a complete JSON workout plan. Include muscle_group for every exercise. "
-        message += "Base target_weight on reasonable estimates for my profile. "
-        message += "Keep the plan within my time constraint. "
-        message += "Return ONLY valid JSON matching the schema in the system prompt."
+        message += "\n\nGenerate the JSON workout plan within my time. Estimate target_weight from my history/profile."
 
         return message
     }
 
-    /// Build user message for post-session progression note request.
-    func buildPostSessionMessage(
+    /// Build the ONE post-workout user message: the completed sets, compactly.
+    /// The reply is JSON `{"note", "summary"}` (see `postWorkoutRules`).
+    func buildPostWorkoutMessage(
+        workoutType: String,
         exercises: [Exercise],
         sets: [UUID: [WorkoutSet]]
     ) -> String {
-        var lines = ["Here are the completed sets from today's session:\n"]
-
+        var lines = ["\(sanitize(workoutType)) session, completed sets:"]
         for exercise in exercises {
-            lines.append("**\(exercise.name)** (\(exercise.muscleGroup))")
             let exerciseSets = (sets[exercise.id] ?? []).sorted { $0.setNumber < $1.setNumber }
-            for s in exerciseSets {
-                let setLine = exercise.trackingType == .cardio
-                    ? formatCardioSet(s)
-                    : "  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ \(s.rir.map { "RIR \($0)" } ?? "RIR not recorded")"
-                lines.append(setLine)
+            guard !exerciseSets.isEmpty else { continue }
+            let formatted: [String]
+            if exercise.trackingType == .cardio {
+                formatted = exerciseSets.map { formatCardioSet($0) }
+            } else {
+                formatted = exerciseSets.map { s in
+                    let rir = s.rir.map { "@\($0)" } ?? ""
+                    return "\(String(format: "%g", s.weightLbs))x\(s.reps)\(rir)"
+                }
             }
-            lines.append("")
+            lines.append("\(exercise.name): " + formatted.joined(separator: "; "))
         }
-
-        lines.append(
-            "Write a progression note (2-3 sentences). " +
-            "No greeting, no name, no preamble. " +
-            "Lead with what happened, end with one specific target for next session. " +
-            "Plain prose only — no JSON, no markdown."
-        )
-
+        lines.append("(weight lb x reps @RIR) Return the JSON.")
         return lines.joined(separator: "\n")
     }
 
@@ -222,8 +218,7 @@ final class CoachPromptService {
         if let incline = s.inclineLevel {
             parts.append(String(format: "%g%% incline", incline))
         }
-        let detail = parts.isEmpty ? "no metrics logged" : parts.joined(separator: ", ")
-        return "  Set \(s.setNumber): \(detail)"
+        return parts.isEmpty ? "no metrics" : parts.joined(separator: ", ")
     }
 
     /// Build user message for month plan generation.
@@ -239,59 +234,13 @@ final class CoachPromptService {
         let endStr = DateFormatter.dateOnly.string(from: endDate)
 
         return """
-        Generate a month-long training plan.
-
-        GOAL: \(sanitizedGoal)
-        TRAINING DAYS PER WEEK: \(clampedDays)
-        DATE RANGE: \(startStr) to \(endStr)
-
-        Return the plan as JSON with this exact format:
-        {
-          "overview": "A 2-3 sentence overview of the plan approach and periodization strategy.",
-          "sessions": [
-            {
-              "date": "YYYY-MM-DD",
-              "workout_type": "Push / Pull / Legs / Upper / Lower / Full Body / etc.",
-              "focus_note": "Brief focus for this session (e.g., heavy compound emphasis, high-rep pump work).",
-              "is_rest_day": false
-            }
-          ]
-        }
-
-        Include every day in the date range. Mark rest days with is_rest_day: true \
-        and workout_type: "Rest". Distribute training days intelligently with proper \
-        recovery between similar muscle groups. Return ONLY the JSON, no other text.
+        Month training plan. Goal: \(sanitizedGoal). Days/week: \(clampedDays). Range: \(startStr) to \(endStr).
+        Return ONLY JSON: {"overview": "1-2 sentences", "sessions": [{"date": "YYYY-MM-DD", \
+        "workout_type": "Push/Pull/Legs/Upper/Lower/Full Body/Rest/...", "focus_note": "short", \
+        "is_rest_day": false}]}
+        One entry for every day in the range; rest days use is_rest_day true and workout_type "Rest". \
+        Space similar muscle groups for recovery.
         """
-    }
-
-    /// Build user message requesting a rolling context summary.
-    func buildContextSummaryMessage(
-        workoutType: String,
-        exercises: [Exercise],
-        sets: [UUID: [WorkoutSet]]
-    ) -> String {
-        var lines = ["Summarize this \(workoutType) session for future reference:\n"]
-
-        for exercise in exercises {
-            lines.append("**\(exercise.name)** (\(exercise.muscleGroup))")
-            let exerciseSets = (sets[exercise.id] ?? []).sorted { $0.setNumber < $1.setNumber }
-            for s in exerciseSets {
-                lines.append("  Set \(s.setNumber): \(String(format: "%.1f", s.weightLbs)) lbs x \(s.reps) reps @ \(s.rir.map { "RIR \($0)" } ?? "RIR not recorded")")
-            }
-            lines.append("")
-        }
-
-        lines.append("""
-        Write a concise rolling summary (3-5 sentences) that captures:
-        1. Key lifts and working weights used
-        2. Performance trends (strength going up/down/plateau)
-        3. What to target next session for progressive overload
-
-        This summary will be used as context for future workout planning. \
-        Keep it factual and numbers-focused. Return ONLY the summary text.
-        """)
-
-        return lines.joined(separator: "\n")
     }
 
     // MARK: - Private

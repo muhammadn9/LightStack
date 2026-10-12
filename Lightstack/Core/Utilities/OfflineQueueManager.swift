@@ -12,6 +12,7 @@ enum QueuedOperationType: String, Codable {
     case deleteExercises
     case insertExercises
     case insertSet
+    case renameExercises
     case upsertProfile
     case insertPersonalRecord
     case upsertContextSummary
@@ -23,6 +24,12 @@ enum QueuedOperationType: String, Codable {
 /// Payload for `.deleteExercise` (delete a single exercise).
 struct DeleteExercisePayload: Codable {
     let exerciseId: UUID
+}
+
+/// Payload for `.renameExercises` (set the name of specific exercise rows).
+struct RenameExercisesPayload: Codable {
+    let ids: [UUID]
+    let name: String
 }
 
 /// Payload for `.deleteExercises` (delete every exercise of a workout).
@@ -138,6 +145,7 @@ actor OfflineQueueManager {
             // enqueueDeleteExercises() drops superseded inserts so repeated replaces don't duplicate.
             .deleteExercises,
             .insertExercises, .insertSet,
+            .renameExercises,
             .upsertProfile, .insertPersonalRecord,
             .upsertContextSummary,
             .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession,
@@ -212,6 +220,9 @@ actor OfflineQueueManager {
         case .deleteExercises:
             let model = try decoder.decode(DeleteExercisesPayload.self, from: op.payload)
             try await supabaseService.deleteExercises(workoutId: model.workoutId)
+        case .renameExercises:
+            let model = try decoder.decode(RenameExercisesPayload.self, from: op.payload)
+            try await supabaseService.updateExerciseNames(ids: model.ids, name: model.name)
         }
     }
 

@@ -151,6 +151,58 @@ final class LocalStorageService {
         save()
     }
 
+    /// How often one exercise name appears in the user's history.
+    struct ExerciseNameStat: Equatable, Identifiable {
+        let name: String
+        let setCount: Int
+        let workoutCount: Int
+        var id: String { name }
+    }
+
+    /// Every distinct exercise name (exact spelling) with its set and workout counts,
+    /// most-logged first.
+    func fetchExerciseNameStats(userId: UUID) -> [ExerciseNameStat] {
+        let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()
+        request.predicate = NSPredicate(format: "workout.userId == %@", userId as CVarArg)
+        let entities = (try? context.fetch(request)) ?? []
+        var sets: [String: Int] = [:]
+        var workouts: [String: Set<UUID>] = [:]
+        for entity in entities {
+            let name = (entity.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            sets[name, default: 0] += entity.sets?.count ?? 0
+            if let id = entity.workout?.id { workouts[name, default: []].insert(id) }
+        }
+        return sets.keys.map {
+            ExerciseNameStat(name: $0, setCount: sets[$0] ?? 0, workoutCount: workouts[$0]?.count ?? 0)
+        }.sorted {
+            if $0.setCount != $1.setCount { return $0.setCount > $1.setCount }
+            if $0.workoutCount != $1.workoutCount { return $0.workoutCount > $1.workoutCount }
+            return $0.name < $1.name
+        }
+    }
+
+    /// Renames every historical exercise whose name is in `oldNames` to `newName`.
+    /// Returns the ids of the exercises that actually changed (for syncing).
+    @discardableResult
+    func renameExercises(userId: UUID, from oldNames: [String], to newName: String) -> [UUID] {
+        let target = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sources = oldNames.filter { $0 != target }
+        guard !target.isEmpty, !sources.isEmpty else { return [] }
+        let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "workout.userId == %@ AND name IN %@", userId as CVarArg, sources
+        )
+        let entities = (try? context.fetch(request)) ?? []
+        var ids: [UUID] = []
+        for entity in entities {
+            entity.name = target
+            if let id = entity.id { ids.append(id) }
+        }
+        save()
+        return ids
+    }
+
     // MARK: - Set
 
     func fetchSets(exerciseId: UUID) -> [CDWorkoutSet] {

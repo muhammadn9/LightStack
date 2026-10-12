@@ -11,6 +11,8 @@ enum UITestMode {
     static let isActive: Bool = ProcessInfo.processInfo.arguments.contains("-uiTesting")
     /// `-uiTestingLiftHistory` adds weekly Bench Press history and a rest day for chart tests.
     static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
+    /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
+    static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -129,6 +131,19 @@ enum UITestMode {
                  localStorage: localStorage)
 
         if wantsLiftHistory { seedLiftHistory(localStorage: localStorage) }
+        if wantsDuplicateNames {
+            // Same lift under two spellings, added to existing seeded workouts.
+            let legExt = Exercise.create(workoutId: armDay.id, name: "Leg Extension", muscleGroup: "Legs",
+                                         orderIndex: 2, targetSets: 2, targetReps: "12", targetRir: "2",
+                                         restSeconds: 60, coachNote: nil)
+            localStorage.saveExercises([legExt], workoutId: armDay.id)
+            seedSets([(legExt, [(90, 12, 2), (90, 11, 1)])], localStorage: localStorage)
+            let legExtMachine = Exercise.create(workoutId: workout.id, name: "Leg extension machine", muscleGroup: "Legs",
+                                                orderIndex: 2, targetSets: 2, targetReps: "12", targetRir: "2",
+                                                restSeconds: 60, coachNote: nil)
+            localStorage.saveExercises([legExtMachine], workoutId: workout.id)
+            seedSets([(legExtMachine, [(110, 12, 2), (110, 10, 1)])], localStorage: localStorage)
+        }
     }
 
     /// Six older weekly Bench Press sessions (progressing weight) and a rest day 5 days ago.
@@ -181,22 +196,37 @@ final class UITestFakeAIProvider: AIProvider {
         expectsJSON: Bool,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        generateChat(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON,
+                     options: .default, completion: completion)
+    }
+
+    func generateChat(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool,
+        options: AIRequestOptions,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
         let last = messages.last?.content ?? ""
         let reply: String
-        if expectsJSON {
+        if last.contains("completed sets") {
+            // The merged post-workout call: progression note + rolling summary.
+            reply = Self.postWorkoutJSON
+        } else if expectsJSON {
             reply = Self.planJSON
-        } else if last.contains("progression note") {
-            reply = "Solid session. Everything moved well, so add 5 lbs to the first lift next time."
         } else if last.lowercased().contains("heavier bench") {
             // Uses a shorter name than the workout's "Barbell Bench Press", like the real model does.
             reply = Self.benchModificationReply
-        } else if last.contains("rolling summary") {
-            reply = "Steady push session with all target weights hit. Add a little load next time."
         } else {
             reply = "Sounds good. Keep your reps smooth and stop each set with a couple in reserve."
         }
         DispatchQueue.main.async { completion(.success(reply)) }
     }
+
+    static let postWorkoutJSON = """
+    {"note": "Solid session. Everything moved well, so add 5 lbs to the first lift next time.",
+     "summary": "Steady push session with all target weights hit. Add a little load next time."}
+    """
 
     static let benchModificationReply = """
     Bumping bench to 155 for 10.

@@ -111,7 +111,10 @@ struct WorkoutDetailView: View {
             }
         }
         .sheet(isPresented: $showAddExercise) {
-            ExerciseCatalogPicker { name, muscleGroup in
+            ExerciseCatalogPicker(loadKnownExercises: {
+                guard let userId = environment.authService.currentUser()?.userId else { return [] }
+                return environment.workoutRepository.fetchDistinctExerciseNames(userId: userId)
+            }) { name, muscleGroup in
                 draft?.addExercise(name: name, muscleGroup: muscleGroup)
             }
             .keyboardDoneButton()

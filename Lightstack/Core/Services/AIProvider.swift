@@ -30,6 +30,16 @@ protocol AIProvider {
         completion: @escaping (Result<String, Error>) -> Void
     )
 
+    /// Same as above with per-call generation options (output cap, thinking, task).
+    /// Providers that don't care get the default, which forwards to the call above.
+    func generateChat(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool,
+        options: AIRequestOptions,
+        completion: @escaping (Result<String, Error>) -> Void
+    )
+
     /// Mark provider as rate limited until specified time
     func markRateLimited(until: Date)
 
@@ -40,6 +50,16 @@ protocol AIProvider {
 // MARK: - Default implementations
 
 extension AIProvider {
+    func generateChat(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool,
+        options: AIRequestOptions,
+        completion: @escaping (Result<String, Error>) -> Void
+    ) {
+        generateChat(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON, completion: completion)
+    }
+
     /// Default: available when the API key is non-empty and the rate-limit window has passed.
     /// Providers that embed apiKey as a stored property satisfy this automatically.
     var isAvailable: Bool {
