@@ -21,6 +21,11 @@ targets:
     platform: iOS
     sources:
       - path: Lightstack
+        excludes:
+          - "Resources/ExerciseGuides/**"
+      - path: Lightstack/Resources/ExerciseGuides
+        type: folder
+        buildPhase: resources
     resources:
       - path: Lightstack/Resources/Assets.xcassets
     settings:
