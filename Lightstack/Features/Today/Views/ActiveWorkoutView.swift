@@ -254,7 +254,7 @@ struct ActiveWorkoutView: View {
                     totalCount: pages.count,
                     canLinkWithNext: members.last.map { todayViewModel.canLinkWithNext($0.id) } ?? false,
                     onAdd: { showAddExercise = true },
-                    isRestRunning: members.contains { viewModel.restTimerTargetDates[$0.id] != nil },
+                    isRestRunning: viewModel.isRestRunning(for: members.map(\.id)),
                     onToggleRest: { toggleRest(for: members) },
                     onFormDemo: { formDemoExercise = members.first },
                     onRecordForm: { formCaptureExercise = members.first },
@@ -289,12 +289,14 @@ struct ActiveWorkoutView: View {
                 .accessibilityIdentifier("addSetButton")
 
                 // Rest timer banner (a superset's timer is keyed by the member that triggered it)
-                if let restId = members.first(where: { viewModel.restTimerTargetDates[$0.id] != nil })?.id,
+                if let restId = viewModel.activeRestExerciseId,
+                   members.contains(where: { $0.id == restId }),
                    let target = viewModel.restTimerTargetDates[restId] {
                     RestBannerView(
                         target: target,
                         totalSeconds: viewModel.restTimerTotalSeconds[restId] ?? RestPreference.defaultSeconds,
-                        nextExerciseName: nextName
+                        nextExerciseName: nextName,
+                        onEnd: { viewModel.cancelRestTimer(for: members.map(\.id)) }
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -537,7 +539,7 @@ struct ActiveWorkoutView: View {
     /// or stops it when already running.
     private func toggleRest(for members: [Exercise]) {
         let ids = members.map(\.id)
-        if ids.contains(where: { viewModel.restTimerTargetDates[$0] != nil }) {
+        if viewModel.isRestRunning(for: ids) {
             viewModel.cancelRestTimer(for: ids)
         } else if let first = ids.first,
                   let plan = SupersetRounds.manualRestPlan(forPageContaining: first, in: todayViewModel.exercises) {
@@ -656,6 +658,7 @@ struct RestBannerView: View {
     let target: Date
     let totalSeconds: Int
     let nextExerciseName: String?
+    var onEnd: (() -> Void)? = nil
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -676,6 +679,18 @@ struct RestBannerView: View {
                 Text(ActiveWorkoutViewModel.restText(target: target, now: context.date))
                     .font(AppTheme.plexMono(16, weight: .medium))
                     .foregroundStyle(AppTheme.accent)
+                if let onEnd {
+                    Button(action: onEnd) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("End rest")
+                    .accessibilityIdentifier("endRestButton")
+                }
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 9)

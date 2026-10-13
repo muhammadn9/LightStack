@@ -166,4 +166,39 @@ extension WorkoutFlowTests {
         XCTAssertTrue(app.staticTexts["Rest Period"].waitForNonExistence(timeout: 5), "Rest countdown did not stop")
         XCTAssertEqual(app.buttons["startRestButton"].label, "Start rest timer")
     }
+
+    func testEndRestButtonStopsCountdown() throws {
+        launchApp(extraArguments: ["-defaultRestSeconds", "180"])
+        generateAndStartPushWorkout()
+        waitFor(app.buttons["startRestButton"]).tap()
+        waitFor(app.staticTexts["Rest Period"], "Rest countdown did not appear")
+        waitFor(app.buttons["endRestButton"]).tap()
+        XCTAssertTrue(app.staticTexts["Rest Period"].waitForNonExistence(timeout: 5), "Rest countdown did not end")
+        XCTAssertEqual(app.buttons["startRestButton"].label, "Start rest timer")
+    }
+
+    func testRestOnSecondCardLeavesOnlyOneCountdown() throws {
+        launchApp(extraArguments: ["-defaultRestSeconds", "180"])
+        generateAndStartPushWorkout()
+        waitFor(app.buttons["startRestButton"]).tap()
+        waitFor(app.staticTexts["Rest Period"], "Rest countdown did not appear")
+        app.swipeLeft()
+        let second = waitFor(app.buttons["startRestButton"])
+        XCTAssertTrue(waitUntilLabel(second, "Start rest timer"), "Second card should not show a running timer")
+        second.tap()
+        waitFor(app.staticTexts["Rest Period"], "Rest countdown did not appear on card 2")
+        app.swipeRight()
+        let first = waitFor(app.buttons["startRestButton"])
+        XCTAssertTrue(waitUntilLabel(first, "Start rest timer"), "First card should be back to not-running")
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Rest Period").count, 0)
+        app.swipeLeft()
+        XCTAssertEqual(waitFor(app.buttons["startRestButton"]).label, "Stop rest timer")
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Rest Period").count, 1)
+    }
+
+    private func waitUntilLabel(_ element: XCUIElement, _ label: String, timeout: TimeInterval = 5) -> Bool {
+        let predicate = NSPredicate(format: "label == %@", label)
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)],
+                                timeout: timeout) == .completed
+    }
 }
