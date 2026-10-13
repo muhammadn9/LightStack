@@ -43,6 +43,11 @@ struct ActiveWorkoutView: View {
             viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
             if todayViewModel.timerPaused { viewModel.pauseTimer() }
             viewModel.previousHints = todayViewModel.previousHints
+            // After a relaunch the display copy is empty; seed it from the
+            // authoritative (persisted) copy so logged sets stay logged.
+            if viewModel.loggedSets.isEmpty, !todayViewModel.loggedSets.isEmpty {
+                viewModel.loggedSets = todayViewModel.loggedSets
+            }
             // Restore typed-but-unlogged rows saved before the app was closed.
             if !todayViewModel.pendingSetsSnapshot.isEmpty {
                 viewModel.pendingSets = todayViewModel.pendingSetsSnapshot
@@ -386,6 +391,7 @@ struct ActiveWorkoutView: View {
                     workoutSet: set,
                     number: index + 1,
                     exercise: exercise,
+                    idPrefix: "loggedSet.\(exerciseIndex(of: exercise)).\(index)",
                     onDelete: {
                         viewModel.deleteSet(set, exerciseId: exercise.id)
                         todayViewModel.deleteLoggedSet(set, exerciseId: exercise.id)
