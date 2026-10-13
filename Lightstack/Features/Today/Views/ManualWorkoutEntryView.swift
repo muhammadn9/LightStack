@@ -198,7 +198,7 @@ struct ManualWorkoutEntryView: View {
                 targetSets: ex.targetSets,
                 targetReps: nil,
                 targetRir: nil,
-                restSeconds: 90,
+                restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup),
                 coachNote: nil
             )
         }

@@ -41,6 +41,7 @@ enum UITestMode {
         }
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: sessionStateKey)
+        defaults.removeObject(forKey: RestPreference.key)
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.set(0, forKey: "selectedTab")
         logger.debug("Reset UI test store")

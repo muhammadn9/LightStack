@@ -23,8 +23,8 @@ struct SupersetRow: Identifiable, Equatable {
 /// Pure helpers for how a (super)set page lays out rows and rests.
 enum SupersetRounds {
 
-    /// Default rest when no member specifies one (strength only).
-    static let defaultRestSeconds = 90
+    /// Default rest when no member specifies one (strength only): the Settings preference.
+    static var defaultRestSeconds: Int { RestPreference.defaultSeconds }
 
     /// Rows for a page, grouped by round: round 1 holds every member's first set, and so on.
     /// For a single exercise this is simply its logged sets followed by its pending ones.
@@ -61,7 +61,7 @@ enum SupersetRounds {
         return page.exerciseIds.last == exerciseId
     }
 
-    /// Longest explicit rest among the members, else 90s for strength, else nil (cardio only).
+    /// Longest explicit rest among the members, else the preferred rest for strength, else nil (cardio only).
     static func restSeconds(for members: [Exercise]) -> Int? {
         if let longest = members.compactMap(\.restSeconds).filter({ $0 > 0 }).max() { return longest }
         return members.contains { $0.trackingType == .strength } ? defaultRestSeconds : nil
@@ -74,6 +74,18 @@ enum SupersetRounds {
         let members = page.exerciseIds.compactMap { id in exercises.first { $0.id == id } }
         guard let seconds = restSeconds(for: members) else { return nil }
         return (seconds, members.map(\.name).joined(separator: " + "))
+    }
+
+    /// Rest for the manual "start rest timer" button: like `restPlan`, but regardless of
+    /// which member was last logged, and falling back to the preference for cardio-only pages.
+    /// The timer is keyed by the page's last member, as when a logged set starts it.
+    static func manualRestPlan(forPageContaining exerciseId: UUID, in exercises: [Exercise])
+        -> (timerId: UUID, seconds: Int, name: String)? {
+        guard let page = page(containing: exerciseId, in: exercises),
+              let timerId = page.exerciseIds.last else { return nil }
+        let members = page.exerciseIds.compactMap { id in exercises.first { $0.id == id } }
+        let seconds = restSeconds(for: members) ?? defaultRestSeconds
+        return (timerId, seconds, members.map(\.name).joined(separator: " + "))
     }
 
     static func page(containing exerciseId: UUID, in exercises: [Exercise]) -> SupersetPage? {

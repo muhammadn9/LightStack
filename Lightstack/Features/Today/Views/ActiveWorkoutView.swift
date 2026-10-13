@@ -254,6 +254,8 @@ struct ActiveWorkoutView: View {
                     totalCount: pages.count,
                     canLinkWithNext: members.last.map { todayViewModel.canLinkWithNext($0.id) } ?? false,
                     onAdd: { showAddExercise = true },
+                    isRestRunning: members.contains { viewModel.restTimerTargetDates[$0.id] != nil },
+                    onToggleRest: { toggleRest(for: members) },
                     onFormDemo: { formDemoExercise = members.first },
                     onRecordForm: { formCaptureExercise = members.first },
                     onLinkWithNext: {
@@ -291,7 +293,7 @@ struct ActiveWorkoutView: View {
                    let target = viewModel.restTimerTargetDates[restId] {
                     RestBannerView(
                         target: target,
-                        totalSeconds: viewModel.restTimerTotalSeconds[restId] ?? 90,
+                        totalSeconds: viewModel.restTimerTotalSeconds[restId] ?? RestPreference.defaultSeconds,
                         nextExerciseName: nextName
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -522,7 +524,7 @@ struct ActiveWorkoutView: View {
         }
 
         // Strength exercises without a rest time (e.g. repeated from an imported
-        // workout) fall back to 90s, matching manual entry.
+        // workout) fall back to the preferred rest, matching manual entry.
         // In a superset, only the last member's row in a round starts rest, using
         // the longest rest among the members.
         if startRest,
@@ -531,9 +533,21 @@ struct ActiveWorkoutView: View {
         }
     }
 
+    /// Manual rest button: starts the page's rest with the seconds a logged set would use,
+    /// or stops it when already running.
+    private func toggleRest(for members: [Exercise]) {
+        let ids = members.map(\.id)
+        if ids.contains(where: { viewModel.restTimerTargetDates[$0] != nil }) {
+            viewModel.cancelRestTimer(for: ids)
+        } else if let first = ids.first,
+                  let plan = SupersetRounds.manualRestPlan(forPageContaining: first, in: todayViewModel.exercises) {
+            viewModel.startRestTimer(for: plan.timerId, seconds: plan.seconds, exerciseName: plan.name)
+        }
+    }
+
     static func restSeconds(for exercise: Exercise) -> Int? {
         if let rest = exercise.restSeconds, rest > 0 { return rest }
-        return exercise.trackingType == .strength ? 90 : nil
+        return exercise.trackingType == .strength ? RestPreference.defaultSeconds : nil
     }
 
     private func exerciseIndex(of exercise: Exercise) -> Int {

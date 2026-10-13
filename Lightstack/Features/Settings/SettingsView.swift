@@ -4,7 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject var environment: AppEnvironment
     @AppStorage("appColorScheme") private var colorScheme = "system"
     @AppStorage("restTimerNotificationsEnabled") private var restTimerNotif = true
-    @AppStorage("defaultRestSeconds") private var defaultRestSeconds = 90
+    @AppStorage(RestPreference.key) private var defaultRestSeconds = 90
     @AppStorage("weightUnit") private var weightUnit = "lbs"
 
     // Pushed from Profile's NavigationStack (gear button), so it uses the
@@ -30,11 +30,13 @@ struct SettingsView: View {
 
                 Section("Workout") {
                     Picker("Default Rest Timer", selection: $defaultRestSeconds) {
-                        Text("60s").tag(60)
-                        Text("90s").tag(90)
-                        Text("120s").tag(120)
-                        Text("150s").tag(150)
-                        Text("180s").tag(180)
+                        Text("1 min").tag(60)
+                        Text("1.5 min").tag(90)
+                        Text("2 min").tag(120)
+                        Text("2.5 min").tag(150)
+                        Text("3 min").tag(180)
+                        Text("4 min").tag(240)
+                        Text("5 min").tag(300)
                     }
                     .listRowBackground(AppTheme.surface)
 

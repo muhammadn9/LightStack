@@ -422,7 +422,7 @@ final class WorkoutSessionService {
                 targetSets: targetSets,
                 targetReps: repsStr.isEmpty ? nil : repsStr,
                 targetRir: rirStr.isEmpty ? nil : rirStr,
-                restSeconds: restSeconds,
+                restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup, existing: restSeconds),
                 coachNote: weightStr.isEmpty ? nil : "Target: \(weightStr)"
             )
             exercises.append(exercise)
@@ -501,7 +501,7 @@ final class WorkoutSessionService {
                 targetSets: aiEx.sets,
                 targetReps: aiEx.reps,
                 targetRir: aiEx.rir,
-                restSeconds: aiEx.restSeconds,
+                restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup, existing: aiEx.restSeconds),
                 coachNote: mergedNote,
                 supersetGroupId: groupIds[index]
             ))
