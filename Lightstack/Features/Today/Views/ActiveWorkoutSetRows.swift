@@ -7,13 +7,15 @@ struct LoggedSetRow: View {
     let workoutSet: WorkoutSet
     let number: Int
     let exercise: Exercise
+    /// Prefix for UI-test accessibility identifiers, e.g. "loggedSet.0.1".
+    var idPrefix: String = ""
     let onDelete: () -> Void
 
     var body: some View {
         if exercise.trackingType == .cardio {
-            CardioLoggedSetRow(workoutSet: workoutSet, number: number, onDelete: onDelete)
+            CardioLoggedSetRow(workoutSet: workoutSet, number: number, idPrefix: idPrefix, onDelete: onDelete)
         } else {
-            StrengthLoggedSetRow(workoutSet: workoutSet, number: number, onDelete: onDelete)
+            StrengthLoggedSetRow(workoutSet: workoutSet, number: number, idPrefix: idPrefix, onDelete: onDelete)
         }
     }
 }
@@ -21,6 +23,7 @@ struct LoggedSetRow: View {
 private struct StrengthLoggedSetRow: View {
     let workoutSet: WorkoutSet
     let number: Int
+    var idPrefix: String = ""
     let onDelete: () -> Void
 
     var body: some View {
@@ -30,6 +33,7 @@ private struct StrengthLoggedSetRow: View {
             Text(String(format: "%.1f", workoutSet.weightLbs))
                 .font(AppTheme.caveat(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
+                .accessibilityIdentifier("\(idPrefix).weight")
             Text("lbs")
                 .font(AppTheme.caveat(12))
                 .foregroundStyle(AppTheme.textSecondary)
@@ -39,6 +43,7 @@ private struct StrengthLoggedSetRow: View {
             Text("×\(workoutSet.reps)")
                 .font(AppTheme.caveat(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
+                .accessibilityIdentifier("\(idPrefix).reps")
 
             Spacer()
 
@@ -69,6 +74,7 @@ private struct StrengthLoggedSetRow: View {
 private struct CardioLoggedSetRow: View {
     let workoutSet: WorkoutSet
     let number: Int
+    var idPrefix: String = ""
     let onDelete: () -> Void
 
     var body: some View {

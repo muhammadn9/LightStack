@@ -285,7 +285,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: ex.targetSets,
                 targetReps: ex.targetReps,
                 targetRir: ex.targetRir,
-                restSeconds: ex.restSeconds,
+                restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
                 coachNote: ex.coachNote,
                 supersetGroupId: groupIds[index]
             )
@@ -340,7 +340,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: sets.isEmpty ? ex.targetSets : sets.count,
                 targetReps: first.map { String($0.reps) } ?? ex.targetReps,
                 targetRir: ex.targetRir,
-                restSeconds: ex.restSeconds,
+                restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
                 coachNote: coachNote,
                 supersetGroupId: groupIds[index]
             )
@@ -399,7 +399,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: targetSets,
                 targetReps: targetReps,
                 targetRir: targetRir,
-                restSeconds: restSeconds,
+                restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
                 coachNote: Self.coachNote(nil, weight: targetWeight, note: note)
             )
             exercises.append(newExercise)
@@ -463,7 +463,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     targetSets: targetSets,
                     targetReps: targetReps,
                     targetRir: targetRir,
-                    restSeconds: restSeconds,
+                    restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
                     coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
                     supersetGroupId: groupId
                 )
@@ -556,7 +556,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             targetSets: 3,
             targetReps: "8-12",
             targetRir: "2",
-            restSeconds: 90,
+            restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup),
             coachNote: nil
         )
         if let afterPageIndex {

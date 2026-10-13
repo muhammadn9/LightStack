@@ -23,11 +23,13 @@ final class CoachPromptService {
     }
 
     /// Build the system prompt for one task with profile data injected.
-    func buildSystemPrompt(profile: UserProfile?, task: PromptTask) -> String {
+    func buildSystemPrompt(profile: UserProfile?, task: PromptTask,
+                           restSeconds: Int = RestPreference.defaultSeconds) -> String {
         var sections: [String]
         switch task {
         case .plan:
-            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples, Self.planFormat]
+            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples, Self.planFormat,
+                        "User's preferred rest: \(restSeconds) s; use it for rest_seconds."]
         case .chat:
             sections = [Self.identityShort, profileLine(profile), Self.chatFormat, Self.modificationsRules]
         case .postWorkout:
@@ -85,14 +87,15 @@ final class CoachPromptService {
     applies. Write existing exercises' "name" / "old_name" exactly as in the workout's Exercises list.
     If, and only if, you suggest changes, end with one fenced json block:
     {"modifications": [
-     {"action": "add", "name": "", "muscle_group": "", "target_sets": 3, "target_reps": "8-10", "target_rir": "2", "rest_seconds": 90, "target_weight": "135 lbs", "note": "", "superset": "A"},
+     {"action": "add", "name": "", "muscle_group": "", "target_sets": 3, "target_reps": "8-10", "target_rir": "2", "target_weight": "135 lbs", "note": "", "superset": "A"},
      {"action": "remove", "name": ""},
      {"action": "modify", "name": "", "new_target_sets": 4, "new_target_reps": "6-8", "new_target_rir": "1", "new_rest": 120, "new_target_weight": "145 lbs", "note": ""},
      {"action": "modify", "name": "", "sets": [{"weight": "40 lbs", "reps": "8", "rir": "2"}, {"weight": "45 lbs", "reps": "6", "rir": "0-1"}]},
-     {"action": "replace", "old_name": "", "new_name": "", "muscle_group": "", "target_sets": 3, "target_reps": "8-10", "target_rir": "2", "rest_seconds": 90, "note": ""}
+     {"action": "replace", "old_name": "", "new_name": "", "muscle_group": "", "target_sets": 3, "target_reps": "8-10", "target_rir": "2", "note": ""}
     ]}
     Rules:
     - Include only the changes you suggest, in any mix; omit unused optional fields.
+    - Omit rest_seconds / new_rest unless the athlete asks for a specific rest.
     - Weights are strings with units ("135 lbs"). RIR may be a range ("1-2"); the app prefills the lower number.
     - When sets differ (pyramid, ramp, top/back-off), give one "sets" entry per set (add, modify, replace); its length is the set count. Otherwise use the single target_* / new_* fields.
     - "note" is a short cue only ("drive through the heels"), never the per-set numbers.

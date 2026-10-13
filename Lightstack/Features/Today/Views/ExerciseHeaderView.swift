@@ -9,6 +9,10 @@ struct ExerciseHeaderView: View {
     let totalCount: Int
     let canLinkWithNext: Bool
     let onAdd: () -> Void
+    /// Whether this page's rest timer is running (the button then stops it).
+    var isRestRunning = false
+    /// Starts (or, while running, stops) the rest timer.
+    var onToggleRest: (() -> Void)? = nil
     let onFormDemo: () -> Void
     let onRecordForm: () -> Void
     let onLinkWithNext: () -> Void
@@ -134,6 +138,12 @@ struct ExerciseHeaderView: View {
                 }
                 .accessibilityLabel("More actions")
                 .accessibilityIdentifier("moreActionsButton")
+            }
+            if let onToggleRest {
+                iconButton(isRestRunning ? "timer.circle.fill" : "timer",
+                           label: isRestRunning ? "Stop rest timer" : "Start rest timer",
+                           action: onToggleRest)
+                    .accessibilityIdentifier("startRestButton")
             }
             iconButton("plus", label: "Add exercise", action: onAdd)
                 .accessibilityIdentifier("addExerciseButton")

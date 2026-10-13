@@ -145,3 +145,25 @@ final class WorkoutFlowTests: LightstackUITestCase {
         shot("09-cards-\(scheme)-2")
     }
 }
+
+// MARK: - Manual rest timer
+
+extension WorkoutFlowTests {
+    /// The card's timer button starts a rest countdown with the Settings preference, then stops it.
+    func testManualRestButtonStartsAndStopsTimer() throws {
+        launchApp(extraArguments: ["-defaultRestSeconds", "180"])
+        generateAndStartPushWorkout()
+        let button = waitFor(app.buttons["startRestButton"])
+        XCTAssertEqual(button.label, "Start rest timer")
+        button.tap()
+        let banner = waitFor(app.staticTexts["Rest Period"], "Rest countdown did not appear")
+        XCTAssertTrue(banner.exists)
+        let near = NSPredicate(format: "label BEGINSWITH '3:00' OR label BEGINSWITH '2:5'")
+        XCTAssertTrue(app.staticTexts.matching(near).firstMatch.waitForExistence(timeout: 5),
+                      "Countdown should start near 3:00")
+        XCTAssertEqual(app.buttons["startRestButton"].label, "Stop rest timer")
+        app.buttons["startRestButton"].tap()
+        XCTAssertTrue(app.staticTexts["Rest Period"].waitForNonExistence(timeout: 5), "Rest countdown did not stop")
+        XCTAssertEqual(app.buttons["startRestButton"].label, "Start rest timer")
+    }
+}
