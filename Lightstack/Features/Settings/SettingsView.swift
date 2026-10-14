@@ -125,7 +125,12 @@ private struct SyncQueueDebugSection: View {
             .accessibilityIdentifier("settings.syncQueue.retry")
             .listRowBackground(AppTheme.surface)
         }
-        .task { await refresh() }
+        .task {
+            while !Task.isCancelled {
+                await refresh()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
     }
 
     private func refresh() async {

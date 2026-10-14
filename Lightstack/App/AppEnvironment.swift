@@ -100,8 +100,14 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         #endif
         self.supabaseService = SupabaseService(client: supabaseClient)
         let queueAuth = authService
+        var queueRemote: RemoteWriting = supabaseService
+        #if DEBUG
+        if UITestMode.isActive, let mode = UITestMode.fakeRemoteMode {
+            queueRemote = UITestFakeRemote(online: mode == "online")
+        }
+        #endif
         self.offlineQueueManager = OfflineQueueManager(
-            remote: supabaseService,
+            remote: queueRemote,
             directory: OfflineQueueManager.defaultDirectory(),
             ownerProvider: { await MainActor.run { queueAuth.currentUser()?.userId } }
         )
@@ -334,7 +340,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         // Upload anything left over from the last run.
         var allowLaunchFlush = isAuthenticated
         #if DEBUG
-        if UITestMode.isActive { allowLaunchFlush = false }
+        if UITestMode.isActive && (UITestMode.fakeRemoteMode == nil || UITestMode.skipLaunchFlush) {
+            allowLaunchFlush = false
+        }
         #endif
         if allowLaunchFlush {
             Task { @MainActor in syncService.triggerFlush() }

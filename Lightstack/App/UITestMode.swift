@@ -19,6 +19,14 @@ enum UITestMode {
         guard let i = args.firstIndex(of: "-uiTestingPendingSyncOps"), i + 1 < args.count else { return 0 }
         return Int(args[i + 1]) ?? 0
     }
+    /// `-uiTestingFakeRemote offline|online` replaces Supabase as the queue's remote and allows flushing.
+    static var fakeRemoteMode: String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uiTestingFakeRemote"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+    /// `-uiTestingSkipLaunchFlush` keeps the launch-time flush from running (foreground-trigger test).
+    static let skipLaunchFlush: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSkipLaunchFlush")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -185,6 +193,39 @@ enum UITestMode {
             }
         }
     }
+}
+
+/// Stand-in for Supabase in the offline-queue UI tests. Never touches the network.
+/// "offline" throws a transient network error on every call; "online" records and succeeds.
+final class UITestFakeRemote: RemoteWriting, @unchecked Sendable {
+    private let online: Bool
+    private let lock = NSLock()
+    private var calls: [String] = []
+    private static let logger = Logger(subsystem: "org.lightstack.app", category: "UITestFakeRemote")
+
+    init(online: Bool) { self.online = online }
+
+    private func record(_ name: String) throws {
+        lock.lock(); calls.append(name); lock.unlock()
+        Self.logger.debug("fake remote \(name, privacy: .public) online=\(self.online)")
+        if !online { throw URLError(.notConnectedToInternet) }
+    }
+
+    func insertWorkout(_ workout: Workout) async throws { try record("insertWorkout") }
+    func updateWorkout(_ workout: Workout) async throws { try record("updateWorkout") }
+    func deleteWorkout(workoutId: UUID) async throws { try record("deleteWorkout") }
+    func deleteSet(setId: UUID) async throws { try record("deleteSet") }
+    func deleteExercise(id: UUID) async throws { try record("deleteExercise") }
+    func deleteExercises(workoutId: UUID) async throws { try record("deleteExercises") }
+    func insertExercises(_ exercises: [Exercise]) async throws { try record("insertExercises") }
+    func insertSet(_ workoutSet: WorkoutSet) async throws { try record("insertSet") }
+    func updateExerciseNames(ids: [UUID], name: String) async throws { try record("updateExerciseNames") }
+    func upsertProfile(_ profile: UserProfile) async throws { try record("upsertProfile") }
+    func insertPersonalRecord(_ record: PersonalRecord) async throws { try self.record("insertPersonalRecord") }
+    func upsertContextSummary(_ summary: AIContextSummary) async throws { try record("upsertContextSummary") }
+    func insertMonthPlan(_ plan: MonthPlan) async throws { try record("insertMonthPlan") }
+    func insertPlannedSessions(_ sessions: [PlannedSession]) async throws { try record("insertPlannedSessions") }
+    func updatePlannedSession(_ session: PlannedSession) async throws { try record("updatePlannedSession") }
 }
 
 /// Canned AI provider used instead of Gemini while UI testing. Never touches the network.
