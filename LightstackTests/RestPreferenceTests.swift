@@ -83,6 +83,28 @@ final class RestPreferenceTests: XCTestCase {
         XCTAssertEqual(cancelled, 1)
     }
 
+    func testStartingRestForAnotherExerciseReplacesPrevious() {
+        let vm = ActiveWorkoutViewModel()
+        let a = UUID(), b = UUID()
+        vm.startRestTimer(for: a, seconds: 60, exerciseName: "A")
+        vm.startRestTimer(for: b, seconds: 90, exerciseName: "B")
+        XCTAssertNil(vm.restTimerTargetDates[a])
+        XCTAssertNil(vm.restTimerTotalSeconds[a])
+        XCTAssertEqual(vm.restTimerTargetDates.count, 1)
+        XCTAssertEqual(vm.activeRestExerciseId, b)
+        XCTAssertFalse(vm.isRestRunning(for: [a]))
+        XCTAssertTrue(vm.isRestRunning(for: [b]))
+        var cancelled = 0
+        vm.onRestTimerCancel = { cancelled += 1 }
+        vm.cancelRestTimer(for: [a])  // not running: no-op
+        XCTAssertEqual(cancelled, 0)
+        vm.cancelRestTimer(for: [b])
+        XCTAssertTrue(vm.restTimerTargetDates.isEmpty)
+        XCTAssertTrue(vm.restTimerTotalSeconds.isEmpty)
+        XCTAssertNil(vm.activeRestExerciseId)
+        XCTAssertEqual(cancelled, 1)
+    }
+
     func testPlanPromptIncludesPreference() {
         let service = CoachPromptService(validationService: ValidationService())
         let prompt = service.buildSystemPrompt(profile: nil, task: .plan, restSeconds: 180)

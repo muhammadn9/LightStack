@@ -31,7 +31,6 @@ final class ExerciseGuideLibraryTests: XCTestCase {
 
     func testUnmappedCatalogNamesStayBelowThreshold() {
         let unmapped = ExerciseCatalog.exercises.map(\.name).filter { library.guide(for: $0) == nil }
-        print("Unmapped catalog exercises (\(unmapped.count)): \(unmapped)")
         XCTAssertLessThanOrEqual(unmapped.count, 2, "Unmapped: \(unmapped)")
     }
 }

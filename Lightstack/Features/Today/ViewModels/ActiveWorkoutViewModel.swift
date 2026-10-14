@@ -526,6 +526,9 @@ final class ActiveWorkoutViewModel: ObservableObject {
         onRestTimerCancel?()  // cancel any existing notification
         restTimerClock?.invalidate()
         restTimerClock = nil
+        // Only one rest timer exists at a time: drop any previous exercise's state.
+        restTimerTargetDates.removeAll()
+        restTimerTotalSeconds.removeAll()
 
         let targetDate = Date().addingTimeInterval(TimeInterval(seconds))
         restTimerTargetDates[exerciseId] = targetDate
@@ -567,18 +570,16 @@ final class ActiveWorkoutViewModel: ObservableObject {
         onRestTimerCancel?()
     }
 
+    /// Whether the single running rest timer belongs to one of `exerciseIds`.
+    func isRestRunning(for exerciseIds: [UUID]) -> Bool {
+        guard let active = activeRestExerciseId else { return false }
+        return exerciseIds.contains(active)
+    }
+
     /// Stop the rest timer running for any of `exerciseIds` (a page's members) and remove its alert.
     func cancelRestTimer(for exerciseIds: [UUID]) {
-        restTimerClock?.invalidate()
-        restTimerClock = nil
-        for id in exerciseIds {
-            restTimerTargetDates.removeValue(forKey: id)
-            restTimerTotalSeconds.removeValue(forKey: id)
-        }
-        if let active = activeRestExerciseId, exerciseIds.contains(active) {
-            activeRestExerciseId = nil
-        }
-        onRestTimerCancel?()
+        guard isRestRunning(for: exerciseIds) else { return }
+        cancelAllRestTimers()
     }
 
     /// Stop every rest timer and cancel its pending notification. Call when the
