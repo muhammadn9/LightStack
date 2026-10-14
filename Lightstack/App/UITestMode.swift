@@ -257,7 +257,6 @@ final class UITestFakeAIProvider: AIProvider {
     }
     """
 }
-#endif
 
 extension UITestMode {
     /// Resets the test queue on `-uiTestingReset`, then seeds `-uiTestingPendingSyncOps` harmless ops.
@@ -270,3 +269,4 @@ extension UITestMode {
         }
     }
 }
+#endif
