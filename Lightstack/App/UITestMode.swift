@@ -13,6 +13,12 @@ enum UITestMode {
     static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
+    /// `-uiTestingPendingSyncOps N` seeds N unsynced operations for the test user (sign-out warning tests).
+    static var pendingSyncOps: Int {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uiTestingPendingSyncOps"), i + 1 < args.count else { return 0 }
+        return Int(args[i + 1]) ?? 0
+    }
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -252,3 +258,15 @@ final class UITestFakeAIProvider: AIProvider {
     """
 }
 #endif
+
+extension UITestMode {
+    /// Resets the test queue on `-uiTestingReset`, then seeds `-uiTestingPendingSyncOps` harmless ops.
+    static func prepareQueue(_ queue: OfflineQueueManager) async {
+        if shouldReset { await queue.clearQueue() }
+        for i in 0..<pendingSyncOps {
+            let workout = Workout.create(userId: userId, workoutType: "Pending \(i)",
+                                         energyLevel: nil, timeAvailableMinutes: nil)
+            await queue.enqueue(.insertWorkout, payload: workout)
+        }
+    }
+}

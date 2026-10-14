@@ -4,7 +4,7 @@ import Network
 /// Monitors connectivity via NWPathMonitor and coordinates sync
 /// between local Core Data and remote Supabase.
 /// Triggers OfflineQueueManager flush on reconnect.
-/// @MainActor ensures all state mutations (isOnline, flushTask) happen
+/// @MainActor ensures all state mutations (isOnline) happen
 /// on the main actor, preventing data races from concurrent callers.
 @MainActor
 final class SyncService: ObservableObject {
@@ -14,7 +14,6 @@ final class SyncService: ObservableObject {
     private let monitor: NWPathMonitor
     private let monitorQueue = DispatchQueue(label: "lightstack.network.monitor", qos: .utility)
     private let offlineQueueManager: OfflineQueueManager
-    private var flushTask: Task<Void, Never>?
 
     init(offlineQueueManager: OfflineQueueManager) {
         self.offlineQueueManager = offlineQueueManager
@@ -24,17 +23,20 @@ final class SyncService: ObservableObject {
 
     deinit {
         monitor.cancel()
-        flushTask?.cancel()
     }
 
     // MARK: - Public
 
     /// Manually trigger a queue flush — called on sign-in and app foreground.
     func triggerFlush() {
-        flushTask?.cancel()
-        flushTask = Task { [weak self] in
-            await self?.offlineQueueManager.flush()
-        }
+        #if DEBUG
+        // UI tests must never reach the network or drain their seeded queue.
+        if UITestMode.isActive { return }
+        #endif
+        // The queue manager is single-flight: extra requests during a flush just
+        // make it run another pass, so there is nothing to cancel or de-duplicate here.
+        let manager = offlineQueueManager
+        Task { await manager.flush() }
     }
 
     // MARK: - Private

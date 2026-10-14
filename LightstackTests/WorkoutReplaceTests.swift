@@ -19,7 +19,7 @@ final class WorkoutReplaceTests: XCTestCase {
         repo = WorkoutRepository(
             localStorage: storage,
             supabaseService: supabase,
-            offlineQueueManager: OfflineQueueManager(supabaseService: supabase)
+            offlineQueueManager: OfflineQueueManager(remote: supabase, directory: FileManager.default.temporaryDirectory.appendingPathComponent("oq-\(UUID().uuidString)"), ownerProvider: { nil })
         )
     }
 
