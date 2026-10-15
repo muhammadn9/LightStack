@@ -6,6 +6,8 @@ struct SettingsView: View {
     @AppStorage("restTimerNotificationsEnabled") private var restTimerNotif = true
     @AppStorage(RestPreference.key) private var defaultRestSeconds = 90
     @AppStorage("weightUnit") private var weightUnit = "lbs"
+    @State private var unsyncedCount = 0
+    @State private var showUnsyncedAlert = false
 
     // Pushed from Profile's NavigationStack (gear button), so it uses the
     // system navigation bar for its title and back button.
@@ -49,10 +51,11 @@ struct SettingsView: View {
 
                 #if DEBUG
                 AIUsageDebugSection()
+                SyncQueueDebugSection()
                 #endif
 
                 Section("Account") {
-                    Button(action: { environment.authService.signOut() }) {
+                    Button(action: requestSignOut) {
                         HStack {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
                             Text("Sign Out")
@@ -60,10 +63,19 @@ struct SettingsView: View {
                         .font(AppTheme.playfairItalic(14, weight: .bold))
                         .foregroundStyle(AppTheme.destructive)
                     }
+                    .accessibilityIdentifier("settings.signOutButton")
                     .listRowBackground(AppTheme.surface)
                 }
             }
             .scrollContentBackground(.hidden)
+            .alert("Some changes haven't backed up yet", isPresented: $showUnsyncedAlert) {
+                Button("Sign Out", role: .destructive) { environment.authService.signOut() }
+                    .accessibilityIdentifier("settings.unsynced.signOut")
+                Button("Cancel", role: .cancel) {}
+                    .accessibilityIdentifier("settings.unsynced.cancel")
+            } message: {
+                Text("\(unsyncedCount) \(unsyncedCount == 1 ? "change is" : "changes are") saved on this iPhone but not yet uploaded. They'll upload next time you sign in on this device.")
+            }
         }
         .background(AppTheme.background.ignoresSafeArea())
         .navigationTitle("Settings")
@@ -73,7 +85,60 @@ struct SettingsView: View {
     }
 }
 
+extension SettingsView {
+    /// Warns before sign-out when the offline queue still holds changes for this user.
+    fileprivate func requestSignOut() {
+        Task {
+            let pending = await environment.offlineQueueManager.pendingCount
+            let failed = await environment.offlineQueueManager.failedCount
+            await MainActor.run {
+                if pending + failed > 0 {
+                    unsyncedCount = pending + failed
+                    showUnsyncedAlert = true
+                } else {
+                    environment.authService.signOut()
+                }
+            }
+        }
+    }
+}
+
 #if DEBUG
+/// Offline queue status and dead-letter retry. Debug builds only.
+private struct SyncQueueDebugSection: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @State private var pending = 0
+    @State private var failed = 0
+
+    var body: some View {
+        Section("Sync queue (debug)") {
+            Text("Sync queue: \(pending) pending, \(failed) failed")
+                .accessibilityIdentifier("settings.syncQueue.status")
+                .listRowBackground(AppTheme.surface)
+            Button("Retry failed") {
+                Task {
+                    await environment.offlineQueueManager.retryFailed()
+                    await refresh()
+                    environment.syncService.triggerFlush()
+                }
+            }
+            .accessibilityIdentifier("settings.syncQueue.retry")
+            .listRowBackground(AppTheme.surface)
+        }
+        .task {
+            while !Task.isCancelled {
+                await refresh()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
+    private func refresh() async {
+        pending = await environment.offlineQueueManager.pendingCount
+        failed = await environment.offlineQueueManager.failedCount
+    }
+}
+
 /// Today's AI calls and tokens per task (from Gemini usageMetadata). Debug builds only.
 private struct AIUsageDebugSection: View {
     @State private var rows: [(task: AITask, entry: AIUsageTracker.Entry)] = []

@@ -99,8 +99,25 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         if UITestMode.isActive { UITestMode.seedIfNeeded(localStorage: localStorageService) }
         #endif
         self.supabaseService = SupabaseService(client: supabaseClient)
-        self.offlineQueueManager = OfflineQueueManager(supabaseService: supabaseService)
+        let queueAuth = authService
+        var queueRemote: RemoteWriting = supabaseService
+        #if DEBUG
+        if UITestMode.isActive, let mode = UITestMode.fakeRemoteMode {
+            queueRemote = UITestFakeRemote(online: mode == "online")
+        }
+        #endif
+        self.offlineQueueManager = OfflineQueueManager(
+            remote: queueRemote,
+            directory: OfflineQueueManager.defaultDirectory(),
+            ownerProvider: { await MainActor.run { queueAuth.currentUser()?.userId } }
+        )
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
+        #if DEBUG
+        if UITestMode.isActive {
+            let queue = offlineQueueManager
+            Task { await UITestMode.prepareQueue(queue) }
+        }
+        #endif
         self.validationService = ValidationService()
 
         // AI providers, tried in order: Gemini models reached through the ai-proxy
@@ -301,9 +318,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = nil
         pendingVerificationPassword = nil
         UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
-        // Clear queued writes so a future session (or different user) does not
-        // flush stale operations under the wrong JWT.
-        Task { await offlineQueueManager.clearQueue() }
+        // The offline queue is deliberately kept: unsynced changes are tagged with
+        // their owner and upload the next time that user signs in on this device.
     }
 
     func authServiceNeedsEmailVerification(_ service: AuthService, email: String) {
@@ -320,6 +336,17 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     private func checkExistingSession() {
         isAuthenticated = authService.currentUser() != nil
+
+        // Upload anything left over from the last run.
+        var allowLaunchFlush = isAuthenticated
+        #if DEBUG
+        if UITestMode.isActive && (UITestMode.fakeRemoteMode == nil || UITestMode.skipLaunchFlush) {
+            allowLaunchFlush = false
+        }
+        #endif
+        if allowLaunchFlush {
+            Task { @MainActor in syncService.triggerFlush() }
+        }
 
         // If authenticated, verify profile exists in database
         if isAuthenticated, let userId = authService.currentUser()?.userId {
