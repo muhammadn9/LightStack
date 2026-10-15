@@ -1,3 +1,4 @@
+-- STATUS: never applied. Superseded by 20261015120000_phase2_sync_consistency.sql. Do not run.
 -- Migration: add cardio-specific columns to the sets table
 -- These columns are nullable so existing strength-exercise rows are unaffected.
 -- Run once against the remote Supabase project (lightstack).

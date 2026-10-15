@@ -1,5 +1,7 @@
+-- NOTE: supabase/migrations/ is the source of truth. This file is a reference
+-- snapshot of the schema AFTER migration 20261015120000_phase2_sync_consistency.
 -- ============================================================
--- LIGHTSTACK — Supabase Schema v1.2
+-- LIGHTSTACK — Supabase Schema v1.3
 -- Run this in the Supabase SQL Editor to initialize the database
 -- ============================================================
 
@@ -25,6 +27,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   avoid_exercises       TEXT[],
   equipment             JSONB DEFAULT '{}'::jsonb,
   notes_to_coach        TEXT,
+  custom_equipment      TEXT,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
   updated_at            TIMESTAMPTZ DEFAULT NOW()
 );
@@ -53,8 +56,10 @@ CREATE TABLE IF NOT EXISTS workouts (
   user_note                TEXT,
   ai_progression_note      TEXT,
   planned_session_id       UUID,
+  setup_note               TEXT,
   synced                   BOOLEAN DEFAULT TRUE,
-  created_at               TIMESTAMPTZ DEFAULT NOW()
+  created_at               TIMESTAMPTZ DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================
@@ -93,7 +98,10 @@ CREATE TABLE IF NOT EXISTS sets (
   rir            INTEGER CHECK(rir IS NULL OR (rir BETWEEN 0 AND 10)),
   user_feedback  TEXT,
   is_pr          BOOLEAN DEFAULT FALSE,
-  recorded_at    TIMESTAMPTZ DEFAULT NOW()
+  recorded_at    TIMESTAMPTZ DEFAULT NOW(),
+  duration_seconds INTEGER,
+  distance_miles   NUMERIC,
+  incline_level    NUMERIC
 );
 
 -- ============================================================
@@ -106,7 +114,7 @@ CREATE TABLE IF NOT EXISTS personal_records (
   weight_lbs      DECIMAL(6,2) NOT NULL,
   reps            INTEGER NOT NULL,
   date_achieved   DATE NOT NULL,
-  workout_id      UUID REFERENCES workouts(id),
+  workout_id      UUID REFERENCES workouts(id) ON DELETE SET NULL,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -142,7 +150,7 @@ CREATE TABLE IF NOT EXISTS planned_sessions (
   focus_note      TEXT,
   is_rest_day     BOOLEAN DEFAULT FALSE,
   completed       BOOLEAN DEFAULT FALSE,
-  workout_id      UUID REFERENCES workouts(id)
+  workout_id      UUID REFERENCES workouts(id) ON DELETE SET NULL
 );
 
 -- ============================================================
@@ -177,12 +185,37 @@ CREATE TABLE IF NOT EXISTS rate_limits (
 );
 
 -- ============================================================
+-- SYNC TOMBSTONES (client-recorded deletions; select + insert only)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS sync_tombstones (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  entity     TEXT NOT NULL CHECK (entity IN
+               ('workout','exercise','set','personal_record','month_plan','planned_session','rest_day')),
+  record_id  UUID NOT NULL,
+  deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, entity, record_id)
+);
+
+-- ============================================================
+-- REST DAYS
+-- ============================================================
+CREATE TABLE IF NOT EXISTS rest_days (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  date       DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, date)
+);
+
+-- ============================================================
 -- INDEXES
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id          ON profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_workouts_user_id          ON workouts(user_id);
 CREATE INDEX IF NOT EXISTS idx_workouts_date             ON workouts(date);
 CREATE INDEX IF NOT EXISTS idx_workouts_user_date        ON workouts(user_id, date);
+CREATE INDEX IF NOT EXISTS idx_workouts_user_updated     ON workouts(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_workouts_local_id         ON workouts(local_id);
 CREATE INDEX IF NOT EXISTS idx_workouts_planned_session  ON workouts(planned_session_id);
 CREATE INDEX IF NOT EXISTS idx_exercises_workout_id      ON exercises(workout_id);
@@ -193,6 +226,7 @@ CREATE INDEX IF NOT EXISTS idx_summaries_user_type       ON ai_context_summaries
 CREATE INDEX IF NOT EXISTS idx_month_plans_user_id       ON month_plans(user_id);
 CREATE INDEX IF NOT EXISTS idx_planned_sessions_plan     ON planned_sessions(month_plan_id);
 CREATE INDEX IF NOT EXISTS idx_planned_sessions_date     ON planned_sessions(user_id, planned_date);
+CREATE INDEX IF NOT EXISTS idx_sync_tombstones_user_deleted ON sync_tombstones(user_id, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_rate_limits_user_endpoint ON rate_limits(user_id, endpoint, requested_at);
 
 -- ============================================================
@@ -207,6 +241,8 @@ ALTER TABLE month_plans          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE planned_sessions     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_context_summaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limits          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sync_tombstones      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rest_days            ENABLE ROW LEVEL SECURITY;
 
 -- profiles
 CREATE POLICY "Users manage own profile"
@@ -282,6 +318,20 @@ CREATE POLICY "Users manage own summaries"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- sync_tombstones (clients may only read and insert their own)
+CREATE POLICY "Users read own tombstones"
+  ON sync_tombstones FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own tombstones"
+  ON sync_tombstones FOR INSERT WITH CHECK (auth.uid() = user_id);
+GRANT SELECT, INSERT ON sync_tombstones TO authenticated;
+
+-- rest_days
+CREATE POLICY "Users manage own rest days"
+  ON rest_days FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+GRANT ALL ON rest_days TO authenticated;
+
 -- rate_limits (service role only — enforced via SECURITY DEFINER function)
 CREATE POLICY "Service role manages rate limits"
   ON rate_limits FOR ALL
@@ -302,6 +352,10 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_workouts_updated_at
+  BEFORE UPDATE ON workouts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================
