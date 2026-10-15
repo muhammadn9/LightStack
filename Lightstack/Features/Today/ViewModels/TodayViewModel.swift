@@ -185,6 +185,17 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     func finishWorkout(userNote: String?) {
         guard let userId = userId else { return }
+        // Only exercises with explicitly logged sets count as worked.
+        let kept = WorkoutSessionService.exercisesWithLoggedSets(exercises, sets: loggedSets)
+        let keptIds = Set(kept.map(\.id))
+        for removed in exercises where !keptIds.contains(removed.id) {
+            workoutRepository.deleteExercise(removed.id)
+            loggedSets[removed.id] = nil
+            pendingSetsSnapshot[removed.id] = nil
+            setTargets[removed.id] = nil
+            previousHints[removed.id] = nil
+        }
+        exercises = kept
         isLoadingNote = true
         phase = .postWorkout
         sessionService.finishSession(

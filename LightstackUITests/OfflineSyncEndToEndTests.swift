@@ -81,7 +81,7 @@ final class OfflineSyncEndToEndTests: LightstackUITestCase {
         waitFor(app.staticTexts["loggedSet.0.1.weight"], "Second set was not logged")
         shot("02-two-sets-logged")
 
-        tap(app.buttons["finishWorkoutButton"])
+        finishWorkoutConfirmed()
         let save = waitFor(app.buttons["saveWorkoutButton"], "Post-workout screen did not appear")
         XCTAssertTrue(save.waitForHittable(timeout: timeout), "Save never became enabled")
         let chip = app.buttons["chip.Push"]

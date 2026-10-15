@@ -275,6 +275,12 @@ final class WorkoutSessionService {
         delegate?.sessionServiceDidSaveWorkout(self)
     }
 
+    /// Exercises that have at least one logged set. Others were never worked and are
+    /// dropped when the workout finishes.
+    static func exercisesWithLoggedSets(_ exercises: [Exercise], sets: [UUID: [WorkoutSet]]) -> [Exercise] {
+        exercises.filter { !(sets[$0.id]?.isEmpty ?? true) }
+    }
+
     /// Stored exercises that may be deleted at finish: not in the final list AND with no
     /// logged sets. An exercise with sets is real history and is never deleted here.
     static func exerciseIdsToDelete(
