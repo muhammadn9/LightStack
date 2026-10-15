@@ -1,3 +1,7 @@
+-- ################################################################
+-- #  DROPS ALL TABLES -- NEVER RUN AGAINST PRODUCTION.            #
+-- #  This script deletes every user's data. Local/scratch only.  #
+-- ################################################################
 -- ============================================================
 -- FIX: Add missing columns to existing tables
 -- Run this if the original schema was created without local_id

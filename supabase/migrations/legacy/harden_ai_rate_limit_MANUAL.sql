@@ -1,3 +1,4 @@
+-- STATUS: applied manually, not in the migration history. Idempotent (CREATE OR REPLACE).
 -- Per-user AI rate limit, enforced server-side by the ai-proxy Edge Function.
 -- 10 requests / minute and 100 / day. auth.uid() comes from the caller's JWT,
 -- so it cannot be spoofed. Signed-out callers cannot execute it.
