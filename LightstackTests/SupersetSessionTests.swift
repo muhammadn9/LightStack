@@ -189,4 +189,14 @@ final class SupersetSessionTests: XCTestCase {
         )
         XCTAssertEqual(doomed, [empty.id])
     }
+
+    func testExercisesWithLoggedSetsDropsUnworkedMembers() {
+        let g = UUID()
+        let a = ex("A", 0, group: g), b = ex("B", 1, group: g), c = ex("C", 2)
+        let kept = WorkoutSessionService.exercisesWithLoggedSets(
+            [a, b, c], sets: [a.id: [set(a.id, 1)], b.id: [], c.id: [set(c.id, 1)]]
+        )
+        XCTAssertEqual(kept.map(\.name), ["A", "C"])
+        XCTAssertTrue(WorkoutSessionService.exercisesWithLoggedSets([a, b], sets: [:]).isEmpty)
+    }
 }

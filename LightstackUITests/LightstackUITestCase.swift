@@ -44,6 +44,12 @@ class LightstackUITestCase: XCTestCase {
         waitFor(element, file: file, line: line).tap()
     }
 
+    /// Taps Finish Workout and confirms the "Finish workout?" alert.
+    func finishWorkoutConfirmed(file: StaticString = #filePath, line: UInt = #line) {
+        tap(app.buttons["finishWorkoutButton"], file: file, line: line)
+        tap(app.alerts.buttons["confirmFinishWorkoutButton"].firstMatch, file: file, line: line)
+    }
+
     func dismissKeyboardIfNeeded() {
         // Each presentation root (app, sheets) carries its own pill, so several can exist.
         let pills = app.buttons.matching(identifier: "Dismiss keyboard")

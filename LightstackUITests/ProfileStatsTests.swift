@@ -18,7 +18,9 @@ final class ProfileStatsTests: LightstackUITestCase {
         replaceText(in: repsField(), with: "5")
         replaceText(in: rirField(), with: "2")
         dismissKeyboardIfNeeded()
-        tap(app.buttons["finishWorkoutButton"])
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.0.weight"], "Set was not logged")
+        finishWorkoutConfirmed()
         let save = waitFor(app.buttons["saveWorkoutButton"], "Post-workout screen did not appear")
         XCTAssertTrue(save.waitForHittable(timeout: timeout), "Save never became enabled")
         let chip = app.buttons["chip.Push"]

@@ -10,6 +10,7 @@ struct ActiveWorkoutView: View {
 
     @State private var showChat = false
     @State private var showCancelAlert = false
+    @State private var showFinishConfirm = false
     @State private var currentExerciseIndex = 0
     @State private var exercisePendingRemoval: Exercise?
     @State private var showAddExercise = false
@@ -137,6 +138,22 @@ struct ActiveWorkoutView: View {
             Text(count > 0
                  ? "This also deletes its \(count) logged \(count == 1 ? "set" : "sets")."
                  : "It will be removed from this workout.")
+        }
+        .alert("Finish workout?", isPresented: $showFinishConfirm) {
+            if loggedTotals.sets == 0 {
+                Button("Discard Workout", role: .destructive) {
+                    viewModel.cancelAllRestTimers()
+                    todayViewModel.discardWorkout()
+                }
+                .accessibilityIdentifier("discardFromFinishButton")
+            } else {
+                Button("Finish") { performFinish() }
+                    .accessibilityIdentifier("confirmFinishWorkoutButton")
+            }
+            Button("Keep Training", role: .cancel) {}
+                .accessibilityIdentifier("keepTrainingButton")
+        } message: {
+            Text(finishConfirmMessage)
         }
         .alert("Discard Workout?", isPresented: $showCancelAlert) {
             Button("Discard", role: .destructive) {
@@ -446,13 +463,7 @@ struct ActiveWorkoutView: View {
     }
 
     private var finishButton: some View {
-        Button(action: {
-            autoLogAllPendingSets()
-            viewModel.cancelAllRestTimers()
-            viewModel.syncElapsed()
-            todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
-            todayViewModel.finishWorkout(userNote: nil)
-        }) {
+        Button(action: { showFinishConfirm = true }) {
             HStack(spacing: 9) {
                 Text("✦")
                     .font(.title3)
@@ -569,20 +580,34 @@ struct ActiveWorkoutView: View {
         todayViewModel.saveSessionState()
     }
 
-    private func autoLogAllPendingSets() {
+    private func performFinish() {
+        viewModel.cancelAllRestTimers()
+        viewModel.syncElapsed()
+        todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
+        todayViewModel.finishWorkout(userNote: nil)
+    }
+
+    private var loggedTotals: (sets: Int, exercises: Int) {
+        var sets = 0
+        var exercises = 0
         for exercise in todayViewModel.exercises {
-            let exerciseId = exercise.id
-            let count = viewModel.pendingSets[exerciseId]?.count ?? 0
-            for _ in 0..<count {
-                guard let set = viewModel.pendingSets[exerciseId], !set.isEmpty else { break }
-                if ActiveWorkoutViewModel.isReadyToLog(set[0], trackingType: exercise.trackingType) {
-                    // No rest timer: the workout is finishing.
-                    logSet(at: 0, exerciseId: exerciseId, startRest: false)
-                } else {
-                    break
-                }
-            }
+            let count = viewModel.loggedSets[exercise.id]?.count ?? 0
+            sets += count
+            if count > 0 { exercises += 1 }
         }
+        return (sets, exercises)
+    }
+
+    private var finishConfirmMessage: String {
+        let totals = loggedTotals
+        guard totals.sets > 0 else {
+            return "You haven't logged any sets. This workout won't be saved."
+        }
+        var message = "\(totals.sets) \(totals.sets == 1 ? "set" : "sets") logged across "
+            + "\(totals.exercises) \(totals.exercises == 1 ? "exercise" : "exercises")."
+        let hasUnlogged = todayViewModel.exercises.contains { !(viewModel.pendingSets[$0.id] ?? []).isEmpty }
+        if hasUnlogged { message += " Unlogged sets won't be saved." }
+        return message
     }
 
     private func prToast(pr: PersonalRecord) -> some View {
