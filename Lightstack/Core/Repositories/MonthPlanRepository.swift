@@ -20,15 +20,11 @@ final class MonthPlanRepository {
 
     // MARK: - Fetch
 
+    /// The active plan from the local store. Cloud plans arrive through `SyncRestoreService`
+    /// (which honours tombstones and unuploaded local changes); this read no longer returns
+    /// early or pulls on its own, so a fresh device gets its plan from the restore.
     func fetchActivePlan(userId: UUID) -> MonthPlan? {
-        guard let cdEntity = localStorage.fetchActiveMonthPlan(userId: userId) else {
-            return nil
-        }
-        let plan = MonthPlan(from: cdEntity)
-        Task {
-            try? await syncPlanFromRemote(userId: userId)
-        }
-        return plan
+        localStorage.fetchActiveMonthPlan(userId: userId).map { MonthPlan(from: $0) }
     }
 
     func fetchActivePlans(userId: UUID) -> [MonthPlan] {
@@ -70,18 +66,5 @@ final class MonthPlanRepository {
         updated.workoutId = workoutId
         localStorage.updatePlannedSession(updated)
         offlineQueueManager.submit(.updatePlannedSession, payload: updated, recordKey: updated.id.uuidString)
-    }
-
-    // MARK: - Private
-
-    private func syncPlanFromRemote(userId: UUID) async throws {
-        guard let remotePlan = try await supabaseService.fetchActiveMonthPlan(userId: userId) else {
-            return
-        }
-        localStorage.saveMonthPlan(remotePlan)
-        let remoteSessions = try await supabaseService.fetchPlannedSessions(monthPlanId: remotePlan.id)
-        if !remoteSessions.isEmpty {
-            localStorage.savePlannedSessions(remoteSessions, monthPlanId: remotePlan.id)
-        }
     }
 }

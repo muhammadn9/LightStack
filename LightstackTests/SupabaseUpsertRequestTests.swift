@@ -104,4 +104,58 @@ final class SupabaseUpsertRequestTests: XCTestCase {
         let text = body.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         XCTAssertTrue(text.contains("\"setup_note\":\"tight hamstring\""), text)
     }
+
+    private func lastBodyText() -> String {
+        guard let request = RecordingURLProtocol.last else { return "" }
+        var data = request.httpBody
+        if data == nil, let stream = request.httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var collected = Data()
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            while stream.hasBytesAvailable {
+                let n = stream.read(&buffer, maxLength: buffer.count)
+                if n <= 0 { break }
+                collected.append(buffer, count: n)
+            }
+            data = collected
+        }
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+
+    /// DATE columns are the device-local calendar day, never a timestamp (an evening workout west of
+    /// UTC would otherwise be stored under the next day).
+    func testDateColumnsAreSentAsTheLocalCalendarDay() async throws {
+        let previous = NSTimeZone.default
+        NSTimeZone.default = TimeZone(identifier: "America/Detroit") ?? previous
+        defer { NSTimeZone.default = previous }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? .current
+        // 21:00 on 15 Oct in Detroit is already 16 Oct in UTC.
+        let evening = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 21)))
+
+        var w = Workout.create(userId: userId, workoutType: "Push", energyLevel: nil, timeAvailableMinutes: nil)
+        w.date = evening
+        try await service.insertWorkout(w)
+        XCTAssertTrue(lastBodyText().contains("\"date\":\"2026-10-15\""), lastBodyText())
+        try await service.updateWorkout(w)
+        XCTAssertTrue(lastBodyText().contains("\"date\":\"2026-10-15\""), lastBodyText())
+
+        var pr = PersonalRecord.create(userId: userId, exerciseName: "Bench", weightLbs: 100, reps: 5, workoutId: nil)
+        pr.dateAchieved = evening
+        try await service.insertPersonalRecord(pr)
+        XCTAssertTrue(lastBodyText().contains("\"date_achieved\":\"2026-10-15\""), lastBodyText())
+
+        let plan = MonthPlan.create(userId: userId, title: nil, targetGoal: nil, startDate: evening,
+                                    endDate: evening.addingTimeInterval(86_400 * 3), aiOverview: nil)
+        try await service.insertMonthPlan(plan)
+        XCTAssertTrue(lastBodyText().contains("\"start_date\":\"2026-10-15\""), lastBodyText())
+        XCTAssertTrue(lastBodyText().contains("\"end_date\":\"2026-10-18\""), lastBodyText())
+
+        let session = PlannedSession.create(monthPlanId: plan.id, userId: userId, plannedDate: evening,
+                                            workoutType: "Push", focusNote: nil, isRestDay: false)
+        try await service.insertPlannedSessions([session])
+        XCTAssertTrue(lastBodyText().contains("\"planned_date\":\"2026-10-15\""), lastBodyText())
+        try await service.updatePlannedSession(session)
+        XCTAssertTrue(lastBodyText().contains("\"planned_date\":\"2026-10-15\""), lastBodyText())
+    }
 }

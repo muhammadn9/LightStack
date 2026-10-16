@@ -22,6 +22,7 @@ struct LightstackApp: App {
                     #endif
                     if phase == .active, environment.isAuthenticated {
                         environment.syncService.triggerFlush()
+                        environment.startBackgroundRestoreIfDue()
                     }
                 }
                 .onOpenURL { url in

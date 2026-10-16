@@ -9,9 +9,25 @@ final class LocalStorageService {
 
     let container: NSPersistentContainer
     private let logger = Logger(subsystem: "org.lightstack.app", category: "LocalStorageService")
+    /// While > 0, `save()` only marks changes; the outermost `performBatch` saves once.
+    private var deferredSaveDepth = 0
+
+    /// One model instance for every store in the process. Two stores that each load their own copy
+    /// of the model make Core Data unable to tell which entity description a `CDWorkout` belongs
+    /// to (tests run several "devices" at once).
+    private static let sharedModel: NSManagedObjectModel? = {
+        guard let url = Bundle(for: LocalStorageService.self).url(forResource: "Lightstack", withExtension: "momd") else {
+            return nil
+        }
+        return NSManagedObjectModel(contentsOf: url)
+    }()
 
     init(inMemory: Bool = false) {
-        container = NSPersistentContainer(name: "Lightstack")
+        if let model = Self.sharedModel {
+            container = NSPersistentContainer(name: "Lightstack", managedObjectModel: model)
+        } else {
+            container = NSPersistentContainer(name: "Lightstack")
+        }
         if let description = container.persistentStoreDescriptions.first {
             if inMemory {
                 description.url = URL(fileURLWithPath: "/dev/null")
@@ -541,8 +557,18 @@ final class LocalStorageService {
         return removed
     }
 
-    private func save() {
-        guard context.hasChanges else { return }
+    /// Runs `body` with one Core Data save at the end instead of one per call.
+    /// Used by bulk writes such as restoring a whole history.
+    func performBatch<T>(_ body: () -> T) -> T {
+        deferredSaveDepth += 1
+        let result = body()
+        deferredSaveDepth -= 1
+        if deferredSaveDepth == 0 { save() }
+        return result
+    }
+
+    func save() {
+        guard deferredSaveDepth == 0, context.hasChanges else { return }
         do {
             try context.save()
         } catch {

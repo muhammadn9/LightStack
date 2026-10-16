@@ -17,6 +17,15 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     @Published var needsEmailVerification: Bool = false
     @Published var pendingVerificationEmail: String?
     @Published var authErrorMessage: String?
+    /// `restoring` / `failed` while a new device or reinstall is looking for the account's
+    /// profile before deciding whether to onboard (see `beginProfileRestore`).
+    @Published var restoreGate: RestoreGate = .idle
+
+    enum RestoreGate: Equatable {
+        case idle
+        case restoring
+        case failed
+    }
 
     /// The verification password is stored in the Keychain rather than as a
     /// plain property, so it never appears in memory dumps, crash reports,
@@ -50,6 +59,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let coachPromptService: CoachPromptService
     let workoutStatsService: WorkoutStatsService
     let sessionPersistence: WorkoutSessionPersistence
+    let syncRestoreService: SyncRestoreService
 
     // MARK: - Repositories
 
@@ -66,6 +76,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let workoutSessionService: WorkoutSessionService
     let monthPlanService: MonthPlanService
     let notificationService: NotificationService
+
+    private var restoreTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -102,6 +114,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.supabaseService = SupabaseService(client: supabaseClient)
         let queueAuth = authService
         var queueRemote: RemoteWriting = supabaseService
+        var remoteReader: RemoteReading = supabaseService
         // Writes upload right after they are queued. UI tests must never reach the
         // network, so they only auto-upload when a fake remote is standing in.
         var queueAutoFlush = true
@@ -109,8 +122,12 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         if UITestMode.isActive { queueAutoFlush = UITestMode.fakeRemoteMode != nil }
         #endif
         #if DEBUG
-        if UITestMode.isActive, let mode = UITestMode.fakeRemoteMode {
-            queueRemote = UITestFakeRemote(online: mode == "online")
+        if UITestMode.isActive {
+            // UI tests never reach the network: reads come from the fake too. Without
+            // `-uiTestingFakeRemote` it is an offline fake that fails every call.
+            let fake = UITestFakeRemote(online: UITestMode.fakeRemoteMode == "online")
+            if UITestMode.fakeRemoteMode != nil { queueRemote = fake }
+            remoteReader = fake
         }
         #endif
         self.offlineQueueManager = OfflineQueueManager(
@@ -204,6 +221,23 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         )
 
         self.notificationService = NotificationService()
+
+        let persistence = sessionPersistence
+        let sessionService = workoutSessionService
+        self.syncRestoreService = SyncRestoreService(
+            remote: remoteReader,
+            storage: localStorageService,
+            queue: offlineQueueManager,
+            prRepository: prRepository,
+            currentUserId: { queueAuth.currentUser()?.userId },
+            activeWorkoutIds: {
+                // The workout being logged right now (live or saved for relaunch) is never touched.
+                var ids = Set<UUID>()
+                if let saved = persistence.restoreSession() { ids.insert(saved.workout.id) }
+                if let current = sessionService.currentWorkout { ids.insert(current.id) }
+                return ids
+            }
+        )
 
         authService.delegate = self
         checkExistingSession()
@@ -303,19 +337,21 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationPassword = nil
         isAuthenticated = true
 
-        // Check if profile exists in database - if so, skip onboarding
+        // A profile on this device skips onboarding. Without one this may be a new device or a
+        // reinstall: look for the account's cloud profile before deciding to onboard.
         if let userId = authService.currentUser()?.userId {
-            let profile = profileRepository.fetchProfileSync(userId: userId)
-            if profile != nil {
+            if profileRepository.fetchProfileSync(userId: userId) != nil {
                 hasCompletedOnboarding = true
                 UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
             } else {
                 hasCompletedOnboarding = false
+                beginProfileRestore(userId: userId)
             }
         }
 
         Task { @MainActor in
             syncService.triggerFlush()
+            startBackgroundRestoreIfDue()
         }
     }
 
@@ -326,6 +362,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = nil
         pendingVerificationPassword = nil
         UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+        restoreTask?.cancel()
+        restoreGate = .idle
         // The offline queue is deliberately kept: unsynced changes are tagged with
         // their owner and upload the next time that user signs in on this device.
     }
@@ -342,6 +380,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     // MARK: - Private
 
+    @MainActor
     private func checkExistingSession() {
         isAuthenticated = authService.currentUser() != nil
 
@@ -356,16 +395,120 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             Task { @MainActor in syncService.triggerFlush() }
         }
 
-        // If authenticated, verify profile exists in database
+        // If authenticated, check this device for a profile; without one, look in the cloud first.
         if isAuthenticated, let userId = authService.currentUser()?.userId {
             let profile = profileRepository.fetchProfileSync(userId: userId)
             if profile != nil {
                 logger.debug("Existing profile found, setting hasCompletedOnboarding = true")
                 hasCompletedOnboarding = true
                 UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+                startBackgroundRestoreIfDue()
             } else {
-                logger.debug("No profile found, user needs onboarding")
+                logger.debug("No local profile, checking the cloud before onboarding")
                 hasCompletedOnboarding = false
+                beginProfileRestore(userId: userId)
+            }
+        }
+    }
+
+    // MARK: - Restore
+
+    /// Blocks on a full-screen "Restoring your history..." while the cloud profile is looked up:
+    /// found -> saved locally, onboarding skipped, then the rest of the history is restored on the
+    /// same screen (bounded; a slow or failed history restore just carries on in the background);
+    /// none -> onboarding as usual; unreachable -> `.failed` (Retry / Set up as new).
+    func beginProfileRestore(userId: UUID) {
+        restoreTask?.cancel()
+        restoreGate = .restoring
+        let service = syncRestoreService
+        restoreTask = Task { @MainActor [weak self] in
+            let lookup = await service.lookUpAccountProfile(userId: userId)
+            guard let self, !Task.isCancelled else { return }
+            switch lookup {
+            case .existing:
+                self.completeOnboardingState()
+                await self.restoreHistoryOnRestoreScreen(userId: userId)
+                self.restoreGate = .idle
+            case .new:
+                self.hasCompletedOnboarding = false
+                self.restoreGate = .idle
+            case .unreachable:
+                self.restoreGate = .failed
+            case .cancelled:
+                self.restoreGate = .idle
+            }
+        }
+    }
+
+    func retryProfileRestore() {
+        guard let userId = authService.currentUser()?.userId else { return }
+        beginProfileRestore(userId: userId)
+    }
+
+    /// "Set up as new" from the failed screen. Onboarding re-checks the cloud before it saves
+    /// anything, so this can never overwrite an existing cloud profile.
+    func continueWithoutRestore() {
+        restoreTask?.cancel()
+        hasCompletedOnboarding = false
+        restoreGate = .idle
+    }
+
+    private func completeOnboardingState() {
+        hasCompletedOnboarding = true
+        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+    }
+
+    @MainActor
+    private func restoreHistoryOnRestoreScreen(userId: UUID) async {
+        let service = syncRestoreService
+        let full = Task { @MainActor in try await service.restoreAll(userId: userId, assumeFreshInstall: true) }
+        let cutoff = Task { try? await Task.sleep(nanoseconds: 60_000_000_000); full.cancel() }
+        _ = try? await full.value
+        cutoff.cancel()
+        syncService.triggerFlush()   // repair uploads, if any
+    }
+
+    /// Onboarding's last step. Looks in the cloud one more time: if the account already has a
+    /// profile it is adopted (and the history restored) instead of being overwritten.
+    @MainActor
+    func finishOnboarding(with profile: UserProfile) async -> SyncRestoreService.NewProfileResult {
+        let repository = profileRepository
+        let result = await syncRestoreService.saveNewProfileUnlessAccountHasOne(profile) {
+            repository.saveProfile($0)
+        }
+        switch result {
+        case .saved:
+            completeOnboardingState()
+        case .adoptedExisting:
+            completeOnboardingState()
+            startBackgroundRestoreIfDue()
+        case .couldNotVerify:
+            break
+        }
+        return result
+    }
+
+    /// Quiet restore on launch and foreground: after the outbox flush, at most every 6 hours
+    /// per user. No UI. Skipped while the blocking restore owns the profile step.
+    @MainActor
+    func startBackgroundRestoreIfDue() {
+        guard isAuthenticated, hasCompletedOnboarding, restoreGate == .idle,
+              let userId = authService.currentUser()?.userId,
+              !syncRestoreService.isRunning,
+              syncRestoreService.isRestoreDue(userId: userId) else { return }
+        #if DEBUG
+        // UI tests only restore when a test asks for it with a seeded fake remote.
+        if UITestMode.isActive && UITestMode.remoteSeed == nil { return }
+        #endif
+        let service = syncRestoreService
+        let queue = offlineQueueManager
+        Task { @MainActor [weak self] in
+            await queue.flush()
+            do {
+                try await service.restoreAll(userId: userId)
+                self?.syncService.triggerFlush()
+            } catch {
+                self?.logger.info("background restore stopped: \(String(describing: error), privacy: .public)")
             }
         }
     }

@@ -550,6 +550,99 @@ actor OfflineQueueManager {
         return queue
     }
 
+    /// Records another device deleted (restore found their tombstones).
+    struct DeletedRecords {
+        var workouts = Set<UUID>()
+        var exercises = Set<UUID>()
+        var sets = Set<UUID>()
+        var monthPlans = Set<UUID>()
+        var plannedSessions = Set<UUID>()
+        var restDays = Set<UUID>()
+    }
+
+    /// Drops the owner's pending UPSERT operations for records that were deleted elsewhere, so they
+    /// cannot recreate a stray cloud row. Deletes and tombstones stay queued. Batched payloads
+    /// (exercises, planned sessions) lose only the deleted members. Returns operations dropped or trimmed.
+    @discardableResult
+    func discardPendingUpserts(for owner: UUID, deleted: DeletedRecords) -> Int {
+        loadIfNeeded()
+        var changed = 0
+        var deletedExercises = deleted.exercises
+        var keep: [QueuedOperation] = []
+
+        // Exercises first: sets of a dropped exercise go with it.
+        var pass: [QueuedOperation] = []
+        for var op in queue {
+            guard op.ownerUserId == owner, op.id != executingId else { pass.append(op); continue }
+            if op.type == .insertExercises, let models = try? decoder.decode([Exercise].self, from: op.payload) {
+                let kept = models.filter { !deleted.exercises.contains($0.id) && !deleted.workouts.contains($0.workoutId) }
+                models.filter { !kept.map(\.id).contains($0.id) }.forEach { deletedExercises.insert($0.id) }
+                if kept.count != models.count {
+                    changed += 1
+                    if kept.isEmpty { continue }
+                    if let data = try? encoder.encode(kept) { op.payload = data }
+                }
+            }
+            pass.append(op)
+        }
+        for var op in pass {
+            guard op.ownerUserId == owner, op.id != executingId else { keep.append(op); continue }
+            switch op.type {
+            case .insertWorkout, .updateWorkout:
+                if let m = try? decoder.decode(Workout.self, from: op.payload), deleted.workouts.contains(m.id) { changed += 1; continue }
+            case .insertSet:
+                if let m = try? decoder.decode(WorkoutSet.self, from: op.payload),
+                   deleted.sets.contains(m.id) || deletedExercises.contains(m.exerciseId) { changed += 1; continue }
+            case .renameExercises:
+                if let m = try? decoder.decode(RenameExercisesPayload.self, from: op.payload) {
+                    let kept = m.ids.filter { !deletedExercises.contains($0) }
+                    if kept.count != m.ids.count {
+                        changed += 1
+                        if kept.isEmpty { continue }
+                        if let data = try? encoder.encode(RenameExercisesPayload(ids: kept, name: m.name)) { op.payload = data }
+                    }
+                }
+            case .insertMonthPlan:
+                if let m = try? decoder.decode(MonthPlan.self, from: op.payload), deleted.monthPlans.contains(m.id) { changed += 1; continue }
+            case .insertPlannedSessions:
+                if let models = try? decoder.decode([PlannedSession].self, from: op.payload) {
+                    let kept = models.filter { !deleted.plannedSessions.contains($0.id) && !deleted.monthPlans.contains($0.monthPlanId) }
+                    if kept.count != models.count {
+                        changed += 1
+                        if kept.isEmpty { continue }
+                        if let data = try? encoder.encode(kept) { op.payload = data }
+                    }
+                }
+            case .updatePlannedSession:
+                if let m = try? decoder.decode(PlannedSession.self, from: op.payload),
+                   deleted.plannedSessions.contains(m.id) || deleted.monthPlans.contains(m.monthPlanId) { changed += 1; continue }
+            case .upsertRestDay:
+                if let m = try? decoder.decode(RestDay.self, from: op.payload), deleted.restDays.contains(m.id) { changed += 1; continue }
+            default:
+                break
+            }
+            keep.append(op)
+        }
+        if changed > 0 {
+            queue = keep
+            saveQueue()
+            Self.logger.info("discarded \(changed) pending upserts for records deleted elsewhere")
+        }
+        return changed
+    }
+
+    /// Which records the user's still-unuploaded operations (queued or dead-lettered) touch.
+    /// A restore must not overwrite those records with older cloud copies.
+    /// Call `waitForSubmissions()` first so writes made a moment ago are included.
+    func pendingChangeIndex(for owner: UUID) -> PendingChangeIndex {
+        loadIfNeeded()
+        var index = PendingChangeIndex()
+        for op in queue + failed where Self.belongs(op, to: owner) {
+            index.absorb(op)
+        }
+        return index
+    }
+
     // MARK: - Flush
 
     /// Upload pending operations for the signed-in user in FK-dependency order.
@@ -923,6 +1016,92 @@ actor OfflineQueueManager {
             try data.write(to: url, options: .atomic)
         } catch {
             Self.logger.error("failed to persist \(label, privacy: .public) (\(ops.count) ops)")
+        }
+    }
+}
+
+// MARK: - Pending change index
+
+/// The set of records that have an unuploaded operation, for restore's "local pending changes win".
+struct PendingChangeIndex {
+    /// Workouts with a header operation, or an operation on their exercise list.
+    var workouts = Set<UUID>()
+    var exercises = Set<UUID>()
+    var sets = Set<UUID>()
+    /// Exercises that have an unuploaded set operation.
+    var setExerciseIds = Set<UUID>()
+    var profile = false
+    var contextTypes = Set<String>()
+    var monthPlans = Set<UUID>()
+    var plannedSessions = Set<UUID>()
+    var restDayIds = Set<UUID>()
+    /// `yyyy-MM-dd` of rest days with an unuploaded add or remove.
+    var restDayDays = Set<String>()
+    /// Tombstones queued here but not yet uploaded.
+    var tombstones: [TombstoneEntity: Set<UUID>] = [:]
+
+    /// A workout is dirty when any operation touches it, its exercises or their sets.
+    func isWorkoutDirty(workoutId: UUID, exerciseIds: Set<UUID>, setIds: Set<UUID>) -> Bool {
+        workouts.contains(workoutId)
+            || !exerciseIds.isDisjoint(with: exercises)
+            || !exerciseIds.isDisjoint(with: setExerciseIds)
+            || !setIds.isDisjoint(with: sets)
+    }
+
+    func hasPendingTombstone(_ entity: TombstoneEntity, _ id: UUID) -> Bool {
+        tombstones[entity]?.contains(id) ?? false
+    }
+
+    fileprivate mutating func absorb(_ op: QueuedOperation) {
+        let decoder = JSONDecoder()
+        switch op.type {
+        case .insertWorkout, .updateWorkout, .deleteWorkout:
+            if let model = try? decoder.decode(Workout.self, from: op.payload) { workouts.insert(model.id) }
+        case .insertExercises:
+            if let models = try? decoder.decode([Exercise].self, from: op.payload) {
+                for model in models { exercises.insert(model.id); workouts.insert(model.workoutId) }
+            }
+        case .deleteExercise:
+            if let model = try? decoder.decode(DeleteExercisePayload.self, from: op.payload) { exercises.insert(model.exerciseId) }
+        case .deleteExercises:
+            if let model = try? decoder.decode(DeleteExercisesPayload.self, from: op.payload) { workouts.insert(model.workoutId) }
+        case .renameExercises:
+            if let model = try? decoder.decode(RenameExercisesPayload.self, from: op.payload) { model.ids.forEach { exercises.insert($0) } }
+        case .insertSet, .deleteSet:
+            if let model = try? decoder.decode(WorkoutSet.self, from: op.payload) {
+                sets.insert(model.id)
+                setExerciseIds.insert(model.exerciseId)
+            }
+        case .upsertProfile:
+            profile = true
+        case .upsertContextSummary:
+            if let model = try? decoder.decode(AIContextSummary.self, from: op.payload) { contextTypes.insert(model.workoutType) }
+        case .insertMonthPlan:
+            if let model = try? decoder.decode(MonthPlan.self, from: op.payload) { monthPlans.insert(model.id) }
+        case .deleteMonthPlan:
+            if let model = try? decoder.decode(DeleteMonthPlanPayload.self, from: op.payload) { monthPlans.insert(model.planId) }
+        case .insertPlannedSessions:
+            if let models = try? decoder.decode([PlannedSession].self, from: op.payload) {
+                models.forEach { plannedSessions.insert($0.id) }
+            }
+        case .updatePlannedSession:
+            if let model = try? decoder.decode(PlannedSession.self, from: op.payload) { plannedSessions.insert(model.id) }
+        case .upsertRestDay:
+            if let model = try? decoder.decode(RestDay.self, from: op.payload) {
+                restDayIds.insert(model.id)
+                restDayDays.insert(RestDay.dayString(model.date))
+            }
+        case .deleteRestDay:
+            if let model = try? decoder.decode(DeleteRestDayPayload.self, from: op.payload) {
+                restDayIds.insert(model.id)
+                restDayDays.insert(RestDay.dayString(model.date))
+            }
+        case .insertTombstone:
+            if let model = try? decoder.decode(TombstonePayload.self, from: op.payload) {
+                tombstones[model.entity, default: []].formUnion(model.recordIds)
+            }
+        case .insertPersonalRecord:
+            break   // the cloud PR log is never restored
         }
     }
 }

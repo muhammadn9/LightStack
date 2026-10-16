@@ -27,6 +27,20 @@ enum UITestMode {
     }
     /// `-uiTestingSkipLaunchFlush` keeps the launch-time flush from running (foreground-trigger test).
     static let skipLaunchFlush: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSkipLaunchFlush")
+    /// `-uiTestingFreshInstall` seeds no local profile or history: the app starts like a new device.
+    static let freshInstall: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingFreshInstall")
+    /// `-uiTestingRemoteSeed history` fills the fake remote with a profile, workouts, a rest day and a tombstone.
+    static var remoteSeed: String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uiTestingRemoteSeed"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+    /// `-uiTestingRestoreDelay N` makes every fake remote read take N seconds (so the restore screen can be seen).
+    static var restoreDelay: TimeInterval {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uiTestingRestoreDelay"), i + 1 < args.count else { return 0 }
+        return TimeInterval(args[i + 1]) ?? 0
+    }
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -57,6 +71,7 @@ enum UITestMode {
         defaults.removeObject(forKey: sessionStateKey)
         defaults.removeObject(forKey: RestPreference.key)
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
+        defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
         defaults.set(0, forKey: "selectedTab")
         logger.debug("Reset UI test store")
     }
@@ -83,7 +98,7 @@ enum UITestMode {
 
     /// Writes the profile and one past Push workout when the store has no profile yet.
     static func seedIfNeeded(localStorage: LocalStorageService) {
-        guard isActive, localStorage.fetchProfile(userId: userId) == nil else { return }
+        guard isActive, !freshInstall, localStorage.fetchProfile(userId: userId) == nil else { return }
         localStorage.saveProfile(makeProfile())
 
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
@@ -214,13 +229,63 @@ enum UITestMode {
 
 /// Stand-in for Supabase in the offline-queue UI tests. Never touches the network.
 /// "offline" throws a transient network error on every call; "online" records and succeeds.
-final class UITestFakeRemote: RemoteWriting, @unchecked Sendable {
+final class UITestFakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     private let online: Bool
+    private let dataset: UITestRemoteDataset
     private let lock = NSLock()
     private var calls: [String] = []
     private static let logger = Logger(subsystem: "org.lightstack.app", category: "UITestFakeRemote")
 
-    init(online: Bool) { self.online = online }
+    init(online: Bool) {
+        self.online = online
+        self.dataset = UITestMode.remoteSeed == "history" ? .history() : UITestRemoteDataset()
+    }
+
+    // MARK: Reads (RemoteReading)
+
+    private var didDelay = false
+
+    /// Only the first read waits (`-uiTestingRestoreDelay`), so the restore screen stays up long enough to see.
+    private func read(_ name: String) async throws {
+        lock.lock()
+        calls.append(name)
+        let delay = didDelay ? 0 : UITestMode.restoreDelay
+        didDelay = true
+        lock.unlock()
+        if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+        if !online { throw URLError(.notConnectedToInternet) }
+    }
+
+    func fetchProfile(userId: UUID) async throws -> UserProfile? {
+        try await read("fetchProfile")
+        return dataset.profile
+    }
+    func fetchWorkoutHistoryPage(userId: UUID, offset: Int, limit: Int) async throws -> [RemoteWorkoutRecord] {
+        try await read("fetchWorkoutHistoryPage")
+        return Array(dataset.workouts.dropFirst(offset).prefix(limit))
+    }
+    func fetchContextSummaries(userId: UUID) async throws -> [AIContextSummary] {
+        try await read("fetchContextSummaries")
+        return []
+    }
+    func fetchActiveMonthPlan(userId: UUID) async throws -> MonthPlan? {
+        try await read("fetchActiveMonthPlan")
+        return nil
+    }
+    func fetchPlannedSessions(monthPlanId: UUID) async throws -> [PlannedSession] {
+        try await read("fetchPlannedSessions")
+        return []
+    }
+    func fetchRestDays(userId: UUID) async throws -> [RestDay] {
+        try await read("fetchRestDays")
+        return dataset.restDays
+    }
+    func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone] {
+        try await read("fetchTombstones")
+        return dataset.tombstones
+    }
+
+    // MARK: Writes (RemoteWriting)
 
     private func record(_ name: String) throws {
         lock.lock(); calls.append(name); lock.unlock()
@@ -247,6 +312,69 @@ final class UITestFakeRemote: RemoteWriting, @unchecked Sendable {
     func upsertRestDay(_ restDay: RestDay) async throws { try record("upsertRestDay") }
     func deleteRestDay(userId: UUID, date: Date) async throws { try record("deleteRestDay") }
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws { try record("insertTombstones") }
+}
+
+/// What the fake remote "has in the cloud" for restore UI tests.
+struct UITestRemoteDataset {
+    var profile: UserProfile?
+    var workouts: [RemoteWorkoutRecord] = []
+    var restDays: [RestDay] = []
+    var tombstones: [RemoteTombstone] = []
+
+    /// A restored-looking account: profile, three worked sessions, a rest day, a workout that was
+    /// deleted on another device (still in the cloud, but tombstoned) and an empty one (never restored).
+    static func history() -> UITestRemoteDataset {
+        let user = UITestMode.userId
+        let calendar = Calendar.current
+        func daysAgo(_ n: Int) -> Date {
+            let base = calendar.date(byAdding: .day, value: -n, to: Date()) ?? Date()
+            return calendar.date(bySettingHour: 12, minute: 0, second: 0, of: base) ?? base
+        }
+        func record(_ type: String, daysAgo n: Int, lifts: [(String, String, Double)]) -> RemoteWorkoutRecord {
+            var workout = Workout.create(userId: user, workoutType: type, energyLevel: 7, timeAvailableMinutes: 60)
+            workout.date = daysAgo(n)
+            workout.createdAt = daysAgo(n)
+            workout.durationMinutes = 45
+            workout.syncStatus = .synced
+            let exercises: [(Exercise, [WorkoutSet])] = lifts.enumerated().map { index, lift in
+                let exercise = Exercise.create(workoutId: workout.id, name: lift.0, muscleGroup: lift.1,
+                                               orderIndex: index, targetSets: 2, targetReps: "8", targetRir: "2",
+                                               restSeconds: 90, coachNote: nil)
+                let sets = (1...2).map {
+                    WorkoutSet.create(exerciseId: exercise.id, setNumber: $0, weightLbs: lift.2, reps: 8, rir: 2)
+                }
+                return (exercise, sets)
+            }
+            return RemoteWorkoutRecord(workout: workout, exercises: exercises)
+        }
+
+        var data = UITestRemoteDataset()
+        data.profile = UserProfile.create(
+            userId: user, displayName: "Restored Tester", age: 31, heightInches: 71, weightLbs: 185,
+            trainingAgeMonths: 36, primaryGoals: ["Strength"], splitDays: ["Push", "Pull", "Legs"],
+            avoidExercises: ["Behind Neck Press"], equipment: ["Barbell": true, "Dumbbells": true],
+            customEquipment: nil, notesToCoach: "Careful with my left shoulder"
+        )
+        let ghost = record("Ghost Workout", daysAgo: 3, lifts: [("Bench Press", "Chest", 135)])
+        data.workouts = [
+            record("Restored Push", daysAgo: 1, lifts: [("Bench Press", "Chest", 155), ("Overhead Press", "Shoulders", 95)]),
+            record("Restored Pull", daysAgo: 2, lifts: [("Barbell Row", "Back", 135)]),
+            ghost,
+            record("Restored Legs", daysAgo: 4, lifts: [("Back Squat", "Legs", 225)]),
+            RemoteWorkoutRecord(
+                workout: {
+                    var empty = Workout.create(userId: user, workoutType: "Empty Junk", energyLevel: nil, timeAvailableMinutes: nil)
+                    empty.date = daysAgo(5)
+                    empty.createdAt = daysAgo(5)
+                    return empty
+                }(),
+                exercises: []
+            )
+        ]
+        data.restDays = [RestDay(id: UUID(), userId: user, date: daysAgo(6).startOfDay, createdAt: daysAgo(6))]
+        data.tombstones = [RemoteTombstone(entity: .workout, recordId: ghost.workout.id)]
+        return data
+    }
 }
 
 /// Canned AI provider used instead of Gemini while UI testing. Never touches the network.
