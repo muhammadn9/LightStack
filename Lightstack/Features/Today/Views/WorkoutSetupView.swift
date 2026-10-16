@@ -243,9 +243,9 @@ struct WorkoutSetupView: View {
         Button {
             guard let userId else { return }
             if isRestToday {
-                environment.localStorageService.removeRestDay(userId: userId, date: Date())
+                environment.restDayRepository.removeRestDay(userId: userId, date: Date())
             } else {
-                environment.localStorageService.addRestDay(userId: userId, date: Date())
+                environment.restDayRepository.addRestDay(userId: userId, date: Date())
             }
             refreshSnapshot()
         } label: {

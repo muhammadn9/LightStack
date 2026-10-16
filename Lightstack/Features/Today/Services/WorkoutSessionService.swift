@@ -27,7 +27,6 @@ final class WorkoutSessionService {
     private let workoutRepository: WorkoutRepository
     private let monthPlanRepository: MonthPlanRepository
     private let localStorage: LocalStorageService
-    private let supabaseService: SupabaseService
     private let validationService: ValidationService
     private let offlineQueueManager: OfflineQueueManager
 
@@ -55,7 +54,6 @@ final class WorkoutSessionService {
         workoutRepository: WorkoutRepository,
         monthPlanRepository: MonthPlanRepository,
         localStorage: LocalStorageService,
-        supabaseService: SupabaseService,
         validationService: ValidationService,
         offlineQueueManager: OfflineQueueManager
     ) {
@@ -65,7 +63,6 @@ final class WorkoutSessionService {
         self.workoutRepository = workoutRepository
         self.monthPlanRepository = monthPlanRepository
         self.localStorage = localStorage
-        self.supabaseService = supabaseService
         self.validationService = validationService
         self.offlineQueueManager = offlineQueueManager
     }
@@ -82,9 +79,9 @@ final class WorkoutSessionService {
         let sanitizedType = validationService.sanitizeLabel(workoutType)
         let sanitizedNotes = notes.map { validationService.sanitize($0) }
 
-        // Pre-build the workout value so it's ready the moment rate limit passes.
-        // Do NOT create the record yet — creating it before the rate-limit check
-        // would leave phantom workouts in history if the check fails.
+        // Pre-build the workout value. It is only held in memory (so the plan parser
+        // has a workout id) and is NOT saved or queued until the plan succeeds: a
+        // failed, refused or cancelled generation must leave no empty workout behind.
         let pendingWorkout = Workout.create(
             userId: userId,
             workoutType: sanitizedType,
@@ -93,13 +90,13 @@ final class WorkoutSessionService {
             setupNote: sanitizedNotes?.isEmpty == false ? sanitizedNotes : nil
         )
 
+        // Set synchronously so a cancel right after this call cannot be overtaken by the task below.
+        currentWorkout = pendingWorkout
+        currentWorkoutId = pendingWorkout.id
+
         Task { @MainActor in
             // The per-user AI rate limit is enforced server-side by the ai-proxy
             // Edge Function; a refusal arrives as the generation error below.
-            currentWorkout = pendingWorkout
-            currentWorkoutId = pendingWorkout.id
-            workoutRepository.createWorkout(pendingWorkout)
-
             let context = coachContextBuilder.buildContext(userId: userId, workoutType: sanitizedType)
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .plan)
             let userMessage = coachPromptService.buildWorkoutRequestMessage(
@@ -118,10 +115,13 @@ final class WorkoutSessionService {
                 options: .forTask(.plan)
             ) { [weak self] result in
                 guard let self = self else { return }
+                // Cancelled or replaced while the AI was thinking: drop the result.
+                guard self.currentWorkoutId == pendingWorkout.id else { return }
                 switch result {
                 case .success(let responseText):
                     self.handleWorkoutPlanResponse(responseText)
                 case .failure(let error):
+                    self.discardUnsavedPlanWorkout()
                     self.delegate?.sessionServiceDidFail(self, error: error)
                 }
             }
@@ -331,13 +331,9 @@ final class WorkoutSessionService {
         )
         localStorage.saveContextSummary(summary)
 
-        Task {
-            do {
-                try await supabaseService.upsertContextSummary(summary)
-            } catch {
-                await offlineQueueManager.enqueue(.upsertContextSummary, payload: summary)
-            }
-        }
+        offlineQueueManager.submit(
+            .upsertContextSummary, payload: summary, recordKey: "\(userId.uuidString)|\(workoutType)"
+        )
     }
 
     // MARK: - Parse Exercise Table
@@ -530,6 +526,7 @@ final class WorkoutSessionService {
         logger.debug("JSON parse failed, attempting markdown fallback")
         let fallback = parseExerciseTable(text)
         guard !fallback.isEmpty else {
+            discardUnsavedPlanWorkout()
             delegate?.sessionServiceDidFail(self, error: NSError(
                 domain: "WorkoutSessionService", code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"]
@@ -540,10 +537,19 @@ final class WorkoutSessionService {
         finalizePlan(fallback)
     }
 
+    /// Forget the in-memory workout of a generation that produced no plan. Nothing was
+    /// saved locally or queued for it, so there is nothing else to remove.
+    private func discardUnsavedPlanWorkout() {
+        currentWorkout = nil
+        currentWorkoutId = nil
+    }
+
+    /// The plan succeeded: only now is the workout saved (and queued), followed by its
+    /// exercises. The workout is brand new, so there is nothing to clear first.
     private func finalizePlan(_ exercises: [Exercise]) {
-        if let workoutId = currentWorkoutId {
-            workoutRepository.deleteExercises(forWorkoutId: workoutId)
-            workoutRepository.saveExercises(exercises, workoutId: workoutId)
+        if let workout = currentWorkout {
+            workoutRepository.createWorkout(workout)
+            workoutRepository.saveExercises(exercises, workoutId: workout.id)
         }
         delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises)
     }

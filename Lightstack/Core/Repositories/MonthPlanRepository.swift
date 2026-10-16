@@ -35,8 +35,14 @@ final class MonthPlanRepository {
         localStorage.fetchActiveMonthPlans(userId: userId).map { MonthPlan(from: $0) }
     }
 
+    /// Deletes the plan locally and in the cloud (planned sessions cascade there);
+    /// tombstones record the plan and each of its sessions.
     func deletePlan(_ plan: MonthPlan) {
+        let sessionIds = localStorage.fetchPlannedSessions(monthPlanId: plan.id).compactMap(\.id)
         localStorage.deleteMonthPlan(id: plan.id)
+        offlineQueueManager.submit(.deleteMonthPlan, payload: DeleteMonthPlanPayload(planId: plan.id))
+        offlineQueueManager.submitTombstones(.monthPlan, ids: [plan.id])
+        offlineQueueManager.submitTombstones(.plannedSession, ids: sessionIds)
     }
 
     func fetchSessions(monthPlanId: UUID) -> [PlannedSession] {
@@ -49,20 +55,10 @@ final class MonthPlanRepository {
     func savePlan(_ plan: MonthPlan, sessions: [PlannedSession]) {
         localStorage.saveMonthPlan(plan)
         localStorage.savePlannedSessions(sessions, monthPlanId: plan.id)
-        Task {
-            // Separate do/catch blocks: only enqueue the operation that actually failed.
-            // If insertMonthPlan succeeds but insertPlannedSessions fails, enqueueing
-            // the plan would cause a PK conflict on retry — so they must be tracked separately.
-            do {
-                try await supabaseService.insertMonthPlan(plan)
-            } catch {
-                await offlineQueueManager.enqueue(.insertMonthPlan, payload: plan)
-            }
-            do {
-                try await supabaseService.insertPlannedSessions(sessions)
-            } catch {
-                await offlineQueueManager.enqueue(.insertPlannedSessions, payload: sessions)
-            }
+        // Plan before its sessions (FK); the queue also sorts parents first.
+        offlineQueueManager.submit(.insertMonthPlan, payload: plan, recordKey: plan.id.uuidString)
+        if !sessions.isEmpty {
+            offlineQueueManager.submit(.insertPlannedSessions, payload: sessions)
         }
     }
 
@@ -73,13 +69,7 @@ final class MonthPlanRepository {
         updated.completed = true
         updated.workoutId = workoutId
         localStorage.updatePlannedSession(updated)
-        Task {
-            do {
-                try await supabaseService.updatePlannedSession(updated)
-            } catch {
-                await offlineQueueManager.enqueue(.updatePlannedSession, payload: updated)
-            }
-        }
+        offlineQueueManager.submit(.updatePlannedSession, payload: updated, recordKey: updated.id.uuidString)
     }
 
     // MARK: - Private

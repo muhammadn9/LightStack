@@ -5,7 +5,6 @@ import Foundation
 final class PRRepository {
 
     private let localStorage: LocalStorageService
-    private let supabaseService: SupabaseService
     private let offlineQueueManager: OfflineQueueManager
     /// Serializes the fetch-compare-write block so concurrent set logs
     /// for the same exercise cannot both read the same baseline and both
@@ -14,11 +13,9 @@ final class PRRepository {
 
     init(
         localStorage: LocalStorageService,
-        supabaseService: SupabaseService,
         offlineQueueManager: OfflineQueueManager
     ) {
         self.localStorage = localStorage
-        self.supabaseService = supabaseService
         self.offlineQueueManager = offlineQueueManager
     }
 
@@ -75,14 +72,9 @@ final class PRRepository {
         localStorage.savePersonalRecord(pr)
         newPR = pr
 
-        // Supabase sync happens outside the lock — network I/O must never block it
-        Task {
-            do {
-                try await supabaseService.insertPersonalRecord(pr)
-            } catch {
-                await offlineQueueManager.enqueue(.insertPersonalRecord, payload: pr)
-            }
-        }
+        // The cloud PR log is append-only: new records are queued, never deleted remotely.
+        // `submit` is synchronous and non-blocking (no network I/O under the lock).
+        offlineQueueManager.submit(.insertPersonalRecord, payload: pr, recordKey: pr.id.uuidString)
 
         return newPR
     }
@@ -103,18 +95,19 @@ final class PRRepository {
 
     // MARK: - Recalculation after deletion
 
-    /// Deletes the stored PR for an exercise and rebuilds it from all remaining sets.
+    /// Rebuilds the local PR for an exercise from all remaining sets (the old local row is
+    /// replaced). Cloud PRs are an append-only log: a changed result is queued as one more
+    /// record, and nothing is ever deleted remotely. An unchanged result queues nothing.
     /// Call this for each exercise in a workout that is being deleted.
     func recalculatePR(userId: UUID, exerciseName: String) {
         prLock.lock()
         defer { prLock.unlock() }
 
-        // Remove the stale PR entry
-        localStorage.deletePersonalRecord(userId: userId, exerciseName: exerciseName)
+        let existing = localStorage.fetchPersonalRecords(userId: userId)
+            .filter { $0.exerciseName == exerciseName }
 
         // Re-derive the best set from remaining data
         let sets = localStorage.fetchAllSetsForExerciseName(userId: userId, exerciseName: exerciseName)
-        guard !sets.isEmpty else { return }
 
         // Pick the set with the highest estimated 1RM (Epley formula)
         var bestSet: CDWorkoutSet?
@@ -130,7 +123,13 @@ final class PRRepository {
             }
         }
 
-        guard let best = bestSet else { return }
+        guard let best = bestSet else {
+            // No lifts left: drop the stale local PR (cloud log keeps its history).
+            if !existing.isEmpty {
+                localStorage.deletePersonalRecord(userId: userId, exerciseName: exerciseName)
+            }
+            return
+        }
 
         var pr = PersonalRecord.create(
             userId: userId,
@@ -144,6 +143,16 @@ final class PRRepository {
         if let lifted = best.exercise?.workout?.date ?? best.recordedAt {
             pr.dateAchieved = lifted
         }
+
+        if existing.count == 1, let current = existing.first,
+           current.weightLbs == pr.weightLbs, Int(current.reps) == pr.reps,
+           current.workoutId == pr.workoutId,
+           let achieved = current.dateAchieved, abs(achieved.timeIntervalSince(pr.dateAchieved)) < 1 {
+            return
+        }
+
+        localStorage.deletePersonalRecord(userId: userId, exerciseName: exerciseName)
         localStorage.savePersonalRecord(pr)
+        offlineQueueManager.submit(.insertPersonalRecord, payload: pr, recordKey: pr.id.uuidString)
     }
 }

@@ -58,6 +58,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let prRepository: PRRepository
     let exerciseMergeService: ExerciseMergeService
     let monthPlanRepository: MonthPlanRepository
+    let restDayRepository: RestDayRepository
 
     // MARK: - AI + Session Services
 
@@ -101,6 +102,12 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.supabaseService = SupabaseService(client: supabaseClient)
         let queueAuth = authService
         var queueRemote: RemoteWriting = supabaseService
+        // Writes upload right after they are queued. UI tests must never reach the
+        // network, so they only auto-upload when a fake remote is standing in.
+        var queueAutoFlush = true
+        #if DEBUG
+        if UITestMode.isActive { queueAutoFlush = UITestMode.fakeRemoteMode != nil }
+        #endif
         #if DEBUG
         if UITestMode.isActive, let mode = UITestMode.fakeRemoteMode {
             queueRemote = UITestFakeRemote(online: mode == "online")
@@ -109,7 +116,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.offlineQueueManager = OfflineQueueManager(
             remote: queueRemote,
             directory: OfflineQueueManager.defaultDirectory(),
-            ownerProvider: { await MainActor.run { queueAuth.currentUser()?.userId } }
+            ownerProvider: { await MainActor.run { queueAuth.currentUser()?.userId } },
+            autoFlush: queueAutoFlush
         )
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
         #if DEBUG
@@ -146,23 +154,25 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         )
         self.workoutRepository = WorkoutRepository(
             localStorage: localStorageService,
-            supabaseService: supabaseService,
             offlineQueueManager: offlineQueueManager
         )
         self.prRepository = PRRepository(
             localStorage: localStorageService,
-            supabaseService: supabaseService,
             offlineQueueManager: offlineQueueManager
         )
         self.exerciseMergeService = ExerciseMergeService(
             localStorage: localStorageService,
-            supabaseService: supabaseService,
             offlineQueueManager: offlineQueueManager,
             prRepository: prRepository
         )
         self.monthPlanRepository = MonthPlanRepository(
             localStorage: localStorageService,
             supabaseService: supabaseService,
+            offlineQueueManager: offlineQueueManager
+        )
+
+        self.restDayRepository = RestDayRepository(
+            localStorage: localStorageService,
             offlineQueueManager: offlineQueueManager
         )
 
@@ -181,7 +191,6 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             workoutRepository: workoutRepository,
             monthPlanRepository: monthPlanRepository,
             localStorage: localStorageService,
-            supabaseService: supabaseService,
             validationService: validationService,
             offlineQueueManager: offlineQueueManager
         )
@@ -223,7 +232,6 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             workoutRepository: workoutRepository,
             monthPlanRepository: monthPlanRepository,
             localStorage: localStorageService,
-            supabaseService: supabaseService,
             validationService: validationService,
             offlineQueueManager: offlineQueueManager
         )

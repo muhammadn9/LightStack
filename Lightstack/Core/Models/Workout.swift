@@ -28,6 +28,7 @@ struct Workout: Codable, Identifiable {
         case energyLevel = "energy_level"
         case timeAvailableMinutes = "time_available_minutes"
         case userNote = "user_note"
+        case setupNote = "setup_note"
         case aiProgressionNote = "ai_progression_note"
         case plannedSessionId = "planned_session_id"
         case createdAt = "created_at"
@@ -46,6 +47,7 @@ struct Workout: Codable, Identifiable {
         energyLevel = try c.decodeIfPresent(Int.self, forKey: .energyLevel)
         timeAvailableMinutes = try c.decodeIfPresent(Int.self, forKey: .timeAvailableMinutes)
         userNote = try c.decodeIfPresent(String.self, forKey: .userNote)
+        setupNote = try c.decodeIfPresent(String.self, forKey: .setupNote)
         aiProgressionNote = try c.decodeIfPresent(String.self, forKey: .aiProgressionNote)
         plannedSessionId = try c.decodeIfPresent(UUID.self, forKey: .plannedSessionId)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
@@ -63,6 +65,7 @@ struct Workout: Codable, Identifiable {
         try c.encodeIfPresent(energyLevel, forKey: .energyLevel)
         try c.encodeIfPresent(timeAvailableMinutes, forKey: .timeAvailableMinutes)
         try c.encodeIfPresent(userNote, forKey: .userNote)
+        try c.encodeIfPresent(setupNote, forKey: .setupNote)
         try c.encodeIfPresent(aiProgressionNote, forKey: .aiProgressionNote)
         try c.encodeIfPresent(plannedSessionId, forKey: .plannedSessionId)
         try c.encode(createdAt, forKey: .createdAt)
@@ -180,6 +183,7 @@ struct SupabaseWorkout: Encodable {
     let energyLevel: Int?
     let timeAvailableMinutes: Int?
     let userNote: String?
+    let setupNote: String?
     let aiProgressionNote: String?
     let plannedSessionId: UUID?
     let synced: Bool
@@ -195,6 +199,7 @@ struct SupabaseWorkout: Encodable {
         case energyLevel = "energy_level"
         case timeAvailableMinutes = "time_available_minutes"
         case userNote = "user_note"
+        case setupNote = "setup_note"
         case aiProgressionNote = "ai_progression_note"
         case plannedSessionId = "planned_session_id"
         case synced
@@ -211,6 +216,7 @@ struct SupabaseWorkout: Encodable {
         self.energyLevel = workout.energyLevel
         self.timeAvailableMinutes = workout.timeAvailableMinutes
         self.userNote = workout.userNote
+        self.setupNote = workout.setupNote
         self.aiProgressionNote = workout.aiProgressionNote
         self.plannedSessionId = workout.plannedSessionId
         self.synced = true

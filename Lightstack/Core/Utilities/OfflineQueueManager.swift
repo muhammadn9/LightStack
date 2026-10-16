@@ -20,6 +20,42 @@ enum QueuedOperationType: String, Codable {
     case insertMonthPlan
     case insertPlannedSessions
     case updatePlannedSession
+    case deleteMonthPlan
+    case upsertRestDay
+    case deleteRestDay
+    case insertTombstone
+}
+
+/// Entity names stored in `sync_tombstones.entity`.
+enum TombstoneEntity: String, Codable {
+    case workout
+    case exercise
+    case set
+    case personalRecord = "personal_record"
+    case monthPlan = "month_plan"
+    case plannedSession = "planned_session"
+    case restDay = "rest_day"
+}
+
+/// Payload for `.insertTombstone`: these records were deleted on this device.
+struct TombstonePayload: Codable {
+    /// Signed-in user at enqueue time. nil only if nobody was signed in; the
+    /// operation's adopted owner is used at upload time then.
+    var userId: UUID?
+    let entity: TombstoneEntity
+    let recordIds: [UUID]
+    let deletedAt: Date
+}
+
+/// Payload for `.deleteMonthPlan`.
+struct DeleteMonthPlanPayload: Codable {
+    let planId: UUID
+}
+
+/// Payload for `.deleteRestDay`: the remote row is matched by (user, day); `id` is the local id.
+struct DeleteRestDayPayload: Codable {
+    let id: UUID
+    let date: Date
 }
 
 /// Payload for `.deleteExercise` (delete a single exercise).
@@ -58,6 +94,10 @@ protocol RemoteWriting: Sendable {
     func insertMonthPlan(_ plan: MonthPlan) async throws
     func insertPlannedSessions(_ sessions: [PlannedSession]) async throws
     func updatePlannedSession(_ session: PlannedSession) async throws
+    func deleteMonthPlan(planId: UUID) async throws
+    func upsertRestDay(_ restDay: RestDay) async throws
+    func deleteRestDay(userId: UUID, date: Date) async throws
+    func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws
 }
 
 extension SupabaseService: RemoteWriting, @unchecked Sendable {}
@@ -69,8 +109,14 @@ extension SupabaseService: RemoteWriting, @unchecked Sendable {}
 struct QueuedOperation: Codable, Identifiable {
     let id: String
     let type: QueuedOperationType
-    let payload: Data
-    let enqueuedAt: Date
+    var payload: Data
+    var enqueuedAt: Date
+    /// Causal order, assigned synchronously at the call site (see `OutboxSequencer`).
+    /// 0 for legacy entries that predate it; those keep their stored position order.
+    var sequence: Int64
+    /// Identifies the single record an upsert-type operation writes, so a newer
+    /// payload for the same record can replace a pending one. nil = never coalesced.
+    var recordKey: String?
     /// User who made the change. nil only for legacy entries (adopted by the next signed-in user).
     var ownerUserId: UUID?
     var attempts: Int
@@ -78,17 +124,26 @@ struct QueuedOperation: Codable, Identifiable {
     var lastErrorMessage: String?
     var nextAttemptAt: Date?
 
-    init(type: QueuedOperationType, payload: Data, ownerUserId: UUID? = nil, enqueuedAt: Date = Date()) {
+    init(
+        type: QueuedOperationType,
+        payload: Data,
+        ownerUserId: UUID? = nil,
+        enqueuedAt: Date = Date(),
+        sequence: Int64 = 0,
+        recordKey: String? = nil
+    ) {
         self.id = UUID().uuidString
         self.type = type
         self.payload = payload
         self.enqueuedAt = enqueuedAt
+        self.sequence = sequence
+        self.recordKey = recordKey
         self.ownerUserId = ownerUserId
         self.attempts = 0
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, payload, enqueuedAt, ownerUserId, attempts
+        case id, type, payload, enqueuedAt, ownerUserId, attempts, sequence, recordKey
         case lastErrorCode, lastErrorMessage, nextAttemptAt
     }
 
@@ -99,11 +154,80 @@ struct QueuedOperation: Codable, Identifiable {
         type = try c.decode(QueuedOperationType.self, forKey: .type)
         payload = try c.decode(Data.self, forKey: .payload)
         enqueuedAt = try c.decodeIfPresent(Date.self, forKey: .enqueuedAt) ?? Date()
+        sequence = try c.decodeIfPresent(Int64.self, forKey: .sequence) ?? 0
+        recordKey = try c.decodeIfPresent(String.self, forKey: .recordKey)
         ownerUserId = try c.decodeIfPresent(UUID.self, forKey: .ownerUserId)
         attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
         lastErrorCode = try c.decodeIfPresent(String.self, forKey: .lastErrorCode)
         lastErrorMessage = try c.decodeIfPresent(String.self, forKey: .lastErrorMessage)
         nextAttemptAt = try c.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
+    }
+}
+
+// MARK: - Sequencing helpers
+
+/// Hands out strictly increasing operation numbers. Called synchronously at the
+/// call site, before any async hop, so the number reflects the order in which the
+/// app made its changes no matter how the follow-up tasks are scheduled.
+final class OutboxSequencer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last: Int64
+    /// Every number <= floor has arrived (or was dropped) in the queue.
+    private var floor: Int64
+    private var arrived = Set<Int64>()
+
+    init(seed: Int64 = 0) { last = seed; floor = seed }
+
+    /// The queue has seen this number (stored, coalesced, superseded or abandoned).
+    func markArrived(_ value: Int64) {
+        lock.lock(); defer { lock.unlock() }
+        guard value > floor else { return }
+        arrived.insert(value)
+        while arrived.remove(floor + 1) != nil { floor += 1 }
+    }
+
+    /// Highest S such that every issued number <= S has arrived. Operations above it may
+    /// still have an earlier (parent) write on its way, so they must wait.
+    var contiguousPrefix: Int64 {
+        lock.lock(); defer { lock.unlock() }
+        return floor
+    }
+
+    func next() -> Int64 {
+        lock.lock(); defer { lock.unlock() }
+        last += 1
+        return last
+    }
+}
+
+/// Counts in-flight `submit` hops so tests can wait until everything has reached the queue.
+final class SubmitTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var inFlight = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func begin() { lock.lock(); inFlight += 1; lock.unlock() }
+
+    func end() {
+        lock.lock()
+        inFlight -= 1
+        let ready = inFlight == 0 ? waiters : []
+        if inFlight == 0 { waiters = [] }
+        lock.unlock()
+        ready.forEach { $0.resume() }
+    }
+
+    func waitUntilIdle() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if inFlight == 0 {
+                lock.unlock()
+                c.resume()
+            } else {
+                waiters.append(c)
+                lock.unlock()
+            }
+        }
     }
 }
 
@@ -132,6 +256,14 @@ actor OfflineQueueManager {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
+    /// Assigns causal order synchronously at the call site; see `submit`.
+    nonisolated let sequencer: OutboxSequencer
+    private nonisolated let submitTracker = SubmitTracker()
+    /// Upload right after a write is queued (off in tests and UI tests that must stay offline).
+    private let autoFlush: Bool
+    /// Operation being uploaded right now; never coalesced into (its payload is already read).
+    private var executingId: String?
+
     private var queue: [QueuedOperation] = []
     private var failed: [QueuedOperation] = []
     private var loaded = false
@@ -152,13 +284,28 @@ actor OfflineQueueManager {
         directory: URL,
         now: @escaping @Sendable () -> Date = { Date() },
         ownerProvider: @escaping @Sendable () async -> UUID?,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        autoFlush: Bool = true
     ) {
         self.remote = remote
         self.directory = directory
         self.now = now
         self.ownerProvider = ownerProvider
         self.defaults = defaults
+        self.autoFlush = autoFlush
+        self.sequencer = OutboxSequencer(seed: Self.persistedMaxSequence(in: directory))
+    }
+
+    /// Highest sequence already on disk, so numbers keep increasing across launches.
+    private static func persistedMaxSequence(in directory: URL) -> Int64 {
+        var best: Int64 = 0
+        for name in ["queue.json", "failed.json"] {
+            let url = directory.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: url) else { continue }
+            let (ops, _) = decodeLossy(data)
+            best = max(best, ops.map(\.sequence).max() ?? 0)
+        }
+        return best
     }
 
     /// `Application Support/OfflineQueue` (or a separate folder in UI-test mode).
@@ -192,8 +339,64 @@ actor OfflineQueueManager {
         }
     }
 
+    // MARK: - Submitting writes (call-site API)
+
+    /// Queue a write from synchronous code. The causal sequence number is taken
+    /// right here, before any task hop, so the order the app made its changes in
+    /// is what the queue replays. The write is then queued (and uploaded, when
+    /// `autoFlush`) in the background.
+    ///
+    /// - Parameter recordKey: identifies the one record an upsert writes; a pending
+    ///   operation of the same type and key is replaced by this newer payload.
+    nonisolated func submit<T: Encodable>(_ type: QueuedOperationType, payload: T, recordKey: String? = nil) {
+        guard let data = try? JSONEncoder().encode(payload) else {
+            Self.logger.error("submit failed to encode payload for \(type.rawValue, privacy: .public)")
+            return
+        }
+        let sequence = sequencer.next()
+        launch { await $0.enqueueEncoded(type, data: data, recordKey: recordKey, sequence: sequence) }
+    }
+
+    /// "Delete all exercises of a workout" (part of a workout replace); supersedes
+    /// earlier-sequenced queued inserts for that workout. See `enqueueDeleteExercises`.
+    nonisolated func submitDeleteExercises(workoutId: UUID) {
+        let sequence = sequencer.next()
+        launch { await $0.enqueueDeleteExercises(workoutId: workoutId, sequence: sequence) }
+    }
+
+    /// Record that these rows were deleted (uploaded to `sync_tombstones`, sorted after the deletes).
+    nonisolated func submitTombstones(_ entity: TombstoneEntity, ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        let sequence = sequencer.next()
+        let deletedAt = now()
+        launch { await $0.enqueueTombstone(entity: entity, ids: ids, deletedAt: deletedAt, sequence: sequence) }
+    }
+
+    /// Wait until every `submit*` call made so far has reached the queue (tests).
+    func waitForSubmissions() async {
+        await submitTracker.waitUntilIdle()
+    }
+
+    private nonisolated func launch(_ work: @escaping @Sendable (OfflineQueueManager) async -> Void) {
+        submitTracker.begin()
+        let tracker = submitTracker
+        Task {
+            await work(self)
+            tracker.end()
+        }
+    }
+
+    /// Upload promptly after a write. Single-flight: if a flush is running it just
+    /// runs another pass, so bursts of writes coalesce.
+    func flushSoon() async {
+        guard autoFlush else { return }
+        await flush()
+    }
+
+    // MARK: - Enqueue
+
     /// Encode and append an operation to the persistent queue.
-    func enqueue<T: Encodable>(_ type: QueuedOperationType, payload: T) async {
+    func enqueue<T: Encodable>(_ type: QueuedOperationType, payload: T, recordKey: String? = nil) async {
         let data: Data
         do {
             data = try encoder.encode(payload)
@@ -201,23 +404,76 @@ actor OfflineQueueManager {
             Self.logger.error("enqueue failed to encode payload for \(type.rawValue, privacy: .public)")
             return
         }
+        await enqueueEncoded(type, data: data, recordKey: recordKey, sequence: sequencer.next(), flush: false)
+    }
+
+    func enqueueEncoded(
+        _ type: QueuedOperationType, data: Data, recordKey: String?, sequence: Int64, flush: Bool = true
+    ) async {
         let owner = await ownerProvider()
         loadIfNeeded()
-        queue.append(QueuedOperation(type: type, payload: data, ownerUserId: owner, enqueuedAt: now()))
+        append(type, data: data, recordKey: recordKey, sequence: sequence, owner: owner)
         saveQueue()
+        if flush { await flushSoon() }
+    }
+
+    /// Adds the operation, or swaps the payload of a pending one for the same record
+    /// (the higher sequence wins). Deletes and inserts are never merged: only an
+    /// operation of the same type can absorb it.
+    private func append(_ type: QueuedOperationType, data: Data, recordKey: String?, sequence: Int64, owner: UUID?) {
+        defer { sequencer.markArrived(sequence) }
+        if let key = recordKey,
+           let idx = queue.firstIndex(where: {
+               $0.type == type && $0.recordKey == key && $0.ownerUserId == owner && $0.id != executingId
+           }) {
+            if sequence >= queue[idx].sequence {
+                queue[idx].payload = data
+                queue[idx].sequence = sequence
+                queue[idx].enqueuedAt = now()
+                // The new payload may fix whatever failed before, so make it due again.
+                queue[idx].attempts = 0
+                queue[idx].nextAttemptAt = nil
+                queue[idx].lastErrorCode = nil
+                queue[idx].lastErrorMessage = nil
+            }
+            return
+        }
+        queue.append(QueuedOperation(
+            type: type, payload: data, ownerUserId: owner, enqueuedAt: now(),
+            sequence: sequence, recordKey: recordKey
+        ))
+    }
+
+    private func enqueueTombstone(entity: TombstoneEntity, ids: [UUID], deletedAt: Date, sequence: Int64) async {
+        let owner = await ownerProvider()
+        let payload = TombstonePayload(userId: owner, entity: entity, recordIds: ids, deletedAt: deletedAt)
+        guard let data = try? encoder.encode(payload) else {
+            Self.logger.error("enqueueTombstone failed to encode payload")
+            sequencer.markArrived(sequence)   // never block later writes on a lost one
+            await flushSoon()
+            return
+        }
+        loadIfNeeded()
+        append(.insertTombstone, data: data, recordKey: nil, sequence: sequence, owner: owner)
+        saveQueue()
+        await flushSoon()
     }
 
     /// Queue "delete all exercises of a workout" (part of a workout replace).
-    /// Any still-queued inserts for that workout's exercises/sets, and earlier
-    /// deleteExercises for it, are superseded by this replace and are dropped.
+    /// Still-queued inserts for that workout's exercises/sets, and earlier
+    /// deleteExercises for it, are superseded by this replace and are dropped
+    /// (only those sequenced BEFORE it: newer inserts are the replacement content).
     /// Without this, flush() would re-insert the old exercises (inserts run after
     /// deleteExercises) alongside the new ones.
-    func enqueueDeleteExercises(workoutId: UUID) async {
+    func enqueueDeleteExercises(workoutId: UUID, sequence: Int64? = nil) async {
+        let seq = sequence ?? sequencer.next()
         let data: Data
         do {
             data = try encoder.encode(DeleteExercisesPayload(workoutId: workoutId))
         } catch {
             Self.logger.error("enqueueDeleteExercises failed to encode payload")
+            sequencer.markArrived(seq)
+            await flushSoon()
             return
         }
         let owner = await ownerProvider()
@@ -225,6 +481,7 @@ actor OfflineQueueManager {
 
         var staleExerciseIds = Set<UUID>()
         queue.removeAll { op in
+            guard op.sequence < seq, op.id != executingId else { return false }
             switch op.type {
             case .insertExercises:
                 guard let models = try? decoder.decode([Exercise].self, from: op.payload),
@@ -239,12 +496,13 @@ actor OfflineQueueManager {
             }
         }
         queue.removeAll { op in
-            guard op.type == .insertSet,
+            guard op.type == .insertSet, op.sequence < seq, op.id != executingId,
                   let model = try? decoder.decode(WorkoutSet.self, from: op.payload) else { return false }
             return staleExerciseIds.contains(model.exerciseId)
         }
-        queue.append(QueuedOperation(type: .deleteExercises, payload: data, ownerUserId: owner, enqueuedAt: now()))
+        append(.deleteExercises, data: data, recordKey: nil, sequence: seq, owner: owner)
         saveQueue()
+        await flushSoon()
     }
 
     /// Remove all queued operations and the dead-letter list. Tests/debug only;
@@ -323,8 +581,12 @@ actor OfflineQueueManager {
         adoptLegacyOperations(for: owner)
 
         let startNow = now()
+        // Only the contiguous arrived prefix: a later write (e.g. a child) must not run
+        // while an earlier one (its parent) is still on its way to the queue.
+        let prefix = sequencer.contiguousPrefix
         let eligible = queue.filter { op in
-            op.ownerUserId == owner && (op.nextAttemptAt.map { $0 <= startNow } ?? true)
+            op.ownerUserId == owner && (op.sequence == 0 || op.sequence <= prefix)
+                && (op.nextAttemptAt.map { $0 <= startNow } ?? true)
         }
         let ordered = Self.fkOrdered(eligible)
         let seenIds = Set(ordered.map(\.id))
@@ -346,6 +608,8 @@ actor OfflineQueueManager {
             // Might have been superseded (enqueueDeleteExercises) or cleared meanwhile.
             guard let current = queue.first(where: { $0.id == snapshotOp.id }) else { continue }
 
+            executingId = current.id
+            defer { executingId = nil }
             do {
                 try await execute(current)
                 removeFromQueue(id: current.id)
@@ -367,7 +631,8 @@ actor OfflineQueueManager {
                     deadLettered += 1
                     transientStreak = 0
                 case .transient, .dependency:
-                    scheduleRetry(id: current.id, code: code, message: SyncErrorClassifier.errorMessage(for: error))
+                    scheduleRetry(id: current.id, code: code, message: SyncErrorClassifier.errorMessage(for: error),
+                                  dependency: cls == .dependency)
                     retrying += 1
                     if cls == .transient { transientStreak += 1 }
                     if transientStreak >= transientStreakLimit { stopped = true }
@@ -383,8 +648,11 @@ actor OfflineQueueManager {
         if stopped { return false }
         // Anything enqueued during the pass that was due and not yet handled -> go again.
         let checkNow = now()
+        let latePrefix = sequencer.contiguousPrefix
         let late = queue.contains { op in
-            op.ownerUserId == owner && !seenIds.contains(op.id) && (op.nextAttemptAt.map { $0 <= checkNow } ?? true)
+            op.ownerUserId == owner && !seenIds.contains(op.id)
+                && (op.sequence == 0 || op.sequence <= latePrefix)
+                && (op.nextAttemptAt.map { $0 <= checkNow } ?? true)
         }
         if late { needsAnotherPass = true }
         return true
@@ -397,13 +665,22 @@ actor OfflineQueueManager {
         unsavedOutcomes += 1
     }
 
-    private func scheduleRetry(id: String, code: String, message: String) {
+    private func scheduleRetry(id: String, code: String, message: String, dependency: Bool = false) {
         guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
         queue[idx].attempts += 1
         queue[idx].lastErrorCode = code
         queue[idx].lastErrorMessage = message
-        queue[idx].nextAttemptAt = now().addingTimeInterval(Self.backoff(attempts: queue[idx].attempts))
+        let delay = Self.backoff(attempts: queue[idx].attempts, dependency: dependency)
+        queue[idx].nextAttemptAt = now().addingTimeInterval(delay)
         unsavedOutcomes += 1
+        // A missing parent usually shows up within seconds: look again soon.
+        if dependency, autoFlush, delay <= Self.fastRetryDelays.max() ?? 0 {
+            let nanos = UInt64(delay * 1_000_000_000) + 100_000_000
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: nanos)
+                await self?.flush()
+            }
+        }
     }
 
     private func deadLetter(id: String, code: String, message: String) {
@@ -432,8 +709,12 @@ actor OfflineQueueManager {
     }
 
     /// Exponential backoff: 10s, 20s, 40s ... capped at 1h.
-    static func backoff(attempts: Int) -> TimeInterval {
-        min(pow(2, Double(min(max(attempts, 0), 20))) * 5, 3600)
+    /// Quick retries for a foreign-key failure (parent likely just late): 2s, 2s, 5s.
+    static let fastRetryDelays: [TimeInterval] = [2, 2, 5]
+
+    static func backoff(attempts: Int, dependency: Bool = false) -> TimeInterval {
+        if dependency, attempts >= 1, attempts <= fastRetryDelays.count { return fastRetryDelays[attempts - 1] }
+        return min(pow(2, Double(min(max(attempts, 0), 20))) * 5, 3600)
     }
 
     private static func belongs(_ op: QueuedOperation, to owner: UUID?) -> Bool {
@@ -443,8 +724,10 @@ actor OfflineQueueManager {
 
     // MARK: - Ordering
 
-    /// Parents before children; deleteExercises before inserts; deletes last;
-    /// stable (FIFO) within a kind. Unknown types sort to the end, never dropped.
+    /// Parents before children; deleteExercises before inserts; deletes (then their
+    /// tombstones) last; within a kind by causal `sequence`, then stored position (which
+    /// keeps legacy entries, all sequence 0, in their original FIFO order).
+    /// Unknown types sort to the end, never dropped.
     static func fkOrdered(_ ops: [QueuedOperation]) -> [QueuedOperation] {
         let order: [QueuedOperationType] = [
             .insertWorkout, .updateWorkout,
@@ -458,14 +741,19 @@ actor OfflineQueueManager {
             .upsertProfile, .insertPersonalRecord,
             .upsertContextSummary,
             .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession,
-            .deleteWorkout, .deleteSet, .deleteExercise  // Delete operations should be last
+            .upsertRestDay,
+            // Delete operations should be last, tombstones after the deletes they record.
+            .deleteWorkout, .deleteSet, .deleteExercise, .deleteMonthPlan, .deleteRestDay,
+            .insertTombstone
         ]
         var rank: [QueuedOperationType: Int] = [:]
         for (i, t) in order.enumerated() { rank[t] = i }
         return ops.enumerated().sorted { a, b in
             let ai = rank[a.element.type] ?? order.count
             let bi = rank[b.element.type] ?? order.count
-            return ai != bi ? ai < bi : a.offset < b.offset
+            if ai != bi { return ai < bi }
+            if a.element.sequence != b.element.sequence { return a.element.sequence < b.element.sequence }
+            return a.offset < b.offset
         }.map(\.element)
     }
 
@@ -518,6 +806,26 @@ actor OfflineQueueManager {
         case .renameExercises:
             let model = try decoder.decode(RenameExercisesPayload.self, from: op.payload)
             try await remote.updateExerciseNames(ids: model.ids, name: model.name)
+        case .deleteMonthPlan:
+            let model = try decoder.decode(DeleteMonthPlanPayload.self, from: op.payload)
+            try await remote.deleteMonthPlan(planId: model.planId)
+        case .upsertRestDay:
+            let model = try decoder.decode(RestDay.self, from: op.payload)
+            try await remote.upsertRestDay(model)
+        case .deleteRestDay:
+            let model = try decoder.decode(DeleteRestDayPayload.self, from: op.payload)
+            guard let userId = op.ownerUserId else {
+                throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "rest day delete without user"))
+            }
+            try await remote.deleteRestDay(userId: userId, date: model.date)
+        case .insertTombstone:
+            let model = try decoder.decode(TombstonePayload.self, from: op.payload)
+            guard let userId = model.userId ?? op.ownerUserId else {
+                throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "tombstone without user"))
+            }
+            try await remote.insertTombstones(
+                userId: userId, entity: model.entity.rawValue, recordIds: model.recordIds, deletedAt: model.deletedAt
+            )
         }
     }
 

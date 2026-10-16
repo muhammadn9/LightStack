@@ -37,7 +37,8 @@ final class OfflineQueueManagerTests: XCTestCase {
             directory: directory ?? dir,
             now: { clockBox.value },
             ownerProvider: { ownerBox.value },
-            defaults: defaults
+            defaults: defaults,
+            autoFlush: false
         )
     }
 

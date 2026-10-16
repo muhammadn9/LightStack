@@ -72,21 +72,14 @@ final class ExerciseRenameTests: XCTestCase {
 
     private var storage: LocalStorageService!
     private var prRepo: PRRepository!
+    private var stack: OutboxTestStack!
     private let userId = UUID()
 
     override func setUp() {
         super.setUp()
-        storage = LocalStorageService(inMemory: true)
-        let client = SupabaseClient(
-            supabaseURL: URL(string: "https://example.invalid") ?? URL(fileURLWithPath: "/"),
-            supabaseKey: "test"
-        )
-        let supabase = SupabaseService(client: client)
-        prRepo = PRRepository(
-            localStorage: storage,
-            supabaseService: supabase,
-            offlineQueueManager: OfflineQueueManager(remote: supabase, directory: FileManager.default.temporaryDirectory.appendingPathComponent("oq-\(UUID().uuidString)"), ownerProvider: { nil })
-        )
+        stack = OutboxTestStack(userId: userId)
+        storage = stack.storage
+        prRepo = PRRepository(localStorage: storage, offlineQueueManager: stack.queue)
     }
 
     private func log(_ name: String, sets: [(Double, Int)], user: UUID? = nil) -> Exercise {
