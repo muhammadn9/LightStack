@@ -6,21 +6,14 @@ final class WorkoutReplaceTests: XCTestCase {
 
     private var storage: LocalStorageService!
     private var repo: WorkoutRepository!
+    private var stack: OutboxTestStack!
     private let userId = UUID()
 
     override func setUp() {
         super.setUp()
-        storage = LocalStorageService(inMemory: true)
-        let client = SupabaseClient(
-            supabaseURL: URL(string: "https://example.invalid") ?? URL(fileURLWithPath: "/"),
-            supabaseKey: "test"
-        )
-        let supabase = SupabaseService(client: client)
-        repo = WorkoutRepository(
-            localStorage: storage,
-            supabaseService: supabase,
-            offlineQueueManager: OfflineQueueManager(remote: supabase, directory: FileManager.default.temporaryDirectory.appendingPathComponent("oq-\(UUID().uuidString)"), ownerProvider: { nil })
-        )
+        stack = OutboxTestStack(userId: userId)
+        storage = stack.storage
+        repo = WorkoutRepository(localStorage: storage, offlineQueueManager: stack.queue)
     }
 
     private func seed(name: String, exerciseName: String) -> (Workout, Exercise, WorkoutSet) {

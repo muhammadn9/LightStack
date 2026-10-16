@@ -96,8 +96,9 @@ final class LocalStorageService {
         return entities.map { ($0.name ?? "", $0.muscleGroup ?? "") }
     }
 
+    /// Upsert by id: saving the same workout twice (or a restored copy) must not duplicate it.
     func saveWorkout(_ workout: Workout) {
-        let entity = CDWorkout(context: context)
+        let entity = fetchWorkout(id: workout.id) ?? CDWorkout(context: context)
         workout.applyToCoreData(entity)
         save()
     }
@@ -304,7 +305,8 @@ final class LocalStorageService {
     func savePlannedSessions(_ sessions: [PlannedSession], monthPlanId: UUID) {
         guard let planEntity = fetchMonthPlan(id: monthPlanId) else { return }
         for session in sessions {
-            let entity = CDPlannedSession(context: context)
+            // Upsert by id: re-saving fetched sessions must not duplicate them.
+            let entity = fetchPlannedSessionEntity(id: session.id) ?? CDPlannedSession(context: context)
             session.applyToCoreData(entity)
             entity.monthPlan = planEntity
         }
@@ -359,8 +361,12 @@ final class LocalStorageService {
         return try? context.fetch(request).first
     }
 
+    /// Upsert by id.
     func savePersonalRecord(_ record: PersonalRecord) {
-        let entity = CDPersonalRecord(context: context)
+        let request: NSFetchRequest<CDPersonalRecord> = CDPersonalRecord.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
+        request.fetchLimit = 1
+        let entity = (try? context.fetch(request).first) ?? CDPersonalRecord(context: context)
         record.applyToCoreData(entity)
         save()
     }
@@ -440,7 +446,7 @@ final class LocalStorageService {
     }
 
     // MARK: - Rest days
-    // Local-only for now: rest days are not synced to Supabase.
+    // Local storage only; RestDayRepository queues the cloud writes.
 
     /// Rest days for a user, optionally limited to an inclusive start-of-day range.
     func fetchRestDays(userId: UUID, in range: ClosedRange<Date>? = nil) -> [CDRestDay] {
@@ -462,27 +468,41 @@ final class LocalStorageService {
         return !fetchRestDays(userId: userId, in: day...day).isEmpty
     }
 
-    /// Marks a day as a rest day. Idempotent per day.
-    func addRestDay(userId: UUID, date: Date) {
+    /// Marks a day as a rest day. Idempotent per day. Returns the new rest day,
+    /// or nil when that day was already marked.
+    @discardableResult
+    func addRestDay(userId: UUID, date: Date) -> RestDay? {
         let day = date.startOfDay
-        guard fetchRestDays(userId: userId, in: day...day).isEmpty else { return }
+        guard fetchRestDays(userId: userId, in: day...day).isEmpty else { return nil }
         let entity = CDRestDay(context: context)
         entity.id = UUID()
         entity.userId = userId
         entity.date = day
         entity.createdAt = Date()
         save()
+        return RestDay(from: entity)
     }
 
-    func removeRestDay(userId: UUID, date: Date) {
+    /// Removes the rest day(s) for that day. Returns what was removed.
+    @discardableResult
+    func removeRestDay(userId: UUID, date: Date) -> [RestDay] {
         let day = date.startOfDay
         let found = fetchRestDays(userId: userId, in: day...day)
-        guard !found.isEmpty else { return }
+        guard !found.isEmpty else { return [] }
+        let removed = found.map { RestDay(from: $0) }
         found.forEach { context.delete($0) }
         save()
+        return removed
     }
 
     // MARK: - Private
+
+    private func fetchPlannedSessionEntity(id: UUID) -> CDPlannedSession? {
+        let request: NSFetchRequest<CDPlannedSession> = CDPlannedSession.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+        request.fetchLimit = 1
+        return try? context.fetch(request).first
+    }
 
     private func fetchExerciseEntity(id: UUID) -> CDExercise? {
         let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()

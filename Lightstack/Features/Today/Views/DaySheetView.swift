@@ -41,7 +41,7 @@ struct DaySheetView: View {
                             dismiss()
                         }
                         actionButton("Mark as rest day", symbol: "moon.fill", id: "daySheet.markRest") {
-                            environment.localStorageService.addRestDay(userId: userId, date: date)
+                            environment.restDayRepository.addRestDay(userId: userId, date: date)
                             reload()
                             onChange()
                         }
@@ -91,7 +91,7 @@ struct DaySheetView: View {
                     .accessibilityIdentifier("daySheet.restLabel")
                 Spacer()
                 Button("Remove rest day") {
-                    environment.localStorageService.removeRestDay(userId: userId, date: date)
+                    environment.restDayRepository.removeRestDay(userId: userId, date: date)
                     reload()
                     onChange()
                 }

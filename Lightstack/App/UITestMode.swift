@@ -159,6 +159,23 @@ enum UITestMode {
             localStorage.saveExercises([legExtMachine], workoutId: workout.id)
             seedSets([(legExtMachine, [(110, 12, 2), (110, 10, 1)])], localStorage: localStorage)
         }
+
+        seedPersonalRecords(localStorage: localStorage)
+    }
+
+    /// A real user's PRs already exist next to their sets (they are created as lifts are
+    /// logged), so the Profile tab's PR rebuild finds nothing to change. Create them here
+    /// into a throwaway queue, so the tests' pending-sync counts only reflect what they seed.
+    private static func seedPersonalRecords(localStorage: LocalStorageService) {
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uitest-seed-queue-\(UUID().uuidString)", isDirectory: true)
+        let queue = OfflineQueueManager(
+            remote: UITestFakeRemote(online: false),
+            directory: scratch,
+            ownerProvider: { nil },
+            autoFlush: false
+        )
+        PRRepository(localStorage: localStorage, offlineQueueManager: queue).recalculateAllPRs(userId: userId)
     }
 
     /// Six older weekly Bench Press sessions (progressing weight) and a rest day 5 days ago.
@@ -226,6 +243,10 @@ final class UITestFakeRemote: RemoteWriting, @unchecked Sendable {
     func insertMonthPlan(_ plan: MonthPlan) async throws { try record("insertMonthPlan") }
     func insertPlannedSessions(_ sessions: [PlannedSession]) async throws { try record("insertPlannedSessions") }
     func updatePlannedSession(_ session: PlannedSession) async throws { try record("updatePlannedSession") }
+    func deleteMonthPlan(planId: UUID) async throws { try record("deleteMonthPlan") }
+    func upsertRestDay(_ restDay: RestDay) async throws { try record("upsertRestDay") }
+    func deleteRestDay(userId: UUID, date: Date) async throws { try record("deleteRestDay") }
+    func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws { try record("insertTombstones") }
 }
 
 /// Canned AI provider used instead of Gemini while UI testing. Never touches the network.

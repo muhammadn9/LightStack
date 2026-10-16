@@ -34,16 +34,10 @@ final class ProfileRepository {
         return UserProfile(from: cdEntity)
     }
 
-    /// Write profile to Core Data first, then attempt Supabase upsert.
+    /// Write profile to Core Data first, then queue the Supabase upsert.
     func saveProfile(_ profile: UserProfile) {
         localStorage.saveProfile(profile)
-        Task {
-            do {
-                try await supabaseService.upsertProfile(profile)
-            } catch {
-                await offlineQueueManager.enqueue(.upsertProfile, payload: profile)
-            }
-        }
+        offlineQueueManager.submit(.upsertProfile, payload: profile, recordKey: profile.userId.uuidString)
     }
 
     // MARK: - Private

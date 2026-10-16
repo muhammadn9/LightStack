@@ -1,22 +1,19 @@
 import Foundation
 
 /// Merges several spellings of one exercise into a single name: local rename,
-/// PR rebuild, then Supabase sync (queued offline when the call fails).
+/// PR rebuild, then the cloud rename through the offline queue.
 final class ExerciseMergeService {
 
     private let localStorage: LocalStorageService
-    private let supabaseService: SupabaseService
     private let offlineQueueManager: OfflineQueueManager
     private let prRepository: PRRepository
 
     init(
         localStorage: LocalStorageService,
-        supabaseService: SupabaseService,
         offlineQueueManager: OfflineQueueManager,
         prRepository: PRRepository
     ) {
         self.localStorage = localStorage
-        self.supabaseService = supabaseService
         self.offlineQueueManager = offlineQueueManager
         self.prRepository = prRepository
     }
@@ -36,15 +33,7 @@ final class ExerciseMergeService {
         }
         prRepository.recalculatePR(userId: userId, exerciseName: keep)
 
-        let supabase = supabaseService
-        let queue = offlineQueueManager
-        Task {
-            do {
-                try await supabase.updateExerciseNames(ids: ids, name: keep)
-            } catch {
-                await queue.enqueue(.renameExercises, payload: RenameExercisesPayload(ids: ids, name: keep))
-            }
-        }
+        offlineQueueManager.submit(.renameExercises, payload: RenameExercisesPayload(ids: ids, name: keep))
         return ids.count
     }
 }

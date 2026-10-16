@@ -56,21 +56,121 @@ final class FakeRemote: RemoteWriting, @unchecked Sendable {
         if let error = script?(type, index) { throw error }
     }
 
-    func insertWorkout(_ workout: Workout) async throws { try await record(.insertWorkout, workout.workoutType) }
-    func updateWorkout(_ workout: Workout) async throws { try await record(.updateWorkout, workout.workoutType) }
-    func deleteWorkout(workoutId: UUID) async throws { try await record(.deleteWorkout, "") }
-    func deleteSet(setId: UUID) async throws { try await record(.deleteSet, "") }
-    func deleteExercise(id: UUID) async throws { try await record(.deleteExercise, "") }
-    func deleteExercises(workoutId: UUID) async throws { try await record(.deleteExercises, "") }
-    func insertExercises(_ exercises: [Exercise]) async throws { try await record(.insertExercises, exercises.first?.name ?? "") }
-    func insertSet(_ workoutSet: WorkoutSet) async throws { try await record(.insertSet, "") }
-    func updateExerciseNames(ids: [UUID], name: String) async throws { try await record(.renameExercises, name) }
+    // MARK: - Simulated server state (upsert semantics: one row per id)
+
+    private var _workouts: [UUID: Workout] = [:]
+    private var _exercises: [UUID: Exercise] = [:]
+    private var _sets: [UUID: WorkoutSet] = [:]
+    private var _personalRecords: [UUID: PersonalRecord] = [:]
+    private var _monthPlans: [UUID: MonthPlan] = [:]
+    private var _plannedSessions: [UUID: PlannedSession] = [:]
+    private var _restDays: [UUID: RestDay] = [:]
+    private var _tombstones: [String] = []
+    private var _renames: [(ids: [UUID], name: String)] = []
+
+    var workouts: [UUID: Workout] { locked { _workouts } }
+    var exercises: [UUID: Exercise] { locked { _exercises } }
+    var sets: [UUID: WorkoutSet] { locked { _sets } }
+    var personalRecords: [UUID: PersonalRecord] { locked { _personalRecords } }
+    var monthPlans: [UUID: MonthPlan] { locked { _monthPlans } }
+    var plannedSessions: [UUID: PlannedSession] { locked { _plannedSessions } }
+    var restDays: [UUID: RestDay] { locked { _restDays } }
+    /// "entity:recordId" for every tombstone written.
+    var tombstones: [String] { locked { _tombstones } }
+    var renames: [(ids: [UUID], name: String)] { locked { _renames } }
+
+    private func locked<R>(_ body: () -> R) -> R { lock.lock(); defer { lock.unlock() }; return body() }
+
+    func insertWorkout(_ workout: Workout) async throws {
+        try await record(.insertWorkout, workout.workoutType)
+        locked { _workouts[workout.id] = workout }
+    }
+    func updateWorkout(_ workout: Workout) async throws {
+        try await record(.updateWorkout, workout.workoutType)
+        locked { if _workouts[workout.id] != nil { _workouts[workout.id] = workout } }
+    }
+    func deleteWorkout(workoutId: UUID) async throws {
+        try await record(.deleteWorkout, "")
+        locked {
+            _workouts[workoutId] = nil
+            let exIds = _exercises.values.filter { $0.workoutId == workoutId }.map(\.id)
+            exIds.forEach { _exercises[$0] = nil }
+            _sets = _sets.filter { !exIds.contains($0.value.exerciseId) }
+        }
+    }
+    func deleteSet(setId: UUID) async throws {
+        try await record(.deleteSet, "")
+        locked { _sets[setId] = nil }
+    }
+    func deleteExercise(id: UUID) async throws {
+        try await record(.deleteExercise, "")
+        locked {
+            _exercises[id] = nil
+            _sets = _sets.filter { $0.value.exerciseId != id }
+        }
+    }
+    func deleteExercises(workoutId: UUID) async throws {
+        try await record(.deleteExercises, "")
+        locked {
+            let exIds = _exercises.values.filter { $0.workoutId == workoutId }.map(\.id)
+            exIds.forEach { _exercises[$0] = nil }
+            _sets = _sets.filter { !exIds.contains($0.value.exerciseId) }
+        }
+    }
+    func insertExercises(_ exercises: [Exercise]) async throws {
+        try await record(.insertExercises, exercises.first?.name ?? "")
+        locked { exercises.forEach { _exercises[$0.id] = $0 } }
+    }
+    func insertSet(_ workoutSet: WorkoutSet) async throws {
+        try await record(.insertSet, "")
+        locked { _sets[workoutSet.id] = workoutSet }
+    }
+    func updateExerciseNames(ids: [UUID], name: String) async throws {
+        try await record(.renameExercises, name)
+        locked { _renames.append((ids, name)) }
+    }
     func upsertProfile(_ profile: UserProfile) async throws { try await record(.upsertProfile, "") }
-    func insertPersonalRecord(_ record: PersonalRecord) async throws { try await self.record(.insertPersonalRecord, "") }
+    func insertPersonalRecord(_ record: PersonalRecord) async throws {
+        try await self.record(.insertPersonalRecord, "")
+        locked { _personalRecords[record.id] = record }
+    }
     func upsertContextSummary(_ summary: AIContextSummary) async throws { try await record(.upsertContextSummary, "") }
-    func insertMonthPlan(_ plan: MonthPlan) async throws { try await record(.insertMonthPlan, "") }
-    func insertPlannedSessions(_ sessions: [PlannedSession]) async throws { try await record(.insertPlannedSessions, "") }
-    func updatePlannedSession(_ session: PlannedSession) async throws { try await record(.updatePlannedSession, "") }
+    func insertMonthPlan(_ plan: MonthPlan) async throws {
+        try await record(.insertMonthPlan, "")
+        locked { _monthPlans[plan.id] = plan }
+    }
+    func insertPlannedSessions(_ sessions: [PlannedSession]) async throws {
+        try await record(.insertPlannedSessions, "")
+        locked { sessions.forEach { _plannedSessions[$0.id] = $0 } }
+    }
+    func updatePlannedSession(_ session: PlannedSession) async throws {
+        try await record(.updatePlannedSession, "")
+        locked { _plannedSessions[session.id] = session }
+    }
+    func deleteMonthPlan(planId: UUID) async throws {
+        try await record(.deleteMonthPlan, "")
+        locked {
+            _monthPlans[planId] = nil
+            _plannedSessions = _plannedSessions.filter { $0.value.monthPlanId != planId }
+        }
+    }
+    func upsertRestDay(_ restDay: RestDay) async throws {
+        try await record(.upsertRestDay, "")
+        locked { _restDays[restDay.id] = restDay }
+    }
+    func deleteRestDay(userId: UUID, date: Date) async throws {
+        try await record(.deleteRestDay, "")
+        let day = RestDay.dayString(date)
+        locked { _restDays = _restDays.filter { !($0.value.userId == userId && RestDay.dayString($0.value.date) == day) } }
+    }
+    func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws {
+        try await record(.insertTombstone, entity)
+        locked {
+            for id in recordIds where !_tombstones.contains("\(entity):\(id.uuidString)") {
+                _tombstones.append("\(entity):\(id.uuidString)")
+            }
+        }
+    }
 }
 
 enum QueueTestError {
@@ -84,4 +184,43 @@ func makeTempDirectory() -> URL {
 
 func makeTestWorkout(_ label: String, userId: UUID = UUID()) -> Workout {
     Workout.create(userId: userId, workoutType: label, energyLevel: nil, timeAvailableMinutes: nil)
+}
+
+/// A local store plus an outbox over a fake remote, wired the way the app does it
+/// (in-memory Core Data, temp queue folder, no automatic uploads).
+struct OutboxTestStack {
+    let storage: LocalStorageService
+    let queue: OfflineQueueManager
+    let remote: FakeRemote
+    let userId: UUID
+
+    init(autoFlush: Bool = false, userId: UUID = UUID(), remote: FakeRemote = FakeRemote()) {
+        self.storage = LocalStorageService(inMemory: true)
+        self.remote = remote
+        self.userId = userId
+        self.queue = OfflineQueueManager(
+            remote: remote,
+            directory: makeTempDirectory(),
+            ownerProvider: { userId },
+            defaults: UserDefaults(suiteName: "oq-stack-\(UUID().uuidString)") ?? .standard,
+            autoFlush: autoFlush
+        )
+    }
+
+    /// Wait for all queued-up `submit` calls, then upload everything (like a flush on reconnect).
+    func flushAll() async {
+        await queue.waitForSubmissions()
+        await queue.flush()
+    }
+}
+
+enum SupabaseServiceFactory {
+    /// A service pointed at a host that never resolves; for repositories that only read through it.
+    static func unreachable() -> SupabaseService {
+        let client = SupabaseClient(
+            supabaseURL: URL(string: "https://example.invalid") ?? URL(fileURLWithPath: "/"),
+            supabaseKey: "test"
+        )
+        return SupabaseService(client: client)
+    }
 }

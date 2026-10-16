@@ -37,7 +37,7 @@ final class SupabaseService {
     func insertWorkout(_ workout: Workout) async throws {
         try await client
             .from("workouts")
-            .insert(workout.toSupabase())
+            .upsert(workout.toSupabase(), onConflict: "id")
             .execute()
     }
 
@@ -93,7 +93,7 @@ final class SupabaseService {
         let rows = exercises.map { $0.toSupabase() }
         try await client
             .from("exercises")
-            .insert(rows)
+            .upsert(rows, onConflict: "id")
             .execute()
     }
 
@@ -136,7 +136,7 @@ final class SupabaseService {
     func insertSet(_ workoutSet: WorkoutSet) async throws {
         try await client
             .from("sets")
-            .insert(workoutSet.toSupabase())
+            .upsert(workoutSet.toSupabase(), onConflict: "id")
             .execute()
     }
 
@@ -176,8 +176,17 @@ final class SupabaseService {
     func insertMonthPlan(_ plan: MonthPlan) async throws {
         try await client
             .from("month_plans")
-            .insert(plan)
+            .upsert(plan, onConflict: "id")
             .execute()
+    }
+
+    func deleteMonthPlan(planId: UUID) async throws {
+        try await client
+            .from("month_plans")
+            .delete()
+            .eq("id", value: planId.uuidString)
+            .execute()
+        // Postgres cascade delete removes the plan's planned sessions
     }
 
     func fetchActiveMonthPlan(userId: UUID) async throws -> MonthPlan? {
@@ -199,7 +208,7 @@ final class SupabaseService {
     func insertPlannedSessions(_ sessions: [PlannedSession]) async throws {
         try await client
             .from("planned_sessions")
-            .insert(sessions)
+            .upsert(sessions, onConflict: "id")
             .execute()
     }
 
@@ -243,12 +252,46 @@ final class SupabaseService {
         return response.first
     }
 
+    // MARK: - Rest Days
+
+    func upsertRestDay(_ restDay: RestDay) async throws {
+        try await client
+            .from("rest_days")
+            .upsert(restDay.toSupabase(), onConflict: "user_id,date")
+            .execute()
+    }
+
+    /// Deleted by (user, day), not id: the same day may carry another id on another device.
+    func deleteRestDay(userId: UUID, date: Date) async throws {
+        try await client
+            .from("rest_days")
+            .delete()
+            .eq("user_id", value: userId.uuidString)
+            .eq("date", value: RestDay.dayString(date))
+            .execute()
+    }
+
+    // MARK: - Tombstones
+
+    /// Records that these rows were deleted on this device, so other devices
+    /// (and a restore) do not resurrect them. Duplicates are ignored.
+    func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws {
+        guard !recordIds.isEmpty else { return }
+        let rows = recordIds.map {
+            SupabaseTombstone(userId: userId, entity: entity, recordId: $0, deletedAt: deletedAt)
+        }
+        try await client
+            .from("sync_tombstones")
+            .upsert(rows, onConflict: "user_id,entity,record_id", ignoreDuplicates: true)
+            .execute()
+    }
+
     // MARK: - Personal Records
 
     func insertPersonalRecord(_ record: PersonalRecord) async throws {
         try await client
             .from("personal_records")
-            .insert(record)
+            .upsert(record, onConflict: "id")
             .execute()
     }
 
@@ -263,4 +306,19 @@ final class SupabaseService {
         return response
     }
 
+}
+
+/// Row of the `sync_tombstones` table.
+struct SupabaseTombstone: Encodable {
+    let userId: UUID
+    let entity: String
+    let recordId: UUID
+    let deletedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case entity
+        case recordId = "record_id"
+        case deletedAt = "deleted_at"
+    }
 }
