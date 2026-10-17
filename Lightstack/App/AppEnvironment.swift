@@ -78,6 +78,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let notificationService: NotificationService
 
     private var restoreTask: Task<Void, Never>?
+    /// Owners whose dead-lettered operations were already revived in this launch.
+    private var revivedOwners = Set<UUID>()
 
     // MARK: - Init
 
@@ -350,7 +352,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         }
 
         Task { @MainActor in
-            syncService.triggerFlush()
+            flushReviving()
             startBackgroundRestoreIfDue()
         }
     }
@@ -392,7 +394,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         }
         #endif
         if allowLaunchFlush {
-            Task { @MainActor in syncService.triggerFlush() }
+            Task { @MainActor in flushReviving() }
         }
 
         // If authenticated, check this device for a profile; without one, look in the cloud first.
@@ -408,6 +410,22 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
                 hasCompletedOnboarding = false
                 beginProfileRestore(userId: userId)
             }
+        }
+    }
+
+    /// Flushes the outbox. Once per launch per user it first moves due dead-lettered operations back
+    /// into the queue, so nothing stays stuck in the dead-letter list forever.
+    @MainActor
+    func flushReviving() {
+        #if DEBUG
+        if UITestMode.isActive && UITestMode.fakeRemoteMode == nil { return }
+        #endif
+        let manager = offlineQueueManager
+        var revive = false
+        if let userId = authService.currentUser()?.userId { revive = revivedOwners.insert(userId).inserted }
+        Task {
+            if revive { await manager.reviveDueFailedOperations() }
+            await manager.flush()
         }
     }
 

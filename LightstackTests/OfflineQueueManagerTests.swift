@@ -428,4 +428,89 @@ final class OfflineQueueManagerTests: XCTestCase {
         XCTAssertNil(op.ownerUserId)
         XCTAssertNil(op.nextAttemptAt)
     }
+
+    // MARK: - Dead-letter recovery
+
+    func testRLSRefusedChildrenAreRetriedNotDeadLettered() async {
+        remote.script = { type, i in type == .insertSet && i == 2 ? QueueTestError.postgres("42501") : nil }
+        let m = makeManager()
+        let w = makeTestWorkout("w", userId: userA)
+        await m.enqueue(.insertWorkout, payload: w)
+        let e = Exercise.create(workoutId: w.id, name: "Bench", muscleGroup: "Chest", orderIndex: 0, targetSets: 1,
+                                targetReps: "5", targetRir: nil, restSeconds: 60, coachNote: nil)
+        await m.enqueue(.insertExercises, payload: [e])
+        await m.enqueue(.insertSet, payload: WorkoutSet.create(exerciseId: e.id, setNumber: 1, weightLbs: 100, reps: 5, rir: nil))
+        await m.flush()
+        let failedNow = await m.failedCount
+        let pendingNow = await m.pendingCount
+        XCTAssertEqual(failedNow, 0)
+        XCTAssertEqual(pendingNow, 1, "the set waits and retries")
+        clock.value = clock.value.addingTimeInterval(30)
+        await m.flush()
+        let pendingAfter = await m.pendingCount
+        XCTAssertEqual(pendingAfter, 0)
+    }
+
+    func testRevivalMovesOnlyTheOwnersDueOperationsAndTheyUploadParentFirst() async {
+        remote.script = { _, _ in QueueTestError.postgres("23514") }       // everything dead-letters
+        let m = makeManager()
+        let w = makeTestWorkout("mine", userId: userA)
+        let e = Exercise.create(workoutId: w.id, name: "Bench", muscleGroup: "Chest", orderIndex: 0, targetSets: 1,
+                                targetReps: "5", targetRir: nil, restSeconds: 60, coachNote: nil)
+        let s = WorkoutSet.create(exerciseId: e.id, setNumber: 1, weightLbs: 100, reps: 5, rir: nil)
+        // Enqueued child-first on purpose: the queue must still upload workout, exercises, sets.
+        await m.enqueue(.insertSet, payload: s)
+        await m.enqueue(.insertExercises, payload: [e])
+        await m.enqueue(.insertWorkout, payload: w)
+        owner.value = userB
+        await m.enqueue(.insertWorkout, payload: makeTestWorkout("theirs", userId: userB))
+        owner.value = userA
+        await m.flush()
+        owner.value = userB
+        await m.flush()
+        owner.value = userA
+        let deadBefore = await m.failedCount
+        XCTAssertEqual(deadBefore, 3)
+
+        let tooEarly = await m.reviveDueFailedOperations()
+        XCTAssertEqual(tooEarly, 0, "not due yet (1 minute)")
+
+        remote.script = nil
+        clock.value = clock.value.addingTimeInterval(61)
+        let revived = await m.reviveDueFailedOperations()
+        XCTAssertEqual(revived, 3)
+        let callsBefore = remote.calls.count
+        await m.flush()
+        let uploaded = Array(remote.calls.dropFirst(callsBefore)).map { $0.split(separator: ":")[0] }
+        XCTAssertEqual(uploaded, ["insertWorkout", "insertExercises", "insertSet"])
+        let aFailed = await m.failedCount
+        let aPending = await m.pendingCount
+        XCTAssertEqual(aFailed, 0)
+        XCTAssertEqual(aPending, 0)
+        owner.value = userB
+        let bFailed = await m.failedCount
+        XCTAssertEqual(bFailed, 1, "the other user's dead letter is untouched")
+    }
+
+    func testPermanentlyFailingOperationStaysVisibleWithGrowingWaitsAndIsNeverLost() async {
+        remote.script = { _, _ in QueueTestError.postgres("23514") }
+        let m = makeManager()
+        await enqueueWorkouts(m, ["stuck"])
+        var waits: [TimeInterval] = []
+        for _ in 0..<5 {
+            await m.flush()
+            let dead = await m.failedOperations()
+            XCTAssertEqual(dead.count, 1, "never dropped")
+            if let due = dead.first?.nextAttemptAt { waits.append(due.timeIntervalSince(clock.value)) }
+            clock.value = clock.value.addingTimeInterval(86_401)
+            let revived = await m.reviveDueFailedOperations()
+            XCTAssertEqual(revived, 1)
+        }
+        XCTAssertEqual(waits, [60, 3600, 86_400, 86_400, 86_400])
+        // Survives a restart as well.
+        let m2 = makeManager()
+        await m2.flush()
+        let all = await m2.pendingCount + m2.failedCount
+        XCTAssertEqual(all, 1)
+    }
 }

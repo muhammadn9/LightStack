@@ -257,6 +257,34 @@ final class SyncRestoreTests: XCTestCase {
         XCTAssertEqual(remote.workouts[item.0.id]?.workoutType, "Local Edit", "the pending change then uploads")
     }
 
+    func testRecordWhoseOnlyQueueStateIsADeadLetterCountsAsPending() async throws {
+        let user = UUID(), remote = FakeRemote()
+        let item = makeWorkout("Push", user: user, exercises: [("Bench", 2)])
+        remote.seedWorkout(item.0, exercises: item.1)
+        let device = makeDevice(remote: remote, userId: user)
+        try await device.service.restoreAll(userId: user)          // normal rules from here on
+
+        var edited = item.0
+        edited.workoutType = "Local Edit"
+        device.workouts.updateWorkout(edited)
+        remote.script = { _, _ in QueueTestError.postgres("23514") }   // the upload is dead-lettered
+        await device.stack.flushAll()
+        let deadCount = await device.queue.failedCount
+        XCTAssertEqual(deadCount, 1)
+        remote.script = nil
+        var cloud = item.0
+        cloud.workoutType = "Cloud Edit"
+        remote.seedWorkout(cloud, exercises: item.1)
+
+        try await device.service.restoreAll(userId: user)
+        XCTAssertEqual(device.storage.fetchWorkout(id: item.0.id)?.workoutType, "Local Edit", "dead letter = pending: local wins")
+
+        // The revived operation then reaches the cloud.
+        _ = await device.queue.retryFailed()
+        await device.stack.flushAll()
+        XCTAssertEqual(remote.workouts[item.0.id]?.workoutType, "Local Edit")
+    }
+
     func testPendingSetChangeKeepsTheWholeWorkoutLocal() async throws {
         let user = UUID(), remote = FakeRemote()
         let item = makeWorkout("Push", user: user, exercises: [("Bench", 2)])

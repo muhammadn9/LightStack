@@ -120,6 +120,8 @@ struct QueuedOperation: Codable, Identifiable {
     /// User who made the change. nil only for legacy entries (adopted by the next signed-in user).
     var ownerUserId: UUID?
     var attempts: Int
+    /// How many times this operation was dead-lettered; grows the wait before it is revived again.
+    var deadLetterCount: Int = 0
     var lastErrorCode: String?
     var lastErrorMessage: String?
     var nextAttemptAt: Date?
@@ -143,7 +145,7 @@ struct QueuedOperation: Codable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, payload, enqueuedAt, ownerUserId, attempts, sequence, recordKey
+        case id, type, payload, enqueuedAt, ownerUserId, attempts, sequence, recordKey, deadLetterCount
         case lastErrorCode, lastErrorMessage, nextAttemptAt
     }
 
@@ -158,6 +160,7 @@ struct QueuedOperation: Codable, Identifiable {
         recordKey = try c.decodeIfPresent(String.self, forKey: .recordKey)
         ownerUserId = try c.decodeIfPresent(UUID.self, forKey: .ownerUserId)
         attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
+        deadLetterCount = try c.decodeIfPresent(Int.self, forKey: .deadLetterCount) ?? 0
         lastErrorCode = try c.decodeIfPresent(String.self, forKey: .lastErrorCode)
         lastErrorMessage = try c.decodeIfPresent(String.self, forKey: .lastErrorMessage)
         nextAttemptAt = try c.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
@@ -538,6 +541,39 @@ actor OfflineQueueManager {
         Self.logger.info("retryFailed revived \(revived.count) operations")
     }
 
+    /// Wait before a dead-lettered operation is tried again: 1 minute, 1 hour, then 24 hours (cap).
+    static func revivalDelay(deadLetterCount: Int) -> TimeInterval {
+        let schedule: [TimeInterval] = [60, 3600, 86_400]
+        return schedule[min(max(deadLetterCount, 1), schedule.count) - 1]
+    }
+
+    /// Moves the current user's dead-lettered operations whose revival time has come back into the
+    /// queue (call once per launch and on sign-in). Nothing is ever dropped: an operation the server
+    /// still refuses returns to the dead-letter list with a longer wait. Revived operations keep their
+    /// causal sequence, so they upload parent-first like any others.
+    @discardableResult
+    func reviveDueFailedOperations() async -> Int {
+        loadIfNeeded()
+        guard let owner = await ownerProvider() else { return 0 }
+        let current = now()
+        var revived: [QueuedOperation] = []
+        failed.removeAll { op in
+            guard Self.belongs(op, to: owner), op.nextAttemptAt.map({ $0 <= current }) ?? true else { return false }
+            var copy = op
+            copy.attempts = 0
+            copy.nextAttemptAt = nil
+            if copy.ownerUserId == nil { copy.ownerUserId = owner }
+            revived.append(copy)
+            return true
+        }
+        guard !revived.isEmpty else { return 0 }
+        queue.append(contentsOf: revived)
+        saveQueue()
+        saveFailed()
+        Self.logger.info("revived \(revived.count) dead-lettered operations")
+        return revived.count
+    }
+
     /// Snapshot of the dead-letter list (for tests/debug UI).
     func failedOperations() -> [QueuedOperation] {
         loadIfNeeded()
@@ -782,7 +818,9 @@ actor OfflineQueueManager {
         op.attempts += 1
         op.lastErrorCode = code
         op.lastErrorMessage = message
-        op.nextAttemptAt = nil
+        // Next automatic revival (see reviveDueFailedOperations); the operation stays in failed.json until then.
+        op.deadLetterCount += 1
+        op.nextAttemptAt = now().addingTimeInterval(Self.revivalDelay(deadLetterCount: op.deadLetterCount))
         failed.append(op)
         saveFailed()
         unsavedOutcomes += 1

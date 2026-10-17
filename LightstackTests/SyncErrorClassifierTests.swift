@@ -44,11 +44,29 @@ final class SyncErrorClassifierTests: XCTestCase {
     }
 
     func testPermanentErrors() {
-        for code in ["22P02", "23502", "23514", "42501", "42P01", "PGRST100"] {
+        for code in ["22P02", "23502", "23514", "42P01", "PGRST100"] {
             XCTAssertEqual(SyncErrorClassifier.classify(QueueTestError.postgres(code), opType: .insertSet), .permanent, code)
         }
         let decodeError = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "x"))
         XCTAssertEqual(SyncErrorClassifier.classify(decodeError, opType: .insertSet), .permanent)
+    }
+
+    func testRLSRefusalIsADependencyForChildRowsButPermanentForOwnRowTables() {
+        let rls = QueueTestError.postgres("42501")
+        for t: QueuedOperationType in [.insertExercises, .insertSet, .renameExercises, .deleteExercise, .deleteExercises, .deleteSet] {
+            XCTAssertEqual(SyncErrorClassifier.classify(rls, opType: t), .dependency, "\(t)")
+        }
+        for t: QueuedOperationType in [.insertWorkout, .updateWorkout, .upsertProfile, .insertPersonalRecord, .insertMonthPlan,
+                                       .insertPlannedSessions, .upsertRestDay, .insertTombstone] {
+            XCTAssertEqual(SyncErrorClassifier.classify(rls, opType: t), .permanent, "\(t)")
+        }
+    }
+
+    func testRevivalDelaysGrowAndCap() {
+        XCTAssertEqual(OfflineQueueManager.revivalDelay(deadLetterCount: 1), 60)
+        XCTAssertEqual(OfflineQueueManager.revivalDelay(deadLetterCount: 2), 3600)
+        XCTAssertEqual(OfflineQueueManager.revivalDelay(deadLetterCount: 3), 86_400)
+        XCTAssertEqual(OfflineQueueManager.revivalDelay(deadLetterCount: 40), 86_400)
     }
 
     func testUnknownErrorsAreTransient() {
