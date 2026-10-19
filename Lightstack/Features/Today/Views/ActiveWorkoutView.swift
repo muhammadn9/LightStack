@@ -89,8 +89,8 @@ struct ActiveWorkoutView: View {
             }
         }
         .sheet(isPresented: $showChat) {
+            // No floating keyboard Done pill here: it would cover the chat input.
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
-                .keyboardDoneButton()
         }
         .sheet(item: $formDemoExercise) { exercise in
             ExerciseFormDemoView(exerciseName: exercise.name) {
