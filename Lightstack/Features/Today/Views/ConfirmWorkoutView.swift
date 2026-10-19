@@ -25,7 +25,6 @@ struct ConfirmWorkoutView: View {
         .sheet(isPresented: $showChat) {
             if let chatVM = chatViewModel {
                 CoachChatView(viewModel: chatVM, todayViewModel: todayViewModel)
-                    .keyboardDoneButton()
             }
         }
     }
