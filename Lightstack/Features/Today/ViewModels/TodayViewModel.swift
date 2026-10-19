@@ -559,7 +559,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @discardableResult
     func addExerciseManually(name: String, muscleGroup: String, afterPageIndex: Int? = nil) -> UUID? {
         guard let workoutId = sessionService.currentWorkoutId else { return nil }
-        let newExercise = Exercise.create(
+        var newExercise = Exercise.create(
             workoutId: workoutId,
             name: name,
             muscleGroup: muscleGroup,
@@ -570,6 +570,14 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup),
             coachNote: nil
         )
+        // Start from the most recent logged session of this lift, whatever workout it was in.
+        let previous = newExercise.trackingType == .strength
+            ? previousSets(forExerciseNamed: name, excludingWorkoutId: workoutId) : []
+        if let first = previous.first {
+            newExercise.targetSets = previous.count
+            newExercise.targetReps = String(first.reps)
+            previousHints[newExercise.id] = previous
+        }
         if let afterPageIndex {
             // Persists the new exercise plus any whose orderIndex shifted.
             applyGrouping(ExerciseOrdering.inserting(newExercise, afterUnit: afterPageIndex, in: exercises))
@@ -579,6 +587,26 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         }
         saveSessionState()
         return newExercise.id
+    }
+
+    /// Sets from the most recent past session that logged `name` (any workout type), in
+    /// set order. Matches by normalised name, then by `ExerciseNameResolver` equivalents.
+    /// Empty when the lift was never logged.
+    func previousSets(forExerciseNamed name: String, excludingWorkoutId: UUID? = nil) -> [PreviousSetHint] {
+        guard let userId else { return [] }
+        var candidates: [PreviousSessionLookup.Candidate] = []
+        for workout in workoutRepository.fetchRecentWorkouts(userId: userId, limit: 1000)
+        where workout.id != excludingWorkoutId {
+            for exercise in workoutRepository.fetchExercises(workoutId: workout.id) {
+                candidates.append(.init(id: exercise.id, name: exercise.name, date: workout.date))
+            }
+        }
+        for id in PreviousSessionLookup.rankedMatches(forName: name, among: candidates) {
+            let sets = workoutRepository.fetchSets(exerciseId: id).sorted { $0.setNumber < $1.setNumber }
+            guard !sets.isEmpty else { continue }
+            return sets.map { PreviousSetHint(weightLbs: $0.weightLbs, reps: $0.reps, rir: $0.rir) }
+        }
+        return []
     }
 
     /// Applies a new unit order (single exercises or whole supersets), renumbering

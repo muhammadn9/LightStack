@@ -653,6 +653,9 @@ struct ActiveWorkoutView: View {
         ) else { return }
         if let newExercise = todayViewModel.exercises.first(where: { $0.id == newId }) {
             viewModel.prefillTargets(for: newExercise)
+            if let hints = todayViewModel.previousHints[newId] {
+                viewModel.applyPreviousSession(hints, to: newExercise)
+            }
         }
         let pages = SupersetGroup.pages(from: todayViewModel.exercises)
         currentExerciseIndex = pages.firstIndex { $0.exerciseIds.contains(newId) }

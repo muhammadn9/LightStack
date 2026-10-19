@@ -54,6 +54,31 @@ final class WorkoutFlowTests: LightstackUITestCase {
         shot("02-after-relaunch")
     }
 
+    /// Owner bug: an exercise searched for and added mid-workout did not start from
+    /// the numbers last logged for it.
+    func testAddedExerciseIsPrefilledFromLastSession() throws {
+        launchApp(extraArguments: ["-uiTestingRearDeltHistory"])
+        generateAndStartPushWorkout()
+        waitFor(app.staticTexts["1 of 3"])
+
+        tap(app.buttons["addExerciseButton"])
+        type("rear delt", into: app.textFields["exerciseSearchField"])
+        tap(waitFor(app.buttons["yourExercise.Rear Delt Fly Machine"], "History entry missing"))
+        waitFor(app.staticTexts["2 of 4"], "New exercise was not inserted after the current one")
+        shot("05-added-prefilled")
+
+        let expected: [(weight: String, reps: String, rir: String)] = [
+            ("55", "15", "3"), ("60", "12", "2"), ("65", "9", "1")
+        ]
+        for (row, values) in expected.enumerated() {
+            let weight = waitFor(weightField(exercise: 1, row: row), "Set \(row + 1) row missing")
+            XCTAssertEqual(weight.value as? String, values.weight, "set \(row + 1) weight")
+            XCTAssertEqual(repsField(exercise: 1, row: row).value as? String, values.reps, "set \(row + 1) reps")
+            XCTAssertEqual(rirField(exercise: 1, row: row).value as? String, values.rir, "set \(row + 1) RIR")
+        }
+        XCTAssertFalse(weightField(exercise: 1, row: 3).exists, "Row count should match last session (3 sets)")
+    }
+
     func testAddExerciseShowsHistoryAndInsertsAfterCurrent() throws {
         launchApp()
         generateAndStartPushWorkout()
