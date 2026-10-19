@@ -83,13 +83,15 @@ final class PRRepository {
 
     /// Rebuilds every PR from the sets that remain in local storage. Covers both
     /// stale PRs (their sets were removed) and missing ones. Idempotent.
-    func recalculateAllPRs(userId: UUID) {
+    /// `uploadChanges: false` rebuilds the local rows only (restore does this: the cloud PR
+    /// log is not read back, so re-queueing would append a full PR set for every restore).
+    func recalculateAllPRs(userId: UUID, uploadChanges: Bool = true) {
         var names = localStorage.fetchExerciseNamesWithSets(userId: userId)
         for pr in localStorage.fetchPersonalRecords(userId: userId) {
             if let name = pr.exerciseName { names.insert(name) }
         }
         for name in names {
-            recalculatePR(userId: userId, exerciseName: name)
+            recalculatePR(userId: userId, exerciseName: name, uploadChanges: uploadChanges)
         }
     }
 
@@ -99,7 +101,7 @@ final class PRRepository {
     /// replaced). Cloud PRs are an append-only log: a changed result is queued as one more
     /// record, and nothing is ever deleted remotely. An unchanged result queues nothing.
     /// Call this for each exercise in a workout that is being deleted.
-    func recalculatePR(userId: UUID, exerciseName: String) {
+    func recalculatePR(userId: UUID, exerciseName: String, uploadChanges: Bool = true) {
         prLock.lock()
         defer { prLock.unlock() }
 
@@ -153,6 +155,8 @@ final class PRRepository {
 
         localStorage.deletePersonalRecord(userId: userId, exerciseName: exerciseName)
         localStorage.savePersonalRecord(pr)
-        offlineQueueManager.submit(.insertPersonalRecord, payload: pr, recordKey: pr.id.uuidString)
+        if uploadChanges {
+            offlineQueueManager.submit(.insertPersonalRecord, payload: pr, recordKey: pr.id.uuidString)
+        }
     }
 }

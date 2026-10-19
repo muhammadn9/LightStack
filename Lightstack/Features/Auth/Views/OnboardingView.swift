@@ -28,6 +28,10 @@ struct OnboardingView: View {
     @State private var selectedEquipment: [String: Bool] = [:]
     @State private var customEquipment = ""
 
+    // Finishing re-checks the cloud for an existing profile first.
+    @State private var isFinishing = false
+    @State private var finishError: String?
+
     private let goalOptions = [
         "Build Muscle", "Get Stronger", "Lose Fat",
         "Improve Endurance", "Stay Healthy"
@@ -253,6 +257,15 @@ struct OnboardingView: View {
     // MARK: - Navigation
 
     private var navigationButtons: some View {
+        VStack(spacing: 8) {
+        if let finishError {
+            Text(finishError)
+                .font(AppTheme.caveat(13))
+                .foregroundStyle(AppTheme.destructive)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+                .accessibilityIdentifier("onboarding.finishError")
+        }
         HStack {
             if currentStep > 0 {
                 Button("Back") { currentStep -= 1 }
@@ -278,16 +291,27 @@ struct OnboardingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     .disabled(!canProceedToNextStep)
             } else {
-                Button("Finish") { completeOnboarding() }
+                Button {
+                    Task { await completeOnboarding() }
+                } label: {
+                    if isFinishing {
+                        ProgressView().tint(AppTheme.onAccent)
+                    } else {
+                        Text("Finish")
+                    }
+                }
                     .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.onAccent)
                     .padding(.vertical, 12)
                     .padding(.horizontal, 24)
                     .background(AppTheme.accentGradient)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                    .disabled(isFinishing)
+                    .accessibilityIdentifier("onboarding.finishButton")
             }
         }
         .padding(.horizontal, 24)
+        }
         .padding(.bottom, 16)
     }
 
@@ -306,7 +330,7 @@ struct OnboardingView: View {
         }
     }
 
-    private func completeOnboarding() {
+    private func completeOnboarding() async {
         guard let userId = environment.authService.currentUser()?.userId else { return }
 
         let profile = UserProfile.create(
@@ -325,9 +349,15 @@ struct OnboardingView: View {
         )
 
         logger.debug("Saving profile with split days: \(splitDays)")
-        environment.profileRepository.saveProfile(profile)
-        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
-        environment.hasCompletedOnboarding = true
+        isFinishing = true
+        finishError = nil
+        // Saves the new profile only if the account has none in the cloud; otherwise the
+        // existing one is adopted (a new device must never overwrite it).
+        let result = await environment.finishOnboarding(with: profile)
+        isFinishing = false
+        if result == .couldNotVerify {
+            finishError = "Couldn't check your account. Check your connection and tap Finish again."
+        }
     }
 
     // MARK: - Helpers

@@ -6,7 +6,7 @@ import Supabase
 /// Repositories coordinate between this and LocalStorageService.
 final class SupabaseService {
 
-    private let client: SupabaseClient
+    let client: SupabaseClient
 
     init(client: SupabaseClient) {
         self.client = client
@@ -176,7 +176,7 @@ final class SupabaseService {
     func insertMonthPlan(_ plan: MonthPlan) async throws {
         try await client
             .from("month_plans")
-            .upsert(plan, onConflict: "id")
+            .upsert(plan.toSupabase(), onConflict: "id")
             .execute()
     }
 
@@ -191,16 +191,17 @@ final class SupabaseService {
 
     func fetchActiveMonthPlan(userId: UUID) async throws -> MonthPlan? {
         let today = Date()
-        let response: [MonthPlan] = try await client
+        // start_date/end_date are DATE columns: decode through the lenient wrapper.
+        let response: [RemoteMonthPlan] = try await client
             .from("month_plans")
             .select()
             .eq("user_id", value: userId.uuidString)
-            .gte("end_date", value: DateFormatter.dateOnly.string(from: today))
+            .gte("end_date", value: RemoteDate.dayString(today))
             .order("created_at", ascending: false)
             .limit(1)
             .execute()
             .value
-        return response.first
+        return response.first?.plan
     }
 
     // MARK: - Planned Sessions
@@ -208,25 +209,25 @@ final class SupabaseService {
     func insertPlannedSessions(_ sessions: [PlannedSession]) async throws {
         try await client
             .from("planned_sessions")
-            .upsert(sessions, onConflict: "id")
+            .upsert(sessions.map { $0.toSupabase() }, onConflict: "id")
             .execute()
     }
 
     func fetchPlannedSessions(monthPlanId: UUID) async throws -> [PlannedSession] {
-        let response: [PlannedSession] = try await client
+        let response: [RemotePlannedSession] = try await client
             .from("planned_sessions")
             .select()
             .eq("month_plan_id", value: monthPlanId.uuidString)
             .order("planned_date", ascending: true)
             .execute()
             .value
-        return response
+        return response.map(\.session)
     }
 
     func updatePlannedSession(_ session: PlannedSession) async throws {
         try await client
             .from("planned_sessions")
-            .update(session)
+            .update(session.toSupabase())
             .eq("id", value: session.id.uuidString)
             .execute()
     }
@@ -291,7 +292,7 @@ final class SupabaseService {
     func insertPersonalRecord(_ record: PersonalRecord) async throws {
         try await client
             .from("personal_records")
-            .upsert(record, onConflict: "id")
+            .upsert(record.toSupabase(), onConflict: "id")
             .execute()
     }
 

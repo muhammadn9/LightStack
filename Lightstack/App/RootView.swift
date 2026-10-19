@@ -25,6 +25,8 @@ struct RootView: View {
                 EmailVerificationView()
             } else if !environment.isAuthenticated {
                 LoginView()
+            } else if environment.restoreGate != .idle {
+                RestoreProgressView()
             } else if !environment.hasCompletedOnboarding {
                 OnboardingView()
             } else {
@@ -35,6 +37,7 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.3), value: environment.isAuthenticated)
         .animation(.easeInOut(duration: 0.3), value: environment.needsEmailVerification)
         .animation(.easeInOut(duration: 0.3), value: environment.hasCompletedOnboarding)
+        .animation(.easeInOut(duration: 0.3), value: environment.restoreGate)
         .onAppear { applyColorScheme(colorSchemePref) }
         .onChange(of: colorSchemePref) { _, newValue in applyColorScheme(newValue) }
         .onChange(of: systemColorScheme) { _, _ in

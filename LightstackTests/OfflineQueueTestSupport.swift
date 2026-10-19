@@ -14,7 +14,7 @@ final class TestBox<T>: @unchecked Sendable {
 }
 
 /// Scriptable fake for the queue's remote writes.
-final class FakeRemote: RemoteWriting, @unchecked Sendable {
+final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     private let lock = NSLock()
     private var _calls: [String] = []
     private var _gateArmed = false
@@ -24,6 +24,8 @@ final class FakeRemote: RemoteWriting, @unchecked Sendable {
     var script: (@Sendable (QueuedOperationType, Int) -> Error?)?
     /// Runs on every call before the script (e.g. to switch the signed-in user).
     var onCall: (@Sendable (Int) -> Void)?
+    /// Like the exercises/sets RLS policies: a child whose parent row isn't in the "cloud" is refused with 42501.
+    var enforceParentRLS = false
 
     var calls: [String] { lock.lock(); defer { lock.unlock() }; return _calls }
     var isSuspended: Bool { lock.lock(); defer { lock.unlock() }; return _suspended != nil }
@@ -66,6 +68,13 @@ final class FakeRemote: RemoteWriting, @unchecked Sendable {
     private var _plannedSessions: [UUID: PlannedSession] = [:]
     private var _restDays: [UUID: RestDay] = [:]
     private var _tombstones: [String] = []
+    private var _profiles: [UUID: UserProfile] = [:]
+    private var _summaries: [String: AIContextSummary] = [:]
+    private var _readLog: [String] = []
+    /// Fails a read. Args: read name ("fetchProfile", "fetchWorkoutHistoryPage", ...), 0-based count of that read so far.
+    var readScript: (@Sendable (String, Int) -> Error?)?
+    /// Runs before every read (e.g. to switch the signed-in user). Args: read name, count of that read so far.
+    var onRead: (@Sendable (String, Int) -> Void)?
     private var _renames: [(ids: [UUID], name: String)] = []
 
     var workouts: [UUID: Workout] { locked { _workouts } }
@@ -119,22 +128,34 @@ final class FakeRemote: RemoteWriting, @unchecked Sendable {
     }
     func insertExercises(_ exercises: [Exercise]) async throws {
         try await record(.insertExercises, exercises.first?.name ?? "")
+        if enforceParentRLS, locked({ exercises.contains { _workouts[$0.workoutId] == nil } }) {
+            throw QueueTestError.postgres("42501")
+        }
         locked { exercises.forEach { _exercises[$0.id] = $0 } }
     }
     func insertSet(_ workoutSet: WorkoutSet) async throws {
         try await record(.insertSet, "")
+        if enforceParentRLS, locked({ _exercises[workoutSet.exerciseId] == nil }) {
+            throw QueueTestError.postgres("42501")
+        }
         locked { _sets[workoutSet.id] = workoutSet }
     }
     func updateExerciseNames(ids: [UUID], name: String) async throws {
         try await record(.renameExercises, name)
         locked { _renames.append((ids, name)) }
     }
-    func upsertProfile(_ profile: UserProfile) async throws { try await record(.upsertProfile, "") }
+    func upsertProfile(_ profile: UserProfile) async throws {
+        try await record(.upsertProfile, "")
+        locked { _profiles[profile.userId] = profile }
+    }
     func insertPersonalRecord(_ record: PersonalRecord) async throws {
         try await self.record(.insertPersonalRecord, "")
         locked { _personalRecords[record.id] = record }
     }
-    func upsertContextSummary(_ summary: AIContextSummary) async throws { try await record(.upsertContextSummary, "") }
+    func upsertContextSummary(_ summary: AIContextSummary) async throws {
+        try await record(.upsertContextSummary, "")
+        locked { _summaries["\(summary.userId)|\(summary.workoutType)"] = summary }
+    }
     func insertMonthPlan(_ plan: MonthPlan) async throws {
         try await record(.insertMonthPlan, "")
         locked { _monthPlans[plan.id] = plan }
@@ -173,6 +194,100 @@ final class FakeRemote: RemoteWriting, @unchecked Sendable {
     }
 }
 
+// MARK: - Reads (restore)
+
+extension FakeRemote {
+    /// Names of every read made so far, in order ("fetchWorkoutHistoryPage", ...).
+    var readLog: [String] { lock.lock(); defer { lock.unlock() }; return _readLog }
+
+    private func read(_ name: String) async throws {
+        lock.lock()
+        let count = _readLog.filter { $0 == name }.count
+        _readLog.append(name)
+        lock.unlock()
+        onRead?(name, count)
+        if let error = readScript?(name, count) { throw error }
+    }
+
+    func seedProfile(_ profile: UserProfile) { lock.lock(); _profiles[profile.userId] = profile; lock.unlock() }
+    func seedWorkout(_ workout: Workout, exercises: [(Exercise, [WorkoutSet])] = []) {
+        lock.lock()
+        _workouts[workout.id] = workout
+        for (exercise, sets) in exercises {
+            _exercises[exercise.id] = exercise
+            sets.forEach { _sets[$0.id] = $0 }
+        }
+        lock.unlock()
+    }
+    func seedRestDay(_ day: RestDay) { lock.lock(); _restDays[day.id] = day; lock.unlock() }
+    func seedTombstone(_ entity: TombstoneEntity, _ id: UUID) {
+        lock.lock(); _tombstones.append("\(entity.rawValue):\(id.uuidString)"); lock.unlock()
+    }
+    func seedPlan(_ plan: MonthPlan, sessions: [PlannedSession]) {
+        lock.lock()
+        _monthPlans[plan.id] = plan
+        sessions.forEach { _plannedSessions[$0.id] = $0 }
+        lock.unlock()
+    }
+    func seedSummary(_ summary: AIContextSummary) {
+        lock.lock(); _summaries["\(summary.userId)|\(summary.workoutType)"] = summary; lock.unlock()
+    }
+
+    func fetchProfile(userId: UUID) async throws -> UserProfile? {
+        try await read("fetchProfile")
+        lock.lock(); defer { lock.unlock() }
+        return _profiles[userId]
+    }
+
+    func fetchWorkoutHistoryPage(userId: UUID, offset: Int, limit: Int) async throws -> [RemoteWorkoutRecord] {
+        try await read("fetchWorkoutHistoryPage")
+        lock.lock(); defer { lock.unlock() }
+        let ordered = _workouts.values.filter { $0.userId == userId }
+            .sorted { ($0.date, $0.id.uuidString) > ($1.date, $1.id.uuidString) }
+        return ordered.dropFirst(offset).prefix(limit).map { workout in
+            let exercises = _exercises.values.filter { $0.workoutId == workout.id }.map { exercise in
+                (exercise, _sets.values.filter { $0.exerciseId == exercise.id }.sorted { $0.setNumber < $1.setNumber })
+            }
+            return RemoteWorkoutRecord(workout: workout, exercises: exercises)
+        }
+    }
+
+    func fetchContextSummaries(userId: UUID) async throws -> [AIContextSummary] {
+        try await read("fetchContextSummaries")
+        lock.lock(); defer { lock.unlock() }
+        return _summaries.values.filter { $0.userId == userId }
+    }
+
+    func fetchActiveMonthPlan(userId: UUID) async throws -> MonthPlan? {
+        try await read("fetchActiveMonthPlan")
+        lock.lock(); defer { lock.unlock() }
+        return _monthPlans.values.filter { $0.userId == userId && $0.endDate >= Calendar.current.startOfDay(for: Date()) }
+            .max { $0.createdAt < $1.createdAt }
+    }
+
+    func fetchPlannedSessions(monthPlanId: UUID) async throws -> [PlannedSession] {
+        try await read("fetchPlannedSessions")
+        lock.lock(); defer { lock.unlock() }
+        return _plannedSessions.values.filter { $0.monthPlanId == monthPlanId }
+    }
+
+    func fetchRestDays(userId: UUID) async throws -> [RestDay] {
+        try await read("fetchRestDays")
+        lock.lock(); defer { lock.unlock() }
+        return _restDays.values.filter { $0.userId == userId }
+    }
+
+    func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone] {
+        try await read("fetchTombstones")
+        lock.lock(); defer { lock.unlock() }
+        return _tombstones.compactMap { text in
+            let parts = text.split(separator: ":")
+            guard parts.count == 2, let id = UUID(uuidString: String(parts[1])) else { return nil }
+            return RemoteTombstone(entity: String(parts[0]), recordId: id)
+        }
+    }
+}
+
 enum QueueTestError {
     static let offline: Error = URLError(.notConnectedToInternet)
     static func postgres(_ code: String) -> Error { PostgrestError(code: code, message: "test error") }
@@ -194,7 +309,7 @@ struct OutboxTestStack {
     let remote: FakeRemote
     let userId: UUID
 
-    init(autoFlush: Bool = false, userId: UUID = UUID(), remote: FakeRemote = FakeRemote()) {
+    init(autoFlush: Bool = false, userId: UUID = UUID(), remote: FakeRemote = FakeRemote(), resolveDependencies: Bool = false) {
         self.storage = LocalStorageService(inMemory: true)
         self.remote = remote
         self.userId = userId
@@ -203,7 +318,8 @@ struct OutboxTestStack {
             directory: makeTempDirectory(),
             ownerProvider: { userId },
             defaults: UserDefaults(suiteName: "oq-stack-\(UUID().uuidString)") ?? .standard,
-            autoFlush: autoFlush
+            autoFlush: autoFlush,
+            localLookup: resolveDependencies ? StorageParentLookup(storage: storage) : nil
         )
     }
 

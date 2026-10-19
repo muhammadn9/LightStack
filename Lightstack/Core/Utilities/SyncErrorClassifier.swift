@@ -24,6 +24,13 @@ enum SyncErrorClassifier {
         .insertPersonalRecord, .insertMonthPlan, .insertPlannedSessions
     ]
 
+    /// Operations on tables whose row-level-security policy checks the PARENT workout through a
+    /// subquery (`exercises`, `sets`). Such a child written before its parent exists is refused with
+    /// 42501 / HTTP 403, which here means "parent not uploaded yet", not "not your row".
+    static let parentCheckedTypes: Set<QueuedOperationType> = [
+        .insertExercises, .insertSet, .renameExercises, .deleteExercise, .deleteExercises, .deleteSet
+    ]
+
     static func classify(_ error: Error, opType: QueuedOperationType) -> SyncErrorClass {
         if error is DecodingError { return .permanent }
         if error is URLError { return .transient }
@@ -33,6 +40,7 @@ enum SyncErrorClassifier {
             return classify(postgresCode: pg.code, opType: opType)
         }
         if let http = error as? HTTPError {
+            if http.response.statusCode == 403, parentCheckedTypes.contains(opType) { return .dependency }
             return classify(httpStatus: http.response.statusCode)
         }
         if let auth = error as? AuthError {
@@ -65,6 +73,9 @@ enum SyncErrorClassifier {
             return .dependency
         case "23505":
             return insertTypes.contains(opType) ? .alreadyApplied : .permanent
+        case "42501":
+            // RLS refusal. For child rows it usually means the parent isn't there yet: retry.
+            return parentCheckedTypes.contains(opType) ? .dependency : .permanent
         case "PGRST301", "PGRST302", "PGRST303":
             return .auth                    // JWT expired / invalid / anonymous access disabled
         default:

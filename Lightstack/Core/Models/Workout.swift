@@ -177,7 +177,8 @@ struct SupabaseWorkout: Encodable {
     let id: UUID
     let userId: UUID
     let localId: String?
-    let date: Date
+    /// DATE column: the device-local calendar day as `yyyy-MM-dd`.
+    let date: String
     let workoutType: String
     let durationMinutes: Int?
     let energyLevel: Int?
@@ -210,7 +211,7 @@ struct SupabaseWorkout: Encodable {
         self.id = workout.id
         self.userId = workout.userId
         self.localId = workout.localId
-        self.date = workout.date
+        self.date = RemoteDate.dayString(workout.date)
         self.workoutType = workout.workoutType
         self.durationMinutes = workout.durationMinutes
         self.energyLevel = workout.energyLevel

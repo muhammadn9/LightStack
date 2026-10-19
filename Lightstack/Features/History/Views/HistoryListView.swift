@@ -43,6 +43,9 @@ struct HistoryListView: View {
                 }
             }
             .onAppear { loadHistory() }
+            .onReceive(NotificationCenter.default.publisher(for: .syncRestoreDidChangeLocalData)) { _ in
+                loadHistory()
+            }
         }
     }
 

@@ -27,7 +27,7 @@ struct RestDay: Codable, Identifiable, Equatable {
     }
 
     /// `yyyy-MM-dd` of the user's calendar day, as stored in the DATE column.
-    static func dayString(_ date: Date) -> String { localDayFormatter().string(from: date) }
+    static func dayString(_ date: Date) -> String { RemoteDate.dayString(date) }
 
     init(id: UUID, userId: UUID, date: Date, createdAt: Date) {
         self.id = id

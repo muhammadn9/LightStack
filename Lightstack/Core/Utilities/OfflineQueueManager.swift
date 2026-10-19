@@ -102,6 +102,29 @@ protocol RemoteWriting: Sendable {
 
 extension SupabaseService: RemoteWriting, @unchecked Sendable {}
 
+// MARK: - Local parent lookup
+
+/// Lets the queue ask the local store whether a parent row (workout, exercise) exists on this device,
+/// to repair child operations whose parent never reached the cloud.
+protocol LocalParentLookup: Sendable {
+    func workout(id: UUID) async -> Workout?
+    func exercise(id: UUID) async -> Exercise?
+}
+
+/// Core Data backed lookup (reads on the main actor).
+final class StorageParentLookup: LocalParentLookup, @unchecked Sendable {
+    private let storage: LocalStorageService
+    init(storage: LocalStorageService) { self.storage = storage }
+
+    func workout(id: UUID) async -> Workout? {
+        await MainActor.run { storage.fetchWorkout(id: id).map { Workout(from: $0) } }
+    }
+
+    func exercise(id: UUID) async -> Exercise? {
+        await MainActor.run { storage.exerciseEntities(ids: [id])[id].map { Exercise(from: $0) } }
+    }
+}
+
 // MARK: - Queued Operation
 
 /// A single write operation held in the offline queue.
@@ -120,6 +143,8 @@ struct QueuedOperation: Codable, Identifiable {
     /// User who made the change. nil only for legacy entries (adopted by the next signed-in user).
     var ownerUserId: UUID?
     var attempts: Int
+    /// How many times this operation was dead-lettered; grows the wait before it is revived again.
+    var deadLetterCount: Int = 0
     var lastErrorCode: String?
     var lastErrorMessage: String?
     var nextAttemptAt: Date?
@@ -143,7 +168,7 @@ struct QueuedOperation: Codable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, payload, enqueuedAt, ownerUserId, attempts, sequence, recordKey
+        case id, type, payload, enqueuedAt, ownerUserId, attempts, sequence, recordKey, deadLetterCount
         case lastErrorCode, lastErrorMessage, nextAttemptAt
     }
 
@@ -158,6 +183,7 @@ struct QueuedOperation: Codable, Identifiable {
         recordKey = try c.decodeIfPresent(String.self, forKey: .recordKey)
         ownerUserId = try c.decodeIfPresent(UUID.self, forKey: .ownerUserId)
         attempts = try c.decodeIfPresent(Int.self, forKey: .attempts) ?? 0
+        deadLetterCount = try c.decodeIfPresent(Int.self, forKey: .deadLetterCount) ?? 0
         lastErrorCode = try c.decodeIfPresent(String.self, forKey: .lastErrorCode)
         lastErrorMessage = try c.decodeIfPresent(String.self, forKey: .lastErrorMessage)
         nextAttemptAt = try c.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
@@ -261,6 +287,7 @@ actor OfflineQueueManager {
     private nonisolated let submitTracker = SubmitTracker()
     /// Upload right after a write is queued (off in tests and UI tests that must stay offline).
     private let autoFlush: Bool
+    private let localLookup: LocalParentLookup?
     /// Operation being uploaded right now; never coalesced into (its payload is already read).
     private var executingId: String?
 
@@ -285,8 +312,10 @@ actor OfflineQueueManager {
         now: @escaping @Sendable () -> Date = { Date() },
         ownerProvider: @escaping @Sendable () async -> UUID?,
         defaults: UserDefaults = .standard,
-        autoFlush: Bool = true
+        autoFlush: Bool = true,
+        localLookup: LocalParentLookup? = nil
     ) {
+        self.localLookup = localLookup
         self.remote = remote
         self.directory = directory
         self.now = now
@@ -538,6 +567,216 @@ actor OfflineQueueManager {
         Self.logger.info("retryFailed revived \(revived.count) operations")
     }
 
+    /// Wait before a dead-lettered operation is tried again: 1 minute, 1 hour, then 24 hours (cap).
+    static func revivalDelay(deadLetterCount: Int) -> TimeInterval {
+        let schedule: [TimeInterval] = [60, 3600, 86_400]
+        return schedule[min(max(deadLetterCount, 1), schedule.count) - 1]
+    }
+
+    /// Moves the current user's dead-lettered operations whose revival time has come back into the
+    /// queue (call once per launch and on sign-in). Nothing is ever dropped: an operation the server
+    /// still refuses returns to the dead-letter list with a longer wait. Revived operations keep their
+    /// causal sequence, so they upload parent-first like any others.
+    @discardableResult
+    func reviveDueFailedOperations() async -> Int {
+        loadIfNeeded()
+        guard let owner = await ownerProvider() else { return 0 }
+        let current = now()
+        var revived: [QueuedOperation] = []
+        failed.removeAll { op in
+            guard Self.belongs(op, to: owner), op.nextAttemptAt.map({ $0 <= current }) ?? true else { return false }
+            var copy = op
+            copy.attempts = 0
+            copy.nextAttemptAt = nil
+            if copy.ownerUserId == nil { copy.ownerUserId = owner }
+            revived.append(copy)
+            return true
+        }
+        guard !revived.isEmpty else { return 0 }
+        queue.append(contentsOf: revived)
+        saveQueue()
+        saveFailed()
+        Self.logger.info("revived \(revived.count) dead-lettered operations")
+        return revived.count
+    }
+
+    // MARK: - Dependency resolver
+
+    private enum ParentStatus { case ok, orphan }
+
+    /// Error codes that mean "the parent row isn't in the cloud" for a child write.
+    private static let parentMissingCodes: Set<String> = ["42501", "23503", "http.403"]
+
+    /// Repairs child operations (exercises, sets, renames) whose parent never reached the cloud:
+    ///  a. parent has a queued or dead-lettered operation: nothing to do (type order uploads it first);
+    ///  b. parent exists locally: its upsert is queued (workout, exercise, then the set), and a
+    ///     dead-lettered child is revived at once;
+    ///  c. parent does not exist locally, or is tombstoned: the child is an orphan and is removed
+    ///     for good (queue or dead-letter list). Only counts are logged.
+    /// Only operations that already failed with a parent-missing error (or sit in the dead-letter list)
+    /// are examined. Repeats until stable so a set -> exercise -> workout chain resolves in one call.
+    /// - Parameter tombstoned: cloud tombstones known to the caller (restore); queued tombstones are always honoured.
+    @discardableResult
+    func resolveDependencies(tombstoned: [TombstoneEntity: Set<UUID>] = [:]) async -> Int {
+        guard let lookup = localLookup else { return 0 }
+        loadIfNeeded()
+        guard let owner = await ownerProvider() else { return 0 }
+
+        var createdIds = Set<String>()
+        var queuedWorkouts = Set<UUID>()
+        var queuedExercises = Set<UUID>()
+        var orphanedExercises = Set<UUID>()
+        var workoutCache: [UUID: Workout?] = [:]
+        var exerciseCache: [UUID: Exercise?] = [:]
+        var orphans = 0, parentsQueued = 0, revived = 0
+        let dec = JSONDecoder()
+
+        func isEligible(_ op: QueuedOperation, failedList: Bool) -> Bool {
+            guard SyncErrorClassifier.parentCheckedTypes.contains(op.type), op.type != .deleteExercise,
+                  op.type != .deleteExercises, op.type != .deleteSet else { return false }
+            if failedList || createdIds.contains(op.id) { return true }
+            return op.lastErrorCode.map { Self.parentMissingCodes.contains($0) } ?? false
+        }
+
+        for _ in 0..<6 {
+            var changed = false
+            let index = pendingChangeIndex(for: owner)
+
+            func workoutStatus(_ id: UUID) async -> ParentStatus {
+                if tombstoned[.workout]?.contains(id) == true || index.hasPendingTombstone(.workout, id) { return .orphan }
+                if queuedWorkouts.contains(id) { return .ok }
+                if index.headerWorkouts.contains(id) {
+                    if promoteFailedParents(workoutId: id, exerciseId: nil) { revived += 1; changed = true }
+                    return .ok
+                }
+                let local: Workout?
+                if let cached = workoutCache[id] { local = cached } else {
+                    local = await lookup.workout(id: id); workoutCache[id] = .some(local)
+                }
+                guard let workout = local, let data = try? encoder.encode(workout) else { return .orphan }
+                append(.insertWorkout, data: data, recordKey: id.uuidString, sequence: sequencer.next(), owner: owner)
+                queuedWorkouts.insert(id)
+                parentsQueued += 1
+                changed = true
+                return .ok
+            }
+
+            func exerciseStatus(_ id: UUID) async -> ParentStatus {
+                if orphanedExercises.contains(id) { return .orphan }
+                if tombstoned[.exercise]?.contains(id) == true || index.hasPendingTombstone(.exercise, id) { return .orphan }
+                if queuedExercises.contains(id) { return .ok }
+                if index.insertedExercises.contains(id) {
+                    if promoteFailedParents(workoutId: nil, exerciseId: id) { revived += 1; changed = true }
+                    return .ok
+                }
+                let local: Exercise?
+                if let cached = exerciseCache[id] { local = cached } else {
+                    local = await lookup.exercise(id: id); exerciseCache[id] = .some(local)
+                }
+                guard let exercise = local, let data = try? encoder.encode([exercise]) else { return .orphan }
+                append(.insertExercises, data: data, recordKey: nil, sequence: sequencer.next(), owner: owner)
+                if let last = queue.last { createdIds.insert(last.id) }
+                queuedExercises.insert(id)
+                parentsQueued += 1
+                changed = true
+                return .ok
+            }
+
+            // Exercises before sets, so a set sees whether its exercise was just dropped.
+            let snapshot = (queue.map { ($0, false) } + failed.map { ($0, true) })
+                .sorted { ($0.0.type == .insertExercises ? 0 : 1) < ($1.0.type == .insertExercises ? 0 : 1) }
+            for (op, inFailed) in snapshot where Self.belongs(op, to: owner) && isEligible(op, failedList: inFailed) {
+                guard op.id != executingId else { continue }
+                var keptPayload: Data?
+                var droppedAny = false
+                var remove = false
+
+                switch op.type {
+                case .insertExercises:
+                    guard let models = try? dec.decode([Exercise].self, from: op.payload) else { continue }
+                    var kept: [Exercise] = []
+                    for model in models {
+                        if await workoutStatus(model.workoutId) == .ok { kept.append(model) } else { droppedAny = true }
+                    }
+                    orphans += models.count - kept.count
+                    let keptIds = Set(kept.map(\.id))
+                    models.filter { !keptIds.contains($0.id) }.forEach { orphanedExercises.insert($0.id) }
+                    if kept.isEmpty { remove = true } else if droppedAny { keptPayload = try? encoder.encode(kept) }
+                case .insertSet:
+                    guard let model = try? dec.decode(WorkoutSet.self, from: op.payload) else { continue }
+                    if await exerciseStatus(model.exerciseId) != .ok { remove = true; orphans += 1 }
+                case .renameExercises:
+                    guard let model = try? dec.decode(RenameExercisesPayload.self, from: op.payload) else { continue }
+                    var kept: [UUID] = []
+                    for id in model.ids {
+                        if await exerciseStatus(id) == .ok { kept.append(id) } else { droppedAny = true }
+                    }
+                    orphans += model.ids.count - kept.count
+                    if kept.isEmpty { remove = true }
+                    else if droppedAny { keptPayload = try? encoder.encode(RenameExercisesPayload(ids: kept, name: model.name)) }
+                default:
+                    continue
+                }
+
+                if remove || keptPayload != nil || inFailed {
+                    changed = true
+                    // Take it out of wherever it sits, then (unless orphaned) put it back live.
+                    queue.removeAll { $0.id == op.id }
+                    failed.removeAll { $0.id == op.id }
+                    if !remove {
+                        var live = op
+                        if let data = keptPayload { live.payload = data }
+                        live.attempts = 0
+                        live.nextAttemptAt = nil
+                        queue.append(live)
+                        createdIds.insert(live.id)
+                        if inFailed { revived += 1 }
+                    }
+                } else if keptPayload == nil {
+                    // Parent chain is queued; make the child due right away so it follows it.
+                    if let i = queue.firstIndex(where: { $0.id == op.id }), queue[i].nextAttemptAt != nil {
+                        queue[i].nextAttemptAt = nil
+                        changed = true
+                    }
+                }
+            }
+            if !changed { break }
+        }
+
+        if orphans + parentsQueued + revived > 0 {
+            saveQueue()
+            saveFailed()
+            Self.logger.info("resolved dependencies: parentsQueued=\(parentsQueued) orphansDropped=\(orphans) revived=\(revived)")
+        }
+        return orphans
+    }
+
+    /// A parent whose own operation is dead-lettered must be live again for its children to succeed.
+    private func promoteFailedParents(workoutId: UUID?, exerciseId: UUID?) -> Bool {
+        let dec = JSONDecoder()
+        var moved: [String] = []
+        for op in failed {
+            switch op.type {
+            case .insertWorkout, .updateWorkout:
+                if let id = workoutId, let m = try? dec.decode(Workout.self, from: op.payload), m.id == id { moved.append(op.id) }
+            case .insertExercises:
+                if let id = exerciseId, let ms = try? dec.decode([Exercise].self, from: op.payload), ms.contains(where: { $0.id == id }) {
+                    moved.append(op.id)
+                }
+            default: break
+            }
+        }
+        guard !moved.isEmpty else { return false }
+        for id in moved {
+            guard let i = failed.firstIndex(where: { $0.id == id }) else { continue }
+            var op = failed.remove(at: i)
+            op.attempts = 0
+            op.nextAttemptAt = nil
+            queue.append(op)
+        }
+        return true
+    }
+
     /// Snapshot of the dead-letter list (for tests/debug UI).
     func failedOperations() -> [QueuedOperation] {
         loadIfNeeded()
@@ -548,6 +787,99 @@ actor OfflineQueueManager {
     func queuedOperations() -> [QueuedOperation] {
         loadIfNeeded()
         return queue
+    }
+
+    /// Records another device deleted (restore found their tombstones).
+    struct DeletedRecords {
+        var workouts = Set<UUID>()
+        var exercises = Set<UUID>()
+        var sets = Set<UUID>()
+        var monthPlans = Set<UUID>()
+        var plannedSessions = Set<UUID>()
+        var restDays = Set<UUID>()
+    }
+
+    /// Drops the owner's pending UPSERT operations for records that were deleted elsewhere, so they
+    /// cannot recreate a stray cloud row. Deletes and tombstones stay queued. Batched payloads
+    /// (exercises, planned sessions) lose only the deleted members. Returns operations dropped or trimmed.
+    @discardableResult
+    func discardPendingUpserts(for owner: UUID, deleted: DeletedRecords) -> Int {
+        loadIfNeeded()
+        var changed = 0
+        var deletedExercises = deleted.exercises
+        var keep: [QueuedOperation] = []
+
+        // Exercises first: sets of a dropped exercise go with it.
+        var pass: [QueuedOperation] = []
+        for var op in queue {
+            guard op.ownerUserId == owner, op.id != executingId else { pass.append(op); continue }
+            if op.type == .insertExercises, let models = try? decoder.decode([Exercise].self, from: op.payload) {
+                let kept = models.filter { !deleted.exercises.contains($0.id) && !deleted.workouts.contains($0.workoutId) }
+                models.filter { !kept.map(\.id).contains($0.id) }.forEach { deletedExercises.insert($0.id) }
+                if kept.count != models.count {
+                    changed += 1
+                    if kept.isEmpty { continue }
+                    if let data = try? encoder.encode(kept) { op.payload = data }
+                }
+            }
+            pass.append(op)
+        }
+        for var op in pass {
+            guard op.ownerUserId == owner, op.id != executingId else { keep.append(op); continue }
+            switch op.type {
+            case .insertWorkout, .updateWorkout:
+                if let m = try? decoder.decode(Workout.self, from: op.payload), deleted.workouts.contains(m.id) { changed += 1; continue }
+            case .insertSet:
+                if let m = try? decoder.decode(WorkoutSet.self, from: op.payload),
+                   deleted.sets.contains(m.id) || deletedExercises.contains(m.exerciseId) { changed += 1; continue }
+            case .renameExercises:
+                if let m = try? decoder.decode(RenameExercisesPayload.self, from: op.payload) {
+                    let kept = m.ids.filter { !deletedExercises.contains($0) }
+                    if kept.count != m.ids.count {
+                        changed += 1
+                        if kept.isEmpty { continue }
+                        if let data = try? encoder.encode(RenameExercisesPayload(ids: kept, name: m.name)) { op.payload = data }
+                    }
+                }
+            case .insertMonthPlan:
+                if let m = try? decoder.decode(MonthPlan.self, from: op.payload), deleted.monthPlans.contains(m.id) { changed += 1; continue }
+            case .insertPlannedSessions:
+                if let models = try? decoder.decode([PlannedSession].self, from: op.payload) {
+                    let kept = models.filter { !deleted.plannedSessions.contains($0.id) && !deleted.monthPlans.contains($0.monthPlanId) }
+                    if kept.count != models.count {
+                        changed += 1
+                        if kept.isEmpty { continue }
+                        if let data = try? encoder.encode(kept) { op.payload = data }
+                    }
+                }
+            case .updatePlannedSession:
+                if let m = try? decoder.decode(PlannedSession.self, from: op.payload),
+                   deleted.plannedSessions.contains(m.id) || deleted.monthPlans.contains(m.monthPlanId) { changed += 1; continue }
+            case .upsertRestDay:
+                if let m = try? decoder.decode(RestDay.self, from: op.payload), deleted.restDays.contains(m.id) { changed += 1; continue }
+            default:
+                break
+            }
+            keep.append(op)
+        }
+        if changed > 0 {
+            queue = keep
+            saveQueue()
+            Self.logger.info("discarded \(changed) pending upserts for records deleted elsewhere")
+        }
+        return changed
+    }
+
+    /// Which records the user's still-unuploaded operations (queued or dead-lettered) touch.
+    /// A restore must not overwrite those records with older cloud copies.
+    /// Call `waitForSubmissions()` first so writes made a moment ago are included.
+    func pendingChangeIndex(for owner: UUID) -> PendingChangeIndex {
+        loadIfNeeded()
+        var index = PendingChangeIndex()
+        for op in queue + failed where Self.belongs(op, to: owner) {
+            index.absorb(op)
+        }
+        return index
     }
 
     // MARK: - Flush
@@ -563,6 +895,7 @@ actor OfflineQueueManager {
         isFlushing = true
         defer { isFlushing = false }
 
+        await resolveDependencies()
         repeat {
             needsAnotherPass = false
             let shouldContinue = await runPass()
@@ -689,7 +1022,9 @@ actor OfflineQueueManager {
         op.attempts += 1
         op.lastErrorCode = code
         op.lastErrorMessage = message
-        op.nextAttemptAt = nil
+        // Next automatic revival (see reviveDueFailedOperations); the operation stays in failed.json until then.
+        op.deadLetterCount += 1
+        op.nextAttemptAt = now().addingTimeInterval(Self.revivalDelay(deadLetterCount: op.deadLetterCount))
         failed.append(op)
         saveFailed()
         unsavedOutcomes += 1
@@ -923,6 +1258,103 @@ actor OfflineQueueManager {
             try data.write(to: url, options: .atomic)
         } catch {
             Self.logger.error("failed to persist \(label, privacy: .public) (\(ops.count) ops)")
+        }
+    }
+}
+
+// MARK: - Pending change index
+
+/// The set of records that have an unuploaded operation, for restore's "local pending changes win".
+struct PendingChangeIndex {
+    /// Workouts with a header operation, or an operation on their exercise list.
+    var workouts = Set<UUID>()
+    /// Workouts with an operation on the workout row itself (insert, update or delete).
+    var headerWorkouts = Set<UUID>()
+    /// Exercises with a pending insert (so a child set's parent is on its way).
+    var insertedExercises = Set<UUID>()
+    var exercises = Set<UUID>()
+    var sets = Set<UUID>()
+    /// Exercises that have an unuploaded set operation.
+    var setExerciseIds = Set<UUID>()
+    var profile = false
+    var contextTypes = Set<String>()
+    var monthPlans = Set<UUID>()
+    var plannedSessions = Set<UUID>()
+    var restDayIds = Set<UUID>()
+    /// `yyyy-MM-dd` of rest days with an unuploaded add or remove.
+    var restDayDays = Set<String>()
+    /// Tombstones queued here but not yet uploaded.
+    var tombstones: [TombstoneEntity: Set<UUID>] = [:]
+
+    /// A workout is dirty when any operation touches it, its exercises or their sets.
+    func isWorkoutDirty(workoutId: UUID, exerciseIds: Set<UUID>, setIds: Set<UUID>) -> Bool {
+        workouts.contains(workoutId)
+            || !exerciseIds.isDisjoint(with: exercises)
+            || !exerciseIds.isDisjoint(with: setExerciseIds)
+            || !setIds.isDisjoint(with: sets)
+    }
+
+    func hasPendingTombstone(_ entity: TombstoneEntity, _ id: UUID) -> Bool {
+        tombstones[entity]?.contains(id) ?? false
+    }
+
+    fileprivate mutating func absorb(_ op: QueuedOperation) {
+        let decoder = JSONDecoder()
+        switch op.type {
+        case .insertWorkout, .updateWorkout, .deleteWorkout:
+            if let model = try? decoder.decode(Workout.self, from: op.payload) {
+                workouts.insert(model.id)
+                headerWorkouts.insert(model.id)
+            }
+        case .insertExercises:
+            if let models = try? decoder.decode([Exercise].self, from: op.payload) {
+                for model in models {
+                    exercises.insert(model.id)
+                    insertedExercises.insert(model.id)
+                    workouts.insert(model.workoutId)
+                }
+            }
+        case .deleteExercise:
+            if let model = try? decoder.decode(DeleteExercisePayload.self, from: op.payload) { exercises.insert(model.exerciseId) }
+        case .deleteExercises:
+            if let model = try? decoder.decode(DeleteExercisesPayload.self, from: op.payload) { workouts.insert(model.workoutId) }
+        case .renameExercises:
+            if let model = try? decoder.decode(RenameExercisesPayload.self, from: op.payload) { model.ids.forEach { exercises.insert($0) } }
+        case .insertSet, .deleteSet:
+            if let model = try? decoder.decode(WorkoutSet.self, from: op.payload) {
+                sets.insert(model.id)
+                setExerciseIds.insert(model.exerciseId)
+            }
+        case .upsertProfile:
+            profile = true
+        case .upsertContextSummary:
+            if let model = try? decoder.decode(AIContextSummary.self, from: op.payload) { contextTypes.insert(model.workoutType) }
+        case .insertMonthPlan:
+            if let model = try? decoder.decode(MonthPlan.self, from: op.payload) { monthPlans.insert(model.id) }
+        case .deleteMonthPlan:
+            if let model = try? decoder.decode(DeleteMonthPlanPayload.self, from: op.payload) { monthPlans.insert(model.planId) }
+        case .insertPlannedSessions:
+            if let models = try? decoder.decode([PlannedSession].self, from: op.payload) {
+                models.forEach { plannedSessions.insert($0.id) }
+            }
+        case .updatePlannedSession:
+            if let model = try? decoder.decode(PlannedSession.self, from: op.payload) { plannedSessions.insert(model.id) }
+        case .upsertRestDay:
+            if let model = try? decoder.decode(RestDay.self, from: op.payload) {
+                restDayIds.insert(model.id)
+                restDayDays.insert(RestDay.dayString(model.date))
+            }
+        case .deleteRestDay:
+            if let model = try? decoder.decode(DeleteRestDayPayload.self, from: op.payload) {
+                restDayIds.insert(model.id)
+                restDayDays.insert(RestDay.dayString(model.date))
+            }
+        case .insertTombstone:
+            if let model = try? decoder.decode(TombstonePayload.self, from: op.payload) {
+                tombstones[model.entity, default: []].formUnion(model.recordIds)
+            }
+        case .insertPersonalRecord:
+            break   // the cloud PR log is never restored
         }
     }
 }
