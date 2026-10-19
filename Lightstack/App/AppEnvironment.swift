@@ -136,7 +136,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             remote: queueRemote,
             directory: OfflineQueueManager.defaultDirectory(),
             ownerProvider: { await MainActor.run { queueAuth.currentUser()?.userId } },
-            autoFlush: queueAutoFlush
+            autoFlush: queueAutoFlush,
+            localLookup: StorageParentLookup(storage: localStorageService)
         )
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
         #if DEBUG

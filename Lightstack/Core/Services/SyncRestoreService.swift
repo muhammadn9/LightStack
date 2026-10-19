@@ -334,6 +334,11 @@ final class SyncRestoreService {
         }
         func ids(_ entity: TombstoneEntity) -> Set<UUID> { byEntity[entity.rawValue] ?? [] }
         func contains(_ entity: TombstoneEntity, _ id: UUID) -> Bool { byEntity[entity.rawValue]?.contains(id) ?? false }
+        var all: [TombstoneEntity: Set<UUID>] {
+            var result: [TombstoneEntity: Set<UUID>] = [:]
+            for (key, ids) in byEntity { if let entity = TombstoneEntity(rawValue: key) { result[entity] = ids } }
+            return result
+        }
     }
 
     /// A tombstone beats a pending upsert for the same record: drop those queued upserts (deletes and
@@ -611,6 +616,9 @@ final class SyncRestoreService {
         remoteRestDays: Set<String>,
         summary: inout RestoreSummary
     ) async throws {
+        // Child operations whose parent never reached the cloud get their parent queued (or are dropped
+        // as orphans) before anything is judged "pending".
+        await queue.resolveDependencies(tombstoned: tombstones.all)
         let pending = try await pendingChanges(userId)
         let active = activeWorkoutIds()
 
@@ -635,6 +643,12 @@ final class SyncRestoreService {
             }
             guard !exercises.isEmpty else { continue }
             if pending.isWorkoutDirty(workoutId: workoutId, exerciseIds: Set(exercises.map(\.id)), setIds: Set(sets.map(\.id))) {
+                // Only its children are pending (their parent row never uploaded): queue the workout row itself.
+                if !onRemote && !pending.headerWorkouts.contains(workoutId) {
+                    let workout = Workout(from: local)
+                    queue.submit(.insertWorkout, payload: workout, recordKey: workout.id.uuidString)
+                    summary.repairedWorkouts += 1
+                }
                 continue
             }
 

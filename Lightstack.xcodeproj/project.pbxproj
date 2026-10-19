@@ -219,6 +219,7 @@
 		F8CFEF488DD47B230CAFEF17 /* AIServiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C0F3137974BADD31CC68007 /* AIServiceManager.swift */; };
 		FA23F49951ECEB19B6DDF8E9 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 914E21170D7FC5E94253F648 /* MessageBubbleView.swift */; };
 		FA6E005E2FCF14CC2A515BD3 /* ExerciseTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AECE0419B49FC2838485E794 /* ExerciseTableView.swift */; };
+		FAD3F8F1F1CEC5670F4D939B /* OutboxDependencyResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0020393A466EC8A7EB945677 /* OutboxDependencyResolverTests.swift */; };
 		FC8EE25C2C0754DBF209FB86 /* WorkoutModificationJSONParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F3905FE1CAEC80E496E92E5 /* WorkoutModificationJSONParserTests.swift */; };
 		FEEB05DB01F16867AE20A1D7 /* WorkoutSessionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31760632B5C96652ADBAC3D6 /* WorkoutSessionService.swift */; };
 		FF21D936B874FBF11EAF7FD3 /* StatusBadgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BECB36552A01C6C682AE2B7E /* StatusBadgeTests.swift */; };
@@ -244,6 +245,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0020393A466EC8A7EB945677 /* OutboxDependencyResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutboxDependencyResolverTests.swift; sourceTree = "<group>"; };
 		00619CD31B6A6FBF88081C18 /* CoachPromptService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachPromptService.swift; sourceTree = "<group>"; };
 		024F1EDD97F21B6014FF7EF6 /* LocalStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStorageService.swift; sourceTree = "<group>"; };
 		03178C1E3B8074F9760BDE28 /* WorkoutModification.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutModification.swift; sourceTree = "<group>"; };
@@ -911,6 +913,7 @@
 				3BFCC405F7A98CF3F15D6B0F /* InputSanitizerTests.swift */,
 				C78A2791954A107FDE6EE1D1 /* OfflineQueueManagerTests.swift */,
 				320842800A74B7EF0E3AC9CF /* OfflineQueueTestSupport.swift */,
+				0020393A466EC8A7EB945677 /* OutboxDependencyResolverTests.swift */,
 				66CC68D785783373B08968F3 /* OutboxWritePathTests.swift */,
 				1933BBDD3338AB95BEA6A330 /* ProfileStatsUnitTests.swift */,
 				86CC67BCD340379FBAE78C1E /* ProgressStatsTests.swift */,
@@ -1396,6 +1399,7 @@
 				B22918C2D9E3F72F4404DE1A /* InputSanitizerTests.swift in Sources */,
 				B75376712268AC41CA284A77 /* OfflineQueueManagerTests.swift in Sources */,
 				F73C9EB4064A0C78FE295EA6 /* OfflineQueueTestSupport.swift in Sources */,
+				FAD3F8F1F1CEC5670F4D939B /* OutboxDependencyResolverTests.swift in Sources */,
 				46D46C4F2FF98BF12DF65B40 /* OutboxWritePathTests.swift in Sources */,
 				7DFF5AA7ACF21F035C4E6BBF /* PRRecalculationTests.swift in Sources */,
 				57773889BCA8AC4370004495 /* ProfileStatsUnitTests.swift in Sources */,

@@ -24,6 +24,8 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     var script: (@Sendable (QueuedOperationType, Int) -> Error?)?
     /// Runs on every call before the script (e.g. to switch the signed-in user).
     var onCall: (@Sendable (Int) -> Void)?
+    /// Like the exercises/sets RLS policies: a child whose parent row isn't in the "cloud" is refused with 42501.
+    var enforceParentRLS = false
 
     var calls: [String] { lock.lock(); defer { lock.unlock() }; return _calls }
     var isSuspended: Bool { lock.lock(); defer { lock.unlock() }; return _suspended != nil }
@@ -126,10 +128,16 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     }
     func insertExercises(_ exercises: [Exercise]) async throws {
         try await record(.insertExercises, exercises.first?.name ?? "")
+        if enforceParentRLS, locked({ exercises.contains { _workouts[$0.workoutId] == nil } }) {
+            throw QueueTestError.postgres("42501")
+        }
         locked { exercises.forEach { _exercises[$0.id] = $0 } }
     }
     func insertSet(_ workoutSet: WorkoutSet) async throws {
         try await record(.insertSet, "")
+        if enforceParentRLS, locked({ _exercises[workoutSet.exerciseId] == nil }) {
+            throw QueueTestError.postgres("42501")
+        }
         locked { _sets[workoutSet.id] = workoutSet }
     }
     func updateExerciseNames(ids: [UUID], name: String) async throws {
@@ -301,7 +309,7 @@ struct OutboxTestStack {
     let remote: FakeRemote
     let userId: UUID
 
-    init(autoFlush: Bool = false, userId: UUID = UUID(), remote: FakeRemote = FakeRemote()) {
+    init(autoFlush: Bool = false, userId: UUID = UUID(), remote: FakeRemote = FakeRemote(), resolveDependencies: Bool = false) {
         self.storage = LocalStorageService(inMemory: true)
         self.remote = remote
         self.userId = userId
@@ -310,7 +318,8 @@ struct OutboxTestStack {
             directory: makeTempDirectory(),
             ownerProvider: { userId },
             defaults: UserDefaults(suiteName: "oq-stack-\(UUID().uuidString)") ?? .standard,
-            autoFlush: autoFlush
+            autoFlush: autoFlush,
+            localLookup: resolveDependencies ? StorageParentLookup(storage: storage) : nil
         )
     }
 
