@@ -10,6 +10,8 @@ import os
 enum UITestMode {
     static let isActive: Bool = ProcessInfo.processInfo.arguments.contains("-uiTesting")
     /// `-uiTestingLiftHistory` adds weekly Bench Press history and a rest day for chart tests.
+    /// `-uiTestingRearDeltHistory` adds two past "Rear Delt Fly Machine" sessions (newest has 3 distinct sets).
+    static let wantsRearDeltHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingRearDeltHistory")
     static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
@@ -161,6 +163,7 @@ enum UITestMode {
                  localStorage: localStorage)
 
         if wantsLiftHistory { seedLiftHistory(localStorage: localStorage) }
+        if wantsRearDeltHistory { seedRearDeltHistory(localStorage: localStorage) }
         if wantsDuplicateNames {
             // Same lift under two spellings, added to existing seeded workouts.
             let legExt = Exercise.create(workoutId: armDay.id, name: "Leg Extension", muscleGroup: "Legs",
@@ -213,6 +216,29 @@ enum UITestMode {
         }
         if let rest = calendar.date(byAdding: .day, value: -5, to: Date()) {
             localStorage.addRestDay(userId: userId, date: rest)
+        }
+    }
+
+    /// An older and a newer session of the same accessory lift, under a workout type that is
+    /// not today's ("Pull Day"), so only a name-based lookup can find them.
+    private static func seedRearDeltHistory(localStorage: LocalStorageService) {
+        let sessions: [(daysAgo: Int, sets: [(Double, Int, Int)])] = [
+            (20, [(40, 12, 3), (40, 10, 2)]),
+            (6, [(55, 15, 3), (60, 12, 2), (65, 9, 1)])
+        ]
+        for session in sessions {
+            guard let day = Calendar.current.date(byAdding: .day, value: -session.daysAgo, to: Date()) else { continue }
+            var workout = Workout.create(userId: userId, workoutType: "Pull Day",
+                                         energyLevel: 7, timeAvailableMinutes: 45)
+            workout.date = day
+            workout.createdAt = day
+            workout.syncStatus = .synced
+            localStorage.saveWorkout(workout)
+            let fly = Exercise.create(workoutId: workout.id, name: "Rear Delt Fly Machine", muscleGroup: "Shoulders",
+                                      orderIndex: 0, targetSets: session.sets.count, targetReps: "12", targetRir: "2",
+                                      restSeconds: 60, coachNote: nil)
+            localStorage.saveExercises([fly], workoutId: workout.id)
+            seedSets([(fly, session.sets)], localStorage: localStorage)
         }
     }
 
