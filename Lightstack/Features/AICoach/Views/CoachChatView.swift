@@ -90,9 +90,14 @@ struct CoachChatView: View {
 
     // MARK: - Input Bar
 
+    @FocusState private var inputFocused: Bool
+
     private var inputBar: some View {
-        HStack(spacing: 12) {
-            TextField("Ask your coach...", text: $viewModel.inputText)
+        HStack(alignment: .bottom, spacing: 12) {
+            TextField("Ask your coach...", text: $viewModel.inputText, axis: .vertical)
+                .lineLimit(1...5)
+                .focused($inputFocused)
+                .accessibilityIdentifier("chatInputField")
                 .textFieldStyle(.plain)
                 .font(AppTheme.caveat(14))
                 .padding(.horizontal, 14)
@@ -100,6 +105,19 @@ struct CoachChatView: View {
                 .background(AppTheme.surfaceElevated)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .foregroundStyle(AppTheme.textPrimary)
+
+            if inputFocused {
+                Button {
+                    inputFocused = false
+                } label: {
+                    Image(systemName: "keyboard.chevron.compact.down")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(minHeight: 36)
+                }
+                .accessibilityLabel("Dismiss keyboard")
+                .accessibilityIdentifier("chatDismissKeyboard")
+            }
 
             Button(action: { viewModel.sendMessage() }) {
                 Image(systemName: "arrow.up.circle.fill")

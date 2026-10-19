@@ -2,6 +2,36 @@ import XCTest
 
 final class CoachChatTests: LightstackUITestCase {
 
+    /// The growing (multi-line) chat field is exposed as a text view by SwiftUI.
+    private var chatInput: XCUIElement {
+        app.textFields["chatInputField"]
+    }
+
+    /// Owner bug: long text in the coach chat ran off the right edge on a single line,
+    /// and the keyboard Done pill covered it. The field must wrap and stay on screen.
+    func testLongChatMessageWrapsAndStaysOnScreen() throws {
+        launchApp()
+        generateAndStartPushWorkout()
+        waitFor(app.staticTexts["Barbell Bench Press"])
+        let field = chatInput
+        for _ in 0..<3 where !field.exists {
+            app.buttons["Chat with coach"].tap()
+            _ = field.waitForExistence(timeout: 5)
+        }
+        waitFor(field)
+        let oneLineHeight = field.frame.height
+        let long = String(repeating: "I want a heavier bench press today please. ", count: 6)
+        type(long, into: field)
+        shot("chat-long-message")
+        let screen = app.windows.firstMatch.frame
+        XCTAssertGreaterThan(field.frame.height, oneLineHeight + 10, "Field did not grow beyond one line")
+        XCTAssertLessThanOrEqual(field.frame.maxX, screen.maxX, "Field runs off the right edge")
+        XCTAssertGreaterThanOrEqual(field.frame.minX, screen.minX)
+        let send = app.buttons["chatSendButton"]
+        XCTAssertTrue(send.isHittable, "Send button is covered")
+        XCTAssertLessThanOrEqual(send.frame.maxX, screen.maxX)
+    }
+
     /// Owner bug: the coach proposed a change, Apply was tapped, and the workout
     /// didn't change. The coach names exercises loosely ("Bench Press" for
     /// "Barbell Bench Press"), and modified targets never reached the set rows.
@@ -13,12 +43,12 @@ final class CoachChatTests: LightstackUITestCase {
         waitFor(weight)
         XCTAssertEqual(weight.value as? String, "135")
 
-        let field = app.textFields["Ask your coach..."]
+        let field = chatInput
         for _ in 0..<3 where !field.exists {
             app.buttons["Chat with coach"].tap()
             _ = field.waitForExistence(timeout: 5)
         }
-        type("Can I go heavier bench today?", into: app.textFields["Ask your coach..."])
+        type("Can I go heavier bench today?", into: chatInput)
         // A tap while the keyboard is still settling can be lost; retry until it sends.
         let apply = app.buttons["Apply Changes"]
         for _ in 0..<3 where !apply.exists {
@@ -44,12 +74,12 @@ final class CoachChatTests: LightstackUITestCase {
         generateAndStartPushWorkout()
         waitFor(app.staticTexts["Barbell Bench Press"])
 
-        let field = app.textFields["Ask your coach..."]
+        let field = chatInput
         for _ in 0..<3 where !field.exists {
             app.buttons["Chat with coach"].tap()
             _ = field.waitForExistence(timeout: 5)
         }
-        type("remove Cable Triceps Pushdown", into: app.textFields["Ask your coach..."])
+        type("remove Cable Triceps Pushdown", into: chatInput)
         let apply = app.buttons["Apply Changes"]
         for _ in 0..<3 where !apply.exists {
             app.buttons["chatSendButton"].tap()

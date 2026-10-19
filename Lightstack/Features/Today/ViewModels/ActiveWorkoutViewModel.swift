@@ -221,6 +221,25 @@ final class ActiveWorkoutViewModel: ObservableObject {
         syncPendingSets(for: exercise)
     }
 
+    /// Starts an exercise added mid-workout from its last session: one row per previous
+    /// set, with that set's weight, reps and RIR filled in (and shown as the hint).
+    func applyPreviousSession(_ hints: [PreviousSetHint], to exercise: Exercise) {
+        guard exercise.trackingType == .strength, !hints.isEmpty else { return }
+        previousHints[exercise.id] = hints
+        pendingSets[exercise.id] = nil
+        syncPendingSets(for: exercise)
+        guard var rows = pendingSets[exercise.id] else { return }
+        for index in rows.indices {
+            guard let hint = rows[index].previous else { continue }
+            if rows[index].weight.isEmpty {
+                rows[index].weight = hint.weightLbs == 0 ? "BW" : String(format: "%g", hint.weightLbs)
+            }
+            if rows[index].reps.isEmpty { rows[index].reps = String(hint.reps) }
+            if rows[index].rir.isEmpty { rows[index].rir = hint.rir.map(String.init) ?? "" }
+        }
+        pendingSets[exercise.id] = rows
+    }
+
     /// Re-apply an exercise's targets to every input that has not been logged yet.
     ///
     /// Unlike `prefillTargets`, this overwrites what is already on screen. When the

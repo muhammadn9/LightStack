@@ -25,6 +25,9 @@ final class AuthService: NSObject {
 
     weak var delegate: AuthServiceDelegate?
 
+    /// The in-flight Google attempt, if any. Always cleared when the attempt ends.
+    @MainActor private var googleSignInTask: Task<Void, Never>?
+
     let supabaseClient: SupabaseClient
 
     /// Redirect URL for email verification links — must match the
@@ -190,19 +193,41 @@ final class AuthService: NSObject {
 
     // MARK: - Google Sign-In
 
+    @MainActor
     func signInWithGoogle() {
-        Task {
+        // One Google attempt at a time: a second tap while a sheet is up would stack
+        // presentations and leave the first attempt unresolved.
+        guard googleSignInTask == nil else {
+            logger.info("Google Sign-In: attempt already in flight, ignoring tap")
+            return
+        }
+        googleSignInTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.googleSignInTask = nil }
             let clientID = Bundle.main.infoDictionary?["GOOGLE_CLIENT_ID"] as? String ?? ""
 
             // Primary path: native GoogleSignIn SDK (requires GOOGLE_CLIENT_ID to be set)
             if !clientID.isEmpty {
-                await signInWithGoogleNative(clientID: clientID)
+                await self.signInWithGoogleNative(clientID: clientID)
             } else {
-                // Fallback: ephemeral web session — no "Wants to Use" alert
-                logger.info("Google Sign-In: GOOGLE_CLIENT_ID not set, using ephemeral web fallback")
-                await signInWithGoogleEphemeral()
+                // The SDK isn't configured: the only case where the web flow is the right path.
+                self.logger.info("Google Sign-In: GOOGLE_CLIENT_ID not set, using ephemeral web fallback")
+                await self.signInWithGoogleEphemeral()
             }
         }
+    }
+
+    /// Runs the native Google flow and exchanges the result with Supabase using a nonce pair:
+    /// Google gets the SHA-256 (`hashed`) and puts it in the ID token; Supabase gets the raw
+    /// value and hashes it itself before comparing. `obtainTokens` and `exchange` are seams
+    /// so tests can verify the pairing without Google or the network.
+    static func performGoogleExchange(
+        nonce: (raw: String, hashed: String) = appleNonce(),
+        obtainTokens: (_ hashedNonce: String) async throws -> (idToken: String, accessToken: String),
+        exchange: (_ idToken: String, _ accessToken: String, _ rawNonce: String) async throws -> Void
+    ) async throws {
+        let tokens = try await obtainTokens(nonce.hashed)
+        try await exchange(tokens.idToken, tokens.accessToken, nonce.raw)
     }
 
     @MainActor
@@ -213,41 +238,62 @@ final class AuthService: NSObject {
                 .first(where: { $0.activationState == .foregroundActive }),
               let rootVC = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController
         else {
-            logger.warning("Google Sign-In: no presenting view controller found, falling back to ephemeral web session")
-            await signInWithGoogleEphemeral()
+            logger.error("Google Sign-In: no presenting view controller found")
+            notifyError(NSError(
+                domain: "AuthService",
+                code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Couldn't open Google Sign-In. Please try again."]
+            ))
             return
         }
 
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+        // Start from a clean slate so a previous account/attempt can't leak into this one.
+        GIDSignIn.sharedInstance.signOut()
+
+        // Present from the top-most controller so the Google sheet never fights another presentation.
+        var presenter = rootVC
+        while let presented = presenter.presentedViewController { presenter = presented }
 
         do {
-            let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
-            guard let idToken = result.user.idToken?.tokenString else {
-                logger.error("Google Sign-In: native flow succeeded but idToken is missing")
-                let error = NSError(
-                    domain: "AuthService",
-                    code: -3,
-                    userInfo: [NSLocalizedDescriptionKey: "Google Sign-In did not return an ID token."]
-                )
-                await notifyError(error)
-                return
-            }
-            let accessToken = result.user.accessToken.tokenString
-            logger.info("Google Sign-In: native path succeeded, exchanging tokens with Supabase")
-            try await supabaseClient.auth.signInWithIdToken(
-                credentials: .init(
-                    provider: .google,
-                    idToken: idToken,
-                    accessToken: accessToken
-                )
+            try await Self.performGoogleExchange(
+                obtainTokens: { hashedNonce in
+                    let result = try await GIDSignIn.sharedInstance.signIn(
+                        withPresenting: presenter,
+                        hint: nil,
+                        additionalScopes: nil,
+                        nonce: hashedNonce
+                    )
+                    guard let idToken = result.user.idToken?.tokenString else {
+                        throw NSError(
+                            domain: "AuthService",
+                            code: -3,
+                            userInfo: [NSLocalizedDescriptionKey: "Google Sign-In did not return an ID token."]
+                        )
+                    }
+                    return (idToken, result.user.accessToken.tokenString)
+                },
+                exchange: { [supabaseClient, logger] idToken, accessToken, rawNonce in
+                    logger.info("Google Sign-In: native path succeeded, exchanging tokens with Supabase")
+                    try await supabaseClient.auth.signInWithIdToken(
+                        credentials: .init(
+                            provider: .google,
+                            idToken: idToken,
+                            accessToken: accessToken,
+                            nonce: rawNonce
+                        )
+                    )
+                }
             )
-            await notifySignIn()
+            notifySignIn()
         } catch let error as GIDSignInError where error.code == .canceled {
             // User cancelled — silent no-op
             logger.info("Google Sign-In: user cancelled native flow")
         } catch {
-            logger.error("Google Sign-In: native flow failed (\(error.localizedDescription)), falling back to ephemeral web session")
-            await signInWithGoogleEphemeral()
+            // No silent second flow: a failed exchange is surfaced so it can be diagnosed.
+            logger.error("Google Sign-In: native flow failed (\(error.localizedDescription, privacy: .public))")
+            GIDSignIn.sharedInstance.signOut()
+            notifyError(error)
         }
     }
 
@@ -298,11 +344,21 @@ final class AuthService: NSObject {
         Task {
             do {
                 try await supabaseClient.auth.signOut()
+                await resetGoogleState()
                 await notifySignOut()
             } catch {
                 await notifyError(error)
             }
         }
+    }
+
+    /// Forget the Google account and any pending attempt so the next sign-in starts clean
+    /// and can pick a different account.
+    @MainActor
+    private func resetGoogleState() {
+        GIDSignIn.sharedInstance.signOut()
+        googleSignInTask?.cancel()
+        googleSignInTask = nil
     }
 
     // MARK: - Current User
