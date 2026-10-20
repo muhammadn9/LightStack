@@ -21,7 +21,7 @@ struct RestDay: Codable, Identifiable, Equatable {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = TimeZone.current
+        f.timeZone = NSTimeZone.default  // not TimeZone.current: that ignores an NSTimeZone.default override when the system zone is UTC
         f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }
