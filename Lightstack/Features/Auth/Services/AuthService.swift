@@ -25,8 +25,8 @@ final class AuthService: NSObject {
 
     weak var delegate: AuthServiceDelegate?
 
-    /// The in-flight Google attempt, if any. Always cleared when the attempt ends.
-    @MainActor private var googleSignInTask: Task<Void, Never>?
+    /// Runs at most one Google attempt; a new tap supersedes (and unblocks) a stale one.
+    @MainActor let googleAttempts = LatestAttemptRunner()
 
     let supabaseClient: SupabaseClient
 
@@ -112,8 +112,32 @@ final class AuthService: NSObject {
 
     // MARK: - Password Reset
 
+    /// A human-readable reason a reset request failed, so a server-side problem
+    /// (mail provider down, rate limit, no network) is never shown as nothing at all.
+    static func resetPasswordMessage(for error: Error) -> String {
+        if let authError = error as? AuthError, case .api(let message, let code, _, let response) = authError {
+            if code == .overEmailSendRateLimit {
+                return "Too many reset emails requested. Please wait a few minutes and try again."
+            }
+            if response.statusCode >= 500 {
+                return "We couldn't send the reset email right now. Please try again later. (\(message))"
+            }
+            return message
+        }
+        if error is URLError {
+            return "Couldn't reach the server. Check your connection and try again."
+        }
+        let text = error.localizedDescription
+        return text.isEmpty ? "Couldn't send the reset email. Please try again." : text
+    }
+
     func resetPassword(email: String) async throws {
-        try await supabaseClient.auth.resetPasswordForEmail(email, redirectTo: Self.redirectURL)
+        do {
+            try await supabaseClient.auth.resetPasswordForEmail(email, redirectTo: Self.redirectURL)
+        } catch {
+            logger.error("Password reset failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
     }
 
     // MARK: - Email Verification
@@ -195,15 +219,14 @@ final class AuthService: NSObject {
 
     @MainActor
     func signInWithGoogle() {
-        // One Google attempt at a time: a second tap while a sheet is up would stack
-        // presentations and leave the first attempt unresolved.
-        guard googleSignInTask == nil else {
-            logger.info("Google Sign-In: attempt already in flight, ignoring tap")
-            return
+        // A tappable button means no Google sheet is on screen, so any attempt still
+        // "running" is stale (e.g. a cancelled flow that never reported back). Supersede
+        // it rather than ignore the tap, so the button can never stay dead.
+        if googleAttempts.isRunning {
+            logger.info("Google Sign-In: superseding a stale attempt")
         }
-        googleSignInTask = Task { [weak self] in
+        googleAttempts.start { [weak self] in
             guard let self else { return }
-            defer { self.googleSignInTask = nil }
             let clientID = Bundle.main.infoDictionary?["GOOGLE_CLIENT_ID"] as? String ?? ""
 
             // Primary path: native GoogleSignIn SDK (requires GOOGLE_CLIENT_ID to be set)
@@ -214,6 +237,22 @@ final class AuthService: NSObject {
                 self.logger.info("Google Sign-In: GOOGLE_CLIENT_ID not set, using ephemeral web fallback")
                 await self.signInWithGoogleEphemeral()
             }
+        }
+    }
+
+    /// Bridges a callback API to async such that task cancellation resumes the await
+    /// (with `CancellationError`) and the callback can only resume it once.
+    static func awaitCancellable<T>(
+        _ start: (@escaping (Result<T, Error>) -> Void) -> Void
+    ) async throws -> T {
+        let box = ResumeOnce<T>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
+                box.install(cont)
+                start { box.finish($0) }
+            }
+        } onCancel: {
+            box.finish(.failure(CancellationError()))
         }
     }
 
@@ -253,25 +292,39 @@ final class AuthService: NSObject {
 
         // Present from the top-most controller so the Google sheet never fights another presentation.
         var presenter = rootVC
-        while let presented = presenter.presentedViewController { presenter = presented }
+        // Skip a controller that is mid-dismissal (a just-cancelled Google sheet): presenting
+        // from it fails silently and the attempt would never report back.
+        while let presented = presenter.presentedViewController, !presented.isBeingDismissed {
+            presenter = presented
+        }
 
+        logger.info("Google Sign-In: presenting from \(String(describing: type(of: presenter)), privacy: .public) (window attached: \(presenter.view.window != nil, privacy: .public))")
         do {
             try await Self.performGoogleExchange(
                 obtainTokens: { hashedNonce in
-                    let result = try await GIDSignIn.sharedInstance.signIn(
-                        withPresenting: presenter,
-                        hint: nil,
-                        additionalScopes: nil,
-                        nonce: hashedNonce
-                    )
-                    guard let idToken = result.user.idToken?.tokenString else {
-                        throw NSError(
-                            domain: "AuthService",
-                            code: -3,
-                            userInfo: [NSLocalizedDescriptionKey: "Google Sign-In did not return an ID token."]
-                        )
+                    // Cancellation-aware: cancelling the attempt resumes this await even if
+                    // the SDK never calls back.
+                    try await Self.awaitCancellable { finish in
+                        GIDSignIn.sharedInstance.signIn(
+                            withPresenting: presenter,
+                            hint: nil,
+                            additionalScopes: nil,
+                            nonce: hashedNonce
+                        ) { result, error in
+                            if let error {
+                                finish(.failure(error))
+                            } else if let idToken = result?.user.idToken?.tokenString,
+                                      let access = result?.user.accessToken.tokenString {
+                                finish(.success((idToken, access)))
+                            } else {
+                                finish(.failure(NSError(
+                                    domain: "AuthService",
+                                    code: -3,
+                                    userInfo: [NSLocalizedDescriptionKey: "Google Sign-In did not return an ID token."]
+                                )))
+                            }
+                        }
                     }
-                    return (idToken, result.user.accessToken.tokenString)
                 },
                 exchange: { [supabaseClient, logger] idToken, accessToken, rawNonce in
                     logger.info("Google Sign-In: native path succeeded, exchanging tokens with Supabase")
@@ -285,11 +338,16 @@ final class AuthService: NSObject {
                     )
                 }
             )
+            // A superseded/cancelled attempt must not sign in or report anything.
+            guard !Task.isCancelled else { return }
             notifySignIn()
+        } catch is CancellationError {
+            logger.info("Google Sign-In: attempt cancelled")
         } catch let error as GIDSignInError where error.code == .canceled {
             // User cancelled — silent no-op
             logger.info("Google Sign-In: user cancelled native flow")
         } catch {
+            guard !Task.isCancelled else { return }
             // No silent second flow: a failed exchange is surfaced so it can be diagnosed.
             logger.error("Google Sign-In: native flow failed (\(error.localizedDescription, privacy: .public))")
             GIDSignIn.sharedInstance.signOut()
@@ -357,8 +415,7 @@ final class AuthService: NSObject {
     @MainActor
     private func resetGoogleState() {
         GIDSignIn.sharedInstance.signOut()
-        googleSignInTask?.cancel()
-        googleSignInTask = nil
+        googleAttempts.cancel()
     }
 
     // MARK: - Current User
@@ -440,5 +497,72 @@ final class AuthService: NSObject {
                 await notifyError(error)
             }
         }
+    }
+}
+
+// MARK: - Attempt state machine
+
+/// Resumes a continuation at most once, whichever of callback/cancellation comes first.
+final class ResumeOnce<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    private var early: Result<T, Error>?
+    private var done = false
+
+    func install(_ cont: CheckedContinuation<T, Error>) {
+        lock.lock()
+        if let early {
+            done = true
+            lock.unlock()
+            cont.resume(with: early)
+        } else {
+            continuation = cont
+            lock.unlock()
+        }
+    }
+
+    func finish(_ result: Result<T, Error>) {
+        lock.lock()
+        guard !done else { lock.unlock(); return }
+        if let cont = continuation {
+            done = true
+            continuation = nil
+            lock.unlock()
+            cont.resume(with: result)
+        } else {
+            early = early ?? result   // cancelled/finished before install
+            lock.unlock()
+        }
+    }
+}
+
+/// Holds the single current attempt. Starting a new one cancels the previous; an old
+/// attempt finishing late can never clear the new one's state.
+@MainActor
+final class LatestAttemptRunner {
+    private var task: Task<Void, Never>?
+    private var currentID = UUID()
+
+    var isRunning: Bool { task != nil }
+
+    func start(_ body: @escaping @MainActor () async -> Void) {
+        task?.cancel()
+        let id = UUID()
+        currentID = id
+        task = Task { @MainActor [weak self] in
+            await body()
+            if self?.currentID == id { self?.task = nil }
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+        currentID = UUID()
+    }
+
+    /// Test helper: waits for the current attempt to finish.
+    func waitUntilIdle() async {
+        await task?.value
     }
 }
