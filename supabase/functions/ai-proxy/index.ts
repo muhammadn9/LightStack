@@ -76,6 +76,7 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const geminiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   if (!supabaseUrl || !anonKey || !geminiKey) return error("AI service is not configured", 500);
 
   // Act as the caller so auth.uid() inside check_rate_limit is their id.
@@ -128,11 +129,22 @@ Deno.serve(async (req: Request) => {
   };
   if (body.system_instruction) payload.system_instruction = body.system_instruction;
 
-  // Gives back the slot this request consumed. Never fails the request: if the
-  // RPC is missing (migration not applied yet) or errors, log and carry on.
+  // Gives back the slot this request consumed. Uses the service role (the RPC is
+  // not callable by signed-in clients) and the user id verified by auth.getUser,
+  // never an id from the request. Never fails the request: if the RPC is missing
+  // (migration not applied yet) or errors, log and carry on.
+  const userId = userData.user.id;
   const refund = async () => {
     try {
-      const { error: refundError } = await supabase.rpc("refund_rate_limit");
+      if (!serviceKey) {
+        console.warn("refund skipped: SUPABASE_SERVICE_ROLE_KEY not set");
+        return;
+      }
+      const admin = createClient(supabaseUrl, serviceKey);
+      const { error: refundError } = await admin.rpc("refund_rate_limit", {
+        p_user_id: userId,
+        p_endpoint: "coach",
+      });
       if (refundError) console.warn("refund_rate_limit failed:", refundError.message);
     } catch (e) {
       console.warn("refund_rate_limit threw:", e);

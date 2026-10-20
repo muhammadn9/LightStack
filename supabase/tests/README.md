@@ -20,3 +20,10 @@ Run it either way:
 
 To confirm cleanup afterwards:
 `select count(*) from auth.users where email like 'rls-test-%@invalid.test';` returns 0.
+
+### Known low-risk gap
+
+The `planned_sessions` policy only checks `user_id`, so a user could insert a row
+with their own `user_id` whose `month_plan_id` points at another user's plan. It
+exposes no other-user data and the row is invisible to the other user. Tightening
+it (also require the plan to belong to the caller) would be a separate migration.
