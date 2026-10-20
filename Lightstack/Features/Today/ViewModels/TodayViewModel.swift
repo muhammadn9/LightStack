@@ -609,6 +609,70 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return []
     }
 
+    // MARK: - Plan Preview: Swap / Discard
+
+    /// Alternatives for an exercise on the plan preview, each with last session's numbers.
+    func swapCandidates(forExerciseId id: UUID) -> [SwapCandidate] {
+        guard let old = exercises.first(where: { $0.id == id }) else { return [] }
+        let ranked = ExerciseSwapSuggestions.rank(
+            replacing: (old.name, old.muscleGroup),
+            planNames: exercises.map(\.name),
+            history: historyExercises()
+        )
+        return ranked.map { candidate in
+            var withPrevious = candidate
+            if candidate.muscleGroup.caseInsensitiveCompare("Cardio") != .orderedSame {
+                withPrevious.previous = previousSets(forExerciseNamed: candidate.name,
+                                                     excludingWorkoutId: sessionService.currentWorkoutId)
+            }
+            return withPrevious
+        }
+    }
+
+    /// Replaces a planned exercise in place (same position and superset), starting from
+    /// the new lift's last session when there is one. Returns the new exercise's id.
+    @discardableResult
+    func swapExercise(id: UUID, toName name: String, muscleGroup: String) -> UUID? {
+        guard let workoutId = sessionService.currentWorkoutId,
+              let index = exercises.firstIndex(where: { $0.id == id }) else { return nil }
+        let old = exercises[index]
+        var replacement = Exercise.create(
+            workoutId: workoutId,
+            name: name,
+            muscleGroup: muscleGroup,
+            orderIndex: old.orderIndex,
+            targetSets: old.targetSets,
+            targetReps: old.targetReps,
+            targetRir: old.targetRir,
+            restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup),
+            coachNote: nil,
+            supersetGroupId: old.supersetGroupId
+        )
+        let previous = replacement.trackingType == .strength
+            ? previousSets(forExerciseNamed: name, excludingWorkoutId: workoutId) : []
+        let prefill = SwapPrefill.make(previous: previous, replacing: old)
+        replacement.targetSets = prefill.targetSets
+        replacement.targetReps = prefill.targetReps
+        replacement.targetRir = prefill.targetRir
+        replacement.coachNote = prefill.coachNote
+        if !previous.isEmpty { previousHints[replacement.id] = previous }
+        storeSetTargets(prefill.setTargets, for: replacement.id)
+
+        exercises[index] = replacement
+        previousHints[old.id] = nil
+        setTargets[old.id] = nil
+        purgeExercise(id: old.id, name: old.name)
+        workoutRepository.saveExercises([replacement], workoutId: workoutId)
+        return replacement.id
+    }
+
+    /// Backs out of the plan preview: deletes the workout the plan created (locally,
+    /// and through the sync queue with tombstones), clears saved session state and
+    /// returns to setup.
+    func discardPlanPreview() {
+        discardWorkout()
+    }
+
     /// Applies a new unit order (single exercises or whole supersets), renumbering
     /// `orderIndex` and persisting the exercises that moved.
     func reorderExercises(unitOrder: [[UUID]]) {
