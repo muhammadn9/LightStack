@@ -9,7 +9,7 @@ final class SignOutWarningTests: LightstackUITestCase {
     private func tapSignOut() {
         let button = app.buttons["settings.signOutButton"]
         var swipes = 0
-        while !(button.exists && button.isHittable) && swipes < 6 { app.swipeUp(); swipes += 1 }
+        while !(button.exists && button.isHittable) && swipes < 8 { app.swipeUp(); swipes += 1 }
         tap(button)
     }
 

@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: "17 3 * * *"   # nightly UI suite (03:17 UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+  SPM_DIR: ${{ github.workspace }}/.spm
+
+jobs:
+  # The job name is kept from the previous workflow so branch protection that
+  # requires it keeps working. It now also runs unit tests and a Release build.
+  build:
+    name: Build and analyse default scheme using xcodebuild command
+    if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Secrets.xcconfig from template
+        # Git-ignored but referenced by the project; placeholder values are enough to compile.
+        run: cp Lightstack/Config/Secrets.xcconfig.template Lightstack/Config/Secrets.xcconfig
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Project is up to date with project.yml
+        run: |
+          xcodegen generate
+          git diff --exit-code Lightstack.xcodeproj || {
+            echo "::error::Lightstack.xcodeproj is stale. Run 'xcodegen generate' and commit the result."
+            exit 1
+          }
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SPM_DIR }}
+          key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Pick an iOS simulator
+        run: python3 scripts/ci_pick_simulator.py >> "$GITHUB_ENV"
+
+      - name: Build and analyse (Debug)
+        run: |
+          set -o pipefail
+          xcodebuild clean build analyze \
+            -project Lightstack.xcodeproj -scheme Lightstack \
+            -destination "id=$SIM_UDID" \
+            -clonedSourcePackagesDirPath "$SPM_DIR" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Lightstack.xcodeproj -scheme Lightstack \
+            -destination "id=$SIM_UDID" \
+            -clonedSourcePackagesDirPath "$SPM_DIR" \
+            -resultBundlePath "$RUNNER_TEMP/unit.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build Release (catches DEBUG-only symbols leaking into Release)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Lightstack.xcodeproj -scheme Lightstack \
+            -configuration Release \
+            -destination "generic/platform=iOS Simulator" \
+            -clonedSourcePackagesDirPath "$SPM_DIR" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload unit test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-xcresult
+          path: ${{ runner.temp }}/unit.xcresult
+          if-no-files-found: ignore
+
+  ui-tests:
+    name: UI tests (nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Secrets.xcconfig from template
+        run: cp Lightstack/Config/Secrets.xcconfig.template Lightstack/Config/Secrets.xcconfig
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SPM_DIR }}
+          key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', 'project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Pick an iOS simulator
+        run: python3 scripts/ci_pick_simulator.py >> "$GITHUB_ENV"
+
+      - name: Run UI suite
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Lightstack.xcodeproj -scheme LightstackUITests \
+            -destination "id=$SIM_UDID" \
+            -clonedSourcePackagesDirPath "$SPM_DIR" \
+            -resultBundlePath "$RUNNER_TEMP/ui.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload xcresult on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-xcresult
+          path: ${{ runner.temp }}/ui.xcresult
+          if-no-files-found: ignore

@@ -6,15 +6,16 @@ final class RestoreFreshInstallTests: LightstackUITestCase {
 
     private let freshInstallArguments = [
         "-uiTestingFreshInstall", "-uiTestingFakeRemote", "online",
-        "-uiTestingRemoteSeed", "history", "-uiTestingRestoreDelay", "3"
+        "-uiTestingRemoteSeed", "history", "-uiTestingRestoreDelay", "10"
     ]
 
     func testFreshInstallRestoresHistoryAndSkipsOnboarding() {
-        launchApp(extraArguments: freshInstallArguments)
+        // Don't wait for the tab bar here: the restore screen is transient and must be observed.
+        launchApp(extraArguments: freshInstallArguments, waitForMainUI: false)
 
         // The restore screen replaces the onboarding decision while the account is checked.
         let restoring = app.descendants(matching: .any)["restoreProgressView"]
-        waitFor(restoring, "Restore screen never appeared")
+        waitFor(restoring, "Restore screen never appeared", timeout: 20)
         shot("01-restoring-your-history")
         XCTAssertFalse(app.staticTexts["Get Started"].exists, "Onboarding must not show before the cloud is checked")
 

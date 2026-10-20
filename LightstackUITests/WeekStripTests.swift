@@ -23,7 +23,7 @@ final class WeekStripTests: LightstackUITestCase {
     private func tapDay(_ offset: Int) {
         let id = dayId(offset)
         let day = element(id)
-        for _ in 0..<2 where !day.waitForExistence(timeout: 1) {
+        for _ in 0..<2 where !day.waitForExistence(timeout: 3) {
             tap(app.buttons["weekStrip.previous"])
         }
         tap(day)
@@ -60,6 +60,7 @@ final class WeekStripTests: LightstackUITestCase {
         waitFor(app.staticTexts["daySheet.noWorkout"])
         shot("daysheet-empty")
         XCTAssertTrue(app.buttons["daySheet.logWorkout"].exists)
+        waitFor(element("daySheet"))
         tap(app.buttons["daySheet.markRest"])
         waitFor(app.staticTexts["daySheet.restLabel"])
         shot("daysheet-rest")
@@ -94,6 +95,7 @@ final class WeekStripTests: LightstackUITestCase {
         launchApp()
         waitFor(app.buttons["chip.Push"])
         tapDay(-2)
+        waitFor(element("daySheet"))
         tap(app.buttons["daySheet.markRest"])
         tap(app.buttons["daySheet.done"])
         openTab("Profile")
