@@ -28,9 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create Secrets.xcconfig from template
+      - name: Write placeholder Secrets.xcconfig
         # Git-ignored but referenced by the project; placeholder values are enough to compile.
-        run: cp Lightstack/Config/Secrets.xcconfig.template Lightstack/Config/Secrets.xcconfig
+        run: scripts/ci_write_secrets.sh
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -98,8 +98,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create Secrets.xcconfig from template
-        run: cp Lightstack/Config/Secrets.xcconfig.template Lightstack/Config/Secrets.xcconfig
+      - name: Write placeholder Secrets.xcconfig
+        run: scripts/ci_write_secrets.sh
 
       - name: Install XcodeGen
         run: brew install xcodegen
