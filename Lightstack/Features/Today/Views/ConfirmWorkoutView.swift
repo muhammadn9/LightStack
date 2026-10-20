@@ -11,10 +11,13 @@ struct ConfirmWorkoutView: View {
     var workoutType: String = ""
 
     @State private var showChat = false
+    @State private var swapTarget: Exercise?
+    @State private var showDiscardConfirm = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
+                cancelRow
                 headerSection
                 exerciseList
                 actionButtons
@@ -26,6 +29,34 @@ struct ConfirmWorkoutView: View {
             if let chatVM = chatViewModel {
                 CoachChatView(viewModel: chatVM, todayViewModel: todayViewModel)
             }
+        }
+        .sheet(item: $swapTarget) { exercise in
+            ExerciseSwapSheet(todayViewModel: todayViewModel, exercise: exercise, onFinish: {})
+        }
+        .alert("Discard this workout plan?", isPresented: $showDiscardConfirm) {
+            Button("Discard", role: .destructive) { todayViewModel.discardPlanPreview() }
+                .accessibilityIdentifier("previewDiscardConfirmButton")
+            Button("Keep", role: .cancel) {}
+                .accessibilityIdentifier("previewKeepButton")
+        } message: {
+            Text("Nothing will be saved. You will go back to setup.")
+        }
+    }
+
+    // MARK: - Cancel
+
+    /// A way out of the preview, in case "Create workout" was tapped by accident.
+    private var cancelRow: some View {
+        HStack {
+            Button(action: { showDiscardConfirm = true }) {
+                Text("Cancel")
+                    .font(AppTheme.caveat(17, weight: .bold))
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(minWidth: AppTheme.minTouchSize, minHeight: AppTheme.minTouchSize, alignment: .leading)
+            }
+            .accessibilityIdentifier("previewCancelButton")
+            .accessibilityHint("Discards this workout plan")
+            Spacer()
         }
     }
 
@@ -100,6 +131,17 @@ struct ConfirmWorkoutView: View {
 
             Spacer()
 
+            Button(action: { swapTarget = exercise }) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(.title3, design: .default, weight: .regular))
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(minWidth: AppTheme.minTouchSize, minHeight: AppTheme.minTouchSize)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("previewSwap.\(todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0)")
+            .accessibilityLabel("Swap \(exercise.name)")
+            .accessibilityHint("Shows other exercises you could do instead")
+
             Button(action: {
                 todayViewModel.applyModification(
                     .removeExercise(name: exercise.name),
@@ -167,21 +209,28 @@ struct ConfirmWorkoutView: View {
             return String(r[range])
         }()
 
+        let perSet = todayViewModel.setTargets[exercise.id] ?? []
+
         VStack(alignment: .leading, spacing: 4) {
             ForEach(1...count, id: \.self) { setNum in
+                // A swapped-in lift can carry different numbers per set.
+                let target: SetTarget? = perSet.indices.contains(setNum - 1) ? perSet[setNum - 1] : nil
+                let rowWeight = target.map { $0.prefillWeight }.flatMap { $0.isEmpty ? nil : ($0 == "BW" ? $0 : "\($0) lbs") } ?? weight
+                let rowReps = target.map { $0.prefillReps }.flatMap { $0.isEmpty ? nil : $0 } ?? reps
+                let rowRir = target.map { $0.prefillRir }.flatMap { $0.isEmpty ? nil : $0 } ?? rir
                 HStack(spacing: 6) {
                     Text("Set \(setNum)")
                         .fixedSize()
                         .foregroundStyle(AppTheme.textSecondary)
                     Spacer()
-                    if !weight.isEmpty {
-                        Text(weight)
+                    if !rowWeight.isEmpty {
+                        Text(rowWeight)
                             .lineLimit(1)
                     }
                     Text("×")
-                    Text("\(reps) reps")
-                    if rir != "—" {
-                        Text("@ RIR \(rir)")
+                    Text("\(rowReps) reps")
+                    if rowRir != "—" {
+                        Text("@ RIR \(rowRir)")
                             .foregroundStyle(AppTheme.accent.opacity(0.8))
                     }
                 }

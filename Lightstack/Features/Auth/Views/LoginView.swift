@@ -196,7 +196,8 @@ struct LoginView: View {
                 try await environment.authService.resetPassword(email: email)
                 showResetConfirmation = true
             } catch {
-                errorMessage = error.localizedDescription
+                showResetConfirmation = false
+                errorMessage = AuthService.resetPasswordMessage(for: error)
             }
         }
     }
