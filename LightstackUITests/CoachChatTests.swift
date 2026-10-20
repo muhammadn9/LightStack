@@ -14,10 +14,7 @@ final class CoachChatTests: LightstackUITestCase {
         generateAndStartPushWorkout()
         waitFor(app.staticTexts["Barbell Bench Press"])
         let field = chatInput
-        for _ in 0..<3 where !field.exists {
-            app.buttons["Chat with coach"].tap()
-            _ = field.waitForExistence(timeout: 5)
-        }
+        tap(app.buttons["Chat with coach"], until: field)
         waitFor(field)
         let oneLineHeight = field.frame.height
         let long = String(repeating: "I want a heavier bench press today please. ", count: 6)
@@ -44,17 +41,11 @@ final class CoachChatTests: LightstackUITestCase {
         XCTAssertEqual(weight.value as? String, "135")
 
         let field = chatInput
-        for _ in 0..<3 where !field.exists {
-            app.buttons["Chat with coach"].tap()
-            _ = field.waitForExistence(timeout: 5)
-        }
+        tap(app.buttons["Chat with coach"], until: field)
         type("Can I go heavier bench today?", into: chatInput)
         // A tap while the keyboard is still settling can be lost; retry until it sends.
         let apply = app.buttons["Apply Changes"]
-        for _ in 0..<3 where !apply.exists {
-            app.buttons["chatSendButton"].tap()
-            _ = apply.waitForExistence(timeout: 6)
-        }
+        tap(app.buttons["chatSendButton"], until: apply)
         tap(apply)
         shot("coach-change-applied")
         tap(app.buttons["Done"])
@@ -75,16 +66,10 @@ final class CoachChatTests: LightstackUITestCase {
         waitFor(app.staticTexts["Barbell Bench Press"])
 
         let field = chatInput
-        for _ in 0..<3 where !field.exists {
-            app.buttons["Chat with coach"].tap()
-            _ = field.waitForExistence(timeout: 5)
-        }
+        tap(app.buttons["Chat with coach"], until: field)
         type("remove Cable Triceps Pushdown", into: chatInput)
         let apply = app.buttons["Apply Changes"]
-        for _ in 0..<3 where !apply.exists {
-            app.buttons["chatSendButton"].tap()
-            _ = apply.waitForExistence(timeout: 6)
-        }
+        tap(app.buttons["chatSendButton"], until: apply)
         XCTAssertTrue(apply.exists, "Confirmation sheet never appeared")
         XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Sounds good'")).firstMatch.exists,
                        "The AI was called for a local command")
@@ -92,7 +77,7 @@ final class CoachChatTests: LightstackUITestCase {
         tap(apply)
 
         let removed = app.staticTexts["✓ Removed Cable Triceps Pushdown"]
-        XCTAssertTrue(removed.waitForExistence(timeout: 5), "Removal was not confirmed in the chat")
+        XCTAssertTrue(removed.waitForExistence(timeout: 20), "Removal was not confirmed in the chat")
         tap(app.buttons["Done"])
         XCTAssertFalse(app.staticTexts["Cable Triceps Pushdown"].waitForExistence(timeout: 2),
                        "Exercise is still in the workout")

@@ -4,7 +4,8 @@ import XCTest
 class LightstackUITestCase: XCTestCase {
 
     var app: XCUIApplication!
-    let timeout: TimeInterval = 15
+    /// Generous: CI and a loaded host can make sheets and first renders slow. Waits return as soon as the condition holds.
+    let timeout: TimeInterval = 30
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -13,12 +14,16 @@ class LightstackUITestCase: XCTestCase {
     // MARK: - Launch
 
     /// Launches the app in test mode. `reset` wipes and reseeds the test store first.
-    func launchApp(reset: Bool = true, colorScheme: String? = nil, extraArguments: [String] = []) {
+    func launchApp(reset: Bool = true, colorScheme: String? = nil, extraArguments: [String] = [],
+                   waitForMainUI: Bool = true) {
         let application = XCUIApplication()
         application.launchArguments = ["-uiTesting"] + (reset ? ["-uiTestingReset"] : [])
             + (colorScheme.map { ["-appColorScheme", $0] } ?? []) + extraArguments
         application.launch()
         app = application
+        // Wait for the first screen so the first tap never lands on a still-launching UI.
+        // Skipped by tests that must observe a transient launch screen (e.g. the restore screen).
+        if waitForMainUI { _ = application.tabBars.firstMatch.waitForExistence(timeout: 45) }
     }
 
     // MARK: - Screenshots
@@ -40,8 +45,44 @@ class LightstackUITestCase: XCTestCase {
         return element
     }
 
+    /// Waits until the element exists AND is hittable (not mid-animation, not covered by a
+    /// presenting sheet), then taps it. Falls back to a plain tap if it never becomes hittable.
     func tap(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        waitFor(element, file: file, line: line).tap()
+        waitFor(element, file: file, line: line)
+        waitUntilHittable(element)
+        element.tap()
+    }
+
+    /// Condition-based wait until the element is on screen and has stopped moving (finished animating).
+    /// Uses frames rather than `isHittable`, which records a test failure when the activation point is
+    /// momentarily invalid mid-transition.
+    @discardableResult
+    func waitUntilHittable(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        var last = CGRect.null
+        while Date() < deadline {
+            if element.exists {
+                let frame = element.frame
+                if !frame.isEmpty, frame == last { return true }
+                last = frame
+            }
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+        return false
+    }
+
+    /// Taps `trigger` (re-tapping if the tap was lost) until `target` appears.
+    @discardableResult
+    func tap(_ trigger: XCUIElement, until target: XCUIElement, attempts: Int = 3, perAttempt: TimeInterval = 10) -> Bool {
+        for _ in 0..<attempts {
+            if target.exists { return true }
+            if trigger.waitForExistence(timeout: perAttempt) {
+                waitUntilHittable(trigger)
+                trigger.tap()
+            }
+            if target.waitForExistence(timeout: perAttempt) { return true }
+        }
+        return target.exists
     }
 
     /// Taps Finish Workout and confirms the "Finish workout?" alert.
@@ -53,7 +94,7 @@ class LightstackUITestCase: XCTestCase {
     func dismissKeyboardIfNeeded() {
         // Each presentation root (app, sheets) carries its own pill, so several can exist.
         let pills = app.buttons.matching(identifier: "Dismiss keyboard")
-        guard pills.firstMatch.waitForExistence(timeout: 2) else { return }
+        guard pills.firstMatch.waitForExistence(timeout: 3) else { return }
         if let pill = pills.allElementsBoundByIndex.last(where: { $0.isHittable }) {
             pill.tap()
         }
@@ -70,6 +111,7 @@ class LightstackUITestCase: XCTestCase {
     func focus(_ field: XCUIElement, atTrailingEdge: Bool = false,
                file: StaticString = #filePath, line: UInt = #line) {
         waitFor(field, file: file, line: line)
+        waitUntilHittable(field)
         let focused = NSPredicate(format: "hasKeyboardFocus == true")
         // The first tap can be swallowed while a screen is still settling, so retry once.
         for attempt in 0..<3 {
@@ -78,8 +120,10 @@ class LightstackUITestCase: XCTestCase {
             } else {
                 field.tap()
             }
-            let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: focused, object: field)], timeout: 3)
+            let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: focused, object: field)], timeout: 6)
             if result == .completed { return }
+            // Let a half-finished keyboard/sheet animation settle before retrying.
+            waitUntilHittable(field, timeout: 3)
             if attempt == 2 {
                 XCTFail("Field never got keyboard focus: \(field)", file: file, line: line)
             }
@@ -98,6 +142,7 @@ class LightstackUITestCase: XCTestCase {
 
     func openTab(_ title: String) {
         let tab = waitFor(app.tabBars.buttons[title])
+        waitUntilHittable(tab)
         // A tap during the first render can be lost, so confirm the tab became selected.
         for _ in 0..<2 where !tab.isSelected {
             tab.tap()
@@ -119,15 +164,18 @@ class LightstackUITestCase: XCTestCase {
     /// Today tab -> Push -> Generate -> Start. Ends on the first exercise page.
     func generateAndStartPushWorkout() {
         tap(app.buttons["chip.Push"])
-        tap(app.buttons["generateButton"])
+        let generate = app.buttons["generateButton"]
+        let startButton = app.buttons["startWorkoutButton"]
+        // Generation runs through the fake AI; a lost tap on a still-settling screen is retried.
+        tap(generate, until: startButton, attempts: 3, perAttempt: 30)
         // Start sits below the fold on the confirm screen; scroll to it and retry a lost tap.
-        let start = waitFor(app.buttons["startWorkoutButton"])
+        let start = waitFor(app.buttons["startWorkoutButton"], timeout: 60)
         let firstRow = app.textFields["setRow.0.0.weight"]
         for _ in 0..<3 where !firstRow.exists {
             var swipes = 0
-            while !start.isHittable && swipes < 4 { app.swipeUp(); swipes += 1 }
-            if start.exists { start.tap() }
-            if firstRow.waitForExistence(timeout: 8) { break }
+            while !start.isHittable && swipes < 6 { app.swipeUp(); swipes += 1 }
+            if waitUntilHittable(start, timeout: 5) { start.tap() }
+            if firstRow.waitForExistence(timeout: 15) { break }
         }
         waitFor(firstRow, "Active workout did not show the first set row")
     }

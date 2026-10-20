@@ -129,7 +129,7 @@ final class SupabaseUpsertRequestTests: XCTestCase {
         NSTimeZone.default = TimeZone(identifier: "America/Detroit") ?? previous
         defer { NSTimeZone.default = previous }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? .current
+        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? NSTimeZone.default
         // 21:00 on 15 Oct in Detroit is already 16 Oct in UTC.
         let evening = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 21)))
 

@@ -27,13 +27,13 @@ final class MergeExercisesTests: LightstackUITestCase {
         let add = app.buttons["Add Exercise"]
         for _ in 0..<3 where !add.exists {
             manual.tap()
-            if add.waitForExistence(timeout: 5) { break }
+            if add.waitForExistence(timeout: 10) { break }
         }
         let custom = app.buttons["addCustomExerciseButton"]
         waitFor(add)
         for _ in 0..<3 where !custom.exists {
             add.tap()
-            if custom.waitForExistence(timeout: 5) { break }
+            if custom.waitForExistence(timeout: 10) { break }
         }
         tap(custom)
     }

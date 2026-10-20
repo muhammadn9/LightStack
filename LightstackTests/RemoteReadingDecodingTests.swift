@@ -213,7 +213,7 @@ final class RemoteReadingDecodingTests: XCTestCase {
         NSTimeZone.default = TimeZone(identifier: "America/Detroit") ?? previous
         defer { NSTimeZone.default = previous }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? .current
+        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? NSTimeZone.default
         let evening = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 21)))
 
         // Upload side: stored day is the local day.
@@ -234,7 +234,7 @@ final class RemoteReadingDecodingTests: XCTestCase {
         NSTimeZone.default = TimeZone(identifier: "America/Detroit") ?? previous
         defer { NSTimeZone.default = previous }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? .current
+        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? NSTimeZone.default
 
         // Old build: the instant was uploaded, so Postgres kept the UTC day (16th).
         let restored = try await restoredWorkoutDate(storedDate: "2026-10-16", createdAt: "2026-10-16T01:00:00+00:00")
@@ -247,7 +247,7 @@ final class RemoteReadingDecodingTests: XCTestCase {
         NSTimeZone.default = TimeZone(identifier: "America/Detroit") ?? previous
         defer { NSTimeZone.default = previous }
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? .current
+        calendar.timeZone = TimeZone(identifier: "America/Detroit") ?? NSTimeZone.default
         // 09:00 Detroit = 13:00Z the same day: legacy and current rows both say the 15th.
         let restored = try await restoredWorkoutDate(storedDate: "2026-10-15", createdAt: "2026-10-15T13:00:00+00:00")
         XCTAssertEqual(calendar.component(.day, from: restored), 15)

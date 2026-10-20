@@ -13,8 +13,8 @@ final class WorkoutFlowTests: LightstackUITestCase {
         for _ in 0..<3 where !app.buttons["reorderDoneButton"].exists {
             tap(app.buttons["moreActionsButton"])
             let item = app.buttons["reorderExercisesButton"]
-            if item.waitForExistence(timeout: 3) { item.tap() }
-            _ = app.buttons["reorderDoneButton"].waitForExistence(timeout: 6)
+            if item.waitForExistence(timeout: 8) { item.tap() }
+            _ = app.buttons["reorderDoneButton"].waitForExistence(timeout: 12)
         }
         waitFor(app.buttons["reorderDoneButton"])
         shot("01-reorder-sheet")
@@ -84,7 +84,7 @@ final class WorkoutFlowTests: LightstackUITestCase {
         generateAndStartPushWorkout()
         waitFor(app.staticTexts["1 of 3"])
 
-        tap(app.buttons["addExerciseButton"])
+        tap(app.buttons["addExerciseButton"], until: app.staticTexts["yourExercisesHeader"], perAttempt: 15)
         waitFor(app.staticTexts["yourExercisesHeader"], "No 'Your exercises' section")
         let row = waitFor(app.buttons["yourExercise.Bench Press"], "Seeded Bench Press missing from history")
         shot("03-add-sheet")

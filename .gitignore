@@ -43,3 +43,4 @@ scripts/.venv/
 brag-output/
 .agents/
 skills-lock.json
+.spm/

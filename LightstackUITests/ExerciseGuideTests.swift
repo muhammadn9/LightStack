@@ -11,8 +11,8 @@ final class ExerciseGuideTests: LightstackUITestCase {
         let guideButton = app.buttons["Form guide"]
         for _ in 0..<3 where !app.staticTexts["howToHeader"].exists {
             tap(app.buttons["moreActionsButton"])
-            if guideButton.waitForExistence(timeout: 3) { guideButton.tap() }
-            _ = app.staticTexts["howToHeader"].waitForExistence(timeout: 6)
+            if guideButton.waitForExistence(timeout: 8) { guideButton.tap() }
+            _ = app.staticTexts["howToHeader"].waitForExistence(timeout: 12)
         }
         waitFor(app.staticTexts["howToHeader"], "How To section missing")
         // Identifiers may surface as other elements or static texts depending on grouping.
