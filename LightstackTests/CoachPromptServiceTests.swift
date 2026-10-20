@@ -56,8 +56,8 @@ final class CoachPromptServiceTests: XCTestCase {
 
     func testPromptsAreMuchSmallerThanTheOldSingleSizeFitsAll() {
         // The old prompt was roughly 9,000 characters for every call.
-        XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .plan).count, 3_000)
-        XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .postWorkout).count, 1_800)
+        XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .plan).count, 5_000)
+        XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .postWorkout).count, 1_900)
         XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .chat).count, 4_500)
     }
 

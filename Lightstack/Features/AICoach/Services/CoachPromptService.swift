@@ -28,7 +28,8 @@ final class CoachPromptService {
         var sections: [String]
         switch task {
         case .plan:
-            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples, Self.planFormat,
+            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
+                        Self.progressionRules, Self.planFormat,
                         "User's preferred rest: \(restSeconds) s; use it for rest_seconds."]
         case .chat:
             sections = [Self.identityShort, profileLine(profile), Self.chatFormat, Self.modificationsRules]
@@ -59,12 +60,34 @@ final class CoachPromptService {
     strength or conditioning workout that fits time and energy.
     """
 
+    static let progressionRules = """
+    PROGRESSION RULES
+    - Base every load on the ACTUAL logged sets in RECENT SESSIONS (weight x reps @RIR), not on \
+    guesses. Only estimate from the athlete profile when an exercise has no history.
+    - Double progression with a rep range that fits the lift (heavy compounds 5-8, other \
+    compounds 6-10, isolation 10-15). If every working set last time reached the top of the range \
+    at the target RIR, add a small load (about 2.5-5%, smallest plate step). Otherwise keep the \
+    load and aim for more reps. If last time ended at RIR 0 with missed reps, or notes mention \
+    pain or fatigue, hold or reduce.
+    - Main compound lifts: 1-2 lighter ramp-up sets first (higher RIR; they count in set_targets), \
+    then working sets at RIR 2-3, with RIR 0-1 only on the final set, never every set. An \
+    optional lighter back-off set may follow.
+    - Do not prescribe the same weight x reps on every set of every exercise; vary sets by \
+    purpose. Respect energy, time and the preferred rest.
+    - Use previous coach notes and the athlete's notes (pain, form, equipment) to adjust.
+    - coach_note: one short line saying why, e.g. "Hit 8@2 last time, +5 lb".
+    """
+
     static let planFormat = """
     WORKOUT PLAN FORMAT
     Return ONLY this JSON object, no markdown fences, no other text:
     {"exercises": [{"name": "str", "muscle_group": "str", "sets": int, "target_weight": "str|null", \
     "reps": "str|null (e.g. 8-12)", "rir": "str|null (e.g. 1-2)", "rest_seconds": int|null, \
-    "coach_note": "str|null", "superset": "str|null (e.g. A)"}], "coaching_notes": "str"}
+    "coach_note": "str|null", "superset": "str|null (e.g. A)", \
+    "set_targets": [{"weight": "135", "reps": "10", "rir": "3"}]}], "coaching_notes": "str"}
+    set_targets lists every set in order (weight in lb as a string, "BW" for bodyweight, reps, rir); \
+    give it for every strength exercise so sets can differ, and make "sets" equal its length. \
+    Then target_weight / reps / rir describe the top working set.
     Supersets: set "superset" only when asked or clearly useful, else null. Exercises sharing \
     a label alternate sets, are listed adjacent, max 4 per label. Keep coach_note and \
     coaching_notes to one short sentence.
@@ -109,8 +132,10 @@ final class CoachPromptService {
     Reply with ONLY a JSON object: {"note": "...", "summary": "..."}
     - note: the progression note, at most 3 sentences. No greeting, no name. Lead with what \
     happened, end with one specific target for next session (exact weight, reps or duration). Plain text.
-    - summary: factual rolling summary for future planning, at most 80 words: key lifts and \
-    working weights, trend (up/down/plateau), next target. Numbers first.
+    - summary: updated cumulative rolling summary for future planning, at most 120 words. If a \
+    previous summary is given, merge it with this session instead of replacing it. Cover the trend \
+    over sessions (up/down/plateau) and, per main lift, the last working weight x reps @RIR and the \
+    next target. Numbers first.
     """
 
     /// One-line athlete profile; unknown fields are left out.
@@ -141,7 +166,9 @@ final class CoachPromptService {
         notes: String?,
         rollingSummary: String? = nil,
         recentSessions: [Workout] = [],
-        recentSessionExercises: [UUID: [Exercise]] = [:]
+        recentSessionExercises: [UUID: [Exercise]] = [:],
+        recentLoggedSets: [UUID: [WorkoutSet]] = [:],
+        bestSets: [String: (weightLbs: Double, reps: Int)] = [:]
     ) -> String {
         let sanitizedType = sanitize(workoutType)
         let sanitizedNotes = notes.map { sanitize($0) } ?? ""
@@ -164,20 +191,29 @@ final class CoachPromptService {
         }
 
         if !recentSessions.isEmpty {
-            message += "\n\nRECENT SESSIONS:"
+            message += "\n\nRECENT SESSIONS (newest first; actual logged sets as weight lb x reps @RIR):"
             for workout in recentSessions {
                 let dateStr = DateFormatter.shortDate.string(from: workout.date)
                 message += "\n\n[\(dateStr)] \(workout.workoutType)"
-                if let exercises = recentSessionExercises[workout.id] {
-                    for ex in exercises {
-                        let weight = ex.coachNoteParts.weight ?? "bodyweight"
-                        message += "\n  - \(ex.name): \(ex.targetSets ?? 0) sets x \(ex.targetReps ?? "?") reps (\(weight))"
+                if let note = clipped(workout.userNote, 200) { message += "\n  Athlete note: \(note)" }
+                if let note = clipped(workout.aiProgressionNote, 240) { message += "\n  Coach note: \(note)" }
+                for ex in recentSessionExercises[workout.id] ?? [] {
+                    let logged = (recentLoggedSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }
+                    guard !logged.isEmpty else { continue }
+                    let formatted = ex.trackingType == .cardio
+                        ? logged.map { formatCardioSet($0) }
+                        : logged.map { formatLoggedSet($0) }
+                    var line = "\n  - \(ex.name): " + formatted.joined(separator: ", ")
+                    if let best = bestSets[ex.name.lowercased()] {
+                        line += " | best \(String(format: "%g", best.weightLbs))x\(best.reps)"
                     }
+                    if let cue = clipped(ex.coachNoteParts.message, 100) { line += " | note: \(cue)" }
+                    message += line
                 }
             }
         }
 
-        message += "\n\nGenerate the JSON workout plan within my time. Estimate target_weight from my history/profile."
+        message += "\n\nGenerate the JSON workout plan within my time. Base every load on my actual logged sets above (progression rules); estimate from my profile only for exercises with no history."
 
         return message
     }
@@ -187,9 +223,14 @@ final class CoachPromptService {
     func buildPostWorkoutMessage(
         workoutType: String,
         exercises: [Exercise],
-        sets: [UUID: [WorkoutSet]]
+        sets: [UUID: [WorkoutSet]],
+        previousSummary: String? = nil
     ) -> String {
-        var lines = ["\(sanitize(workoutType)) session, completed sets:"]
+        var lines: [String] = []
+        if let previous = previousSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !previous.isEmpty {
+            lines.append("Previous rolling summary: \(sanitize(previous))")
+        }
+        lines.append("\(sanitize(workoutType)) session, completed sets:")
         for exercise in exercises {
             let exerciseSets = (sets[exercise.id] ?? []).sorted { $0.setNumber < $1.setNumber }
             guard !exerciseSets.isEmpty else { continue }
@@ -204,11 +245,24 @@ final class CoachPromptService {
             }
             lines.append("\(exercise.name): " + formatted.joined(separator: "; "))
         }
-        lines.append("(weight lb x reps @RIR) Return the JSON.")
+        lines.append("(weight lb x reps @RIR) Return the JSON; the summary must be the updated cumulative one.")
         return lines.joined(separator: "\n")
     }
 
     // MARK: - Private Cardio Formatting
+
+    private func formatLoggedSet(_ s: WorkoutSet) -> String {
+        let rir = s.rir.map { "@\($0)" } ?? ""
+        return "\(String(format: "%g", s.weightLbs))x\(s.reps)\(rir)"
+    }
+
+    private func clipped(_ text: String?, _ limit: Int) -> String? {
+        guard let text else { return nil }
+        let clean = sanitize(text).replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return nil }
+        return clean.count > limit ? String(clean.prefix(limit)) + "…" : clean
+    }
 
     private func formatCardioSet(_ s: WorkoutSet) -> String {
         var parts: [String] = []

@@ -6,6 +6,10 @@ struct CoachContext {
     let rollingSummary: String?
     let recentSessions: [Workout]
     let recentSessionSets: [UUID: [Exercise]]
+    /// Logged sets of the recent sessions, keyed by exercise id.
+    var recentLoggedSets: [UUID: [WorkoutSet]] = [:]
+    /// Best set on record (heaviest e1RM) per lowercased exercise name.
+    var bestSets: [String: (weightLbs: Double, reps: Int)] = [:]
 }
 
 /// Builds the AI prompt context from saved data.
@@ -28,8 +32,13 @@ final class CoachContextBuilder {
         self.validationService = validationService
     }
 
+    /// How many completed sessions of the same type go into the plan prompt.
+    static let historySessionCount = 3
+
     /// Build context for an AI coach call, optionally scoped to a workout type.
-    func buildContext(userId: UUID, workoutType: String? = nil) -> CoachContext {
+    /// History is the last few COMPLETED sessions (at least one logged set), so a
+    /// pending, empty or abandoned workout never takes a slot.
+    func buildContext(userId: UUID, workoutType: String? = nil, includeHistory: Bool = true) -> CoachContext {
         let profile = profileRepository.fetchProfileSync(userId: userId)
 
         // Fetch rolling summary for this workout type
@@ -39,27 +48,49 @@ final class CoachContextBuilder {
             rollingSummary = cdSummary.summaryText
         }
 
-        // Fetch last 2 workouts of same type with their exercises
-        let recentWorkouts = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 10)
-        var filtered: [Workout] = []
-        if let type = workoutType {
-            filtered = recentWorkouts.filter { $0.workoutType.lowercased() == type.lowercased() }
-            filtered = Array(filtered.prefix(2))
-        } else {
-            filtered = Array(recentWorkouts.prefix(2))
+        guard includeHistory else {
+            return CoachContext(profile: profile, rollingSummary: rollingSummary,
+                                recentSessions: [], recentSessionSets: [:])
         }
 
-        var recentSessionSets: [UUID: [Exercise]] = [:]
-        for workout in filtered {
+        var candidates = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 40)
+        if let type = workoutType {
+            candidates = candidates.filter { $0.workoutType.lowercased() == type.lowercased() }
+        }
+
+        var sessions: [Workout] = []
+        var sessionExercises: [UUID: [Exercise]] = [:]
+        var loggedSets: [UUID: [WorkoutSet]] = [:]
+        for workout in candidates {
+            if sessions.count >= Self.historySessionCount { break }
             let exercises = workoutRepository.fetchExercises(workoutId: workout.id)
-            recentSessionSets[workout.id] = exercises
+            var sets: [UUID: [WorkoutSet]] = [:]
+            for ex in exercises {
+                let exSets = workoutRepository.fetchSets(exerciseId: ex.id).sorted { $0.setNumber < $1.setNumber }
+                if !exSets.isEmpty { sets[ex.id] = exSets }
+            }
+            guard !sets.isEmpty else { continue }
+            sessions.append(workout)
+            sessionExercises[workout.id] = exercises.filter { sets[$0.id] != nil }
+            loggedSets.merge(sets) { a, _ in a }
+        }
+
+        var bests: [String: (weightLbs: Double, reps: Int)] = [:]
+        for ex in sessionExercises.values.flatMap({ $0 }) {
+            let key = ex.name.lowercased()
+            guard bests[key] == nil, ex.trackingType != .cardio,
+                  let pr = localStorage.fetchPersonalRecord(userId: userId, exerciseName: ex.name) else { continue }
+            let record = PersonalRecord(from: pr)
+            bests[key] = (record.weightLbs, record.reps)
         }
 
         return CoachContext(
             profile: profile,
             rollingSummary: rollingSummary,
-            recentSessions: filtered,
-            recentSessionSets: recentSessionSets
+            recentSessions: sessions,
+            recentSessionSets: sessionExercises,
+            recentLoggedSets: loggedSets,
+            bestSets: bests
         )
     }
 }

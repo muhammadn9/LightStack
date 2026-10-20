@@ -4,7 +4,7 @@ import os
 // MARK: - Delegate
 
 protocol WorkoutSessionServiceDelegate: AnyObject {
-    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise])
+    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise], setTargets: [UUID: [SetTarget]])
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String)
     func sessionServiceDidSaveWorkout(_ service: WorkoutSessionService)
     func sessionServiceDidFail(_ service: WorkoutSessionService, error: Error)
@@ -106,7 +106,9 @@ final class WorkoutSessionService {
                 notes: sanitizedNotes,
                 rollingSummary: context.rollingSummary,
                 recentSessions: context.recentSessions,
-                recentSessionExercises: context.recentSessionSets
+                recentSessionExercises: context.recentSessionSets,
+                recentLoggedSets: context.recentLoggedSets,
+                bestSets: context.bestSets
             )
 
             aiServiceManager.generateChat(
@@ -198,12 +200,13 @@ final class WorkoutSessionService {
         let workoutType = workout.workoutType
 
         Task { @MainActor in
-            let context = coachContextBuilder.buildContext(userId: userId)
+            let context = coachContextBuilder.buildContext(userId: userId, workoutType: workoutType, includeHistory: false)
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .postWorkout)
             let userMessage = coachPromptService.buildPostWorkoutMessage(
                 workoutType: workoutType,
                 exercises: exercises,
-                sets: allSets
+                sets: allSets,
+                previousSummary: context.rollingSummary
             )
 
             aiServiceManager.generateChat(
@@ -436,13 +439,20 @@ final class WorkoutSessionService {
 
     // MARK: - JSON Parser
 
-    func parseWorkoutPlanJSON(_ text: String) -> [Exercise]? {
+    func parseWorkoutPlanJSON(_ text: String) -> ParsedPlan? {
         guard let workoutId = currentWorkoutId else { return nil }
-        return Self.exercises(
+        return Self.plan(
             fromPlanJSON: text,
             workoutId: workoutId,
             sanitizeLabel: { self.validationService.sanitizeLabel($0) }
         )
+    }
+
+    /// A decoded plan: the exercises plus the coach's per-set targets (keyed by exercise id;
+    /// only exercises that came with `set_targets` have an entry).
+    struct ParsedPlan {
+        var exercises: [Exercise]
+        var setTargets: [UUID: [SetTarget]]
     }
 
     /// Pure plan-JSON decoding, kept separate so it can be tested without a session.
@@ -451,6 +461,26 @@ final class WorkoutSessionService {
         workoutId: UUID,
         sanitizeLabel: (String) -> String
     ) -> [Exercise]? {
+        plan(fromPlanJSON: text, workoutId: workoutId, sanitizeLabel: sanitizeLabel)?.exercises
+    }
+
+    /// Weight text for the exercise-level "Target:" note when only per-set targets exist:
+    /// the heaviest set's weight, with " lbs" added to a bare number.
+    private static func topWeight(of targets: [SetTarget]) -> String? {
+        let best = targets.compactMap { t -> (Double, String)? in
+            guard let raw = t.weight?.trimmingCharacters(in: .whitespaces), !raw.isEmpty,
+                  let value = Double(t.prefillWeight) else { return nil }
+            return (value, raw)
+        }.max { $0.0 < $1.0 }
+        guard let raw = best?.1 else { return nil }
+        return Double(raw) != nil ? "\(raw) lbs" : raw
+    }
+
+    static func plan(
+        fromPlanJSON text: String,
+        workoutId: UUID,
+        sanitizeLabel: (String) -> String
+    ) -> ParsedPlan? {
         let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionService")
 
         // Strip accidental markdown code-fences some providers emit
@@ -479,12 +509,16 @@ final class WorkoutSessionService {
         let groupIds = SupersetGroup.groupIds(forLabels: usable.map(\.superset))
 
         var exercises: [Exercise] = []
+        var perSetTargets: [UUID: [SetTarget]] = [:]
         for (index, aiEx) in usable.enumerated() {
             let name = sanitizeLabel(aiEx.name)
+            let targets = aiEx.setTargets.map { SetTarget(weight: $0.weight, reps: $0.reps, rir: $0.rir) }
+            let topSet = targets.max { (Double($0.prefillWeight) ?? 0) < (Double($1.prefillWeight) ?? 0) }
 
             // Preserve "Target: {weight}" prefix convention that
             // ActiveWorkoutViewModel.prefillWeightValue depends on
-            let weightNote = aiEx.targetWeight.flatMap { $0.isEmpty ? nil : "Target: \($0)" }
+            let exerciseWeight = aiEx.targetWeight.flatMap { $0.isEmpty ? nil : $0 } ?? topWeight(of: targets)
+            let weightNote = exerciseWeight.map { "Target: \($0)" }
             let mergedNote: String?
             switch (weightNote, aiEx.coachNote) {
             case let (w?, c?): mergedNote = "\(w) — \(c)"
@@ -495,31 +529,35 @@ final class WorkoutSessionService {
 
             let muscleGroup = aiEx.muscleGroup.isEmpty ? inferMuscleGroup(name) : aiEx.muscleGroup
 
-            exercises.append(Exercise.create(
+            let exercise = Exercise.create(
                 workoutId: workoutId,
                 name: name,
                 muscleGroup: muscleGroup,
                 orderIndex: index,
                 targetSets: aiEx.sets,
-                targetReps: aiEx.reps,
-                targetRir: aiEx.rir,
+                targetReps: aiEx.reps ?? topSet?.reps,
+                targetRir: aiEx.rir ?? topSet?.rir,
                 restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup, existing: aiEx.restSeconds),
                 coachNote: mergedNote,
                 supersetGroupId: groupIds[index]
-            ))
+            )
+            exercises.append(exercise)
+            if !targets.isEmpty { perSetTargets[exercise.id] = targets }
         }
         // Members of a label are pulled together; out-of-range groups are dropped.
         exercises = SupersetGroup.normalized(exercises)
-        return exercises.isEmpty ? nil : exercises
+        guard !exercises.isEmpty else { return nil }
+        let kept = Set(exercises.map(\.id))
+        return ParsedPlan(exercises: exercises, setTargets: perSetTargets.filter { kept.contains($0.key) })
     }
 
     // MARK: - Response Handlers
 
     private func handleWorkoutPlanResponse(_ text: String) {
         // Primary path: JSON
-        if let exercises = parseWorkoutPlanJSON(text) {
-            logger.debug("JSON parse succeeded: \(exercises.count) exercises")
-            finalizePlan(exercises)
+        if let parsed = parseWorkoutPlanJSON(text) {
+            logger.debug("JSON parse succeeded: \(parsed.exercises.count) exercises")
+            finalizePlan(parsed.exercises, setTargets: parsed.setTargets)
             return
         }
         // Fallback: markdown table (zero regression during rollout)
@@ -546,12 +584,12 @@ final class WorkoutSessionService {
 
     /// The plan succeeded: only now is the workout saved (and queued), followed by its
     /// exercises. The workout is brand new, so there is nothing to clear first.
-    private func finalizePlan(_ exercises: [Exercise]) {
+    private func finalizePlan(_ exercises: [Exercise], setTargets: [UUID: [SetTarget]] = [:]) {
         if let workout = currentWorkout {
             workoutRepository.createWorkout(workout)
             workoutRepository.saveExercises(exercises, workoutId: workout.id)
         }
-        delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises)
+        delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises, setTargets: setTargets)
     }
 
     private func handleProgressionNoteResponse(_ text: String) {
@@ -664,10 +702,33 @@ private struct WorkoutPlanResponse: Decodable {
     }
 }
 
+/// One entry of `set_targets`. Values may arrive as strings or numbers.
+private struct AISetTarget: Decodable {
+    let weight: String?
+    let reps: String?
+    let rir: String?
+    enum CodingKeys: String, CodingKey { case weight, reps, rir }
+
+    private static func text(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> String? {
+        if let s = try? c.decodeIfPresent(String.self, forKey: key) { return s.isEmpty ? nil : s }
+        if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return String(format: "%g", d) }
+        return nil
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        weight = Self.text(c, .weight)
+        reps = Self.text(c, .reps)
+        rir = Self.text(c, .rir)
+    }
+}
+
 private struct AIExercise: Decodable {
     let name: String
     let muscleGroup: String
     let sets: Int
+    /// Optional per-set targets; empty when absent or malformed. When present, `sets` is their count.
+    let setTargets: [AISetTarget]
     let targetWeight: String?
     let reps: String?
     let rir: String?
@@ -677,9 +738,28 @@ private struct AIExercise: Decodable {
     let superset: String?
     enum CodingKeys: String, CodingKey {
         case name, sets, reps, rir, superset
+        case setTargets   = "set_targets"
         case muscleGroup  = "muscle_group"
         case targetWeight = "target_weight"
         case restSeconds  = "rest_seconds"
         case coachNote    = "coach_note"
+    }
+}
+
+extension AIExercise {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        muscleGroup = try c.decode(String.self, forKey: .muscleGroup)
+        // A malformed set_targets must not sink the whole plan: fall back to the single fields.
+        let targets = (try? c.decodeIfPresent([AISetTarget].self, forKey: .setTargets)) ?? []
+        setTargets = targets
+        sets = targets.isEmpty ? try c.decode(Int.self, forKey: .sets) : targets.count
+        targetWeight = try c.decodeIfPresent(String.self, forKey: .targetWeight)
+        reps = try c.decodeIfPresent(String.self, forKey: .reps)
+        rir = try c.decodeIfPresent(String.self, forKey: .rir)
+        restSeconds = try c.decodeIfPresent(Int.self, forKey: .restSeconds)
+        coachNote = try c.decodeIfPresent(String.self, forKey: .coachNote)
+        superset = try c.decodeIfPresent(String.self, forKey: .superset)
     }
 }

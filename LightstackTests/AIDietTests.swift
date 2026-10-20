@@ -53,7 +53,7 @@ final class AIDietTests: XCTestCase {
         for task in AITask.allCases {
             caps[task] = config(model: "gemini-2.5-flash", options: .forTask(task))["maxOutputTokens"] as? Int
         }
-        XCTAssertEqual(caps[.plan], 3000)
+        XCTAssertEqual(caps[.plan], 5000)
         XCTAssertEqual(caps[.chat], 1000)
         XCTAssertEqual(caps[.postWorkout], 800)
         XCTAssertEqual(caps[.monthPlan], 4000)

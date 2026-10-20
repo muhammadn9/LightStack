@@ -30,7 +30,7 @@ struct AIRequestOptions: Equatable {
     /// Caps are the largest realistic output for each task, plus headroom.
     static func forTask(_ task: AITask) -> AIRequestOptions {
         switch task {
-        case .plan: return AIRequestOptions(task: task, maxOutputTokens: 3000, minimalThinking: true)
+        case .plan: return AIRequestOptions(task: task, maxOutputTokens: 5000, minimalThinking: true)
         case .chat: return AIRequestOptions(task: task, maxOutputTokens: 1000, minimalThinking: true)
         case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, minimalThinking: true)
         case .monthPlan: return AIRequestOptions(task: task, maxOutputTokens: 4000, minimalThinking: true)

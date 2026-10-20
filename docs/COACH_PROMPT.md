@@ -7,6 +7,26 @@ coaching logic all flow from this prompt.
 
 ---
 
+> **Live prompt (plan generation).** The strings in `CoachPromptService.swift` are authoritative;
+> the long prompt below is the older reference. The plan call now sends: identity, profile line,
+> `trainingPrinciples`, `progressionRules` and `planFormat`.
+>
+> - **History:** the last 3 completed sessions (>= 1 logged set) of the same workout type, as actual
+>   sets per exercise (`Bench Press: 135x10@3, 155x8@2, 165x6@1 | best 175x5`), plus the date,
+>   athlete note, coach note and exercise coach note. The rolling summary is sent too.
+> - **Progression rules:** base loads on the logged sets; double progression (heavy compounds 5-8,
+>   other compounds 6-10, isolation 10-15; top of range at target RIR on all working sets -> +2.5-5%,
+>   else add reps; RIR 0 with missed reps or pain notes -> hold or reduce); ramp-up sets then working
+>   sets at RIR 2-3 with RIR 0-1 only on the last set; vary sets; one-line `coach_note` saying why.
+> - **Plan JSON:** each exercise may carry `set_targets: [{weight, reps, rir}]` (and `sets` equals its
+>   length); the single `target_weight` / `reps` / `rir` fields still work. Per-set targets prefill
+>   each set row through the same `SetTarget` path as chat modifications.
+> - **Post-workout:** the previous rolling summary is included and the reply's `summary` is an updated
+>   cumulative one (<= 120 words: trend, and per main lift the last working weight x reps @RIR and the
+>   next target).
+
+---
+
 ## Core Prompt (CoachPromptService.swift — buildSystemPrompt)
 
 ```

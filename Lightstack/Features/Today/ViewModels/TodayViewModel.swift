@@ -264,13 +264,14 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     // MARK: - WorkoutSessionServiceDelegate
 
-    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise]) {
+    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise], setTargets: [UUID: [SetTarget]]) {
         guard !exercises.isEmpty else {
             self.errorMessage = "Couldn't build a workout. Please try again."
             self.phase = .setup
             return
         }
         self.exercises = exercises
+        self.setTargets = setTargets
         self.exerciseListResetToken += 1
         self.phase = .confirmation
     }
