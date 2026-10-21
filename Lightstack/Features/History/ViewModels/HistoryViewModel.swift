@@ -42,13 +42,27 @@ final class HistoryViewModel: ObservableObject {
     /// `workoutType`), or all workouts if `type` is nil.
     static func filtered(_ workouts: [Workout], by type: String?) -> [Workout] {
         guard let filter = type else { return workouts }
-        return workouts.filter { $0.workoutType.lowercased() == filter.lowercased() }
+        let wanted = Self.typeKey(filter)
+        return workouts.filter { Self.typeKey($0.workoutType) == wanted }
+    }
+
+    private static func typeKey(_ type: String) -> String {
+        type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     /// Returns the unique workout types present in `workouts`, sorted alphabetically.
+    /// Spellings that differ only by case or surrounding spaces count once, shown as the most common one.
     static func availableTypes(in workouts: [Workout]) -> [String] {
-        let types = Set(workouts.map { $0.workoutType })
-        return types.sorted()
+        var spellings: [String: [String: Int]] = [:]
+        for workout in workouts {
+            let trimmed = workout.workoutType.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            spellings[trimmed.lowercased(), default: [:]][trimmed, default: 0] += 1
+        }
+        let shown = spellings.values.compactMap { counts in
+            counts.max { a, b in a.value != b.value ? a.value < b.value : a.key > b.key }?.key
+        }
+        return shown.sorted()
     }
 
     // MARK: - Workout Summary
