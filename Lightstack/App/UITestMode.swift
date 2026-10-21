@@ -468,7 +468,10 @@ final class UITestFakeAIProvider: AIProvider {
         {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets": 3,
          "target_weight": "50 lbs", "reps": "10", "rir": "2", "rest_seconds": 90},
         {"name": "Cable Triceps Pushdown", "muscle_group": "Triceps", "sets": 3,
-         "target_weight": "40 lbs", "reps": "12", "rir": "1", "rest_seconds": 60}
+         "target_weight": "40 lbs", "reps": "12", "rir": "1", "rest_seconds": 60,
+         "set_targets": [{"weight": "185", "reps": "8", "rir": "4"},
+                         {"weight": "185", "reps": "8", "rir": "3"},
+                         {"weight": "195", "reps": "6", "rir": "2"}]}
       ]
     }
     """

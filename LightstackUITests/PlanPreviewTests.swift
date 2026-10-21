@@ -44,6 +44,19 @@ final class PlanPreviewTests: LightstackUITestCase {
         XCTAssertFalse(weightField(exercise: 1, row: 2).exists, "Row count should match last session (2 sets)")
     }
 
+    func testSetRowsShowFullWeightOnOneLine() throws {
+        launchApp()
+        tap(app.buttons["chip.Push"])
+        tap(app.buttons["generateButton"])
+        let row = app.descendants(matching: .any).matching(identifier: "plan.setRow.2.0").firstMatch
+        var swipes = 0
+        while !row.waitForExistence(timeout: 2) && swipes < 5 { app.swipeUp(); swipes += 1 }
+        XCTAssertTrue(row.exists, "Set row missing")
+        shot("16-plan-set-rows")
+        XCTAssertEqual(row.label, "Set 1 185 lb × 8 @ RIR 4")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "plan.setRow.2.2").firstMatch.label, "Set 3 195 lb × 6 @ RIR 2")
+    }
+
     func testCancelAndDiscardReturnsToSetupLeavingHistoryUnchanged() throws {
         launchApp()
         tap(app.buttons["chip.Push"])
