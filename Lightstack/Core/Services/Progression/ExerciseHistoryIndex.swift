@@ -27,7 +27,8 @@ struct ExerciseHistoryIndex {
         sessions: [Workout],
         exercises: [UUID: [Exercise]],
         loggedSets: [UUID: [WorkoutSet]],
-        bestSets: [String: (weightLbs: Double, reps: Int)]
+        bestSets: [String: (weightLbs: Double, reps: Int)],
+        feedbackFor: (UUID) -> SessionFeedback? = { _ in nil }
     ) {
         var built: [ExerciseHistoryGroup] = []
         for workout in sessions {
@@ -35,6 +36,7 @@ struct ExerciseHistoryIndex {
                 let sets = (loggedSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }
                     .map { HistorySet($0.weightLbs, $0.reps, rir: $0.rir) }
                 guard !sets.isEmpty else { continue }
+                let feedback = feedbackFor(ex.id)
                 let index = built.firstIndex { group in
                     group.names.contains { ExerciseNameResolver.isMatch($0, ex.name) }
                 }
@@ -42,13 +44,14 @@ struct ExerciseHistoryIndex {
                     if !built[i].names.contains(ex.name) { built[i].names.append(ex.name) }
                     if let s = built[i].sessions.firstIndex(where: { $0.date == workout.date }) {
                         built[i].sessions[s].sets += sets
+                        if built[i].sessions[s].feedback == nil { built[i].sessions[s].feedback = feedback }
                     } else {
-                        built[i].sessions.append(HistorySession(date: workout.date, sets: sets))
+                        built[i].sessions.append(HistorySession(date: workout.date, sets: sets, feedback: feedback))
                     }
                 } else {
                     built.append(ExerciseHistoryGroup(
                         names: [ex.name],
-                        sessions: [HistorySession(date: workout.date, sets: sets)],
+                        sessions: [HistorySession(date: workout.date, sets: sets, feedback: feedback)],
                         best: nil
                     ))
                 }

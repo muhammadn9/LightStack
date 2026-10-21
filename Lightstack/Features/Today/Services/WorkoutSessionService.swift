@@ -45,8 +45,8 @@ final class WorkoutSessionService {
     private var summaryWantedFor: (userId: UUID, workoutType: String)?
     private var finishToken = UUID()
 
-    /// Optional feedback on the last session ("too easy" / "about right" / "too hard"),
-    /// set by the UI before `generatePlan`; the progression engine uses it.
+    /// Fallback feedback for exercises whose last session has none of its own. The UI records
+    /// feedback per exercise (`ExerciseFeedbackStore`), which `generatePlan` reads into the history.
     var sessionFeedback: SessionFeedback?
 
     /// What the plan response needs once it arrives.
@@ -128,7 +128,8 @@ final class WorkoutSessionService {
                 userId,
                 ExerciseHistoryIndex(
                     sessions: context.recentSessions, exercises: context.recentSessionSets,
-                    loggedSets: context.recentLoggedSets, bestSets: context.bestSets),
+                    loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
+                    feedbackFor: { ExerciseFeedbackStore.shared.feedback(forExercise: $0) }),
                 energy
             )
             CoachDebugStore.shared.recordRequest(
@@ -638,6 +639,9 @@ final class WorkoutSessionService {
         if let workout = currentWorkout {
             workoutRepository.createWorkout(workout)
             workoutRepository.saveExercises(exercises, workoutId: workout.id)
+            // Regenerating replaces earlier unstarted plans for the same day.
+            StaleWorkoutCleanup(localStorage: localStorage, workoutRepository: workoutRepository)
+                .removeSupersededPlans(userId: workout.userId, newPlanId: workout.id)
         }
         delegate?.sessionServiceDidGeneratePlan(self, exercises: exercises, setTargets: setTargets)
     }

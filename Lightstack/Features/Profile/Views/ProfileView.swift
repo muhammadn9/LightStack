@@ -11,6 +11,7 @@ struct ProfileView: View {
     @State private var showSettings = false
     @State private var showMergeExercises = false
     @State private var showMergeWorkoutTypes = false
+    @State private var showCoachSaw = false
     @State private var streak: Int = 0
     @State private var totalSessions: Int = 0
     @State private var totalVolume: Double = 0
@@ -42,6 +43,9 @@ struct ProfileView: View {
             }
             .navigationDestination(isPresented: $showMergeWorkoutTypes) {
                 MergeWorkoutTypesView(onMerged: loadProfileData)
+            }
+            .sheet(isPresented: $showCoachSaw) {
+                if let userId = environment.authService.currentUser()?.userId { CoachSawView(userId: userId) }
             }
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
@@ -221,6 +225,26 @@ struct ProfileView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("profile.manageWorkoutTypes")
+
+            InkDivider()
+            Button { showCoachSaw = true } label: {
+                HStack {
+                    Text("What the coach saw")
+                        .font(AppTheme.caveat(14))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                    Text("Last plan")
+                        .font(AppTheme.caveat(12))
+                        .foregroundStyle(AppTheme.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("profile.coachSaw")
 
         }
         .padding(14)

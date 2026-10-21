@@ -18,6 +18,7 @@ enum PlanProgressionApplier {
         plan: WorkoutSessionService.ParsedPlan,
         history: ExerciseHistoryIndex,
         energy: Int,
+        /// Fallback when the exercise's last session carries no feedback of its own.
         feedback: SessionFeedback?,
         bestLookup: (String) -> Double? = { _ in nil }
     ) -> AppliedPlan {
@@ -39,7 +40,7 @@ enum PlanProgressionApplier {
             let engine = group.flatMap {
                 ProgressionEngine.plan(ProgressionInput(
                     name: ex.name, sessions: $0.sessions, best: best,
-                    feedback: feedback, energy: energy, allowWarmups: allowWarmups))
+                    feedback: group?.sessions.first?.feedback ?? feedback, energy: energy, allowWarmups: allowWarmups))
             }
 
             let lastSession = group?.sessions.first

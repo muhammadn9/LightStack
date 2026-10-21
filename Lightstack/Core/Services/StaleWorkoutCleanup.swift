@@ -5,9 +5,8 @@ import Foundation
 /// empty "workout". Deletes go through `WorkoutRepository.deleteWorkout`, so they sync and
 /// are tombstoned.
 ///
-/// TODO(plan-generation agent): call `removeSupersededPlans(userId:newPlanId:)` from
-/// `WorkoutSessionService.finalizePlan` right after the new plan is saved, so generating a
-/// new plan removes the previous unstarted one for the same day immediately.
+/// `WorkoutSessionService.finalizePlan` calls `removeSupersededPlans(userId:newPlanId:)` right
+/// after a new plan is saved, so generating a plan removes earlier unstarted ones for that day.
 final class StaleWorkoutCleanup {
 
     private let localStorage: LocalStorageService
@@ -57,14 +56,14 @@ final class StaleWorkoutCleanup {
     }
 
     /// Removes empty plans for the same day as `newPlanId` that are older than it.
-    /// For plan generation to call once the new plan is saved (see the TODO above).
+    /// Called by plan generation once the new plan is saved. `protecting` ids (an in-progress session) are kept.
     @discardableResult
-    func removeSupersededPlans(userId: UUID, newPlanId: UUID) -> Int {
+    func removeSupersededPlans(userId: UUID, newPlanId: UUID, protecting: Set<UUID> = []) -> Int {
         guard let newPlan = localStorage.fetchWorkout(id: newPlanId), let planDate = newPlan.date else { return 0 }
         let calendar = Calendar.current
         var removed = 0
         for cd in localStorage.fetchWorkoutsForDate(userId: userId, date: planDate) {
-            guard let id = cd.id, id != newPlanId, localStorage.loggedSetCount(workoutId: id) == 0,
+            guard let id = cd.id, id != newPlanId, !protecting.contains(id), localStorage.loggedSetCount(workoutId: id) == 0,
                   (cd.createdAt ?? .distantPast) < (newPlan.createdAt ?? .distantFuture),
                   calendar.isDate(planDate, inSameDayAs: cd.date ?? planDate) else { continue }
             workoutRepository.deleteWorkout(Workout(from: cd))

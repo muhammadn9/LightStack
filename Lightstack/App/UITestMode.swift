@@ -13,6 +13,9 @@ enum UITestMode {
     /// `-uiTestingRearDeltHistory` adds two past "Rear Delt Fly Machine" sessions (newest has 3 distinct sets).
     static let wantsRearDeltHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingRearDeltHistory")
     static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
+    /// `-uiTestingEngineHistory` adds a Push session 3 days ago with "Barbell Bench Press" (the fake plan's
+    /// spelling), so the progression engine produces evidence and a warm-up for it.
+    static let wantsEngineHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingEngineHistory")
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
     /// `-uiTestingDuplicateWorkoutTypes` adds past workouts so the types read: Push x3, push x1, Push Day x1, Legs x2.
@@ -77,6 +80,8 @@ enum UITestMode {
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
         defaults.set(0, forKey: "selectedTab")
+        defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
+        CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
     }
 
@@ -166,6 +171,7 @@ enum UITestMode {
 
         if wantsLiftHistory { seedLiftHistory(localStorage: localStorage) }
         if wantsRearDeltHistory { seedRearDeltHistory(localStorage: localStorage) }
+        if wantsEngineHistory { seedEngineHistory(localStorage: localStorage) }
         if wantsDuplicateNames {
             // Same lift under two spellings, added to existing seeded workouts.
             let legExt = Exercise.create(workoutId: armDay.id, name: "Leg Extension", muscleGroup: "Legs",
@@ -235,6 +241,21 @@ enum UITestMode {
         if let rest = calendar.date(byAdding: .day, value: -5, to: Date()) {
             localStorage.addRestDay(userId: userId, date: rest)
         }
+    }
+
+    /// One Push session 3 days ago: Barbell Bench Press, 185 x 6 @1 twice then 180 x 5 @1.
+    private static func seedEngineHistory(localStorage: LocalStorageService) {
+        guard let day = Calendar.current.date(byAdding: .day, value: -3, to: Date()) else { return }
+        var workout = Workout.create(userId: userId, workoutType: "Push", energyLevel: 7, timeAvailableMinutes: 45)
+        workout.date = day
+        workout.createdAt = day
+        workout.syncStatus = .synced
+        localStorage.saveWorkout(workout)
+        let bench = Exercise.create(workoutId: workout.id, name: "Barbell Bench Press", muscleGroup: "Chest",
+                                    orderIndex: 0, targetSets: 3, targetReps: "6", targetRir: "1",
+                                    restSeconds: 120, coachNote: nil)
+        localStorage.saveExercises([bench], workoutId: workout.id)
+        seedSets([(bench, [(185, 6, 1), (185, 6, 1), (180, 5, 1)])], localStorage: localStorage)
     }
 
     /// An older and a newer session of the same accessory lift, under a workout type that is

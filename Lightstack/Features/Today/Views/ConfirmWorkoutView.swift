@@ -13,6 +13,7 @@ struct ConfirmWorkoutView: View {
     @State private var showChat = false
     @State private var swapTarget: Exercise?
     @State private var showDiscardConfirm = false
+    @State private var showCoachSaw = false
 
     var body: some View {
         ScrollView {
@@ -29,6 +30,9 @@ struct ConfirmWorkoutView: View {
             if let chatVM = chatViewModel {
                 CoachChatView(viewModel: chatVM, todayViewModel: todayViewModel)
             }
+        }
+        .sheet(isPresented: $showCoachSaw) {
+            if let userId = todayViewModel.userId { CoachSawView(userId: userId) }
         }
         .sheet(item: $swapTarget) { exercise in
             ExerciseSwapSheet(todayViewModel: todayViewModel, exercise: exercise, onFinish: {})
@@ -74,6 +78,13 @@ struct ConfirmWorkoutView: View {
                 .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
+            Button { showCoachSaw = true } label: {
+                Text("What the coach saw")
+                    .font(AppTheme.caveat(14, weight: .bold))
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(minHeight: AppTheme.minTouchSize)
+            }
+            .accessibilityIdentifier("plan.coachSaw")
         }
         .frame(maxWidth: .infinity)
         .lsCard()
@@ -152,6 +163,12 @@ struct ConfirmWorkoutView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            if let evidence = todayViewModel.evidence[exercise.id] {
+                PlanEvidenceBlock(
+                    evidence: evidence,
+                    exerciseIndex: todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0)
+            }
+
             // Per-set rows, full card width
             setRows(for: exercise)
 
@@ -221,15 +238,29 @@ struct ConfirmWorkoutView: View {
                 let rowWeight = target.map { $0.prefillWeight }.flatMap { $0.isEmpty ? nil : $0 } ?? weight
                 let rowReps = target.map { $0.prefillReps }.flatMap { $0.isEmpty ? nil : $0 } ?? reps
                 let rowRir = target.map { $0.prefillRir }.flatMap { $0.isEmpty ? nil : $0 } ?? rir
+                let isWarmup = target?.isWarmup == true
                 let weightText = Self.compactWeight(rowWeight)
                 let repsText = "× \(rowReps)"
                 let rirText = rowRir == "—" ? "" : "@ RIR \(rowRir)"
                 GridRow {
-                    Text("Set \(setNum)")
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .lineLimit(1)
-                        .fixedSize()
+                    HStack(spacing: 4) {
+                        Text("Set \(setNum)")
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                        if isWarmup {
+                            Text("W")
+                                .font(AppTheme.caveat(10, weight: .bold))
+                                .foregroundStyle(AppTheme.warning)
+                                .padding(.horizontal, 4)
+                                .background(AppTheme.warning.opacity(0.15))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .fixedSize()
+                                .accessibilityIdentifier("plan.warmup.\(exerciseIndex).\(setNum - 1)")
+                        }
+                    }
                     Text(weightText)
+                        .opacity(isWarmup ? 0.6 : 1)
                         .lineLimit(1)
                         .fixedSize()
                         .gridColumnAlignment(.trailing)
@@ -244,7 +275,7 @@ struct ConfirmWorkoutView: View {
                 .font(AppTheme.caveat(12).monospacedDigit())
                 .foregroundStyle(AppTheme.textPrimary)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Self.rowLabel(setNum, weightText, repsText, rirText))
+                .accessibilityLabel(Self.rowLabel(setNum, isWarmup ? "warm-up" : "", weightText, repsText, rirText))
                 .accessibilityIdentifier("plan.setRow.\(exerciseIndex).\(setNum - 1)")
             }
         }
@@ -262,8 +293,8 @@ struct ConfirmWorkoutView: View {
         return "\(num) lb"
     }
 
-    private static func rowLabel(_ setNum: Int, _ weight: String, _ reps: String, _ rir: String) -> String {
-        [ "Set \(setNum)", weight, reps, rir ].filter { !$0.isEmpty }.joined(separator: " ")
+    private static func rowLabel(_ setNum: Int, _ tag: String, _ weight: String, _ reps: String, _ rir: String) -> String {
+        [ "Set \(setNum)", tag, weight, reps, rir ].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     // MARK: - Action Buttons

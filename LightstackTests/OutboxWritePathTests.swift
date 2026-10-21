@@ -507,7 +507,7 @@ final class OutboxWritePathTests: XCTestCase {
         XCTAssertTrue(stack.remote.calls.isEmpty)
     }
 
-    func testRecalculationAppendsNewPRAndNeverDeletesRemotely() async {
+    func testRecalculationReplacesRemotePRAndDeletesOldRows() async {
         let sets = logSets([(100, 5), (150, 5)])
         prRepo.recalculatePR(userId: userId, exerciseName: "Bench Press")
         await stack.flushAll()
@@ -519,14 +519,22 @@ final class OutboxWritePathTests: XCTestCase {
         let unchanged = await queuedTypes()
         XCTAssertTrue(unchanged.isEmpty)
 
-        // The best set is deleted: the new best is appended; the old cloud row stays.
+        // The best set is deleted: the new best is upserted and the old cloud row is deleted
+        // (one best row per exercise), keeping the new row's id.
         stack.storage.deleteSet(setId: sets[1].id)
         prRepo.recalculatePR(userId: userId, exerciseName: "Bench Press")
+        let queued = await queuedTypes()
+        XCTAssertTrue(queued.contains(.insertPersonalRecord))
+        XCTAssertTrue(queued.contains(.deletePersonalRecords))
         await stack.flushAll()
-        XCTAssertEqual(stack.remote.personalRecords.count, 2)
-        XCTAssertEqual(Set(stack.remote.personalRecords.values.map(\.weightLbs)), [100, 150])
-        XCTAssertEqual(prRepo.fetchPR(userId: userId, exerciseName: "Bench Press")?.weightLbs, 100)
-        XCTAssertFalse(stack.remote.calls.contains { $0.lowercased().contains("deletepersonal") })
+
+        let kept = prRepo.fetchPR(userId: userId, exerciseName: "Bench Press")
+        XCTAssertEqual(kept?.weightLbs, 100)
+        XCTAssertEqual(stack.remote.personalRecords.count, 1, "old 150 row is gone from the cloud")
+        XCTAssertEqual(stack.remote.personalRecords.values.first?.weightLbs, 100)
+        XCTAssertNotNil(kept)
+        XCTAssertEqual(stack.remote.personalRecords.keys.first, kept?.id, "the kept id survives the delete")
+        XCTAssertTrue(stack.remote.calls.contains { $0.contains("deletePersonalRecords") })
         XCTAssertFalse(stack.remote.tombstones.contains { $0.hasPrefix("personal_record") })
     }
 

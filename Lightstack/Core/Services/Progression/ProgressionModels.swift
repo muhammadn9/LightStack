@@ -31,6 +31,8 @@ struct HistorySet: Equatable {
 struct HistorySession: Equatable {
     var date: Date
     var sets: [HistorySet]
+    /// The athlete's own verdict on this exercise that day, when they gave one.
+    var feedback: SessionFeedback? = nil
 }
 
 enum ExerciseClass: Equatable {

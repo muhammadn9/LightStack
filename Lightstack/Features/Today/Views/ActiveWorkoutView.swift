@@ -268,6 +268,8 @@ struct ActiveWorkoutView: View {
             VStack(alignment: .leading, spacing: 12) {
                 ExerciseHeaderView(
                     members: members,
+                    evidence: todayViewModel.evidence,
+                    exerciseIndex: { exerciseIndex(of: $0) },
                     totalCount: pages.count,
                     canLinkWithNext: members.last.map { todayViewModel.canLinkWithNext($0.id) } ?? false,
                     onAdd: { showAddExercise = true },
@@ -304,6 +306,14 @@ struct ActiveWorkoutView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("addSetButton")
+
+                // Optional one-tap verdict per exercise, once it has a logged set.
+                ForEach(members) { member in
+                    if member.trackingType != .cardio, !(viewModel.loggedSets[member.id] ?? []).isEmpty {
+                        ExerciseFeedbackPicker(exercise: member, exerciseIndex: exerciseIndex(of: member))
+                            .id(member.id)
+                    }
+                }
 
                 // Rest timer banner (a superset's timer is keyed by the member that triggered it)
                 if let restId = viewModel.activeRestExerciseId,

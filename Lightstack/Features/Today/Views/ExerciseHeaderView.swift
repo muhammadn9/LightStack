@@ -5,6 +5,10 @@ import SwiftUI
 /// A page holds one exercise, or 2-4 members of a superset.
 struct ExerciseHeaderView: View {
     let members: [Exercise]
+    /// What the coach based each exercise's targets on (keyed by exercise id), for the "Last:" line.
+    var evidence: [UUID: ExerciseEvidence] = [:]
+    /// Index of each member in the whole workout (for stable ids).
+    var exerciseIndex: (Exercise) -> Int = { _ in 0 }
     /// Number of pages (a superset counts once).
     let totalCount: Int
     let canLinkWithNext: Bool
@@ -56,6 +60,13 @@ struct ExerciseHeaderView: View {
                         .minimumScaleFactor(0.8)
                 }
                 controlsRow
+            }
+
+            ForEach(members) { member in
+                if let ev = evidence[member.id] {
+                    LastSessionLine(evidence: ev, exerciseIndex: exerciseIndex(member),
+                                    prefix: isSuperset ? member.name : nil)
+                }
             }
 
             ForEach(members) { member in
