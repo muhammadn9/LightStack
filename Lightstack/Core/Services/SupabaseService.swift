@@ -241,6 +241,16 @@ final class SupabaseService {
             .execute()
     }
 
+    func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws {
+        guard !workoutTypes.isEmpty else { return }
+        try await client
+            .from("ai_context_summaries")
+            .delete()
+            .eq("user_id", value: userId.uuidString)
+            .in("workout_type", values: workoutTypes)
+            .execute()
+    }
+
     func fetchContextSummary(userId: UUID, workoutType: String) async throws -> AIContextSummary? {
         let response: [AIContextSummary] = try await client
             .from("ai_context_summaries")

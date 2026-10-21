@@ -10,6 +10,7 @@ struct ProfileView: View {
     @State private var showAllPRs = false
     @State private var showSettings = false
     @State private var showMergeExercises = false
+    @State private var showMergeWorkoutTypes = false
     @State private var streak: Int = 0
     @State private var totalSessions: Int = 0
     @State private var totalVolume: Double = 0
@@ -38,6 +39,9 @@ struct ProfileView: View {
             }
             .navigationDestination(isPresented: $showMergeExercises) {
                 MergeExercisesView(onMerged: loadProfileData)
+            }
+            .navigationDestination(isPresented: $showMergeWorkoutTypes) {
+                MergeWorkoutTypesView(onMerged: loadProfileData)
             }
             .sheet(isPresented: $showEditSheet) {
                 if let vm = viewModel, let userId = environment.authService.currentUser()?.userId {
@@ -197,6 +201,26 @@ struct ProfileView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("profile.manageExercises")
+
+            InkDivider()
+            Button { showMergeWorkoutTypes = true } label: {
+                HStack {
+                    Text("Manage workout types")
+                        .font(AppTheme.caveat(14))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                    Text("Merge duplicates")
+                        .font(AppTheme.caveat(12))
+                        .foregroundStyle(AppTheme.textSecondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("profile.manageWorkoutTypes")
 
         }
         .padding(14)

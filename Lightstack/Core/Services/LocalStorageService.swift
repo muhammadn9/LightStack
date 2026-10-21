@@ -220,6 +220,71 @@ final class LocalStorageService {
         return ids
     }
 
+    // MARK: - Workout types
+
+    /// How many workouts are logged under one workout-type spelling.
+    struct WorkoutTypeStat: Equatable, Identifiable {
+        let name: String
+        let workoutCount: Int
+        var id: String { name }
+    }
+
+    /// Every distinct workout-type spelling (trimmed, exact case) with its workout count, most-logged first.
+    func fetchWorkoutTypeStats(userId: UUID) -> [WorkoutTypeStat] {
+        let request: NSFetchRequest<CDWorkout> = CDWorkout.fetchRequest()
+        request.predicate = NSPredicate(format: "userId == %@", userId as CVarArg)
+        let entities = (try? context.fetch(request)) ?? []
+        var counts: [String: Int] = [:]
+        for entity in entities {
+            let name = (entity.workoutType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            counts[name, default: 0] += 1
+        }
+        return counts.map { WorkoutTypeStat(name: $0.key, workoutCount: $0.value) }.sorted {
+            if $0.workoutCount != $1.workoutCount { return $0.workoutCount > $1.workoutCount }
+            return $0.name < $1.name
+        }
+    }
+
+    /// Renames every workout whose type spelling (trimmed) is in `oldNames` to `newName`.
+    /// Returns the ids of the workouts that changed (for syncing).
+    @discardableResult
+    func renameWorkoutTypes(userId: UUID, from oldNames: [String], to newName: String) -> [UUID] {
+        let target = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sources = Set(oldNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }).subtracting([target])
+        guard !target.isEmpty, !sources.isEmpty else { return [] }
+        let request: NSFetchRequest<CDWorkout> = CDWorkout.fetchRequest()
+        request.predicate = NSPredicate(format: "userId == %@", userId as CVarArg)
+        var ids: [UUID] = []
+        for entity in (try? context.fetch(request)) ?? [] {
+            let current = (entity.workoutType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard sources.contains(current) else { continue }
+            entity.workoutType = target
+            if let id = entity.id { ids.append(id) }
+        }
+        if !ids.isEmpty { save() }
+        return ids
+    }
+
+    /// Same as `renameWorkoutTypes` for the user's planned (non-rest) sessions. Returns the changed sessions.
+    @discardableResult
+    func renamePlannedSessionTypes(userId: UUID, from oldNames: [String], to newName: String) -> [PlannedSession] {
+        let target = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sources = Set(oldNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }).subtracting([target])
+        guard !target.isEmpty, !sources.isEmpty else { return [] }
+        let request: NSFetchRequest<CDPlannedSession> = CDPlannedSession.fetchRequest()
+        request.predicate = NSPredicate(format: "userId == %@ AND isRestDay == NO", userId as CVarArg)
+        var changed: [PlannedSession] = []
+        for entity in (try? context.fetch(request)) ?? [] {
+            let current = (entity.workoutType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard sources.contains(current) else { continue }
+            entity.workoutType = target
+            changed.append(PlannedSession(from: entity))
+        }
+        if !changed.isEmpty { save() }
+        return changed
+    }
+
     // MARK: - Set
 
     func fetchSets(exerciseId: UUID) -> [CDWorkoutSet] {
@@ -340,7 +405,9 @@ final class LocalStorageService {
 
     // MARK: - AI Context Summary
 
-    func fetchContextSummary(userId: UUID, workoutType: String) -> CDAIContextSummary? {
+    /// The summary for a workout type: an exact match if there is one, otherwise a match
+    /// ignoring case and surrounding whitespace.
+    private func fetchExactContextSummary(userId: UUID, workoutType: String) -> CDAIContextSummary? {
         let request: NSFetchRequest<CDAIContextSummary> = CDAIContextSummary.fetchRequest()
         request.predicate = NSPredicate(
             format: "userId == %@ AND workoutType == %@",
@@ -350,8 +417,29 @@ final class LocalStorageService {
         return try? context.fetch(request).first
     }
 
+    func fetchContextSummary(userId: UUID, workoutType: String) -> CDAIContextSummary? {
+        if let exact = fetchExactContextSummary(userId: userId, workoutType: workoutType) { return exact }
+        let wanted = workoutType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !wanted.isEmpty else { return nil }
+        return fetchAllContextSummaries(userId: userId).first {
+            ($0.workoutType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == wanted
+        }
+    }
+
+    func fetchAllContextSummaries(userId: UUID) -> [CDAIContextSummary] {
+        let request: NSFetchRequest<CDAIContextSummary> = CDAIContextSummary.fetchRequest()
+        request.predicate = NSPredicate(format: "userId == %@", userId as CVarArg)
+        return (try? context.fetch(request)) ?? []
+    }
+
+    func deleteContextSummaries(_ entities: [CDAIContextSummary]) {
+        guard !entities.isEmpty else { return }
+        entities.forEach { context.delete($0) }
+        save()
+    }
+
     func saveContextSummary(_ summary: AIContextSummary) {
-        let existing = fetchContextSummary(userId: summary.userId, workoutType: summary.workoutType)
+        let existing = fetchExactContextSummary(userId: summary.userId, workoutType: summary.workoutType)
         let entity = existing ?? CDAIContextSummary(context: context)
         summary.applyToCoreData(entity)
         save()

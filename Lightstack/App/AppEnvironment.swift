@@ -67,6 +67,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let profileRepository: ProfileRepository
     let prRepository: PRRepository
     let exerciseMergeService: ExerciseMergeService
+    let workoutTypeMergeService: WorkoutTypeMergeService
     let monthPlanRepository: MonthPlanRepository
     let restDayRepository: RestDayRepository
 
@@ -184,6 +185,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             localStorage: localStorageService,
             offlineQueueManager: offlineQueueManager,
             prRepository: prRepository
+        )
+        self.workoutTypeMergeService = WorkoutTypeMergeService(
+            localStorage: localStorageService,
+            offlineQueueManager: offlineQueueManager,
+            profileRepository: profileRepository
         )
         self.monthPlanRepository = MonthPlanRepository(
             localStorage: localStorageService,

@@ -75,6 +75,7 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     var readScript: (@Sendable (String, Int) -> Error?)?
     /// Runs before every read (e.g. to switch the signed-in user). Args: read name, count of that read so far.
     var onRead: (@Sendable (String, Int) -> Void)?
+    private var _summaryDeletes: [[String]] = []
     private var _renames: [(ids: [UUID], name: String)] = []
 
     var workouts: [UUID: Workout] { locked { _workouts } }
@@ -87,6 +88,9 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     /// "entity:recordId" for every tombstone written.
     var tombstones: [String] { locked { _tombstones } }
     var renames: [(ids: [UUID], name: String)] { locked { _renames } }
+    /// Workout-type lists passed to each summary delete.
+    var summaryDeletes: [[String]] { locked { _summaryDeletes } }
+    var summaries: [String: AIContextSummary] { locked { _summaries } }
 
     private func locked<R>(_ body: () -> R) -> R { lock.lock(); defer { lock.unlock() }; return body() }
 
@@ -155,6 +159,13 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     func upsertContextSummary(_ summary: AIContextSummary) async throws {
         try await record(.upsertContextSummary, "")
         locked { _summaries["\(summary.userId)|\(summary.workoutType)"] = summary }
+    }
+    func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws {
+        try await record(.deleteContextSummaries, workoutTypes.joined(separator: ","))
+        locked {
+            for type in workoutTypes { _summaries["\(userId)|\(type)"] = nil }
+            _summaryDeletes.append(workoutTypes)
+        }
     }
     func insertMonthPlan(_ plan: MonthPlan) async throws {
         try await record(.insertMonthPlan, "")

@@ -15,6 +15,8 @@ enum UITestMode {
     static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
+    /// `-uiTestingDuplicateWorkoutTypes` adds past workouts so the types read: Push x3, push x1, Push Day x1, Legs x2.
+    static let wantsDuplicateWorkoutTypes: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateWorkoutTypes")
     /// `-uiTestingPendingSyncOps N` seeds N unsynced operations for the test user (sign-out warning tests).
     static var pendingSyncOps: Int {
         let args = ProcessInfo.processInfo.arguments
@@ -178,7 +180,23 @@ enum UITestMode {
             seedSets([(legExtMachine, [(110, 12, 2), (110, 10, 1)])], localStorage: localStorage)
         }
 
+        if wantsDuplicateWorkoutTypes { seedDuplicateWorkoutTypes(localStorage: localStorage) }
+
         seedPersonalRecords(localStorage: localStorage)
+    }
+
+    /// Extra past workouts (no exercises) so History shows spelling variants of one type.
+    /// With the seeded "Push" this makes Push x3, push x1, Push Day x1, Legs x2.
+    private static func seedDuplicateWorkoutTypes(localStorage: LocalStorageService) {
+        let types = ["Push", "Push", "push", "Push Day", "Legs", "Legs"]
+        for (i, type) in types.enumerated() {
+            guard let day = Calendar.current.date(byAdding: .day, value: -10 - i, to: Date()) else { continue }
+            var workout = Workout.create(userId: userId, workoutType: type, energyLevel: 7, timeAvailableMinutes: 45)
+            workout.date = day
+            workout.createdAt = day
+            workout.syncStatus = .synced
+            localStorage.saveWorkout(workout)
+        }
     }
 
     /// A real user's PRs already exist next to their sets (they are created as lifts are
@@ -331,6 +349,7 @@ final class UITestFakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable 
     func upsertProfile(_ profile: UserProfile) async throws { try record("upsertProfile") }
     func insertPersonalRecord(_ record: PersonalRecord) async throws { try self.record("insertPersonalRecord") }
     func upsertContextSummary(_ summary: AIContextSummary) async throws { try record("upsertContextSummary") }
+    func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws { try record("deleteContextSummaries") }
     func insertMonthPlan(_ plan: MonthPlan) async throws { try record("insertMonthPlan") }
     func insertPlannedSessions(_ sessions: [PlannedSession]) async throws { try record("insertPlannedSessions") }
     func updatePlannedSession(_ session: PlannedSession) async throws { try record("updatePlannedSession") }
