@@ -191,7 +191,7 @@ enum UITestMode {
         seedPersonalRecords(localStorage: localStorage)
     }
 
-    /// Extra past workouts (no exercises) so History shows spelling variants of one type.
+    /// Extra past workouts (one set each) so History shows spelling variants of one type.
     /// With the seeded "Push" this makes Push x3, push x1, Push Day x1, Legs x2.
     private static func seedDuplicateWorkoutTypes(localStorage: LocalStorageService) {
         let types = ["Push", "Push", "push", "Push Day", "Legs", "Legs"]
@@ -202,6 +202,12 @@ enum UITestMode {
             workout.createdAt = day
             workout.syncStatus = .synced
             localStorage.saveWorkout(workout)
+            // History hides workouts with no logged sets, so give each one a single set.
+            let lift = Exercise.create(workoutId: workout.id, name: "Seed Lift", muscleGroup: "Chest",
+                                       orderIndex: 0, targetSets: 1, targetReps: "8", targetRir: "2",
+                                       restSeconds: 60, coachNote: nil)
+            localStorage.saveExercises([lift], workoutId: workout.id)
+            seedSets([(lift, [(100, 8, 2)])], localStorage: localStorage)
         }
     }
 
