@@ -43,13 +43,13 @@ final class ProgressionContextTests: XCTestCase {
         return w
     }
 
-    func testContextSkipsEmptyWorkoutsAndKeepsLastThreeCompleted() {
+    func testContextSkipsEmptyWorkoutsAndKeepsLastFiveCompleted() {
         seed(daysAgo: 0, sets: [])   // pending / abandoned: no logged sets
-        for d in 1...4 { seed(daysAgo: d, sets: [(135, 10, 3)]) }
+        for d in 1...6 { seed(daysAgo: d, sets: [(135, 10, 3)]) }
         seed(type: "Pull", daysAgo: 1, sets: [(95, 8, 2)])
 
         let ctx = builder.buildContext(userId: stack.userId, workoutType: "Push")
-        XCTAssertEqual(ctx.recentSessions.count, 3)
+        XCTAssertEqual(ctx.recentSessions.count, 5)
         XCTAssertTrue(ctx.recentSessions.allSatisfy { $0.workoutType == "Push" })
         XCTAssertTrue(ctx.recentSessions.allSatisfy { !(ctx.recentSessionSets[$0.id] ?? []).isEmpty })
         XCTAssertEqual(ctx.recentSessions.map(\.id), ctx.recentSessions.sorted { $0.date > $1.date }.map(\.id))

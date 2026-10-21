@@ -8,6 +8,12 @@ protocol WorkoutSessionServiceDelegate: AnyObject {
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String)
     func sessionServiceDidSaveWorkout(_ service: WorkoutSessionService)
     func sessionServiceDidFail(_ service: WorkoutSessionService, error: Error)
+    /// Called just before `sessionServiceDidGeneratePlan` with per-exercise evidence (keyed by exercise id).
+    func sessionServiceDidBuildEvidence(_ service: WorkoutSessionService, evidence: [UUID: ExerciseEvidence])
+}
+
+extension WorkoutSessionServiceDelegate {
+    func sessionServiceDidBuildEvidence(_ service: WorkoutSessionService, evidence: [UUID: ExerciseEvidence]) {}
 }
 
 // MARK: - WorkoutSessionService
@@ -38,6 +44,13 @@ final class WorkoutSessionService {
     private var pendingSummary: (userId: UUID, workoutType: String, text: String)?
     private var summaryWantedFor: (userId: UUID, workoutType: String)?
     private var finishToken = UUID()
+
+    /// Optional feedback on the last session ("too easy" / "about right" / "too hard"),
+    /// set by the UI before `generatePlan`; the progression engine uses it.
+    var sessionFeedback: SessionFeedback?
+
+    /// What the plan response needs once it arrives.
+    private var planContext: (userId: UUID, history: ExerciseHistoryIndex, energy: Int)?
 
     var currentWorkoutCreatedAt: Date? {
         currentWorkout?.createdAt
@@ -110,6 +123,17 @@ final class WorkoutSessionService {
                 recentLoggedSets: context.recentLoggedSets,
                 bestSets: context.bestSets
             )
+
+            planContext = (
+                userId,
+                ExerciseHistoryIndex(
+                    sessions: context.recentSessions, exercises: context.recentSessionSets,
+                    loggedSets: context.recentLoggedSets, bestSets: context.bestSets),
+                energy
+            )
+            CoachDebugStore.shared.recordRequest(
+                userId: userId, workoutType: sanitizedType, model: aiServiceManager.activeProviderName,
+                systemPromptName: "plan", systemPromptLength: systemPrompt.count, userMessage: userMessage)
 
             aiServiceManager.generateChat(
                 systemPrompt: systemPrompt,
@@ -557,8 +581,16 @@ final class WorkoutSessionService {
         // Primary path: JSON
         if let parsed = parseWorkoutPlanJSON(text) {
             logger.debug("JSON parse succeeded: \(parsed.exercises.count) exercises")
-            finalizePlan(parsed.exercises, setTargets: parsed.setTargets)
+            let applied = applyProgression(to: parsed)
+            if let userId = planContext?.userId {
+                CoachDebugStore.shared.recordResponse(userId: userId, raw: text, adjustments: applied.adjustments)
+            }
+            delegate?.sessionServiceDidBuildEvidence(self, evidence: applied.evidence)
+            finalizePlan(applied.exercises, setTargets: applied.setTargets)
             return
+        }
+        if let userId = planContext?.userId {
+            CoachDebugStore.shared.recordResponse(userId: userId, raw: text, adjustments: ["Plan JSON could not be parsed"])
         }
         // Fallback: markdown table (zero regression during rollout)
         logger.debug("JSON parse failed, attempting markdown fallback")
@@ -573,6 +605,24 @@ final class WorkoutSessionService {
         }
         logger.debug("Markdown fallback succeeded: \(fallback.count) exercises")
         finalizePlan(fallback)
+    }
+
+    /// The app's own numbers replace the AI's where history exists; guardrails cover the rest.
+    private func applyProgression(to parsed: ParsedPlan) -> AppliedPlan {
+        guard let context = planContext else {
+            return AppliedPlan(exercises: parsed.exercises, setTargets: parsed.setTargets, evidence: [:], adjustments: [])
+        }
+        let storage = localStorage
+        let userId = context.userId
+        return PlanProgressionApplier.apply(
+            plan: parsed,
+            history: context.history,
+            energy: context.energy,
+            feedback: sessionFeedback,
+            bestLookup: { name in
+                storage.fetchPersonalRecord(userId: userId, exerciseName: name).map { PersonalRecord(from: $0).weightLbs }
+            }
+        )
     }
 
     /// Forget the in-memory workout of a generation that produced no plan. Nothing was

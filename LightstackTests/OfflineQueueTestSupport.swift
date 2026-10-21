@@ -156,6 +156,15 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
         try await self.record(.insertPersonalRecord, "")
         locked { _personalRecords[record.id] = record }
     }
+    func deletePersonalRecords(userId: UUID, exerciseName: String, keepId: UUID?, createdOnOrBefore: Date) async throws {
+        try await self.record(.deletePersonalRecords, exerciseName)
+        locked {
+            _personalRecords = _personalRecords.filter {
+                !($0.value.userId == userId && $0.value.exerciseName == exerciseName
+                  && $0.key != keepId && $0.value.createdAt <= createdOnOrBefore)
+            }
+        }
+    }
     func upsertContextSummary(_ summary: AIContextSummary) async throws {
         try await record(.upsertContextSummary, "")
         locked { _summaries["\(summary.userId)|\(summary.workoutType)"] = summary }

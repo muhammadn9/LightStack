@@ -32,6 +32,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var previousHints: [UUID: [PreviousSetHint]] = [:]
     /// Coach per-set targets (pyramids, ramps) by exercise id. Session-only.
     @Published var setTargets: [UUID: [SetTarget]] = [:]
+    /// Why each planned exercise has the numbers it has (last sets, best, trend, rationale,
+    /// guardrail flags), keyed by exercise id. In memory only; empty for restored sessions.
+    @Published var evidence: [UUID: ExerciseEvidence] = [:]
     /// Unlogged set rows and clock state handed between the active-workout
     /// screen and session persistence (not published: no view renders them).
     var pendingSetsSnapshot: [UUID: [PendingSetInput]] = [:]
@@ -193,6 +196,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             loggedSets[removed.id] = nil
             pendingSetsSnapshot[removed.id] = nil
             setTargets[removed.id] = nil
+            evidence[removed.id] = nil
             previousHints[removed.id] = nil
         }
         exercises = kept
@@ -232,6 +236,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         loggedSets = [:]
         previousHints = [:]
         setTargets = [:]
+        evidence = [:]
         pendingSetsSnapshot = [:]
         timerPaused = false
         aiProgressionNote = nil
@@ -263,6 +268,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     }
 
     // MARK: - WorkoutSessionServiceDelegate
+
+    func sessionServiceDidBuildEvidence(_ service: WorkoutSessionService, evidence: [UUID: ExerciseEvidence]) {
+        self.evidence = evidence
+    }
 
     func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise], setTargets: [UUID: [SetTarget]]) {
         guard !exercises.isEmpty else {

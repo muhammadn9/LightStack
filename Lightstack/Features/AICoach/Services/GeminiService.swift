@@ -71,7 +71,7 @@ final class GeminiService {
         // If Gemini rejects the thinking field for this model, the same request is
         // retried once without it (see `performWithRetry`).
         var plainBody: Data?
-        if options.minimalThinking {
+        if options.sendsThinking {
             var plain = buildChatRequestBody(
                 systemPrompt: systemPrompt,
                 messages: messages,
@@ -187,11 +187,20 @@ final class GeminiService {
         return message.contains("thinking")
     }
 
-    /// Smallest thinking setting per model family. Gemini 2.5 takes a token budget
-    /// (0 turns thinking off); Gemini 3.x takes a level.
-    static func thinkingConfig(forModel model: String) -> [String: Any]? {
-        if model.hasPrefix("gemini-2.5") { return ["thinkingBudget": 0] }
-        if model.hasPrefix("gemini-3") { return ["thinkingLevel": "minimal"] }
+    /// Thinking setting per model family. Gemini 2.5 takes a token budget (0 turns thinking
+    /// off); Gemini 3.x takes a level. Both stay inside what the ai-proxy accepts
+    /// (budget 0...1024, level minimal/low).
+    static func thinkingConfig(forModel model: String, effort: AIRequestOptions.ThinkingEffort = .minimal) -> [String: Any]? {
+        switch effort {
+        case .modelDefault:
+            return nil
+        case .minimal:
+            if model.hasPrefix("gemini-2.5") { return ["thinkingBudget": 0] }
+            if model.hasPrefix("gemini-3") { return ["thinkingLevel": "minimal"] }
+        case .low:
+            if model.hasPrefix("gemini-2.5") { return ["thinkingBudget": 1024] }
+            if model.hasPrefix("gemini-3") { return ["thinkingLevel": "low"] }
+        }
         return nil
     }
 
@@ -224,8 +233,8 @@ final class GeminiService {
             "temperature": options.temperature,
             "maxOutputTokens": options.maxOutputTokens
         ]
-        if options.minimalThinking, includeThinking,
-           let thinking = Self.thinkingConfig(forModel: model) {
+        if options.sendsThinking, includeThinking,
+           let thinking = Self.thinkingConfig(forModel: model, effort: options.thinking) {
             generationConfig["thinkingConfig"] = thinking
         }
         // Only constrain the response for callers that decode JSON. Setting this

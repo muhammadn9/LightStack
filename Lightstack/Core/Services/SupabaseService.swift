@@ -306,6 +306,20 @@ final class SupabaseService {
             .execute()
     }
 
+    /// Removes the cloud PR rows of one exercise (except `keepId`) created on or before the cutoff.
+    func deletePersonalRecords(userId: UUID, exerciseName: String, keepId: UUID?, createdOnOrBefore: Date) async throws {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var query = client
+            .from("personal_records")
+            .delete()
+            .eq("user_id", value: userId.uuidString)
+            .eq("exercise_name", value: exerciseName)
+            .lte("created_at", value: formatter.string(from: createdOnOrBefore))
+        if let keepId { query = query.neq("id", value: keepId.uuidString) }
+        try await query.execute()
+    }
+
     func fetchPersonalRecords(userId: UUID) async throws -> [PersonalRecord] {
         let response: [PersonalRecord] = try await client
             .from("personal_records")

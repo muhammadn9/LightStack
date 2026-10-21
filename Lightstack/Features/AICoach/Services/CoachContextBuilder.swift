@@ -32,8 +32,9 @@ final class CoachContextBuilder {
         self.validationService = validationService
     }
 
-    /// How many completed sessions of the same type go into the plan prompt.
-    static let historySessionCount = 3
+    /// How many completed sessions of the same type go into the plan prompt (the last in full,
+    /// the rest as trend lines) and into the progression engine.
+    static let historySessionCount = 5
 
     /// Build context for an AI coach call, optionally scoped to a workout type.
     /// History is the last few COMPLETED sessions (at least one logged set), so a

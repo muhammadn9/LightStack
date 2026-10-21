@@ -62,20 +62,19 @@ final class CoachPromptService {
 
     static let progressionRules = """
     PROGRESSION RULES
-    - Base every load on the ACTUAL logged sets in RECENT SESSIONS (weight x reps @RIR), not on \
-    guesses. Only estimate from the athlete profile when an exercise has no history.
-    - Double progression with a rep range that fits the lift (heavy compounds 5-8, other \
-    compounds 6-10, isolation 10-15). If every working set last time reached the top of the range \
-    at the target RIR, add a small load (about 2.5-5%, smallest plate step). Otherwise keep the \
-    load and aim for more reps. If last time ended at RIR 0 with missed reps, or notes mention \
-    pain or fatigue, hold or reduce.
-    - Main compound lifts: 1-2 lighter ramp-up sets first (higher RIR; they count in set_targets), \
-    then working sets at RIR 2-3, with RIR 0-1 only on the final set, never every set. An \
-    optional lighter back-off set may follow.
-    - Do not prescribe the same weight x reps on every set of every exercise; vary sets by \
-    purpose. Respect energy, time and the preferred rest.
-    - Use previous coach notes and the athlete's notes (pain, form, equipment) to adjust.
-    - coach_note: one short line saying why, e.g. "Hit 8@2 last time, +5 lb".
+    - The APP computes sets, weights, reps and RIR for every exercise the athlete has logged \
+    history for (double progression from the logged sets). Do not do load arithmetic for those; \
+    anything you write for them is replaced.
+    - Your job: choose and order exercises that fit the time, energy, equipment and the athlete's \
+    usual exercise selection for this workout type (see RECENT SESSIONS), and write ONE short \
+    coach_note per exercise (a cue or why; no weights needed).
+    - Give set_targets ONLY for NEW exercises with no history, estimated conservatively from the \
+    profile: 3 working sets by default, never RIR 0-1 on every set, no more than one lighter \
+    ramp-up set.
+    - Default 3 working sets per exercise. A warm-up or ramp-up set only on the first big \
+    compound lift of the workout.
+    - ROLLING CONTEXT is background only. Never restate its numbers or any "target" in it as the plan.
+    - Use previous coach notes and the athlete's notes (pain, form, equipment) to choose exercises.
     """
 
     static let planFormat = """
@@ -86,8 +85,9 @@ final class CoachPromptService {
     "coach_note": "str|null", "superset": "str|null (e.g. A)", \
     "set_targets": [{"weight": "135", "reps": "10", "rir": "3"}]}], "coaching_notes": "str"}
     set_targets lists every set in order (weight in lb as a string, "BW" for bodyweight, reps, rir); \
-    give it for every strength exercise so sets can differ, and make "sets" equal its length. \
-    Then target_weight / reps / rir describe the top working set.
+    give it for NEW exercises only (no history) and make "sets" equal its length; for exercises \
+    with history just give "sets": 3 and a coach_note, the app fills the numbers. \
+    target_weight / reps / rir describe the top working set.
     Supersets: set "superset" only when asked or clearly useful, else null. Exercises sharing \
     a label alternate sets, are listed adjacent, max 4 per label. Keep coach_note and \
     coaching_notes to one short sentence.
@@ -130,12 +130,13 @@ final class CoachPromptService {
     static let postWorkoutRules = """
     POST-WORKOUT OUTPUT
     Reply with ONLY a JSON object: {"note": "...", "summary": "..."}
-    - note: the progression note, at most 3 sentences. No greeting, no name. Lead with what \
-    happened, end with one specific target for next session (exact weight, reps or duration). Plain text.
-    - summary: updated cumulative rolling summary for future planning, at most 120 words. If a \
+    - note: the progression note, at most 3 sentences. No greeting, no name. Describe what \
+    happened and the trend (up, flat, down) using the actual numbers. Do NOT prescribe next \
+    session's weights or reps; the app computes those. Plain text.
+    - summary: updated cumulative rolling summary for background context, at most 120 words. If a \
     previous summary is given, merge it with this session instead of replacing it. Cover the trend \
-    over sessions (up/down/plateau) and, per main lift, the last working weight x reps @RIR and the \
-    next target. Numbers first.
+    over sessions (up/down/plateau) and, per main lift, the last working weight x reps @RIR. \
+    Facts and trends only: no targets, no "next" weights. Numbers first.
     """
 
     /// One-line athlete profile; unknown fields are left out.
@@ -190,30 +191,40 @@ final class CoachPromptService {
             message += "\n\nROLLING CONTEXT (recent history summary):\n\(summary)"
         }
 
-        if !recentSessions.isEmpty {
-            message += "\n\nRECENT SESSIONS (newest first; actual logged sets as weight lb x reps @RIR):"
-            for workout in recentSessions {
-                let dateStr = DateFormatter.shortDate.string(from: workout.date)
-                message += "\n\n[\(dateStr)] \(workout.workoutType)"
-                if let note = clipped(workout.userNote, 200) { message += "\n  Athlete note: \(note)" }
-                if let note = clipped(workout.aiProgressionNote, 240) { message += "\n  Coach note: \(note)" }
-                for ex in recentSessionExercises[workout.id] ?? [] {
-                    let logged = (recentLoggedSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }
-                    guard !logged.isEmpty else { continue }
-                    let formatted = ex.trackingType == .cardio
-                        ? logged.map { formatCardioSet($0) }
-                        : logged.map { formatLoggedSet($0) }
-                    var line = "\n  - \(ex.name): " + formatted.joined(separator: ", ")
-                    if let best = bestSets[ex.name.lowercased()] {
-                        line += " | best \(String(format: "%g", best.weightLbs))x\(best.reps)"
-                    }
-                    if let cue = clipped(ex.coachNoteParts.message, 100) { line += " | note: \(cue)" }
-                    message += line
+        if let latest = recentSessions.first {
+            let index = ExerciseHistoryIndex(
+                sessions: recentSessions, exercises: recentSessionExercises,
+                loggedSets: recentLoggedSets, bestSets: bestSets)
+
+            message += "\n\nLAST SESSION (every set in order, as weight lb x reps @RIR):"
+            let dateStr = DateFormatter.shortDate.string(from: latest.date)
+            message += "\n\n[\(dateStr)] \(latest.workoutType)"
+            if let note = clipped(latest.userNote, 200) { message += "\n  Athlete note: \(note)" }
+            for ex in recentSessionExercises[latest.id] ?? [] {
+                let logged = (recentLoggedSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }
+                guard !logged.isEmpty else { continue }
+                let formatted = ex.trackingType == .cardio
+                    ? logged.map { formatCardioSet($0) }
+                    : logged.map { formatLoggedSet($0) }
+                var line = "\n  - \(ex.name): " + formatted.joined(separator: ", ")
+                if ex.trackingType != .cardio, let best = index.group(for: ex.name)?.best {
+                    line += " | best \(String(format: "%g", best.weight))x\(best.reps)"
+                }
+                if let cue = clipped(ex.coachNoteParts.message, 100) { line += " | note: \(cue)" }
+                message += line
+            }
+
+            let trendGroups = index.groups.filter { $0.sessions.count >= 2 }
+            if !trendGroups.isEmpty {
+                message += "\n\nEARLIER TREND PER EXERCISE (oldest to newest, same-lift names merged, working and warm-up sets as weight x reps, \"top\" = heaviest set of a pyramid/top-set day):"
+                for group in trendGroups {
+                    message += "\n  - \(group.displayName): "
+                        + ExerciseHistoryIndex.trendLine(for: group.sessions) { Self.trendDate.string(from: $0) }
                 }
             }
         }
 
-        message += "\n\nGenerate the JSON workout plan within my time. Base every load on my actual logged sets above (progression rules); estimate from my profile only for exercises with no history."
+        message += "\n\nGenerate the JSON workout plan within my time. Choose and order exercises from my usual selection for this workout type. The app fills in sets, weights, reps and RIR for exercises I have history for (give them \"sets\": 3 and a short coach_note); give set_targets only for new exercises."
 
         return message
     }
@@ -250,6 +261,12 @@ final class CoachPromptService {
     }
 
     // MARK: - Private Cardio Formatting
+
+    private static let trendDate: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MM/dd"
+        return f
+    }()
 
     private func formatLoggedSet(_ s: WorkoutSet) -> String {
         let rir = s.rir.map { "@\($0)" } ?? ""

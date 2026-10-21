@@ -100,6 +100,28 @@ final class LocalStorageService {
         return (try? context.fetch(request)) ?? []
     }
 
+    /// Like `fetchRecentWorkouts`, but only real sessions: workouts with at least one logged set.
+    /// Generated plans that were never started (exercises, no sets) are not sessions.
+    func fetchRecentLoggedWorkouts(userId: UUID, limit: Int) -> [CDWorkout] {
+        let request: NSFetchRequest<CDWorkout> = CDWorkout.fetchRequest()
+        request.predicate = NSPredicate(format: "userId == %@", userId as CVarArg)
+        request.sortDescriptors = [NSSortDescriptor(key: "date", ascending: false)]
+        request.relationshipKeyPathsForPrefetching = ["exercises"]
+        let all = (try? context.fetch(request)) ?? []
+        let logged = all.filter { workout in
+            let exercises = workout.exercises as? Set<CDExercise> ?? []
+            return exercises.contains { !(($0.sets as? Set<CDWorkoutSet>) ?? []).isEmpty }
+        }
+        return Array(logged.prefix(limit))
+    }
+
+    /// Number of logged sets across all exercises of a workout.
+    func loggedSetCount(workoutId: UUID) -> Int {
+        guard let workout = fetchWorkout(id: workoutId) else { return 0 }
+        let exercises = workout.exercises as? Set<CDExercise> ?? []
+        return exercises.reduce(0) { $0 + ($1.sets?.count ?? 0) }
+    }
+
     /// Every exercise the user has logged, most recent workout first (duplicates included).
     func fetchExerciseHistory(userId: UUID) -> [(name: String, muscleGroup: String)] {
         let request: NSFetchRequest<CDExercise> = CDExercise.fetchRequest()
@@ -487,6 +509,19 @@ final class LocalStorageService {
         }
     }
 
+    /// Removes the local PR rows whose exercise name is one of `names`.
+    func deletePersonalRecords(userId: UUID, exerciseNames names: [String]) {
+        guard !names.isEmpty else { return }
+        let request: NSFetchRequest<CDPersonalRecord> = CDPersonalRecord.fetchRequest()
+        request.predicate = NSPredicate(
+            format: "userId == %@ AND exerciseName IN %@", userId as CVarArg, names
+        )
+        if let entities = try? context.fetch(request), !entities.isEmpty {
+            entities.forEach { context.delete($0) }
+            save()
+        }
+    }
+
     /// Returns all sets for a given exercise name across all workouts for a user,
     /// used to recalculate PRs after a workout is deleted.
     func fetchAllSetsForExerciseName(userId: UUID, exerciseName: String) -> [CDWorkoutSet] {
@@ -510,9 +545,7 @@ final class LocalStorageService {
 
     /// Consecutive days ending today or yesterday where each day has a workout OR a rest day.
     func countConsecutiveWorkoutDays(userId: UUID) -> Int {
-        let request: NSFetchRequest<CDWorkout> = CDWorkout.fetchRequest()
-        request.predicate = NSPredicate(format: "userId == %@", userId as CVarArg)
-        let workouts = (try? context.fetch(request)) ?? []
+        let workouts = fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         let restDays = fetchRestDays(userId: userId)
 
         let calendar = Calendar.current

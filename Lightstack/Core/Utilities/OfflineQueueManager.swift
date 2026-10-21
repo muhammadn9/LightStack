@@ -16,6 +16,7 @@ enum QueuedOperationType: String, Codable {
     case renameExercises
     case upsertProfile
     case insertPersonalRecord
+    case deletePersonalRecords
     case upsertContextSummary
     case deleteContextSummaries
     case insertMonthPlan
@@ -59,6 +60,14 @@ struct DeleteRestDayPayload: Codable {
     let date: Date
 }
 
+/// Payload for `.deletePersonalRecords`: removes the cloud PR rows of one exercise name, except
+/// `keepId`, that were created on or before `cutoff`. The cutoff keeps a PR queued later safe.
+struct DeletePersonalRecordsPayload: Codable {
+    let exerciseName: String
+    let keepId: UUID?
+    let cutoff: Date
+}
+
 /// Payload for `.deleteExercise` (delete a single exercise).
 struct DeleteExercisePayload: Codable {
     let exerciseId: UUID
@@ -96,6 +105,7 @@ protocol RemoteWriting: Sendable {
     func updateExerciseNames(ids: [UUID], name: String) async throws
     func upsertProfile(_ profile: UserProfile) async throws
     func insertPersonalRecord(_ record: PersonalRecord) async throws
+    func deletePersonalRecords(userId: UUID, exerciseName: String, keepId: UUID?, createdOnOrBefore: Date) async throws
     func upsertContextSummary(_ summary: AIContextSummary) async throws
     func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws
     func insertMonthPlan(_ plan: MonthPlan) async throws
@@ -1135,6 +1145,7 @@ actor OfflineQueueManager {
             .upsertRestDay,
             // Delete operations should be last, tombstones after the deletes they record.
             .deleteWorkout, .deleteSet, .deleteExercise, .deleteMonthPlan, .deleteRestDay,
+            .deletePersonalRecords,
             .insertTombstone
         ]
         var rank: [QueuedOperationType: Int] = [:]
@@ -1170,6 +1181,14 @@ actor OfflineQueueManager {
         case .insertPersonalRecord:
             let model = try decoder.decode(PersonalRecord.self, from: op.payload)
             try await remote.insertPersonalRecord(model)
+        case .deletePersonalRecords:
+            let model = try decoder.decode(DeletePersonalRecordsPayload.self, from: op.payload)
+            guard let userId = op.ownerUserId else {
+                throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "PR delete without user"))
+            }
+            try await remote.deletePersonalRecords(
+                userId: userId, exerciseName: model.exerciseName, keepId: model.keepId, createdOnOrBefore: model.cutoff
+            )
         case .upsertContextSummary:
             let model = try decoder.decode(AIContextSummary.self, from: op.payload)
             try await remote.upsertContextSummary(model)
@@ -1421,7 +1440,7 @@ struct PendingChangeIndex {
             if let model = try? decoder.decode(TombstonePayload.self, from: op.payload) {
                 tombstones[model.entity, default: []].formUnion(model.recordIds)
             }
-        case .insertPersonalRecord:
+        case .insertPersonalRecord, .deletePersonalRecords:
             break   // the cloud PR log is never restored
         }
     }

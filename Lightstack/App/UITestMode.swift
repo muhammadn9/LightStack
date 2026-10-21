@@ -348,6 +348,9 @@ final class UITestFakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable 
     func updateExerciseNames(ids: [UUID], name: String) async throws { try record("updateExerciseNames") }
     func upsertProfile(_ profile: UserProfile) async throws { try record("upsertProfile") }
     func insertPersonalRecord(_ record: PersonalRecord) async throws { try self.record("insertPersonalRecord") }
+    func deletePersonalRecords(userId: UUID, exerciseName: String, keepId: UUID?, createdOnOrBefore: Date) async throws {
+        try record("deletePersonalRecords")
+    }
     func upsertContextSummary(_ summary: AIContextSummary) async throws { try record("upsertContextSummary") }
     func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws { try record("deleteContextSummaries") }
     func insertMonthPlan(_ plan: MonthPlan) async throws { try record("insertMonthPlan") }

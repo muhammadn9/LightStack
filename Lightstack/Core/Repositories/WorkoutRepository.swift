@@ -28,6 +28,12 @@ final class WorkoutRepository {
             .map { Workout(from: $0) }
     }
 
+    /// Real sessions only (at least one logged set). Never-started generated plans are excluded.
+    func fetchRecentLoggedWorkouts(userId: UUID, limit: Int) -> [Workout] {
+        localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: limit)
+            .map { Workout(from: $0) }
+    }
+
     /// Distinct exercise names the user has done before, most recently used first.
     func fetchDistinctExerciseNames(userId: UUID) -> [HistoryExercise] {
         HistoryExercise.distinct(localStorage.fetchExerciseHistory(userId: userId))

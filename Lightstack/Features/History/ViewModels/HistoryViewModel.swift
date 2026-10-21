@@ -21,7 +21,7 @@ final class HistoryViewModel: ObservableObject {
 
     func loadWorkouts(userId: UUID) {
         isLoading = true
-        let fetched = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 200)
+        let fetched = workoutRepository.fetchRecentLoggedWorkouts(userId: userId, limit: 200)
         allWorkouts = fetched
         workouts = Self.filtered(fetched, by: filterType)
         isLoading = false

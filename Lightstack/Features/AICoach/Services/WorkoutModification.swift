@@ -6,11 +6,14 @@ struct SetTarget: Codable, Equatable, Hashable {
     var weight: String?
     var reps: String?
     var rir: String?
+    /// True for ramp-up sets computed by the progression engine (nil = a normal set).
+    var isWarmup: Bool?
 
-    init(weight: String? = nil, reps: String? = nil, rir: String? = nil) {
+    init(weight: String? = nil, reps: String? = nil, rir: String? = nil, isWarmup: Bool? = nil) {
         self.weight = weight
         self.reps = reps
         self.rir = rir
+        self.isWarmup = isWarmup
     }
 
     /// Weight text for a set row: the leading number, or "BW". Empty when unusable.

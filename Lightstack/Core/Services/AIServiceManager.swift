@@ -14,6 +14,11 @@ final class AIServiceManager {
         logger.debug("Initialized with providers: \(providers.map { $0.name }.joined(separator: ", "))")
     }
 
+    /// Name of the provider (model) the next request will try first.
+    var activeProviderName: String {
+        providers.first(where: { $0.isAvailable })?.name ?? providers.first?.name ?? "unknown"
+    }
+
     /// Generate chat completion using the first available provider.
     /// Automatically falls back to next provider if current one is rate limited.
     ///

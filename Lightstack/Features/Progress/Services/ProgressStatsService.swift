@@ -296,7 +296,7 @@ final class ProgressStatsService {
     func snapshot(userId: UUID, now: Date = Date(), calendar: Calendar = .current) -> ProgressSnapshot {
         var sets: [LoggedSet] = []
         var workouts: [LoggedWorkout] = []
-        for cdWorkout in localStorage.fetchRecentWorkouts(userId: userId, limit: 100000) {
+        for cdWorkout in localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000) {
             guard let date = cdWorkout.date, let workoutId = cdWorkout.id else { continue }
             workouts.append(LoggedWorkout(id: workoutId, date: date,
                                           name: cdWorkout.workoutType ?? ""))
