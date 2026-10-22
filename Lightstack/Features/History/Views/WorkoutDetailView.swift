@@ -70,12 +70,17 @@ struct WorkoutDetailView: View {
                         title: "My Notes",
                         content: workout.userNote
                     )
-                    NoteCardView(
-                        icon: "sparkles",
-                        iconColor: AppTheme.accent,
-                        title: "AI Progression Note",
-                        content: CoachReviewDocument.displayText(from: workout.aiProgressionNote)
-                    )
+                    if let review = CoachReviewDocument.parse(workout.aiProgressionNote)?.review {
+                        CoachSessionReviewView(review: review)
+                    } else {
+                        // Plain-text notes from before the structured review.
+                        NoteCardView(
+                            icon: "sparkles",
+                            iconColor: AppTheme.accent,
+                            title: "AI Progression Note",
+                            content: CoachReviewDocument.displayText(from: workout.aiProgressionNote)
+                        )
+                    }
 
                     if !isEditing {
                         repeatButton

@@ -512,6 +512,7 @@ final class UITestFakeAIProvider: AIProvider {
     static let planJSON = """
     {
       "coaching_notes": "Focus on controlled reps today.",
+      "review": {"verdict": "sound", "summary": "Good order and volume for a push day. Heaviest lifts come first.", "changes": []},
       "exercises": [
         {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets": 3,
          "target_weight": "135 lbs", "reps": "8", "rir": "2", "rest_seconds": 90},
@@ -519,6 +520,7 @@ final class UITestFakeAIProvider: AIProvider {
          "target_weight": "50 lbs", "reps": "10", "rir": "2", "rest_seconds": 90},
         {"name": "Cable Triceps Pushdown", "muscle_group": "Triceps", "sets": 3,
          "target_weight": "40 lbs", "reps": "12", "rir": "1", "rest_seconds": 60,
+         "cue": "Elbows pinned to your sides, no flaring.",
          "set_targets": [{"weight": "185", "reps": "8", "rir": "4"},
                          {"weight": "185", "reps": "8", "rir": "3"},
                          {"weight": "195", "reps": "6", "rir": "2"}]}

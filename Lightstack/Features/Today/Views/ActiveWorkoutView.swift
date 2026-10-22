@@ -17,6 +17,10 @@ struct ActiveWorkoutView: View {
     @State private var showReorder = false
     /// Scroll position of the card pager; mirrors `currentExerciseIndex`.
     @State private var scrolledPage: Int? = 0
+    /// In-session miss banner state per exercise and trigger set.
+    @State private var missDecisions: [String: MissDecisionState] = [:]
+    @State private var missReasons: [String: MissReason] = [:]
+    @State private var missDismissed: Set<String> = []
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
@@ -292,6 +296,8 @@ struct ActiveWorkoutView: View {
                 pageRows(rows: rows, members: members, isSuperset: page.isSuperset)
                     .animation(.spring(response: 0.35, dampingFraction: 0.75), value: loggedTotal)
 
+                coachHints(members: members)
+
                 InkDivider()
 
                 // Add set (a round, on a superset page)
@@ -418,6 +424,41 @@ struct ActiveWorkoutView: View {
 
     @ViewBuilder
     private func setRow(_ row: SupersetRow, exercise: Exercise) -> some View {
+        let loggedCount = viewModel.loggedSets[exercise.id]?.count ?? 0
+        let overallIndex: Int = {
+            switch row.kind {
+            case .logged(let index): return index
+            case .pending(let index): return loggedCount + index
+            }
+        }()
+        VStack(alignment: .leading, spacing: 2) {
+            setCaption(exercise: exercise, overallIndex: overallIndex, showRest: row.isPending)
+            setRowBody(row, exercise: exercise)
+        }
+    }
+
+    /// "Top set · rest 2:00" above a row, from the coach's per-set targets.
+    @ViewBuilder
+    private func setCaption(exercise: Exercise, overallIndex: Int, showRest: Bool) -> some View {
+        if exercise.trackingType != .cardio,
+           let target = todayViewModel.setTargets[exercise.id]?[safe: overallIndex] {
+            let role = target.resolvedRole
+            let parts = [
+                role == .straight ? nil : role.label,
+                showRest ? (target.restSeconds ?? exercise.restSeconds).flatMap { $0 > 0 ? "rest \(CoachRestFormat.short($0))" : nil } : nil
+            ].compactMap { $0 }
+            if !parts.isEmpty {
+                Text(parts.joined(separator: " · "))
+                    .font(AppTheme.caveat(11, weight: role == .top ? .bold : .regular))
+                    .foregroundStyle(role == .top ? AppTheme.accent : AppTheme.textSecondary)
+                    .padding(.leading, 4)
+                    .accessibilityIdentifier("session.setRole.\(exerciseIndex(of: exercise)).\(overallIndex)")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func setRowBody(_ row: SupersetRow, exercise: Exercise) -> some View {
         switch row.kind {
         case .logged(let index):
             if let set = viewModel.loggedSets[exercise.id]?[safe: index] {
@@ -544,6 +585,72 @@ struct ActiveWorkoutView: View {
         persistSession()
     }
 
+    // MARK: - In-session coaching
+
+    private func missKey(_ exercise: Exercise, _ suggestion: InSessionAdjuster.Suggestion) -> String {
+        "\(exercise.id.uuidString)-\(suggestion.triggerLoggedIndex)"
+    }
+
+    /// The miss banner(s) and the RIR nudge for a page. Both are non-blocking.
+    @ViewBuilder
+    private func coachHints(members: [Exercise]) -> some View {
+        ForEach(members) { member in
+            let logged = todayViewModel.loggedSetsForExercise(member.id)
+            if member.trackingType != .cardio,
+               let suggestion = todayViewModel.inSessionSuggestion(for: member),
+               suggestion.triggerLoggedIndex == logged.count - 1,
+               !missDismissed.contains(missKey(member, suggestion)) {
+                let key = missKey(member, suggestion)
+                InSessionMissBanner(
+                    exerciseIndex: exerciseIndex(of: member),
+                    suggestion: suggestion,
+                    decision: missDecisions[key],
+                    chosenReason: missReasons[key],
+                    onApply: { applyMissSuggestion(suggestion, to: member, key: key) },
+                    onKeep: { missDecisions[key] = .kept },
+                    onReason: { reason in
+                        missReasons[key] = reason
+                        todayViewModel.recordInSessionReason(exercise: member.name, reason: reason)
+                    },
+                    onDismiss: { missDismissed.insert(key) }
+                )
+                .transition(.opacity)
+            }
+        }
+        if let nudge = members.first(where: needsRirNudge) {
+            RirNudgeHint()
+                .id(nudge.id)
+        }
+    }
+
+    /// True when the exercise's latest logged set is a working set without an RIR.
+    private func needsRirNudge(_ exercise: Exercise) -> Bool {
+        guard exercise.trackingType != .cardio,
+              let sets = viewModel.loggedSets[exercise.id], let last = sets.last, last.rir == nil else { return false }
+        let target = todayViewModel.setTargets[exercise.id]?[safe: sets.count - 1]
+        return target?.isWarmup != true
+    }
+
+    /// Lowers the targets (and the unlogged rows) of the sets still to come.
+    private func applyMissSuggestion(_ suggestion: InSessionAdjuster.Suggestion, to exercise: Exercise, key: String) {
+        let loggedCount = viewModel.loggedSets[exercise.id]?.count ?? 0
+        let offset = suggestion.triggerIndex - suggestion.triggerLoggedIndex
+        for change in suggestion.changes {
+            let weight = String(format: "%g", change.weight)
+            if todayViewModel.setTargets[exercise.id]?.indices.contains(change.index) == true {
+                todayViewModel.setTargets[exercise.id]?[change.index].weight = weight
+            }
+            let row = change.index - offset - loggedCount
+            if var pending = viewModel.pendingSets[exercise.id], pending.indices.contains(row) {
+                pending[row].weight = weight
+                viewModel.pendingSets[exercise.id] = pending
+            }
+        }
+        missDecisions[key] = .applied(text: InSessionMissBanner.appliedText(for: suggestion),
+                                      message: InSessionMissBanner.message(for: suggestion))
+        persistSession()
+    }
+
     private func pendingSetsBinding(for exerciseId: UUID) -> Binding<[PendingSetInput]> {
         Binding(
             get: { viewModel.pendingSets[exerciseId] ?? [] },
@@ -571,7 +678,14 @@ struct ActiveWorkoutView: View {
         // the longest rest among the members.
         if startRest,
            let plan = SupersetRounds.restPlan(afterLogging: exerciseId, in: todayViewModel.exercises) {
-            viewModel.startRestTimer(for: exerciseId, seconds: plan.seconds, exerciseName: plan.name)
+            // The coach prescribes rest per set; a superset keeps its shared rest.
+            var seconds = plan.seconds
+            let isSuperset = SupersetRounds.page(containing: exerciseId, in: todayViewModel.exercises)?.isSuperset == true
+            let loggedIndex = (viewModel.loggedSets[exerciseId]?.count ?? 1) - 1
+            if !isSuperset, let prescribed = todayViewModel.setTargets[exerciseId]?[safe: loggedIndex]?.restSeconds, prescribed > 0 {
+                seconds = prescribed
+            }
+            viewModel.startRestTimer(for: exerciseId, seconds: seconds, exerciseName: plan.name)
         }
     }
 

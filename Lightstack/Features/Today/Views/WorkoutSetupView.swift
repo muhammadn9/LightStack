@@ -151,6 +151,8 @@ struct WorkoutSetupView: View {
                         .lineLimit(2...5)
                 }
 
+                moreOptions
+
                 // Buttons
                 VStack(spacing: 12) {
                     Button(action: submitWorkout) {
@@ -290,13 +292,80 @@ struct WorkoutSetupView: View {
         .accessibilityLabel(label)
     }
 
+    /// Collapsed by default so one tap still generates a workout.
+    private var moreOptions: some View {
+        ProgressCard(padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { viewModel.showMoreOptions.toggle() }
+                } label: {
+                    HStack {
+                        Text("More options")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Spacer()
+                        Image(systemName: viewModel.showMoreOptions ? "chevron.up" : "chevron.down")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .frame(minHeight: 28)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("setup.moreOptions")
+                .accessibilityValue(viewModel.showMoreOptions ? "expanded" : "collapsed")
+
+                if viewModel.showMoreOptions {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Constraints")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        TextField("e.g. incline smith taken, fasted, knee tweak",
+                                  text: $viewModel.constraints, axis: .vertical)
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .padding(12)
+                            .background(AppTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .lineLimit(1...3)
+                            .accessibilityIdentifier("setup.constraints")
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Focus")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Picker("Focus", selection: Binding(
+                            get: { viewModel.focus },
+                            set: { viewModel.chooseFocus($0) }
+                        )) {
+                            ForEach(CoachFocus.allCases, id: \.self) { focus in
+                                Text(Self.focusTitle(focus)).tag(focus)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("setup.focus")
+                    }
+                }
+            }
+        }
+    }
+
+    private static func focusTitle(_ focus: CoachFocus) -> String {
+        switch focus {
+        case .hypertrophy: return "Hypertrophy"
+        case .strength: return "Strength"
+        case .maintenance: return "Maintenance"
+        }
+    }
+
     private func submitWorkout() {
         guard let params = viewModel.validateAndSubmit() else { return }
         todayViewModel.generatePlan(
             workoutType: params.workoutType,
             time: params.time,
             energy: params.energy,
-            notes: params.notes
+            notes: params.notes,
+            constraints: params.constraints,
+            focus: params.focus
         )
     }
 }

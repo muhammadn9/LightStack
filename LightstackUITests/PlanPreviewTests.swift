@@ -54,8 +54,8 @@ final class PlanPreviewTests: LightstackUITestCase {
         XCTAssertTrue(row.exists, "Set row missing")
         shot("16-plan-set-rows")
         // The guardrails strip the RIR 4 warm-up from a non-first isolation exercise.
-        XCTAssertEqual(row.label, "Set 1 185 lb × 8 @ RIR 3")
-        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "plan.setRow.2.1").firstMatch.label, "Set 2 195 lb × 6 @ RIR 2")
+        XCTAssertEqual(row.label, "Set 1 185 lb × 8 @ RIR 3 rest 90s")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "plan.setRow.2.1").firstMatch.label, "Set 2 195 lb × 6 @ RIR 2 rest 90s")
     }
 
     func testCancelAndDiscardReturnsToSetupLeavingHistoryUnchanged() throws {

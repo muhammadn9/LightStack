@@ -13,6 +13,17 @@ final class WorkoutSetupViewModel: ObservableObject {
     /// so keep it even: the default of 8 is 4 dots, matching the "4 / 5" label.
     @Published var energyLevel: Int = 8
     @Published var additionalNotes: String = ""
+    /// Optional: "incline smith taken, fasted, knee tweak". Sent to the coach with the request.
+    @Published var constraints: String = ""
+    /// Training focus; hypertrophy unless the athlete (or their profile goals) say otherwise.
+    @Published var focus: CoachFocus = CoachPreferences.resolvedFocus()
+    @Published var showMoreOptions = false
+
+    /// Remembers the athlete's choice for next time.
+    func chooseFocus(_ newFocus: CoachFocus) {
+        focus = newFocus
+        CoachPreferences.setFocus(newFocus)
+    }
     @Published var splitDays: [String] = []
     /// Past workout names not in the split (e.g. imported ones), most recent first.
     @Published var historyWorkoutNames: [String] = []
@@ -60,7 +71,7 @@ final class WorkoutSetupViewModel: ObservableObject {
     }
 
     /// Validate and return sanitized inputs, or nil if invalid.
-    func validateAndSubmit() -> (workoutType: String, time: Int, energy: Int, notes: String?)? {
+    func validateAndSubmit() -> (workoutType: String, time: Int, energy: Int, notes: String?, constraints: String?, focus: CoachFocus?)? {
         let sanitizedType = validationService.sanitize(selectedWorkoutType)
         guard !sanitizedType.isEmpty else { return nil }
 
@@ -70,6 +81,12 @@ final class WorkoutSetupViewModel: ObservableObject {
         let notes = additionalNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         let sanitizedNotes: String? = notes.isEmpty ? nil : validationService.sanitize(notes)
 
-        return (sanitizedType, clampedTime, clampedEnergy, sanitizedNotes)
+        let rawConstraints = constraints.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sanitizedConstraints: String? = rawConstraints.isEmpty ? nil : validationService.sanitize(rawConstraints)
+        // Only an explicit choice overrides the stored preference / profile goals.
+        let chosenFocus: CoachFocus? = CoachPreferences.storedFocus() == nil && focus == CoachPreferences.resolvedFocus()
+            ? nil : focus
+
+        return (sanitizedType, clampedTime, clampedEnergy, sanitizedNotes, sanitizedConstraints, chosenFocus)
     }
 }

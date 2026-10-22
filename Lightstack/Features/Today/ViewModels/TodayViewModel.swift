@@ -216,6 +216,12 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         sessionService.recordInSessionReason(exercise: exercise, reason: reason)
     }
 
+    /// The coach's saved document for the workout being finished (the structured review once it exists).
+    func currentCoachReviewDocument() -> CoachReviewDocument? {
+        guard let id = sessionService.currentWorkoutId else { return nil }
+        return sessionService.reviewStore.document(forWorkoutId: id)
+    }
+
     func finishWorkout(userNote: String?) {
         guard let userId = userId else { return }
         // Only exercises with explicitly logged sets count as worked.

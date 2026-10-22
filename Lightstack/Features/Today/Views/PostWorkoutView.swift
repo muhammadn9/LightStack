@@ -6,15 +6,20 @@ struct PostWorkoutView: View {
     @State private var userNote: String = ""
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: AppTheme.sectionSpacing) {
-                completionHeader
-                sessionStatsRow
-                aiNoteSection
-                userNoteSection
-                saveButton
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: AppTheme.sectionSpacing) {
+                    completionHeader
+                    sessionStatsRow
+                    aiNoteSection
+                    userNoteSection
+                }
+                .padding(20)
             }
-            .padding(20)
+            // Pinned, so a long review never pushes Save off screen.
+            saveButton
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
         }
     }
 
@@ -89,13 +94,23 @@ struct PostWorkoutView: View {
 
     // MARK: - AI Progression Note
 
+    @ViewBuilder
     private var aiNoteSection: some View {
+        if !todayViewModel.isLoadingNote, let review = todayViewModel.currentCoachReviewDocument()?.review {
+            // The structured review (always saved; Swift's rules write it when the AI fails).
+            CoachSessionReviewView(review: review)
+        } else {
+            progressionNoteSection
+        }
+    }
+
+    private var progressionNoteSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: "sparkles")
                     .foregroundStyle(AppTheme.accent)
                     .symbolEffect(.pulse, options: .repeating)
-                Text("Coach's Progression Note")
+                Text("Coach's Review")
                     .font(AppTheme.playfairItalic(16, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
             }
@@ -109,6 +124,8 @@ struct PostWorkoutView: View {
                         .foregroundStyle(AppTheme.textSecondary)
                 }
                 .padding()
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("review.loading")
             } else if let note = todayViewModel.aiProgressionNote {
                 VStack(alignment: .leading, spacing: 0) {
                     AppTheme.accentGradient

@@ -37,7 +37,7 @@ final class CoachTrustTests: LightstackUITestCase {
         waitFor(anyElement("plan.warmup.0.0"), "Warm-up badge missing on the first compound")
         XCTAssertFalse(anyElement("plan.warmup.1.0").exists)
         XCTAssertFalse(anyElement("plan.warmup.2.0").exists)
-        XCTAssertTrue(anyElement("plan.setRow.0.0").label.contains("warm-up"))
+        XCTAssertTrue(anyElement("plan.setRow.0.0").label.contains("Warm-up"))
 
         scrollTo(anyElement("plan.source.0"))
         shot("20-plan-evidence")
