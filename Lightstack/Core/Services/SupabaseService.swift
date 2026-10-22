@@ -241,6 +241,16 @@ final class SupabaseService {
             .execute()
     }
 
+    func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws {
+        guard !workoutTypes.isEmpty else { return }
+        try await client
+            .from("ai_context_summaries")
+            .delete()
+            .eq("user_id", value: userId.uuidString)
+            .in("workout_type", values: workoutTypes)
+            .execute()
+    }
+
     func fetchContextSummary(userId: UUID, workoutType: String) async throws -> AIContextSummary? {
         let response: [AIContextSummary] = try await client
             .from("ai_context_summaries")
@@ -294,6 +304,20 @@ final class SupabaseService {
             .from("personal_records")
             .upsert(record.toSupabase(), onConflict: "id")
             .execute()
+    }
+
+    /// Removes the cloud PR rows of one exercise (except `keepId`) created on or before the cutoff.
+    func deletePersonalRecords(userId: UUID, exerciseName: String, keepId: UUID?, createdOnOrBefore: Date) async throws {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var query = client
+            .from("personal_records")
+            .delete()
+            .eq("user_id", value: userId.uuidString)
+            .eq("exercise_name", value: exerciseName)
+            .lte("created_at", value: formatter.string(from: createdOnOrBefore))
+        if let keepId { query = query.neq("id", value: keepId.uuidString) }
+        try await query.execute()
     }
 
     func fetchPersonalRecords(userId: UUID) async throws -> [PersonalRecord] {

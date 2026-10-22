@@ -16,7 +16,9 @@ enum QueuedOperationType: String, Codable {
     case renameExercises
     case upsertProfile
     case insertPersonalRecord
+    case deletePersonalRecords
     case upsertContextSummary
+    case deleteContextSummaries
     case insertMonthPlan
     case insertPlannedSessions
     case updatePlannedSession
@@ -58,6 +60,14 @@ struct DeleteRestDayPayload: Codable {
     let date: Date
 }
 
+/// Payload for `.deletePersonalRecords`: removes the cloud PR rows of one exercise name, except
+/// `keepId`, that were created on or before `cutoff`. The cutoff keeps a PR queued later safe.
+struct DeletePersonalRecordsPayload: Codable {
+    let exerciseName: String
+    let keepId: UUID?
+    let cutoff: Date
+}
+
 /// Payload for `.deleteExercise` (delete a single exercise).
 struct DeleteExercisePayload: Codable {
     let exerciseId: UUID
@@ -67,6 +77,11 @@ struct DeleteExercisePayload: Codable {
 struct RenameExercisesPayload: Codable {
     let ids: [UUID]
     let name: String
+}
+
+/// Payload for `.deleteContextSummaries`: AI summaries stored under workout-type names that were merged away.
+struct DeleteContextSummariesPayload: Codable {
+    let workoutTypes: [String]
 }
 
 /// Payload for `.deleteExercises` (delete every exercise of a workout).
@@ -90,7 +105,9 @@ protocol RemoteWriting: Sendable {
     func updateExerciseNames(ids: [UUID], name: String) async throws
     func upsertProfile(_ profile: UserProfile) async throws
     func insertPersonalRecord(_ record: PersonalRecord) async throws
+    func deletePersonalRecords(userId: UUID, exerciseName: String, keepId: UUID?, createdOnOrBefore: Date) async throws
     func upsertContextSummary(_ summary: AIContextSummary) async throws
+    func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws
     func insertMonthPlan(_ plan: MonthPlan) async throws
     func insertPlannedSessions(_ sessions: [PlannedSession]) async throws
     func updatePlannedSession(_ session: PlannedSession) async throws
@@ -393,6 +410,14 @@ actor OfflineQueueManager {
         launch { await $0.enqueueDeleteExercises(workoutId: workoutId, sequence: sequence) }
     }
 
+    /// Delete the AI summaries stored under these workout types (a workout-type merge). Pending
+    /// earlier-sequenced upserts for the same types are dropped so they cannot recreate the rows.
+    nonisolated func submitDeleteContextSummaries(types: [String]) {
+        guard !types.isEmpty else { return }
+        let sequence = sequencer.next()
+        launch { await $0.enqueueDeleteContextSummaries(types: types, sequence: sequence) }
+    }
+
     /// Record that these rows were deleted (uploaded to `sync_tombstones`, sorted after the deletes).
     nonisolated func submitTombstones(_ entity: TombstoneEntity, ids: [UUID]) {
         guard !ids.isEmpty else { return }
@@ -441,9 +466,48 @@ actor OfflineQueueManager {
     ) async {
         let owner = await ownerProvider()
         loadIfNeeded()
+        if type == .upsertContextSummary, let model = try? decoder.decode(AIContextSummary.self, from: data) {
+            // A fresh summary for a type revives it: a still-queued delete must not wipe it.
+            removePendingSummaryDeletes(of: model.workoutType, owner: owner, before: sequence)
+        }
         append(type, data: data, recordKey: recordKey, sequence: sequence, owner: owner)
         saveQueue()
         if flush { await flushSoon() }
+    }
+
+    private func removePendingSummaryDeletes(of workoutType: String, owner: UUID?, before sequence: Int64) {
+        var updated: [QueuedOperation] = []
+        for var op in queue {
+            guard op.type == .deleteContextSummaries, op.ownerUserId == owner, op.id != executingId,
+                  op.sequence < sequence,
+                  let model = try? decoder.decode(DeleteContextSummariesPayload.self, from: op.payload),
+                  model.workoutTypes.contains(workoutType) else { updated.append(op); continue }
+            let kept = model.workoutTypes.filter { $0 != workoutType }
+            if kept.isEmpty { continue }
+            if let data = try? encoder.encode(DeleteContextSummariesPayload(workoutTypes: kept)) { op.payload = data }
+            updated.append(op)
+        }
+        if updated.count != queue.count || zip(updated, queue).contains(where: { $0.payload != $1.payload }) { queue = updated }
+    }
+
+    private func enqueueDeleteContextSummaries(types: [String], sequence: Int64) async {
+        let owner = await ownerProvider()
+        loadIfNeeded()
+        let doomed = Set(types)
+        // Earlier-sequenced upserts for these types would resurrect the rows: drop them.
+        queue.removeAll { op in
+            guard op.type == .upsertContextSummary, op.ownerUserId == owner, op.id != executingId,
+                  op.sequence < sequence,
+                  let model = try? decoder.decode(AIContextSummary.self, from: op.payload) else { return false }
+            return doomed.contains(model.workoutType)
+        }
+        if let data = try? encoder.encode(DeleteContextSummariesPayload(workoutTypes: types)) {
+            append(.deleteContextSummaries, data: data, recordKey: nil, sequence: sequence, owner: owner)
+        } else {
+            sequencer.markArrived(sequence)
+        }
+        saveQueue()
+        await flushSoon()
     }
 
     /// Adds the operation, or swaps the payload of a pending one for the same record
@@ -1075,10 +1139,13 @@ actor OfflineQueueManager {
             .renameExercises,
             .upsertProfile, .insertPersonalRecord,
             .upsertContextSummary,
+            // After the upsert, so a summary that was merged away is deleted last.
+            .deleteContextSummaries,
             .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession,
             .upsertRestDay,
             // Delete operations should be last, tombstones after the deletes they record.
             .deleteWorkout, .deleteSet, .deleteExercise, .deleteMonthPlan, .deleteRestDay,
+            .deletePersonalRecords,
             .insertTombstone
         ]
         var rank: [QueuedOperationType: Int] = [:]
@@ -1114,6 +1181,14 @@ actor OfflineQueueManager {
         case .insertPersonalRecord:
             let model = try decoder.decode(PersonalRecord.self, from: op.payload)
             try await remote.insertPersonalRecord(model)
+        case .deletePersonalRecords:
+            let model = try decoder.decode(DeletePersonalRecordsPayload.self, from: op.payload)
+            guard let userId = op.ownerUserId else {
+                throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "PR delete without user"))
+            }
+            try await remote.deletePersonalRecords(
+                userId: userId, exerciseName: model.exerciseName, keepId: model.keepId, createdOnOrBefore: model.cutoff
+            )
         case .upsertContextSummary:
             let model = try decoder.decode(AIContextSummary.self, from: op.payload)
             try await remote.upsertContextSummary(model)
@@ -1141,6 +1216,12 @@ actor OfflineQueueManager {
         case .renameExercises:
             let model = try decoder.decode(RenameExercisesPayload.self, from: op.payload)
             try await remote.updateExerciseNames(ids: model.ids, name: model.name)
+        case .deleteContextSummaries:
+            let model = try decoder.decode(DeleteContextSummariesPayload.self, from: op.payload)
+            guard let userId = op.ownerUserId else {
+                throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "summary delete without user"))
+            }
+            try await remote.deleteContextSummaries(userId: userId, workoutTypes: model.workoutTypes)
         case .deleteMonthPlan:
             let model = try decoder.decode(DeleteMonthPlanPayload.self, from: op.payload)
             try await remote.deleteMonthPlan(planId: model.planId)
@@ -1278,6 +1359,8 @@ struct PendingChangeIndex {
     var setExerciseIds = Set<UUID>()
     var profile = false
     var contextTypes = Set<String>()
+    /// Workout types whose AI summaries have an unuploaded delete (restore must not bring them back).
+    var deletedContextTypes = Set<String>()
     var monthPlans = Set<UUID>()
     var plannedSessions = Set<UUID>()
     var restDayIds = Set<UUID>()
@@ -1329,6 +1412,10 @@ struct PendingChangeIndex {
             profile = true
         case .upsertContextSummary:
             if let model = try? decoder.decode(AIContextSummary.self, from: op.payload) { contextTypes.insert(model.workoutType) }
+        case .deleteContextSummaries:
+            if let model = try? decoder.decode(DeleteContextSummariesPayload.self, from: op.payload) {
+                deletedContextTypes.formUnion(model.workoutTypes)
+            }
         case .insertMonthPlan:
             if let model = try? decoder.decode(MonthPlan.self, from: op.payload) { monthPlans.insert(model.id) }
         case .deleteMonthPlan:
@@ -1353,7 +1440,7 @@ struct PendingChangeIndex {
             if let model = try? decoder.decode(TombstonePayload.self, from: op.payload) {
                 tombstones[model.entity, default: []].formUnion(model.recordIds)
             }
-        case .insertPersonalRecord:
+        case .insertPersonalRecord, .deletePersonalRecords:
             break   // the cloud PR log is never restored
         }
     }

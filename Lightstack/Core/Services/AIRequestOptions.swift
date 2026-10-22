@@ -22,19 +22,31 @@ struct AIRequestOptions: Equatable {
     var task: AITask = .other
     var maxOutputTokens: Int = 8192
     var temperature: Double = 0.7
-    /// Ask the model to think as little as possible (saves tokens and latency).
-    var minimalThinking: Bool = false
+    /// How much the model may think before answering. `.modelDefault` sends no thinking field.
+    var thinking: ThinkingEffort = .modelDefault
+
+    /// The ai-proxy only accepts thinkingBudget 0...1024 or thinkingLevel minimal/low.
+    enum ThinkingEffort: Equatable {
+        case modelDefault
+        /// As little as possible (saves tokens and latency).
+        case minimal
+        /// A small real budget (1024 tokens on Gemini 2.5, level "low" on Gemini 3.x).
+        case low
+    }
+
+    /// True when any thinking field is sent.
+    var sendsThinking: Bool { thinking != .modelDefault }
 
     static let `default` = AIRequestOptions()
 
     /// Caps are the largest realistic output for each task, plus headroom.
     static func forTask(_ task: AITask) -> AIRequestOptions {
         switch task {
-        case .plan: return AIRequestOptions(task: task, maxOutputTokens: 3000, minimalThinking: true)
-        case .chat: return AIRequestOptions(task: task, maxOutputTokens: 1000, minimalThinking: true)
-        case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, minimalThinking: true)
-        case .monthPlan: return AIRequestOptions(task: task, maxOutputTokens: 4000, minimalThinking: true)
-        case .formFeedback: return AIRequestOptions(task: task, maxOutputTokens: 600, minimalThinking: true)
+        case .plan: return AIRequestOptions(task: task, maxOutputTokens: 6144, thinking: .low)
+        case .chat: return AIRequestOptions(task: task, maxOutputTokens: 1000, thinking: .minimal)
+        case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, thinking: .minimal)
+        case .monthPlan: return AIRequestOptions(task: task, maxOutputTokens: 4000, thinking: .minimal)
+        case .formFeedback: return AIRequestOptions(task: task, maxOutputTokens: 600, thinking: .minimal)
         case .other: return .default
         }
     }

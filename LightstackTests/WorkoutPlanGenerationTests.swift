@@ -22,7 +22,7 @@ private final class StubAIProvider: AIProvider {
 private final class PlanDelegate: WorkoutSessionServiceDelegate {
     var onPlan: (([Exercise]) -> Void)?
     var onFail: ((Error) -> Void)?
-    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise]) { onPlan?(exercises) }
+    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise], setTargets: [UUID: [SetTarget]]) { onPlan?(exercises) }
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String) {}
     func sessionServiceDidSaveWorkout(_ service: WorkoutSessionService) {}
     func sessionServiceDidFail(_ service: WorkoutSessionService, error: Error) { onFail?(error) }

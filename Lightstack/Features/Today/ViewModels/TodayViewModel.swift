@@ -24,6 +24,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var targetsRevision: Int = 0
     @Published var loggedSets: [UUID: [WorkoutSet]] = [:]
     @Published var aiProgressionNote: String?
+    /// The coach's review of the draft structure for the plan on screen (verdict, summary, proposed
+    /// changes with whether each was applied, deterministic safeguards). nil when there is none.
+    @Published var coachReview: CoachPlanReview?
     @Published var streak: Int = 0
     @Published var errorMessage: String?
     @Published var isLoadingNote: Bool = false
@@ -32,6 +35,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var previousHints: [UUID: [PreviousSetHint]] = [:]
     /// Coach per-set targets (pyramids, ramps) by exercise id. Session-only.
     @Published var setTargets: [UUID: [SetTarget]] = [:]
+    /// Why each planned exercise has the numbers it has (last sets, best, trend, rationale,
+    /// guardrail flags), keyed by exercise id. In memory only; empty for restored sessions.
+    @Published var evidence: [UUID: ExerciseEvidence] = [:]
     /// Unlogged set rows and clock state handed between the active-workout
     /// screen and session persistence (not published: no view renders them).
     var pendingSetsSnapshot: [UUID: [PendingSetInput]] = [:]
@@ -124,19 +130,24 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return saved + max(0, Int(now.timeIntervalSince(savedAt)))
     }
 
-    func generatePlan(workoutType: String, time: Int, energy: Int, notes: String?) {
+    /// Hands-off by default: time, energy, constraints and focus are all optional.
+    func generatePlan(workoutType: String, time: Int? = nil, energy: Int? = nil, notes: String? = nil,
+                      constraints: String? = nil, focus: CoachFocus? = nil) {
         guard let userId = userId else {
             errorMessage = "Sign in required to generate a workout."
             return
         }
         phase = .generating
         errorMessage = nil
+        coachReview = nil
         sessionService.generatePlan(
             userId: userId,
             workoutType: workoutType,
             time: time,
             energy: energy,
-            notes: notes
+            notes: notes,
+            constraints: constraints,
+            focus: focus
         )
     }
 
@@ -183,6 +194,34 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return false
     }
 
+    // MARK: - In-session coaching
+
+    /// Suggested lighter weights for the sets still to come when the first working or top set fell
+    /// short (nil otherwise). Show it only while `triggerLoggedIndex` is the latest logged set.
+    func inSessionSuggestion(for exercise: Exercise) -> InSessionAdjuster.Suggestion? {
+        InSessionAdjuster.evaluate(
+            exerciseName: exercise.name, prescribed: setTargets[exercise.id] ?? [],
+            logged: loggedSets[exercise.id] ?? [])
+    }
+
+    /// Saves the athlete's answer to "what got in the way?" so the post-workout review can tell
+    /// a bad day from a weight that is too heavy now.
+    @discardableResult
+    func recordInSessionReason(exercise: String, reason: MissReason) -> Bool {
+        sessionService.recordInSessionReason(exercise: exercise, reason: reason.rawValue)
+    }
+
+    @discardableResult
+    func recordInSessionReason(exercise: String, reason: String) -> Bool {
+        sessionService.recordInSessionReason(exercise: exercise, reason: reason)
+    }
+
+    /// The coach's saved document for the workout being finished (the structured review once it exists).
+    func currentCoachReviewDocument() -> CoachReviewDocument? {
+        guard let id = sessionService.currentWorkoutId else { return nil }
+        return sessionService.reviewStore.document(forWorkoutId: id)
+    }
+
     func finishWorkout(userNote: String?) {
         guard let userId = userId else { return }
         // Only exercises with explicitly logged sets count as worked.
@@ -193,6 +232,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             loggedSets[removed.id] = nil
             pendingSetsSnapshot[removed.id] = nil
             setTargets[removed.id] = nil
+            evidence[removed.id] = nil
             previousHints[removed.id] = nil
         }
         exercises = kept
@@ -203,7 +243,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             userNote: userNote,
             exercises: exercises,
             allSets: loggedSets,
-            activeSeconds: activeWorkoutElapsed
+            activeSeconds: activeWorkoutElapsed,
+            prescribedTargets: setTargets
         )
     }
 
@@ -232,6 +273,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         loggedSets = [:]
         previousHints = [:]
         setTargets = [:]
+        evidence = [:]
+        coachReview = nil
         pendingSetsSnapshot = [:]
         timerPaused = false
         aiProgressionNote = nil
@@ -264,18 +307,29 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     // MARK: - WorkoutSessionServiceDelegate
 
-    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise]) {
+    func sessionServiceDidBuildEvidence(_ service: WorkoutSessionService, evidence: [UUID: ExerciseEvidence]) {
+        self.evidence = evidence
+    }
+
+    func sessionServiceDidBuildCoachReview(_ service: WorkoutSessionService, review: CoachPlanReview) {
+        self.coachReview = review
+    }
+
+    func sessionServiceDidGeneratePlan(_ service: WorkoutSessionService, exercises: [Exercise], setTargets: [UUID: [SetTarget]]) {
         guard !exercises.isEmpty else {
             self.errorMessage = "Couldn't build a workout. Please try again."
             self.phase = .setup
             return
         }
         self.exercises = exercises
+        self.setTargets = setTargets
         self.exerciseListResetToken += 1
         self.phase = .confirmation
     }
 
     func confirmAndStartWorkout() {
+        // The prescription the athlete actually starts with (after any swaps in the preview).
+        sessionService.recordStartedPlan(exercises: exercises, setTargets: setTargets)
         activeWorkoutElapsed = 0
         phase = .active
     }

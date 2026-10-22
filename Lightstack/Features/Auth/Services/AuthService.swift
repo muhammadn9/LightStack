@@ -399,6 +399,7 @@ final class AuthService: NSObject {
     // MARK: - Sign Out
 
     func signOut() {
+        CoachDebugStore.shared.clear()
         Task {
             do {
                 try await supabaseClient.auth.signOut()

@@ -60,6 +60,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let workoutStatsService: WorkoutStatsService
     let sessionPersistence: WorkoutSessionPersistence
     let syncRestoreService: SyncRestoreService
+    let dataHygieneService: DataHygieneService
 
     // MARK: - Repositories
 
@@ -67,6 +68,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let profileRepository: ProfileRepository
     let prRepository: PRRepository
     let exerciseMergeService: ExerciseMergeService
+    let workoutTypeMergeService: WorkoutTypeMergeService
     let monthPlanRepository: MonthPlanRepository
     let restDayRepository: RestDayRepository
 
@@ -185,6 +187,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             offlineQueueManager: offlineQueueManager,
             prRepository: prRepository
         )
+        self.workoutTypeMergeService = WorkoutTypeMergeService(
+            localStorage: localStorageService,
+            offlineQueueManager: offlineQueueManager,
+            profileRepository: profileRepository
+        )
         self.monthPlanRepository = MonthPlanRepository(
             localStorage: localStorageService,
             supabaseService: supabaseService,
@@ -235,6 +242,19 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             currentUserId: { queueAuth.currentUser()?.userId },
             activeWorkoutIds: {
                 // The workout being logged right now (live or saved for relaunch) is never touched.
+                var ids = Set<UUID>()
+                if let saved = persistence.restoreSession() { ids.insert(saved.workout.id) }
+                if let current = sessionService.currentWorkout { ids.insert(current.id) }
+                return ids
+            }
+        )
+
+        self.dataHygieneService = DataHygieneService(
+            localStorage: localStorageService,
+            workoutRepository: workoutRepository,
+            prRepository: prRepository,
+            currentPendingId: { sessionService.currentWorkout?.id },
+            protectedWorkoutIds: {
                 var ids = Set<UUID>()
                 if let saved = persistence.restoreSession() { ids.insert(saved.workout.id) }
                 if let current = sessionService.currentWorkout { ids.insert(current.id) }
@@ -484,6 +504,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         let cutoff = Task { try? await Task.sleep(nanoseconds: 60_000_000_000); full.cancel() }
         _ = try? await full.value
         cutoff.cancel()
+        runDataHygieneIfNeeded(userId: userId)
         syncService.triggerFlush()   // repair uploads, if any
     }
 
@@ -513,23 +534,41 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     func startBackgroundRestoreIfDue() {
         guard isAuthenticated, hasCompletedOnboarding, restoreGate == .idle,
               let userId = authService.currentUser()?.userId,
-              !syncRestoreService.isRunning,
-              syncRestoreService.isRestoreDue(userId: userId) else { return }
+              !syncRestoreService.isRunning else { return }
         #if DEBUG
         // UI tests only restore when a test asks for it with a seeded fake remote.
         if UITestMode.isActive && UITestMode.remoteSeed == nil { return }
         #endif
+        guard syncRestoreService.isRestoreDue(userId: userId) else {
+            // No restore needed; the one-time cleanup still runs once per install.
+            runDataHygieneIfNeeded(userId: userId)
+            return
+        }
         let service = syncRestoreService
         let queue = offlineQueueManager
         Task { @MainActor [weak self] in
             await queue.flush()
             do {
                 try await service.restoreAll(userId: userId)
-                self?.syncService.triggerFlush()
             } catch {
                 self?.logger.info("background restore stopped: \(String(describing: error), privacy: .public)")
             }
+            // After restore/hydration, so duplicates that came back from the cloud are covered.
+            self?.runDataHygieneIfNeeded(userId: userId)
+            self?.syncService.triggerFlush()
         }
+    }
+
+    /// One-time cleanup of duplicate workouts, never-started plans and messy PRs (see
+    /// `DataHygieneService`). Flagged per user and version; deletes go through the offline queue.
+    @MainActor
+    private func runDataHygieneIfNeeded(userId: UUID) {
+        #if DEBUG
+        if UITestMode.isActive { return }
+        #endif
+        guard authService.currentUser()?.userId == userId,
+              dataHygieneService.runIfNeeded(userId: userId) != nil else { return }
+        syncService.triggerFlush()
     }
 
     private func loadOnboardingState() {

@@ -6,12 +6,26 @@ struct SetTarget: Codable, Equatable, Hashable {
     var weight: String?
     var reps: String?
     var rir: String?
+    /// True for ramp-up sets computed by the progression engine (nil = a normal set).
+    var isWarmup: Bool?
+    /// What the set is for (warm-up, Set 1, top, back-off, straight). nil on older plans.
+    var role: SetRole?
+    /// Prescribed rest after this set, in seconds. nil = use the exercise's rest.
+    var restSeconds: Int?
 
-    init(weight: String? = nil, reps: String? = nil, rir: String? = nil) {
+    /// `isWarmup` follows `role` when a role is given.
+    init(weight: String? = nil, reps: String? = nil, rir: String? = nil, isWarmup: Bool? = nil,
+         role: SetRole? = nil, restSeconds: Int? = nil) {
         self.weight = weight
         self.reps = reps
         self.rir = rir
+        self.role = role
+        self.restSeconds = restSeconds
+        if let role { self.isWarmup = role == .warmup ? true : nil } else { self.isWarmup = isWarmup }
     }
+
+    /// The role, falling back to warm-up / straight for targets that carry none.
+    var resolvedRole: SetRole { role ?? (isWarmup == true ? .warmup : .straight) }
 
     /// Weight text for a set row: the leading number, or "BW". Empty when unusable.
     var prefillWeight: String {

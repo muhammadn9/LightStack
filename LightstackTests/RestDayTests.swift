@@ -22,6 +22,11 @@ final class RestDayTests: XCTestCase {
         var w = Workout.create(userId: userId, workoutType: "Push", energyLevel: nil, timeAvailableMinutes: nil)
         w.date = calendar.date(byAdding: .hour, value: 12, to: day(-daysAgo)) ?? day(-daysAgo)
         storage.saveWorkout(w)
+        // Only workouts with a logged set count as sessions (never-started plans do not).
+        let e = Exercise.create(workoutId: w.id, name: "Bench Press", muscleGroup: "Chest", orderIndex: 0,
+                                targetSets: 1, targetReps: "5", targetRir: nil, restSeconds: 90, coachNote: nil)
+        storage.saveExercises([e], workoutId: w.id)
+        storage.saveSet(WorkoutSet.create(exerciseId: e.id, setNumber: 1, weightLbs: 100, reps: 5, rir: nil), exerciseId: e.id)
     }
 
     func testAddRestDayIsIdempotentPerDay() {

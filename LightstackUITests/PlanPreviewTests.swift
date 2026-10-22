@@ -3,6 +3,22 @@ import XCTest
 /// Swap an exercise on the generated-plan preview, and back out of the preview.
 final class PlanPreviewTests: LightstackUITestCase {
 
+    func testBenchPlanEndsWithOneBackoff() throws {
+        launchApp(extraArguments: ["-uiTestingEngineHistory"])
+        tap(app.buttons["chip.Push"])
+        tap(app.buttons["generateButton"])
+        waitFor(app.buttons["previewCancelButton"], "Plan preview did not appear")
+        var labels: [String] = []
+        for row in 0..<8 {
+            let el = app.descendants(matching: .any).matching(identifier: "plan.setRow.0.\(row)").firstMatch
+            guard el.waitForExistence(timeout: row == 0 ? timeout : 1) else { break }
+            labels.append(el.label)
+        }
+        shot("17-plan-bench-backoff")
+        XCTAssertEqual(labels.filter { $0.hasPrefix("Back-off") }.count, 1, "Back-off row missing: \(labels)")
+        XCTAssertTrue(labels.last?.hasPrefix("Back-off") == true, "\(labels)")
+    }
+
     func testSwapToHistoryBackedExerciseFillsRowsOnStart() throws {
         launchApp(extraArguments: ["-uiTestingLiftHistory"])
         tap(app.buttons["chip.Push"])
@@ -42,6 +58,20 @@ final class PlanPreviewTests: LightstackUITestCase {
         XCTAssertEqual(repsField(exercise: 1, row: 0).value as? String, "8")
         XCTAssertEqual(repsField(exercise: 1, row: 1).value as? String, "7")
         XCTAssertFalse(weightField(exercise: 1, row: 2).exists, "Row count should match last session (2 sets)")
+    }
+
+    func testSetRowsShowFullWeightOnOneLine() throws {
+        launchApp()
+        tap(app.buttons["chip.Push"])
+        tap(app.buttons["generateButton"])
+        let row = app.descendants(matching: .any).matching(identifier: "plan.setRow.2.0").firstMatch
+        var swipes = 0
+        while !row.waitForExistence(timeout: 2) && swipes < 5 { app.swipeUp(); swipes += 1 }
+        XCTAssertTrue(row.exists, "Set row missing")
+        shot("16-plan-set-rows")
+        // The guardrails strip the RIR 4 warm-up from a non-first isolation exercise.
+        XCTAssertEqual(row.label, "Set 1 185 lb × 8 @ RIR 3 rest 90s")
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "plan.setRow.2.1").firstMatch.label, "Set 2 195 lb × 6 @ RIR 2 rest 90s")
     }
 
     func testCancelAndDiscardReturnsToSetupLeavingHistoryUnchanged() throws {

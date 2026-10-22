@@ -13,12 +13,16 @@ struct ConfirmWorkoutView: View {
     @State private var showChat = false
     @State private var swapTarget: Exercise?
     @State private var showDiscardConfirm = false
+    @State private var showCoachSaw = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 cancelRow
                 headerSection
+                if let review = todayViewModel.coachReview, !review.isEmpty {
+                    CoachPlanReviewCard(review: review)
+                }
                 exerciseList
                 actionButtons
             }
@@ -29,6 +33,9 @@ struct ConfirmWorkoutView: View {
             if let chatVM = chatViewModel {
                 CoachChatView(viewModel: chatVM, todayViewModel: todayViewModel)
             }
+        }
+        .sheet(isPresented: $showCoachSaw) {
+            if let userId = todayViewModel.userId { CoachSawView(userId: userId) }
         }
         .sheet(item: $swapTarget) { exercise in
             ExerciseSwapSheet(todayViewModel: todayViewModel, exercise: exercise, onFinish: {})
@@ -74,6 +81,13 @@ struct ConfirmWorkoutView: View {
                 .font(AppTheme.caveat(15))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
+            Button { showCoachSaw = true } label: {
+                Text("What the coach saw")
+                    .font(AppTheme.caveat(14, weight: .bold))
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(minHeight: AppTheme.minTouchSize)
+            }
+            .accessibilityIdentifier("plan.coachSaw")
         }
         .frame(maxWidth: .infinity)
         .lsCard()
@@ -103,9 +117,9 @@ struct ConfirmWorkoutView: View {
     }
 
     private func exerciseCard(_ exercise: Exercise, isInSuperset: Bool) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                // Name + muscle group
+        VStack(alignment: .leading, spacing: 8) {
+            // Header: name + muscle group on the left, swap / remove on the right.
+            HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(exercise.name)
                         .font(AppTheme.playfair(14, weight: .bold))
@@ -115,46 +129,58 @@ struct ConfirmWorkoutView: View {
                         .foregroundStyle(AppTheme.accentSecondary)
                 }
 
-                // Coach's message, shown once per exercise
-                if let message = exercise.coachNoteParts.message {
-                    Text(message)
-                        .font(AppTheme.caveat(12))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+
+                Button(action: { swapTarget = exercise }) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(.title3, design: .default, weight: .regular))
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(minWidth: AppTheme.minTouchSize, minHeight: AppTheme.minTouchSize)
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("previewSwap.\(todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0)")
+                .accessibilityLabel("Swap \(exercise.name)")
+                .accessibilityHint("Shows other exercises you could do instead")
 
-                // Per-set rows
-                setRows(for: exercise)
-
-                supersetControls(for: exercise, isInSuperset: isInSuperset)
+                Button(action: {
+                    todayViewModel.applyModification(
+                        .removeExercise(name: exercise.name),
+                        preserveLoggedSets: false
+                    )
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(.title3, design: .default, weight: .regular))
+                        .foregroundStyle(AppTheme.warning)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(exercise.name)")
+                .accessibilityHint("Removes this exercise from the workout plan")
             }
 
-            Spacer()
-
-            Button(action: { swapTarget = exercise }) {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(.title3, design: .default, weight: .regular))
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(minWidth: AppTheme.minTouchSize, minHeight: AppTheme.minTouchSize)
+            // Coach's message, shown once per exercise, full card width
+            let noteParts = Self.splitCue(exercise.coachNoteParts.message)
+            if let message = noteParts.message {
+                Text(message)
+                    .font(AppTheme.caveat(12))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("previewSwap.\(todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0)")
-            .accessibilityLabel("Swap \(exercise.name)")
-            .accessibilityHint("Shows other exercises you could do instead")
 
-            Button(action: {
-                todayViewModel.applyModification(
-                    .removeExercise(name: exercise.name),
-                    preserveLoggedSets: false
-                )
-            }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(.title3, design: .default, weight: .regular))
-                    .foregroundStyle(AppTheme.warning)
+            if let evidence = todayViewModel.evidence[exercise.id] {
+                PlanEvidenceBlock(
+                    evidence: evidence,
+                    exerciseIndex: todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Remove \(exercise.name)")
-            .accessibilityHint("Removes this exercise from the workout plan")
+
+            // Per-set rows, full card width
+            setRows(for: exercise)
+
+            if let cue = noteParts.cue {
+                cueBox(cue, exerciseIndex: todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0)
+            }
+
+            supersetControls(for: exercise, isInSuperset: isInSuperset)
         }
         .padding(12)
         .background(AppTheme.surfaceElevated)
@@ -196,7 +222,37 @@ struct ConfirmWorkoutView: View {
         }
     }
 
-    /// Renders one row per target set showing weight × reps @ RIR.
+    /// Small box with the coach's form cue, for exercises with a known form issue.
+    private func cueBox(_ cue: String, exerciseIndex: Int) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.bubble")
+                .font(.system(size: 11))
+                .foregroundStyle(AppTheme.warning)
+                .padding(.top, 2)
+            Text(cue)
+                .font(AppTheme.caveat(12))
+                .foregroundStyle(AppTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warning.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Form cue: \(cue)")
+        .accessibilityIdentifier("plan.cue.\(exerciseIndex)")
+    }
+
+    /// Splits "… Cue: elbows in" into the message and the cue.
+    static func splitCue(_ message: String?) -> (message: String?, cue: String?) {
+        guard let message else { return (nil, nil) }
+        guard let range = message.range(of: "Cue:", options: .caseInsensitive) else { return (message, nil) }
+        let head = message[..<range.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+        let cue = message[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (head.isEmpty ? nil : head, cue.isEmpty ? nil : cue)
+    }
+
+    /// Renders one row per target set: role, weight, reps, RIR and rest.
     @ViewBuilder
     private func setRows(for exercise: Exercise) -> some View {
         let count = max(1, exercise.targetSets ?? 1)
@@ -211,35 +267,87 @@ struct ConfirmWorkoutView: View {
 
         let perSet = todayViewModel.setTargets[exercise.id] ?? []
 
-        VStack(alignment: .leading, spacing: 4) {
+        let exerciseIndex = todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0
+
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+            GridRow {
+                Text("Set")
+                Text("Weight").gridColumnAlignment(.trailing)
+                Text("Reps")
+                Text("RIR")
+                Text("Rest").gridColumnAlignment(.trailing)
+            }
+            .font(AppTheme.caveat(10, weight: .bold))
+            .foregroundStyle(AppTheme.textSecondary)
+            .accessibilityHidden(true)
+
             ForEach(1...count, id: \.self) { setNum in
                 // A swapped-in lift can carry different numbers per set.
                 let target: SetTarget? = perSet.indices.contains(setNum - 1) ? perSet[setNum - 1] : nil
-                let rowWeight = target.map { $0.prefillWeight }.flatMap { $0.isEmpty ? nil : ($0 == "BW" ? $0 : "\($0) lbs") } ?? weight
+                let rowWeight = target.map { $0.prefillWeight }.flatMap { $0.isEmpty ? nil : $0 } ?? weight
                 let rowReps = target.map { $0.prefillReps }.flatMap { $0.isEmpty ? nil : $0 } ?? reps
                 let rowRir = target.map { $0.prefillRir }.flatMap { $0.isEmpty ? nil : $0 } ?? rir
-                HStack(spacing: 6) {
-                    Text("Set \(setNum)")
+                let role = target?.resolvedRole ?? .straight
+                let isWarmup = role == .warmup
+                let isTop = role == .top
+                let roleText = role == .straight ? "Set \(setNum)" : role.label
+                let restText = (target?.restSeconds ?? exercise.restSeconds).flatMap { $0 > 0 ? CoachRestFormat.short($0) : nil } ?? ""
+                let weightText = Self.compactWeight(rowWeight)
+                let repsText = "× \(rowReps)"
+                let rirText = rowRir == "—" ? "" : "@ RIR \(rowRir)"
+                GridRow {
+                    Text(roleText)
+                        .foregroundStyle(isTop ? AppTheme.accent : (isWarmup ? AppTheme.warning : AppTheme.textSecondary))
+                        .lineLimit(1)
                         .fixedSize()
+                        .accessibilityLabel(Self.rowLabel(roleText, weightText, repsText, rirText, restText))
+                        .accessibilityIdentifier("plan.setRow.\(exerciseIndex).\(setNum - 1)")
+                    Text(weightText)
+                        .opacity(isWarmup ? 0.6 : 1)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .gridColumnAlignment(.trailing)
+                        .accessibilityLabel("Warm-up set")
+                        .accessibilityHidden(!isWarmup)
+                        .accessibilityIdentifier("plan.warmup.\(exerciseIndex).\(setNum - 1)")
+                    Text(repsText)
+                        .opacity(isWarmup ? 0.6 : 1)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .accessibilityHidden(true)
+                    Text(rirText)
+                        .foregroundStyle(AppTheme.accent.opacity(0.8))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .accessibilityHidden(true)
+                    Text(restText)
                         .foregroundStyle(AppTheme.textSecondary)
-                    Spacer()
-                    if !rowWeight.isEmpty {
-                        Text(rowWeight)
-                            .lineLimit(1)
-                    }
-                    Text("×")
-                    Text("\(rowReps) reps")
-                    if rowRir != "—" {
-                        Text("@ RIR \(rowRir)")
-                            .foregroundStyle(AppTheme.accent.opacity(0.8))
-                    }
+                        .lineLimit(1)
+                        .fixedSize()
+                        .gridColumnAlignment(.trailing)
+                        .accessibilityHidden(true)
                 }
-                .font(AppTheme.caveat(12))
+                .font(AppTheme.caveat(12, weight: isTop ? .bold : .regular).monospacedDigit())
                 .foregroundStyle(AppTheme.textPrimary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// "140 lb" for numbers (any trailing "lbs"/"lb" normalised), "BW" kept, "—" when empty.
+    private static func compactWeight(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return "—" }
+        if t.uppercased().contains("BW") || t.lowercased().contains("bodyweight") { return "BW" }
+        guard let r = t.range(of: #"^\d+(\.\d+)?"#, options: .regularExpression) else { return t }
+        let num = String(t[r])
+        if t.lowercased().contains("kg") { return "\(num) kg" }
+        return "\(num) lb"
+    }
+
+    private static func rowLabel(_ role: String, _ weight: String, _ reps: String, _ rir: String, _ rest: String) -> String {
+        [ role, weight, reps, rir, rest.isEmpty ? "" : "rest \(rest)" ].filter { !$0.isEmpty }.joined(separator: " ")
+    }
 
     // MARK: - Action Buttons
 

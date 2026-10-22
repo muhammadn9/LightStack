@@ -12,19 +12,19 @@ final class WorkoutStatsService {
     // MARK: - Stats
 
     func totalSessions(userId: UUID) -> Int {
-        localStorage.fetchRecentWorkouts(userId: userId, limit: 100000).count
+        localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000).count
     }
 
     /// Workouts dated within the current calendar month.
     func workoutsThisMonth(userId: UUID, now: Date = Date(), calendar: Calendar = .current) -> Int {
-        localStorage.fetchRecentWorkouts(userId: userId, limit: 100000).filter {
+        localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000).filter {
             guard let date = $0.date else { return false }
             return calendar.isDate(date, equalTo: now, toGranularity: .month)
         }.count
     }
 
     func totalVolume(userId: UUID) -> Double {
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         var volume = 0.0
         for cdWorkout in workouts {
             let workout = Workout(from: cdWorkout)
@@ -40,7 +40,7 @@ final class WorkoutStatsService {
     }
 
     func averageRIR(userId: UUID) -> Double {
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         var totalRir = 0.0
         var count = 0.0
         for cdWorkout in workouts {
@@ -59,7 +59,7 @@ final class WorkoutStatsService {
     }
 
     func setsPerMuscleGroup(userId: UUID) -> [String: Int] {
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         var result: [String: Int] = [:]
         for cdWorkout in workouts {
             let workout = Workout(from: cdWorkout)
@@ -74,7 +74,7 @@ final class WorkoutStatsService {
     }
 
     func volumePerMuscleGroup(userId: UUID) -> [String: Double] {
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         var result: [String: Double] = [:]
         for cdWorkout in workouts {
             let workout = Workout(from: cdWorkout)
@@ -93,13 +93,13 @@ final class WorkoutStatsService {
 
     func weeklyFrequency(userId: UUID) -> Double {
         let fourWeeksAgo = Calendar.current.date(byAdding: .weekOfYear, value: -4, to: Date()) ?? Date()
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         let recentCount = workouts.filter { ($0.date ?? Date.distantPast) >= fourWeeksAgo }.count
         return Double(recentCount) / 4.0
     }
 
     func averageSessionDuration(userId: UUID) -> Int {
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         let durations = workouts.compactMap { w -> Int? in
             let mins = Int(w.durationMinutes)
             return mins > 0 ? mins : nil
@@ -109,7 +109,7 @@ final class WorkoutStatsService {
     }
 
     func estimatedOneRepMax(userId: UUID, exerciseName: String) -> Double? {
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         var bestE1RM = 0.0
         for cdWorkout in workouts {
             let workout = Workout(from: cdWorkout)
@@ -129,7 +129,7 @@ final class WorkoutStatsService {
     }
 
     func topLifts(userId: UUID, limit: Int = 5) -> [(exerciseName: String, e1rm: Double)] {
-        let workouts = localStorage.fetchRecentWorkouts(userId: userId, limit: 100000)
+        let workouts = localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000)
         var bestByExercise: [String: Double] = [:]
         for cdWorkout in workouts {
             let workout = Workout(from: cdWorkout)

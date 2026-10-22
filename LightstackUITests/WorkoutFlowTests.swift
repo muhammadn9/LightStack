@@ -226,4 +226,27 @@ extension WorkoutFlowTests {
         return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element)],
                                 timeout: timeout) == .completed
     }
+
+    /// The "N / 5" energy label and the filled dots must agree, from the default onward.
+    func testEnergyLabelMatchesSelectedDots() throws {
+        launchApp()
+        func filledDots() -> Int {
+            (1...5).filter { app.buttons["energyDot.\($0)"].value as? String == "selected" }.count
+        }
+        func labelValue() -> Int? {
+            Int(app.staticTexts["energyLabel"].label.prefix(1))
+        }
+        var swipes = 0
+        while !app.staticTexts["energyLabel"].exists && swipes < 6 { app.swipeUp(); swipes += 1 }
+        waitFor(app.staticTexts["energyLabel"], "Energy label missing")
+        XCTAssertEqual(labelValue(), filledDots(), "Default: label and dots disagree")
+        shot("20-energy-default")
+
+        tap(app.buttons["energyDot.2"])
+        XCTAssertEqual(labelValue(), 2)
+        XCTAssertEqual(filledDots(), 2, "After tapping dot 2: label and dots disagree")
+        tap(app.buttons["energyDot.5"])
+        XCTAssertEqual(labelValue(), 5)
+        XCTAssertEqual(filledDots(), 5)
+    }
 }

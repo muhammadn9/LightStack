@@ -13,8 +13,14 @@ enum UITestMode {
     /// `-uiTestingRearDeltHistory` adds two past "Rear Delt Fly Machine" sessions (newest has 3 distinct sets).
     static let wantsRearDeltHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingRearDeltHistory")
     static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
+    /// `-uiTestingEngineHistory` adds a Push session 3 days ago with "Barbell Bench Press" (the fake plan's
+    /// spelling) including a warm-up set, so the progression engine produces evidence and a warm-up for it
+    /// (it only prescribes warm-ups the athlete's own log shows).
+    static let wantsEngineHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingEngineHistory")
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
+    /// `-uiTestingDuplicateWorkoutTypes` adds past workouts so the types read: Push x3, push x1, Push Day x1, Legs x2.
+    static let wantsDuplicateWorkoutTypes: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateWorkoutTypes")
     /// `-uiTestingPendingSyncOps N` seeds N unsynced operations for the test user (sign-out warning tests).
     static var pendingSyncOps: Int {
         let args = ProcessInfo.processInfo.arguments
@@ -75,6 +81,8 @@ enum UITestMode {
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
         defaults.set(0, forKey: "selectedTab")
+        defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
+        CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
     }
 
@@ -164,6 +172,7 @@ enum UITestMode {
 
         if wantsLiftHistory { seedLiftHistory(localStorage: localStorage) }
         if wantsRearDeltHistory { seedRearDeltHistory(localStorage: localStorage) }
+        if wantsEngineHistory { seedEngineHistory(localStorage: localStorage) }
         if wantsDuplicateNames {
             // Same lift under two spellings, added to existing seeded workouts.
             let legExt = Exercise.create(workoutId: armDay.id, name: "Leg Extension", muscleGroup: "Legs",
@@ -178,7 +187,29 @@ enum UITestMode {
             seedSets([(legExtMachine, [(110, 12, 2), (110, 10, 1)])], localStorage: localStorage)
         }
 
+        if wantsDuplicateWorkoutTypes { seedDuplicateWorkoutTypes(localStorage: localStorage) }
+
         seedPersonalRecords(localStorage: localStorage)
+    }
+
+    /// Extra past workouts (one set each) so History shows spelling variants of one type.
+    /// With the seeded "Push" this makes Push x3, push x1, Push Day x1, Legs x2.
+    private static func seedDuplicateWorkoutTypes(localStorage: LocalStorageService) {
+        let types = ["Push", "Push", "push", "Push Day", "Legs", "Legs"]
+        for (i, type) in types.enumerated() {
+            guard let day = Calendar.current.date(byAdding: .day, value: -10 - i, to: Date()) else { continue }
+            var workout = Workout.create(userId: userId, workoutType: type, energyLevel: 7, timeAvailableMinutes: 45)
+            workout.date = day
+            workout.createdAt = day
+            workout.syncStatus = .synced
+            localStorage.saveWorkout(workout)
+            // History hides workouts with no logged sets, so give each one a single set.
+            let lift = Exercise.create(workoutId: workout.id, name: "Seed Lift", muscleGroup: "Chest",
+                                       orderIndex: 0, targetSets: 1, targetReps: "8", targetRir: "2",
+                                       restSeconds: 60, coachNote: nil)
+            localStorage.saveExercises([lift], workoutId: workout.id)
+            seedSets([(lift, [(100, 8, 2)])], localStorage: localStorage)
+        }
     }
 
     /// A real user's PRs already exist next to their sets (they are created as lifts are
@@ -217,6 +248,21 @@ enum UITestMode {
         if let rest = calendar.date(byAdding: .day, value: -5, to: Date()) {
             localStorage.addRestDay(userId: userId, date: rest)
         }
+    }
+
+    /// One Push session 3 days ago: Barbell Bench Press, 185 x 6 @1 twice then 180 x 5 @1.
+    private static func seedEngineHistory(localStorage: LocalStorageService) {
+        guard let day = Calendar.current.date(byAdding: .day, value: -3, to: Date()) else { return }
+        var workout = Workout.create(userId: userId, workoutType: "Push", energyLevel: 7, timeAvailableMinutes: 45)
+        workout.date = day
+        workout.createdAt = day
+        workout.syncStatus = .synced
+        localStorage.saveWorkout(workout)
+        let bench = Exercise.create(workoutId: workout.id, name: "Barbell Bench Press", muscleGroup: "Chest",
+                                    orderIndex: 0, targetSets: 3, targetReps: "6", targetRir: "1",
+                                    restSeconds: 120, coachNote: nil)
+        localStorage.saveExercises([bench], workoutId: workout.id)
+        seedSets([(bench, [(95, 10, 5), (185, 6, 1), (185, 6, 1), (180, 5, 1)])], localStorage: localStorage)
     }
 
     /// An older and a newer session of the same accessory lift, under a workout type that is
@@ -330,7 +376,11 @@ final class UITestFakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable 
     func updateExerciseNames(ids: [UUID], name: String) async throws { try record("updateExerciseNames") }
     func upsertProfile(_ profile: UserProfile) async throws { try record("upsertProfile") }
     func insertPersonalRecord(_ record: PersonalRecord) async throws { try self.record("insertPersonalRecord") }
+    func deletePersonalRecords(userId: UUID, exerciseName: String, keepId: UUID?, createdOnOrBefore: Date) async throws {
+        try record("deletePersonalRecords")
+    }
     func upsertContextSummary(_ summary: AIContextSummary) async throws { try record("upsertContextSummary") }
+    func deleteContextSummaries(userId: UUID, workoutTypes: [String]) async throws { try record("deleteContextSummaries") }
     func insertMonthPlan(_ plan: MonthPlan) async throws { try record("insertMonthPlan") }
     func insertPlannedSessions(_ sessions: [PlannedSession]) async throws { try record("insertPlannedSessions") }
     func updatePlannedSession(_ session: PlannedSession) async throws { try record("updatePlannedSession") }
@@ -462,13 +512,18 @@ final class UITestFakeAIProvider: AIProvider {
     static let planJSON = """
     {
       "coaching_notes": "Focus on controlled reps today.",
+      "review": {"verdict": "sound", "summary": "Good order and volume for a push day. Heaviest lifts come first.", "changes": []},
       "exercises": [
         {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets": 3,
          "target_weight": "135 lbs", "reps": "8", "rir": "2", "rest_seconds": 90},
         {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets": 3,
          "target_weight": "50 lbs", "reps": "10", "rir": "2", "rest_seconds": 90},
         {"name": "Cable Triceps Pushdown", "muscle_group": "Triceps", "sets": 3,
-         "target_weight": "40 lbs", "reps": "12", "rir": "1", "rest_seconds": 60}
+         "target_weight": "40 lbs", "reps": "12", "rir": "1", "rest_seconds": 60,
+         "cue": "Elbows pinned to your sides, no flaring.",
+         "set_targets": [{"weight": "185", "reps": "8", "rir": "4"},
+                         {"weight": "185", "reps": "8", "rir": "3"},
+                         {"weight": "195", "reps": "6", "rir": "2"}]}
       ]
     }
     """

@@ -71,4 +71,36 @@ final class RelaunchTests: LightstackUITestCase {
         XCTAssertEqual(rowCount(), totalBefore, "Extra target-filled row appeared after relaunch")
         shot("03-logged-after-relaunch")
     }
+
+    /// Removing unlogged set rows must stick: after a relaunch they must not come back prefilled.
+    func testDeletedSetStaysDeletedAfterRelaunch() throws {
+        launchApp()
+        generateAndStartPushWorkout()
+        waitFor(app.staticTexts["1 of 3"])
+
+        func pendingCount() -> Int {
+            app.textFields.matching(
+                NSPredicate(format: "identifier BEGINSWITH 'setRow.0.' AND identifier ENDSWITH '.weight'")).count
+        }
+
+        let before = pendingCount()
+        XCTAssertGreaterThanOrEqual(before, 2, "Need at least two pending rows to delete one")
+        tap(app.buttons["setRow.0.\(before - 1).remove"])
+        let expected = before - 1
+        let deadline = Date().addingTimeInterval(5)
+        while pendingCount() != expected && Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
+        XCTAssertEqual(pendingCount(), expected, "Row was not removed")
+        shot("04-after-delete")
+
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10))
+        app.terminate()
+
+        app.launchArguments = ["-uiTesting"]
+        app.launch()
+
+        waitFor(weightField(), "Workout was not restored after relaunch")
+        XCTAssertEqual(pendingCount(), expected, "Deleted set row came back after relaunch")
+        shot("05-after-relaunch-deleted")
+    }
 }

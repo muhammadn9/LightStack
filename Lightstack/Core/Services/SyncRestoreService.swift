@@ -466,7 +466,8 @@ final class SyncRestoreService {
     ) -> Int {
         var applied = 0
         storage.performBatch {
-            for summary in summaries where summary.userId == userId && !pending.contextTypes.contains(summary.workoutType) {
+            for summary in summaries where summary.userId == userId && !pending.contextTypes.contains(summary.workoutType)
+                && !pending.deletedContextTypes.contains(summary.workoutType) {
                 if reconcile, let local = storage.fetchContextSummary(userId: userId, workoutType: summary.workoutType) {
                     let localSummary = AIContextSummary(from: local)
                     if localSummary.summaryText != summary.summaryText || localSummary.sessionsCovered != summary.sessionsCovered {

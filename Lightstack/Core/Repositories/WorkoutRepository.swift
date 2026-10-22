@@ -23,8 +23,18 @@ final class WorkoutRepository {
         return cdWorkouts.first.map { Workout(from: $0) }
     }
 
+    func fetchWorkout(id: UUID) -> Workout? {
+        localStorage.fetchWorkout(id: id).map { Workout(from: $0) }
+    }
+
     func fetchRecentWorkouts(userId: UUID, limit: Int) -> [Workout] {
         localStorage.fetchRecentWorkouts(userId: userId, limit: limit)
+            .map { Workout(from: $0) }
+    }
+
+    /// Real sessions only (at least one logged set). Never-started generated plans are excluded.
+    func fetchRecentLoggedWorkouts(userId: UUID, limit: Int) -> [Workout] {
+        localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: limit)
             .map { Workout(from: $0) }
     }
 
