@@ -98,31 +98,22 @@ struct WorkoutSetupView: View {
                 sectionCard("Energy Level") {
                     HStack(spacing: 12) {
                         ForEach(1...5, id: \.self) { i in
-                            Button(action: { viewModel.energyLevel = i * 2 }) {
+                            let filled = i <= viewModel.energyDots
+                            Button(action: { viewModel.energyLevel = WorkoutSetupViewModel.energyLevel(forDots: i) }) {
                                 Circle()
-                                    .fill(i * 2 <= viewModel.energyLevel ? AppTheme.accent : AppTheme.surfaceElevated)
+                                    .fill(filled ? AppTheme.accent : AppTheme.surfaceElevated)
                                     .frame(width: 26, height: 26)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("energyDot.\(i)")
+                            .accessibilityLabel("Energy \(i) of 5")
+                            .accessibilityValue(filled ? "selected" : "not selected")
                         }
-                        let displayDots = min(5, max(1, (viewModel.energyLevel + 1) / 2))
-                        Text("\(displayDots) / 5")
+                        Text("\(viewModel.energyDots) / 5")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(AppTheme.textSecondary)
                             .padding(.leading, 4)
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Energy level")
-                    .accessibilityValue("\(min(5, max(1, (viewModel.energyLevel + 1) / 2))) out of 5")
-                    .accessibilityAdjustableAction { direction in
-                        switch direction {
-                        case .increment:
-                            if viewModel.energyLevel < 10 { viewModel.energyLevel += 2 }
-                        case .decrement:
-                            if viewModel.energyLevel > 2 { viewModel.energyLevel -= 2 }
-                        @unknown default:
-                            break
-                        }
+                            .accessibilityIdentifier("energyLabel")
                     }
                 }
 

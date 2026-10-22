@@ -10,10 +10,14 @@ protocol WorkoutSessionServiceDelegate: AnyObject {
     func sessionServiceDidFail(_ service: WorkoutSessionService, error: Error)
     /// Called just before `sessionServiceDidGeneratePlan` with per-exercise evidence (keyed by exercise id).
     func sessionServiceDidBuildEvidence(_ service: WorkoutSessionService, evidence: [UUID: ExerciseEvidence])
+    /// Called just before `sessionServiceDidGeneratePlan` with the coach's structure review
+    /// (verdict, summary, the changes it proposed and whether each was applied, deterministic safeguards).
+    func sessionServiceDidBuildCoachReview(_ service: WorkoutSessionService, review: CoachPlanReview)
 }
 
 extension WorkoutSessionServiceDelegate {
     func sessionServiceDidBuildEvidence(_ service: WorkoutSessionService, evidence: [UUID: ExerciseEvidence]) {}
+    func sessionServiceDidBuildCoachReview(_ service: WorkoutSessionService, review: CoachPlanReview) {}
 }
 
 // MARK: - WorkoutSessionService
@@ -50,7 +54,17 @@ final class WorkoutSessionService {
     var sessionFeedback: SessionFeedback?
 
     /// What the plan response needs once it arrives.
-    private var planContext: (userId: UUID, history: ExerciseHistoryIndex, energy: Int)?
+    private struct PlanState {
+        var userId: UUID
+        var history: ExerciseHistoryIndex
+        var energy: Int
+        var coach: PlanCoachContext
+        var draft: [DraftExercise]
+    }
+    private var planContext: PlanState?
+
+    /// Reads and writes the coach's per-workout document (`Workout.aiProgressionNote`).
+    let reviewStore: CoachReviewStore
 
     var currentWorkoutCreatedAt: Date? {
         currentWorkout?.createdAt
@@ -78,19 +92,62 @@ final class WorkoutSessionService {
         self.localStorage = localStorage
         self.validationService = validationService
         self.offlineQueueManager = offlineQueueManager
+        self.reviewStore = CoachReviewStore(workoutRepository: workoutRepository)
+    }
+
+    // MARK: - Coach document
+
+    /// Prescription as it stands when the athlete starts the workout (after any swaps in the preview).
+    func recordStartedPlan(exercises: [Exercise], setTargets: [UUID: [SetTarget]]) {
+        guard let id = currentWorkoutId else { return }
+        let prescription = CoachReviewStore.prescription(exercises: exercises, targets: setTargets)
+        guard !prescription.isEmpty else { return }
+        if reviewStore.recordPrescription(prescription, for: id) { refreshCurrentWorkoutNote() }
+    }
+
+    /// The athlete's answer to "why was that short?" for an exercise of the workout in progress.
+    @discardableResult
+    func recordInSessionReason(exercise: String, reason: String) -> Bool {
+        guard let id = currentWorkoutId else { return false }
+        let saved = reviewStore.recordInSessionReason(exercise: exercise, reason: reason, workoutId: id)
+        if saved { refreshCurrentWorkoutNote() }
+        return saved
+    }
+
+    /// The document is written straight to storage; keep the in-memory copy from overwriting it.
+    private func refreshCurrentWorkoutNote() {
+        guard var workout = currentWorkout,
+              let stored = workoutRepository.fetchWorkout(id: workout.id) else { return }
+        workout.aiProgressionNote = stored.aiProgressionNote
+        currentWorkout = workout
     }
 
     // MARK: - Generate Plan
 
+    /// - Parameters:
+    ///   - time: minutes available. nil = the athlete's usual (median of recent sessions).
+    ///   - energy: 1...10. nil = neutral.
+    ///   - notes: free text. nil = none.
+    ///   - constraints: e.g. "incline smith not available", "fasted". nil = none.
+    ///   - focus: nil = the stored preference, else the profile goal, else hypertrophy.
     func generatePlan(
         userId: UUID,
         workoutType: String,
-        time: Int,
-        energy: Int,
-        notes: String?
+        time: Int? = nil,
+        energy: Int? = nil,
+        notes: String? = nil,
+        constraints: String? = nil,
+        focus: CoachFocus? = nil
     ) {
         let sanitizedType = validationService.sanitizeLabel(workoutType)
         let sanitizedNotes = notes.map { validationService.sanitize($0) }
+        let sanitizedConstraints = constraints.map { validationService.sanitize($0) }.flatMap { $0.isEmpty ? nil : $0 }
+
+        // Hands-off defaults: usual session length, neutral energy, the profile goal.
+        let context = coachContextBuilder.buildContext(userId: userId, workoutType: sanitizedType)
+        let resolvedTime = time ?? context.medianSessionMinutes ?? CoachPreferences.fallbackMinutes
+        let resolvedEnergy = energy ?? CoachPreferences.neutralEnergy
+        let resolvedFocus = CoachPreferences.resolvedFocus(override: focus, profileGoals: context.profile?.primaryGoals ?? [])
 
         // Pre-build the workout value. It is only held in memory (so the plan parser
         // has a workout id) and is NOT saved or queued until the plan succeeds: a
@@ -98,8 +155,8 @@ final class WorkoutSessionService {
         let pendingWorkout = Workout.create(
             userId: userId,
             workoutType: sanitizedType,
-            energyLevel: energy,
-            timeAvailableMinutes: time,
+            energyLevel: resolvedEnergy,
+            timeAvailableMinutes: resolvedTime,
             setupNote: sanitizedNotes?.isEmpty == false ? sanitizedNotes : nil
         )
 
@@ -110,28 +167,38 @@ final class WorkoutSessionService {
         Task { @MainActor in
             // The per-user AI rate limit is enforced server-side by the ai-proxy
             // Edge Function; a refusal arrives as the generation error below.
-            let context = coachContextBuilder.buildContext(userId: userId, workoutType: sanitizedType)
-            let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .plan)
+            let history = ExerciseHistoryIndex(
+                sessions: context.recentSessions, exercises: context.recentSessionSets,
+                loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
+                feedbackFor: { ExerciseFeedbackStore.shared.feedback(forExercise: $0) })
+            let coach = PlanCoachContext(
+                focus: resolvedFocus, restPreference: RestPreference.defaultSeconds,
+                nextTargets: CoachReviewStore.nextTargets(from: context.recentReviews),
+                recency: context.muscleRecency, now: Date())
+            let lastExercises = context.recentSessions.first.flatMap { context.recentSessionSets[$0.id] } ?? []
+            let draft = PlanDraftBuilder.build(
+                lastSessionExercises: lastExercises, history: history, energy: resolvedEnergy,
+                feedback: sessionFeedback, coach: coach, timeMinutes: resolvedTime)
+
+            let systemPrompt = coachPromptService.buildSystemPrompt(
+                profile: context.profile, task: .plan, restSeconds: RestPreference.defaultSeconds)
             let userMessage = coachPromptService.buildWorkoutRequestMessage(
                 workoutType: sanitizedType,
-                time: time,
-                energy: energy,
+                time: resolvedTime,
+                energy: resolvedEnergy,
                 notes: sanitizedNotes,
                 rollingSummary: context.rollingSummary,
                 recentSessions: context.recentSessions,
                 recentSessionExercises: context.recentSessionSets,
                 recentLoggedSets: context.recentLoggedSets,
-                bestSets: context.bestSets
+                bestSets: context.bestSets,
+                coach: CoachPromptService.PlanPromptExtras(
+                    focus: resolvedFocus, constraints: sanitizedConstraints, draft: draft,
+                    estimatedMinutes: draft.isEmpty ? nil : PlanDraftBuilder.estimatedMinutes(draft),
+                    reviews: context.recentReviews, recency: context.muscleRecency, now: coach.now)
             )
 
-            planContext = (
-                userId,
-                ExerciseHistoryIndex(
-                    sessions: context.recentSessions, exercises: context.recentSessionSets,
-                    loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
-                    feedbackFor: { ExerciseFeedbackStore.shared.feedback(forExercise: $0) }),
-                energy
-            )
+            planContext = PlanState(userId: userId, history: history, energy: resolvedEnergy, coach: coach, draft: draft)
             CoachDebugStore.shared.recordRequest(
                 userId: userId, workoutType: sanitizedType, model: aiServiceManager.activeProviderName,
                 systemPromptName: "plan", systemPromptLength: systemPrompt.count, userMessage: userMessage)
@@ -201,37 +268,66 @@ final class WorkoutSessionService {
         return max(1, Int((seconds / 60).rounded()))
     }
 
+    /// - Parameter prescribedTargets: the per-set targets on screen (used for prescribed-vs-actual);
+    ///   the prescription stored when the workout started is the fallback.
     func finishSession(
         userId: UUID,
         userNote: String?,
         exercises: [Exercise],
         allSets: [UUID: [WorkoutSet]],
-        activeSeconds: Int? = nil
+        activeSeconds: Int? = nil,
+        prescribedTargets: [UUID: [SetTarget]] = [:]
     ) {
         guard var workout = currentWorkout else { return }
         workout.durationMinutes = Self.durationMinutes(activeSeconds: activeSeconds, createdAt: workout.createdAt)
         workout.userNote = userNote.map { validationService.sanitize($0) }
+        // The coach document (prescription, in-session answers) lives in storage; keep it.
+        if let stored = workoutRepository.fetchWorkout(id: workout.id) { workout.aiProgressionNote = stored.aiProgressionNote }
         currentWorkout = workout
 
         // Persist duration immediately — if the app is backgrounded/killed while
         // waiting for the AI note, the duration is already saved in Core Data.
         workoutRepository.updateWorkout(workout)
 
-        // One AI call returns both the progression note and the rolling summary.
+        // One AI call returns the structured review; Swift's rules back it up.
         let token = UUID()
         finishToken = token
         pendingSummary = nil
         summaryWantedFor = nil
         let workoutType = workout.workoutType
+        let workoutId = workout.id
+        let energy = workout.energyLevel ?? CoachPreferences.neutralEnergy
+        let document = CoachReviewDocument.parse(workout.aiProgressionNote) ?? CoachReviewDocument()
+        let fresh = CoachReviewStore.prescription(exercises: exercises, targets: prescribedTargets)
+        let prescription = document.prescription.map { stored in
+            fresh.first { ExerciseNameResolver.isMatch($0.name, stored.name) } ?? stored
+        } + fresh.filter { f in !document.prescription.contains { ExerciseNameResolver.isMatch($0.name, f.name) } }
+        let logged = exercises.filter { $0.trackingType != .cardio }.map { ex in
+            LoggedExercise(
+                name: ex.name, muscleGroup: ex.muscleGroup,
+                sets: (allSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }.map { HistorySet($0) })
+        }
 
         Task { @MainActor in
-            let context = coachContextBuilder.buildContext(userId: userId, workoutType: workoutType, includeHistory: false)
+            let context = coachContextBuilder.buildContext(
+                userId: userId, workoutType: workoutType, includeHistory: true, excludingWorkoutId: workoutId)
+            let history = ExerciseHistoryIndex(
+                sessions: context.recentSessions, exercises: context.recentSessionSets,
+                loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
+                feedbackFor: { ExerciseFeedbackStore.shared.feedback(forExercise: $0) })
+            let focus = CoachPreferences.resolvedFocus(profileGoals: context.profile?.primaryGoals ?? [])
+            let analysis = SessionAnalyzer.analyze(
+                logged: logged, prescription: prescription, energy: energy, userNote: workout.userNote,
+                reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus)
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .postWorkout)
             let userMessage = coachPromptService.buildPostWorkoutMessage(
                 workoutType: workoutType,
                 exercises: exercises,
                 sets: allSets,
-                previousSummary: context.rollingSummary
+                previousSummary: context.rollingSummary,
+                analysis: analysis,
+                previousReviews: context.recentReviews,
+                userNote: workout.userNote
             )
 
             aiServiceManager.generateChat(
@@ -241,19 +337,32 @@ final class WorkoutSessionService {
                 options: .forTask(.postWorkout)
             ) { [weak self] result in
                 guard let self = self else { return }
-                switch result {
-                case .success(let responseText):
-                    let reply = PostWorkoutReply.parse(responseText)
-                    if self.finishToken == token, let summary = reply.summary, !exercises.isEmpty {
-                        self.receiveSummary(userId: userId, workoutType: workoutType, text: summary)
-                    }
-                    self.handleProgressionNoteResponse(reply.note)
-                case .failure:
-                    // AI call failed — let user stay on PostWorkoutView without an AI note
-                    self.handleProgressionNoteResponse("")
+                var model: ModelReview?
+                if case .success(let responseText) = result { model = Self.modelReview(from: responseText) }
+                let review = SessionAnalyzer.merge(analysis, model: model, workoutType: workoutType)
+                if !analysis.exercises.isEmpty {
+                    self.reviewStore.recordReview(review, prescription: prescription, for: workoutId)
+                    self.refreshCurrentWorkoutNote()
                 }
+                if self.finishToken == token, !exercises.isEmpty, !analysis.exercises.isEmpty {
+                    self.receiveSummary(
+                        userId: userId, workoutType: workoutType,
+                        text: SessionAnalyzer.rollingSummary(review: review, workoutType: workoutType, previous: context.rollingSummary))
+                }
+                // Only a model-written review is shown; a rules-only one just drives next session's targets.
+                var shown = CoachReviewDocument()
+                shown.review = review
+                self.handleProgressionNoteResponse(review.aiAuthored ? (shown.displayText ?? "") : "")
             }
         }
+    }
+
+    /// The model's review, or its prose reply wrapped as an overall read.
+    static func modelReview(from text: String) -> ModelReview? {
+        if let parsed = ModelReview.parse(text) { return parsed }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("{"), !trimmed.hasPrefix("[") else { return nil }
+        return ModelReview(exercises: [], overallRead: String(trimmed.prefix(600)), recurringFlags: [])
     }
 
     // MARK: - Save Completed Workout
@@ -266,7 +375,15 @@ final class WorkoutSessionService {
     ) {
         guard var workout = currentWorkout else { return }
         workout.userNote = userNote.map { validationService.sanitize($0) }
-        workout.aiProgressionNote = aiNote
+        // Keep the coach document in storage (prescription, review); a plain note only fills in
+        // when there is no review, and is stored as a legacy note.
+        if let stored = workoutRepository.fetchWorkout(id: workout.id) { workout.aiProgressionNote = stored.aiProgressionNote }
+        let document = CoachReviewDocument.parse(workout.aiProgressionNote)
+        if document?.review == nil, let aiNote, !aiNote.isEmpty {
+            var legacy = document ?? CoachReviewDocument()
+            legacy.legacyNote = aiNote
+            workout.aiProgressionNote = legacy.encoded() ?? aiNote
+        }
         workout.syncStatus = .pending
         currentWorkout = workout
         workoutRepository.updateWorkout(workout)
@@ -478,6 +595,8 @@ final class WorkoutSessionService {
     struct ParsedPlan {
         var exercises: [Exercise]
         var setTargets: [UUID: [SetTarget]]
+        /// Form cues the coach attached to exercises with known form issues, keyed by exercise id.
+        var cues: [UUID: String] = [:]
     }
 
     /// Pure plan-JSON decoding, kept separate so it can be tested without a session.
@@ -535,6 +654,7 @@ final class WorkoutSessionService {
 
         var exercises: [Exercise] = []
         var perSetTargets: [UUID: [SetTarget]] = [:]
+        var cues: [UUID: String] = [:]
         for (index, aiEx) in usable.enumerated() {
             let name = sanitizeLabel(aiEx.name)
             let targets = aiEx.setTargets.map { SetTarget(weight: $0.weight, reps: $0.reps, rir: $0.rir) }
@@ -568,26 +688,26 @@ final class WorkoutSessionService {
             )
             exercises.append(exercise)
             if !targets.isEmpty { perSetTargets[exercise.id] = targets }
+            if let cue = aiEx.cue?.trimmingCharacters(in: .whitespacesAndNewlines), !cue.isEmpty {
+                cues[exercise.id] = sanitizeLabel(cue)
+            }
         }
         // Members of a label are pulled together; out-of-range groups are dropped.
         exercises = SupersetGroup.normalized(exercises)
         guard !exercises.isEmpty else { return nil }
         let kept = Set(exercises.map(\.id))
-        return ParsedPlan(exercises: exercises, setTargets: perSetTargets.filter { kept.contains($0.key) })
+        return ParsedPlan(exercises: exercises, setTargets: perSetTargets.filter { kept.contains($0.key) },
+                          cues: cues.filter { kept.contains($0.key) })
     }
 
     // MARK: - Response Handlers
 
     private func handleWorkoutPlanResponse(_ text: String) {
+        let review = CoachPlanReview.parse(fromReply: text)
         // Primary path: JSON
         if let parsed = parseWorkoutPlanJSON(text) {
             logger.debug("JSON parse succeeded: \(parsed.exercises.count) exercises")
-            let applied = applyProgression(to: parsed)
-            if let userId = planContext?.userId {
-                CoachDebugStore.shared.recordResponse(userId: userId, raw: text, adjustments: applied.adjustments)
-            }
-            delegate?.sessionServiceDidBuildEvidence(self, evidence: applied.evidence)
-            finalizePlan(applied.exercises, setTargets: applied.setTargets)
+            completePlan(parsed, review: review, raw: text)
             return
         }
         if let userId = planContext?.userId {
@@ -596,20 +716,45 @@ final class WorkoutSessionService {
         // Fallback: markdown table (zero regression during rollout)
         logger.debug("JSON parse failed, attempting markdown fallback")
         let fallback = parseExerciseTable(text)
-        guard !fallback.isEmpty else {
-            discardUnsavedPlanWorkout()
-            delegate?.sessionServiceDidFail(self, error: NSError(
-                domain: "WorkoutSessionService", code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"]
-            ))
+        if !fallback.isEmpty {
+            logger.debug("Markdown fallback succeeded: \(fallback.count) exercises")
+            finalizePlan(fallback)
             return
         }
-        logger.debug("Markdown fallback succeeded: \(fallback.count) exercises")
-        finalizePlan(fallback)
+        // Last resort: the app's own draft from the last session, so a flaky reply never blocks a workout.
+        if let state = planContext, !state.draft.isEmpty, let workoutId = currentWorkoutId {
+            let parsed = PlanDraftBuilder.parsedPlan(from: state.draft, workoutId: workoutId)
+            let note = CoachPlanReview(
+                verdict: .sound, summary: "The coach's review was unavailable, so this plan is built from your last session.",
+                changes: [])
+            completePlan(parsed, review: note, raw: text)
+            return
+        }
+        discardUnsavedPlanWorkout()
+        delegate?.sessionServiceDidFail(self, error: NSError(
+            domain: "WorkoutSessionService", code: -1,
+            userInfo: [NSLocalizedDescriptionKey: "Could not parse workout plan from AI response"]
+        ))
+    }
+
+    /// Applies the app's numbers and the coach's review edits, tells the delegate, saves the plan.
+    private func completePlan(_ parsed: ParsedPlan, review: CoachPlanReview?, raw: String) {
+        let applied = applyProgression(to: parsed, changes: review?.changes ?? [])
+        let final = CoachPlanReview(
+            verdict: review?.verdict ?? .sound, summary: review?.summary ?? "",
+            changes: applied.changes.isEmpty ? (review?.changes ?? []) : applied.changes,
+            safeguards: applied.safeguards)
+        if let userId = planContext?.userId {
+            CoachDebugStore.shared.recordResponse(
+                userId: userId, raw: raw, adjustments: applied.adjustments + final.logLines, review: final.isEmpty ? nil : final)
+        }
+        delegate?.sessionServiceDidBuildEvidence(self, evidence: applied.evidence)
+        if !final.isEmpty { delegate?.sessionServiceDidBuildCoachReview(self, review: final) }
+        finalizePlan(applied.exercises, setTargets: applied.setTargets, review: final.isEmpty ? nil : final)
     }
 
     /// The app's own numbers replace the AI's where history exists; guardrails cover the rest.
-    private func applyProgression(to parsed: ParsedPlan) -> AppliedPlan {
+    private func applyProgression(to parsed: ParsedPlan, changes: [PlanChange]) -> AppliedPlan {
         guard let context = planContext else {
             return AppliedPlan(exercises: parsed.exercises, setTargets: parsed.setTargets, evidence: [:], adjustments: [])
         }
@@ -622,7 +767,9 @@ final class WorkoutSessionService {
             feedback: sessionFeedback,
             bestLookup: { name in
                 storage.fetchPersonalRecord(userId: userId, exerciseName: name).map { PersonalRecord(from: $0).weightLbs }
-            }
+            },
+            coach: context.coach,
+            changes: changes
         )
     }
 
@@ -635,8 +782,17 @@ final class WorkoutSessionService {
 
     /// The plan succeeded: only now is the workout saved (and queued), followed by its
     /// exercises. The workout is brand new, so there is nothing to clear first.
-    private func finalizePlan(_ exercises: [Exercise], setTargets: [UUID: [SetTarget]] = [:]) {
-        if let workout = currentWorkout {
+    private func finalizePlan(_ exercises: [Exercise], setTargets: [UUID: [SetTarget]] = [:], review: CoachPlanReview? = nil) {
+        if var workout = currentWorkout {
+            // The prescription and the structure review ride along in the coach document.
+            let prescription = CoachReviewStore.prescription(exercises: exercises, targets: setTargets)
+            if !prescription.isEmpty || review != nil {
+                var document = CoachReviewDocument()
+                document.prescription = prescription
+                document.planReview = review
+                workout.aiProgressionNote = document.encoded()
+                currentWorkout = workout
+            }
             workoutRepository.createWorkout(workout)
             workoutRepository.saveExercises(exercises, workoutId: workout.id)
             // Regenerating replaces earlier unstarted plans for the same day.
@@ -788,10 +944,12 @@ private struct AIExercise: Decodable {
     let rir: String?
     let restSeconds: Int?
     let coachNote: String?
+    /// A form cue, only for known form issues.
+    let cue: String?
     /// Optional label; exercises sharing one form a superset.
     let superset: String?
     enum CodingKeys: String, CodingKey {
-        case name, sets, reps, rir, superset
+        case name, sets, reps, rir, superset, cue
         case setTargets   = "set_targets"
         case muscleGroup  = "muscle_group"
         case targetWeight = "target_weight"
@@ -804,16 +962,18 @@ extension AIExercise {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
-        muscleGroup = try c.decode(String.self, forKey: .muscleGroup)
+        muscleGroup = (try? c.decodeIfPresent(String.self, forKey: .muscleGroup)) ?? ""
         // A malformed set_targets must not sink the whole plan: fall back to the single fields.
         let targets = (try? c.decodeIfPresent([AISetTarget].self, forKey: .setTargets)) ?? []
         setTargets = targets
-        sets = targets.isEmpty ? try c.decode(Int.self, forKey: .sets) : targets.count
+        // The review format omits "sets" for kept exercises (the app fills the numbers).
+        sets = targets.isEmpty ? ((try? c.decodeIfPresent(Int.self, forKey: .sets)) ?? 3) : targets.count
         targetWeight = try c.decodeIfPresent(String.self, forKey: .targetWeight)
         reps = try c.decodeIfPresent(String.self, forKey: .reps)
         rir = try c.decodeIfPresent(String.self, forKey: .rir)
         restSeconds = try c.decodeIfPresent(Int.self, forKey: .restSeconds)
         coachNote = try c.decodeIfPresent(String.self, forKey: .coachNote)
+        cue = try c.decodeIfPresent(String.self, forKey: .cue)
         superset = try c.decodeIfPresent(String.self, forKey: .superset)
     }
 }

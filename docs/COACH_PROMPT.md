@@ -9,7 +9,7 @@ coaching logic all flow from this prompt.
 
 > **Live prompt (plan generation).** The strings in `CoachPromptService.swift` are authoritative;
 > the long prompt below is the older reference. The plan call now sends: identity, profile line,
-> `trainingPrinciples`, `progressionRules` and `planFormat`.
+> `trainingPrinciples`, `reviewRules` (the model reviews the app's draft plan) and `planFormat`.
 >
 > - **History:** the last 3 completed sessions (>= 1 logged set) of the same workout type, as actual
 >   sets per exercise (`Bench Press: 135x10@3, 155x8@2, 165x6@1 | best 175x5`), plus the date,

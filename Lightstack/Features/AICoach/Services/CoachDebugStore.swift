@@ -14,6 +14,8 @@ struct CoachPlanSnapshot: Codable, Equatable {
     var rawResponse: String?
     /// What the progression engine and guardrails changed.
     var adjustments: [String]
+    /// The coach's structure review (verdict, proposed changes and what the app did with them).
+    var review: CoachPlanReview? = nil
 }
 
 /// Keeps the last plan request for a "What the coach saw" screen. In memory plus
@@ -55,14 +57,15 @@ final class CoachDebugStore {
         store(CoachPlanSnapshot(
             userId: userId.uuidString, timestamp: now, workoutType: workoutType, model: model,
             systemPromptName: systemPromptName, systemPromptLength: systemPromptLength,
-            userMessage: userMessage, rawResponse: nil, adjustments: []))
+            userMessage: userMessage, rawResponse: nil, adjustments: [], review: nil))
     }
 
-    func recordResponse(userId: UUID, raw: String, adjustments: [String]) {
+    func recordResponse(userId: UUID, raw: String, adjustments: [String], review: CoachPlanReview? = nil) {
         lock.lock(); defer { lock.unlock() }
         guard var snapshot = current(), snapshot.userId == userId.uuidString else { return }
         snapshot.rawResponse = raw
         snapshot.adjustments = adjustments
+        snapshot.review = review
         store(snapshot)
     }
 

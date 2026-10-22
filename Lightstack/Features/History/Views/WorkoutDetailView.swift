@@ -74,7 +74,7 @@ struct WorkoutDetailView: View {
                         icon: "sparkles",
                         iconColor: AppTheme.accent,
                         title: "AI Progression Note",
-                        content: workout.aiProgressionNote
+                        content: CoachReviewDocument.displayText(from: workout.aiProgressionNote)
                     )
 
                     if !isEditing {

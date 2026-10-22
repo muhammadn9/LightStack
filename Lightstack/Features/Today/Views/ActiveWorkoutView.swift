@@ -295,7 +295,10 @@ struct ActiveWorkoutView: View {
                 InkDivider()
 
                 // Add set (a round, on a superset page)
-                Button(action: { viewModel.addRound(for: members) }) {
+                Button(action: {
+                    viewModel.addRound(for: members)
+                    members.forEach { syncPlannedSetCount(for: $0) }
+                }) {
                     HStack(spacing: 4) {
                         Image(systemName: "plus.circle")
                         Text(page.isSuperset ? "Add Round" : "Add Set")
@@ -441,7 +444,10 @@ struct ActiveWorkoutView: View {
                     exerciseId: exercise.id,
                     idPrefix: "setRow.\(exerciseIndex(of: exercise)).\(index)",
                     onLog: { logSet(at: index, exerciseId: exercise.id) },
-                    onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
+                    onDelete: {
+                        viewModel.deletePendingSet(at: index, exerciseId: exercise.id)
+                        syncPlannedSetCount(for: exercise)
+                    }
                 )
             } else {
                 StrengthPendingSetRow(
@@ -451,7 +457,10 @@ struct ActiveWorkoutView: View {
                     exerciseId: exercise.id,
                     idPrefix: "setRow.\(exerciseIndex(of: exercise)).\(index)",
                     onLog: { logSet(at: index, exerciseId: exercise.id) },
-                    onDelete: { viewModel.deletePendingSet(at: index, exerciseId: exercise.id) }
+                    onDelete: {
+                        viewModel.deletePendingSet(at: index, exerciseId: exercise.id)
+                        syncPlannedSetCount(for: exercise)
+                    }
                 )
             }
         }
@@ -524,6 +533,16 @@ struct ActiveWorkoutView: View {
     }
 
     // MARK: - Helpers
+
+    /// Keeps the planned set count equal to logged + pending rows, so a removed row
+    /// is not topped back up (and re-prefilled) when the session is restored.
+    private func syncPlannedSetCount(for exercise: Exercise) {
+        guard let i = todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) else { return }
+        let total = (viewModel.loggedSets[exercise.id]?.count ?? 0) + (viewModel.pendingSets[exercise.id]?.count ?? 0)
+        guard todayViewModel.exercises[i].targetSets != total else { return }
+        todayViewModel.exercises[i].targetSets = total
+        persistSession()
+    }
 
     private func pendingSetsBinding(for exerciseId: UUID) -> Binding<[PendingSetInput]> {
         Binding(

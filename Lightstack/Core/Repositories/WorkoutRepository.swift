@@ -23,6 +23,10 @@ final class WorkoutRepository {
         return cdWorkouts.first.map { Workout(from: $0) }
     }
 
+    func fetchWorkout(id: UUID) -> Workout? {
+        localStorage.fetchWorkout(id: id).map { Workout(from: $0) }
+    }
+
     func fetchRecentWorkouts(userId: UUID, limit: Int) -> [Workout] {
         localStorage.fetchRecentWorkouts(userId: userId, limit: limit)
             .map { Workout(from: $0) }

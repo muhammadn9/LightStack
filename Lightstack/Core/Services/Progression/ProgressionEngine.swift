@@ -1,12 +1,27 @@
 import Foundation
 
-/// Deterministic double-progression engine. Given an exercise's logged history it decides
-/// the next session's sets. No AI, no randomness, no I/O.
+/// Deterministic progression engine. Given an exercise's logged history it decides the next
+/// session's sets in the owner's standard structure. No AI, no randomness, no I/O.
+///
+/// Main lifts:  [warm-up] -> Set 1 (~80% of top) -> ONE top set -> Back-off (~92% of top).
+/// Isolation:   2 sets, the last one closest to failure.
+/// Rest is prescribed per set.
 enum ProgressionEngine {
 
-    static let defaultWorkingSets = 3
-    /// Upper bound on a pyramid's total sets, warm-ups included.
-    static let maxPyramidSets = 6
+    static let mainWorkingSets = 3
+    static let isolationWorkingSets = 2
+
+    /// Rest by role, seconds (`restPreference` is the floor for isolation and back-off).
+    static let warmupRest = 60
+    static let rampRest = 90
+    static let topRest = 120
+    static let strengthTopRest = 180
+    static let backoffRest = 90
+    static let isolationRest = 60
+
+    /// Set 1 / back-off as a share of the top set's weight.
+    static let rampShare = 0.80
+    static let backoffShare = 0.925
 
     private static let ladder = [
         RepRange(lower: 5, upper: 8), RepRange(lower: 6, upper: 10),
@@ -24,6 +39,7 @@ enum ProgressionEngine {
         var mode: Mode
         var tooEasy: Bool
         var best: HistorySet?
+        var focus: CoachFocus
     }
 
     // MARK: - Public
@@ -36,12 +52,13 @@ enum ProgressionEngine {
             guard !split.working.isEmpty else { return nil }
             return (split.warmups, split.working, clean)
         }
-        guard let last = sessions.first, (last.work.map(\.weight).max() ?? 0) > 0 else { return nil }
+        guard let last = sessions.first, (last.work.map(\.weight).max() ?? 0) > 0,
+              let lastTop = referenceTop(last.work) else { return nil }
 
         let cls = ExerciseTraits.classify(input.name)
         let step = ExerciseTraits.roundingStep(input.name)
         let working = sessions.map { HistorySession(date: $0.session.date, sets: $0.work) }
-        let range = inferRange(cls: cls, sessions: working)
+        let range = topRange(cls: cls, focus: input.focus, sessions: working)
         let style = SetStyleDetector.detect(sessions: working)
         let full = sessions.map(\.session)
         let trend = self.trend(full)
@@ -52,30 +69,77 @@ enum ProgressionEngine {
         else if regressed || input.energy == 3 { mode = .holdRepeat }
         else { mode = .normal }
         let ctx = Ctx(name: input.name, cls: cls, step: step, inc: ExerciseTraits.increment(input.name),
-                      range: range, mode: mode, tooEasy: input.feedback == .tooEasy, best: input.best)
+                      range: range, mode: mode, tooEasy: input.feedback == .tooEasy, best: input.best,
+                      focus: input.focus)
 
-        var built: (sets: [ProgressionSet], action: String)
-        switch style {
-        case .straightSets: built = straight(last.work, count: defaultWorkingSets, ctx: ctx)
-        case .dropSet: built = dropSet(last.work, ctx: ctx)
-        case .topSetBackoff: built = topSetBackoff(last.work, ctx: ctx)
-        case .pyramid: built = pyramid(last.work, ctx: ctx)
+        // 1. The top set.
+        var usedTarget = false
+        var chosen: (weight: Double, reps: Int, text: String)
+        if let target = input.nextTarget, isSane(target, lastTop: lastTop, ctx: ctx),
+           input.focus != .maintenance || target.weight <= lastTop.weight {
+            chosen = fromTarget(target, lastTop: lastTop, ctx: ctx)
+            usedTarget = true
+        } else {
+            chosen = progressTop(lastTop, ctx: ctx)
+        }
+        chosen.weight = ExerciseTraits.round(chosen.weight, step: step)
+
+        // Recency rule: muscles trained hard in the last 48 h hold their load at RIR 2.
+        var recency = false
+        if input.recentlyTrained {
+            recency = true
+            if chosen.weight > lastTop.weight {
+                chosen = (lastTop.weight, lastTop.reps, "hold \(g(lastTop.weight))×\(lastTop.reps)")
+            }
+            chosen.text += ", RIR 2 (trained recently)"
         }
 
-        if input.allowWarmups, cls == .heavyCompound, style != .pyramid {
-            built.sets = warmups(forTop: built.sets.map(\.weight).max() ?? 0, ctx: ctx) + built.sets
+        // 2. The standard structure around it.
+        let built: [ProgressionSet]
+        if cls == .isolation {
+            built = isolationSets(top: chosen, recency: recency, ctx: ctx, restPreference: input.restPreference)
+        } else {
+            let warm = input.allowWarmups && userWarmsUp(sessions.prefix(3).map(\.warm))
+            built = mainSets(top: chosen, recency: recency, warmup: warm, ctx: ctx, restPreference: input.restPreference)
         }
 
-        var action = built.action
+        var action = chosen.text
         switch mode {
         case .reduce: action += input.feedback == .tooHard ? " (felt too hard)" : " (low energy)"
-        case .holdRepeat:
-            action += regressed ? " (down vs previous session)" : " (low energy)"
+        case .holdRepeat: action += regressed ? " (down vs previous session)" : " (low energy)"
         case .normal: break
         }
+        if usedTarget { action += " (from last review)" }
         let lastText = last.work.map(\.text).joined(separator: ", ")
-        let rationale = "Last: \(lastText) → \(action)"
-        return ProgressionResult(sets: built.sets, rationale: rationale, style: style, repRange: range, trend: trend)
+        let structure = built.filter { !$0.isWarmup }.map { "\($0.role.label) \(g($0.weight))×\($0.reps)" }.joined(separator: ", ")
+        let rationale = "Last: \(lastText) → \(action). \(structure)"
+        var result = ProgressionResult(sets: built, rationale: rationale, style: style, repRange: range, trend: trend)
+        result.usedNextTarget = usedTarget
+        result.recencyApplied = recency
+        return result
+    }
+
+    /// Where the next top set would go after this one (double progression), for review defaults.
+    static func nextTopTarget(name: String, after top: HistorySet, focus: CoachFocus = .hypertrophy,
+                              best: HistorySet? = nil, history: [HistorySession] = []) -> (weight: Double, reps: Int) {
+        let cls = ExerciseTraits.classify(name)
+        let sessions = history.isEmpty ? [HistorySession(date: Date(), sets: [top])] : history
+        let ctx = Ctx(name: name, cls: cls, step: ExerciseTraits.roundingStep(name),
+                      inc: ExerciseTraits.increment(name),
+                      range: topRange(cls: cls, focus: focus, sessions: sessions),
+                      mode: .normal, tooEasy: false, best: best, focus: focus)
+        let next = progressTop(top, ctx: ctx)
+        return (ExerciseTraits.round(next.weight, step: ctx.step), next.reps)
+    }
+
+    /// The set the last session was built around: the best estimated one-rep max (heavier on ties).
+    static func referenceTop(_ working: [HistorySet]) -> HistorySet? {
+        var best: HistorySet?
+        for s in working where s.reps > 0 {
+            guard let b = best else { best = s; continue }
+            if s.e1RM > b.e1RM * 1.0001 || (abs(s.e1RM - b.e1RM) <= b.e1RM * 0.0001 && s.weight > b.weight) { best = s }
+        }
+        return best
     }
 
     /// Trend arrow input: strength of the last session against the one before.
@@ -93,6 +157,12 @@ enum ProgressionEngine {
         let work = SetStyleDetector.splitWarmups(session.sets).working
         let heavy = work.filter { $0.reps >= 3 }
         return (heavy.isEmpty ? work : heavy).map(\.e1RM).max() ?? 0
+    }
+
+    /// Rep range for a lift's top (or only) working set.
+    static func topRange(cls: ExerciseClass, focus: CoachFocus, sessions: [HistorySession]) -> RepRange {
+        if cls == .isolation { return inferRange(cls: cls, sessions: sessions) }
+        return focus == .strength ? RepRange(lower: 3, upper: 6) : RepRange(lower: 6, upper: 10)
     }
 
     /// Rep range for the exercise: the class default, moved up the ladder when the athlete's
@@ -113,93 +183,38 @@ enum ProgressionEngine {
         return ladder[index]
     }
 
-    // MARK: - Straight sets
+    // MARK: - Top set
 
-    private static func upperMedian(_ values: [Double]) -> Double {
-        let sorted = values.sorted()
-        return sorted[sorted.count / 2]
+    private static func userWarmsUp(_ warmups: [[HistorySet]]) -> Bool {
+        warmups.contains { !$0.isEmpty }
     }
 
-    /// Straight working sets: one load, double progression per set.
-    private static func straight(_ working: [HistorySet], count: Int, ctx: Ctx) -> (sets: [ProgressionSet], action: String) {
-        let w0 = upperMedian(working.map(\.weight))
-        // Reps expressed at the working weight, so a 180×5 next to 185s is just 5 reps, while a
-        // set at a very different weight is converted through e1RM.
-        let norm: [Int] = working.map { s in
-            if abs(s.weight - w0) / w0 <= 0.1 { return s.reps }
-            let equivalent = (s.e1RM / w0 - 1) * 30
-            return max(1, Int(equivalent.rounded()))
-        }
-        var reps = Array(norm.prefix(count))
-        var weights = Array(working.map(\.weight).prefix(count))
-        while reps.count < count { reps.append(reps.last ?? ctx.range.lower); weights.append(weights.last ?? w0) }
-        let upper = ctx.range.upper
+    private static func isSane(_ t: NextTarget, lastTop: HistorySet, ctx: Ctx) -> Bool {
+        guard t.weight > 0, (1...30).contains(t.reps), lastTop.weight > 0 else { return false }
+        let ceiling = max(lastTop.weight * 1.10, lastTop.weight + ctx.inc)
+        guard t.weight >= lastTop.weight * 0.80, t.weight <= ceiling else { return false }
+        if let b = ctx.best, t.weight > b.weight + 2 * ctx.inc { return false }
+        if t.weight >= lastTop.weight * 0.99, t.reps > lastTop.reps + 3 { return false }
+        return true
+    }
 
-        var weight = w0
-        var action: String
+    /// The review's target, still bent by energy and feedback for today.
+    private static func fromTarget(_ t: NextTarget, lastTop: HistorySet, ctx: Ctx) -> (weight: Double, reps: Int, text: String) {
         switch ctx.mode {
         case .reduce:
-            var w = ExerciseTraits.floorStep(w0 * 0.95, step: ctx.step)
-            if w >= w0 { w = max(ctx.step, w0 - ctx.step) }
-            weight = w
-            reps = reps.map { min($0, upper) }
-            action = "drop about 5% to \(g(w))"
+            let w = ExerciseTraits.floorStep(t.weight * 0.95, step: ctx.step)
+            return (w, t.reps, "review target \(g(t.weight))×\(t.reps), down about 5% to \(g(w))")
         case .holdRepeat:
-            reps = reps.map { min($0, upper) }
-            action = "hold \(g(w0)), repeat reps \(reps.map(String.init).joined(separator: "/"))"
-        case .normal:
-            let allTop = norm.allSatisfy { $0 >= upper } && working.allSatisfy { ($0.rir ?? 0) <= 2 }
-            let raised = w0 + ctx.inc
-            let allowedByBest = ctx.best.map { raised <= $0.weight + ctx.inc } ?? true
-            if (allTop || ctx.tooEasy) && allowedByBest {
-                weight = raised
-                reps = reps.map { _ in ctx.range.lower }
-                action = "all sets at top of range → +\(g(ctx.inc)) to \(g(raised)), reps back to \(ctx.range.lower)"
-            } else {
-                let r0 = reps[0]
-                let lead = min(upper, r0 + 1)
-                var next = [lead]
-                for r in reps.dropFirst() {
-                    next.append(r < r0 ? min(upper, r + 1) : min(r, lead))
-                }
-                reps = next
-                action = "hold \(g(w0)), aim for \(reps.map(String.init).joined(separator: "/")) reps"
-                if let lighter = weights.firstIndex(where: { $0 < w0 && abs($0 - w0) / w0 <= 0.1 }) {
-                    action += ", bring set \(lighter + 1) to \(g(w0))×\(reps[lighter])"
-                }
+            if t.weight > lastTop.weight {
+                return (lastTop.weight, lastTop.reps, "hold top set \(g(lastTop.weight))×\(lastTop.reps)")
             }
+            return (t.weight, t.reps, "top set \(g(t.weight))×\(t.reps)")
+        case .normal:
+            return (t.weight, t.reps, "top set \(g(t.weight))×\(t.reps)")
         }
-        let sets = zip(reps, rirs(count: count)).map { ProgressionSet(weight: weight, reps: $0, rir: $1, isWarmup: false) }
-        return (sets, action)
     }
 
-    /// Early sets RIR 2, last set RIR 1 (a single set gets 2).
-    private static func rirs(count: Int) -> [Int] {
-        guard count > 1 else { return [2] }
-        return (0..<count).map { $0 == count - 1 ? 1 : 2 }
-    }
-
-    // MARK: - Drop set
-
-    private static func dropSet(_ working: [HistorySet], ctx: Ctx) -> (sets: [ProgressionSet], action: String) {
-        guard working.count >= 2, let lastSet = working.last else { return straight(working, count: defaultWorkingSets, ctx: ctx) }
-        let mains = Array(working.dropLast())
-        let mainResult = straight(mains, count: max(2, defaultWorkingSets - 1), ctx: ctx)
-        let mainWeight = mainResult.sets.first?.weight ?? lastSet.weight
-        let ratio = lastSet.weight / upperMedian(mains.map(\.weight))
-        var dropWeight = ExerciseTraits.round(mainWeight * ratio, step: ctx.step)
-        if dropWeight >= mainWeight { dropWeight = max(ctx.step, mainWeight - ctx.step) }
-        let dropReps = ctx.mode == .normal ? min(lastSet.reps + 1, 20) : lastSet.reps
-        var sets = mainResult.sets
-        sets.append(ProgressionSet(weight: dropWeight, reps: min(dropReps, 20), rir: 1, isWarmup: false))
-        // Mains keep RIR 2; the drop is the hard set.
-        for i in 0..<(sets.count - 1) { sets[i].rir = 2 }
-        return (sets, "\(mainResult.action); keep the drop set \(g(dropWeight))×\(sets[sets.count - 1].reps)")
-    }
-
-    // MARK: - Top set + back-offs
-
-    /// Progression for a single heavy "top" set that does not follow the range logic of the others.
+    /// Double progression for the top set.
     private static func progressTop(_ top: HistorySet, ctx: Ctx) -> (weight: Double, reps: Int, text: String) {
         switch ctx.mode {
         case .reduce:
@@ -209,90 +224,90 @@ enum ProgressionEngine {
         case .holdRepeat:
             return (top.weight, top.reps, "hold top set \(g(top.weight))×\(top.reps)")
         case .normal:
+            if ctx.focus == .maintenance {
+                return (top.weight, top.reps, "maintenance: hold top set \(g(top.weight))×\(top.reps)")
+            }
             let raised = top.weight + ctx.inc
             let allowed = ctx.best.map { raised <= $0.weight + ctx.inc } ?? true
             if top.reps < ctx.range.lower {
-                // Heavy single/double: add load only when it was not a grind.
-                if ((top.rir ?? 2) >= 2 || ctx.tooEasy) && allowed {
+                // Under the range: add load only with plenty in reserve, else build reps.
+                if ((top.rir ?? 1) >= 2 || ctx.tooEasy) && allowed {
                     return (raised, top.reps, "top set +\(g(ctx.inc)) to \(g(raised))×\(top.reps)")
                 }
-                return (top.weight, top.reps, "repeat top set \(g(top.weight))×\(top.reps)")
+                let reps = min(ctx.range.upper, top.reps + 1)
+                return (top.weight, reps, "top set \(g(top.weight))×\(reps)")
             }
             if (top.reps >= ctx.range.upper && (top.rir ?? 0) <= 2 || ctx.tooEasy) && allowed {
-                return (raised, ctx.range.lower, "top set +\(g(ctx.inc)) to \(g(raised))×\(ctx.range.lower)")
+                var reps = ctx.range.lower
+                if top.reps > ctx.range.upper {
+                    // Far above the range: land near the top of it at the heavier load.
+                    let estimate = Int(((top.e1RM / raised) - 1) * 30)
+                    reps = min(ctx.range.upper, max(ctx.range.lower, estimate))
+                }
+                return (raised, reps, "top set +\(g(ctx.inc)) to \(g(raised))×\(reps)")
             }
             let reps = min(ctx.range.upper, top.reps + 1)
             return (top.weight, reps, "top set \(g(top.weight))×\(reps)")
         }
     }
 
-    private static func topSetBackoff(_ working: [HistorySet], ctx: Ctx) -> (sets: [ProgressionSet], action: String) {
-        guard let top = working.first, working.count >= 2 else { return straight(working, count: defaultWorkingSets, ctx: ctx) }
-        let newTop = progressTop(top, ctx: ctx)
-        var backs = Array(working.dropFirst().prefix(defaultWorkingSets - 1))
-        while backs.count < defaultWorkingSets - 1, let l = backs.last { backs.append(l) }
-        var sets = [ProgressionSet(weight: newTop.weight, reps: newTop.reps, rir: 1, isWarmup: false)]
-        for b in backs {
-            let ratio = b.weight / top.weight
-            var w = ExerciseTraits.round(newTop.weight * ratio, step: ctx.step)
-            if w >= newTop.weight { w = max(ctx.step, newTop.weight - ctx.step) }
-            let reps = ctx.mode == .normal ? min(b.reps + 1, 15) : b.reps
-            sets.append(ProgressionSet(weight: w, reps: reps, rir: 2, isWarmup: false))
-        }
-        return (sets, "\(newTop.text), keep \(sets.count - 1) back-off sets")
-    }
+    // MARK: - Structures
 
-    // MARK: - Pyramid
-
-    private static func pyramid(_ working: [HistorySet], ctx: Ctx) -> (sets: [ProgressionSet], action: String) {
-        guard let maxWeight = working.map(\.weight).max(),
-              let topIndex = working.firstIndex(where: { $0.weight == maxWeight }) else {
-            return straight(working, count: defaultWorkingSets, ctx: ctx)
-        }
-        let top = working[topIndex]
-        var ramp = Array(working[..<topIndex])
-        var backs = Array(working[(topIndex + 1)...])
-        // Cap total sets: drop the earliest ramp sets first, then the last back-offs.
-        while ramp.count + 1 + backs.count > maxPyramidSets {
-            if ramp.count > 2 { ramp.removeFirst() }
-            else if !backs.isEmpty { backs.removeLast() }
-            else { ramp.removeFirst() }
-        }
-        let newTop = progressTop(top, ctx: ctx)
+    private static func mainSets(top: (weight: Double, reps: Int, text: String), recency: Bool, warmup: Bool,
+                                 ctx: Ctx, restPreference: Int) -> [ProgressionSet] {
+        let strength = ctx.focus == .strength
+        let steady = recency || ctx.mode != .normal
+        let topRir = steady ? 2 : 1
         var sets: [ProgressionSet] = []
-        for r in ramp {
-            var w = r.weight
-            if ctx.mode == .reduce { w = ExerciseTraits.floorStep(w * 0.95, step: ctx.step) }
-            w = min(ExerciseTraits.round(w, step: ctx.step), max(ctx.step, newTop.weight - ctx.step))
-            sets.append(ProgressionSet(weight: w, reps: r.reps, rir: 3, isWarmup: false))
+
+        let rampWeight = rampWeight(forTop: top.weight, step: ctx.step)
+        let rampReps = strength ? min(8, top.reps + 2) : min(12, max(8, top.reps + 3))
+
+        if warmup {
+            var w = ExerciseTraits.round(top.weight * 0.5, step: ctx.step)
+            if w >= rampWeight { w = ExerciseTraits.round(rampWeight * 0.6, step: ctx.step) }
+            if w < rampWeight {
+                sets.append(ProgressionSet(weight: w, reps: 10, rir: 5, role: .warmup, restSeconds: warmupRest))
+            }
         }
-        sets.append(ProgressionSet(weight: newTop.weight, reps: newTop.reps, rir: 1, isWarmup: false))
-        for b in backs {
-            var w = b.weight
-            if ctx.mode == .reduce { w = ExerciseTraits.floorStep(w * 0.95, step: ctx.step) }
-            w = min(ExerciseTraits.round(w, step: ctx.step), max(ctx.step, newTop.weight - ctx.step))
-            let reps = ctx.mode == .normal ? min(ctx.range.upper, b.reps + 1) : b.reps
-            sets.append(ProgressionSet(weight: w, reps: max(reps, b.reps), rir: 2, isWarmup: false))
+        sets.append(ProgressionSet(weight: rampWeight, reps: rampReps, rir: 2, role: .ramp, restSeconds: rampRest))
+        sets.append(ProgressionSet(weight: top.weight, reps: top.reps, rir: topRir, role: .top,
+                                   restSeconds: strength ? strengthTopRest : topRest))
+        guard !recency else { return sets }
+
+        if strength {
+            // Strength focus: a second top set instead of a back-off.
+            sets.append(ProgressionSet(weight: top.weight, reps: max(ctx.range.lower, top.reps - 1), rir: 1,
+                                       role: .top, restSeconds: strengthTopRest))
+        } else {
+            var weight = ExerciseTraits.round(top.weight * backoffShare, step: ctx.step)
+            if weight >= top.weight { weight = max(ctx.step, top.weight - ctx.step) }
+            let reps = max(top.reps, min(ctx.range.upper, top.reps + 1))
+            sets.append(ProgressionSet(weight: weight, reps: reps, rir: 2, role: .backoff,
+                                       restSeconds: max(backoffRest, restPreference)))
         }
-        return (sets, "keep the pyramid (\(sets.count) sets): \(newTop.text)")
+        return sets
     }
 
-    // MARK: - Warm-ups
+    /// Set 1: about 80% of the top set, kept inside 75-85% when the plate step allows.
+    private static func rampWeight(forTop top: Double, step: Double) -> Double {
+        let target = top * rampShare
+        let down = ExerciseTraits.floorStep(target, step: step)
+        let up = down + step
+        let candidates = [down, up].filter { $0 >= top * 0.75 && $0 <= top * 0.85 && $0 < top }
+        if let best = candidates.min(by: { abs($0 - target) < abs($1 - target) }) { return best }
+        let rounded = ExerciseTraits.round(target, step: step)
+        return rounded < top ? rounded : max(step, top - step)
+    }
 
-    /// One or two ramp sets at roughly 55% and 75% of the working weight (RIR 5 and 4).
-    private static func warmups(forTop top: Double, ctx: Ctx) -> [ProgressionSet] {
-        guard top > 0 else { return [] }
-        var out: [ProgressionSet] = []
-        if top < 100 {
-            let w = ExerciseTraits.round(top * 0.6, step: ctx.step)
-            if w < top { out.append(ProgressionSet(weight: w, reps: 8, rir: 5, isWarmup: true)) }
-            return out
-        }
-        let w1 = ExerciseTraits.round(top * 0.55, step: ctx.step)
-        let w2 = ExerciseTraits.round(top * 0.75, step: ctx.step)
-        if w1 < w2 { out.append(ProgressionSet(weight: w1, reps: 8, rir: 5, isWarmup: true)) }
-        if w2 < top { out.append(ProgressionSet(weight: w2, reps: 5, rir: 4, isWarmup: true)) }
-        return out
+    private static func isolationSets(top: (weight: Double, reps: Int, text: String), recency: Bool,
+                                      ctx: Ctx, restPreference: Int) -> [ProgressionSet] {
+        let rest = max(isolationRest, restPreference)
+        let steady = recency || ctx.mode != .normal
+        return [
+            ProgressionSet(weight: top.weight, reps: top.reps, rir: 2, role: .straight, restSeconds: rest),
+            ProgressionSet(weight: top.weight, reps: top.reps, rir: steady ? 2 : 1, role: .straight, restSeconds: rest)
+        ]
     }
 
     private static func g(_ value: Double) -> String { String(format: "%g", value) }

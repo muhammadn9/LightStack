@@ -9,7 +9,9 @@ final class WorkoutSetupViewModel: ObservableObject {
 
     @Published var selectedWorkoutType: String = ""
     @Published var timeAvailable: Int = 45
-    @Published var energyLevel: Int = 7
+    /// Energy on the 1-10 scale sent to the AI. The UI shows it as 1-5 dots (2 points per dot),
+    /// so keep it even: the default of 8 is 4 dots, matching the "4 / 5" label.
+    @Published var energyLevel: Int = 8
     @Published var additionalNotes: String = ""
     @Published var splitDays: [String] = []
     /// Past workout names not in the split (e.g. imported ones), most recent first.
@@ -25,6 +27,14 @@ final class WorkoutSetupViewModel: ObservableObject {
     }
 
     var hasHiddenHistory: Bool { historyWorkoutNames.count > Self.historyChipLimit }
+
+    /// Dots (1-5) that represent a 1-10 energy value; the single source for label, dots and accessibility.
+    static func energyDots(for level: Int) -> Int { min(5, max(1, (level + 1) / 2)) }
+
+    /// The 1-10 value a given dot (1-5) selects.
+    static func energyLevel(forDots dots: Int) -> Int { min(5, max(1, dots)) * 2 }
+
+    var energyDots: Int { Self.energyDots(for: energyLevel) }
 
     static let timePresets = [30, 45, 60, 75, 90]
 

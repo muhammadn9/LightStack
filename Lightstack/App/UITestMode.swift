@@ -14,7 +14,8 @@ enum UITestMode {
     static let wantsRearDeltHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingRearDeltHistory")
     static let wantsLiftHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingLiftHistory")
     /// `-uiTestingEngineHistory` adds a Push session 3 days ago with "Barbell Bench Press" (the fake plan's
-    /// spelling), so the progression engine produces evidence and a warm-up for it.
+    /// spelling) including a warm-up set, so the progression engine produces evidence and a warm-up for it
+    /// (it only prescribes warm-ups the athlete's own log shows).
     static let wantsEngineHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingEngineHistory")
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
@@ -261,7 +262,7 @@ enum UITestMode {
                                     orderIndex: 0, targetSets: 3, targetReps: "6", targetRir: "1",
                                     restSeconds: 120, coachNote: nil)
         localStorage.saveExercises([bench], workoutId: workout.id)
-        seedSets([(bench, [(185, 6, 1), (185, 6, 1), (180, 5, 1)])], localStorage: localStorage)
+        seedSets([(bench, [(95, 10, 5), (185, 6, 1), (185, 6, 1), (180, 5, 1)])], localStorage: localStorage)
     }
 
     /// An older and a newer session of the same accessory lift, under a workout type that is
