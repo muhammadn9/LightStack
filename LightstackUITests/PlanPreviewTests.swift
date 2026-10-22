@@ -3,6 +3,22 @@ import XCTest
 /// Swap an exercise on the generated-plan preview, and back out of the preview.
 final class PlanPreviewTests: LightstackUITestCase {
 
+    func testBenchPlanEndsWithOneBackoff() throws {
+        launchApp(extraArguments: ["-uiTestingEngineHistory"])
+        tap(app.buttons["chip.Push"])
+        tap(app.buttons["generateButton"])
+        waitFor(app.buttons["previewCancelButton"], "Plan preview did not appear")
+        var labels: [String] = []
+        for row in 0..<8 {
+            let el = app.descendants(matching: .any).matching(identifier: "plan.setRow.0.\(row)").firstMatch
+            guard el.waitForExistence(timeout: row == 0 ? timeout : 1) else { break }
+            labels.append(el.label)
+        }
+        shot("17-plan-bench-backoff")
+        XCTAssertEqual(labels.filter { $0.hasPrefix("Back-off") }.count, 1, "Back-off row missing: \(labels)")
+        XCTAssertTrue(labels.last?.hasPrefix("Back-off") == true, "\(labels)")
+    }
+
     func testSwapToHistoryBackedExerciseFillsRowsOnStart() throws {
         launchApp(extraArguments: ["-uiTestingLiftHistory"])
         tap(app.buttons["chip.Push"])

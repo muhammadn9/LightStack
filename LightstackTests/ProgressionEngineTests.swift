@@ -79,7 +79,7 @@ final class ProgressionEngineTests: XCTestCase {
                                              file: StaticString = #filePath, line: UInt = #line) {
         let top = r.topSet?.weight ?? 0
         let work = r.workingSets
-        XCTAssertEqual(work.count, 3, file: file, line: line)
+        XCTAssertEqual(work.count, strength ? 4 : 3, file: file, line: line)
         XCTAssertEqual(work.filter { $0.role == .top }.count, strength ? 2 : 1, file: file, line: line)
         XCTAssertLessThanOrEqual(work.filter { $0.weight >= 0.95 * top }.count, 2, file: file, line: line)
         let ramp = work.first { $0.role == .ramp }
@@ -87,12 +87,12 @@ final class ProgressionEngineTests: XCTestCase {
         let share = (ramp?.weight ?? 0) / max(top, 1)
         XCTAssertTrue(share >= 0.75 && share <= 0.85, "Set 1 is \(share) of the top", file: file, line: line)
         XCTAssertGreaterThan(r.topSet?.restSeconds ?? 0, ramp?.restSeconds ?? 0, file: file, line: line)
-        if !strength {
-            let back = work.first { $0.role == .backoff }
-            XCTAssertNotNil(back, file: file, line: line)
-            XCTAssertLessThan(back?.weight ?? 999, top, file: file, line: line)
-            XCTAssertGreaterThanOrEqual(back?.reps ?? 0, r.topSet?.reps ?? 99, file: file, line: line)
-        }
+        XCTAssertEqual(work.filter { $0.role == .backoff }.count, 1, file: file, line: line)
+        XCTAssertEqual(work.last?.role, .backoff, file: file, line: line)
+        let back = work.first { $0.role == .backoff }
+        XCTAssertLessThan(back?.weight ?? 999, top * 0.95, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(back?.reps ?? 0, r.topSet?.reps ?? 99, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(ramp?.reps ?? 0, r.topSet?.reps ?? 99, file: file, line: line)
     }
 
     // MARK: - Owner fixtures
@@ -121,7 +121,7 @@ final class ProgressionEngineTests: XCTestCase {
         print("ROW:", r.sets.map { "\($0.role.rawValue) \($0.text) rest \($0.restSeconds)" }, "|", r.rationale)
         assertStandardMainStructure(r)
         XCTAssertEqual(r.workingSets.map(\.weight), [145, 180, 165])
-        XCTAssertEqual(r.workingSets.map(\.reps), [9, 6, 7])
+        XCTAssertEqual(r.workingSets.map(\.reps), [10, 6, 7])
         // No warm-ups in the athlete's own history: none prescribed.
         XCTAssertEqual(r.warmupCount, 0)
         XCTAssertTrue(r.sets.allSatisfy { isMultiple($0.weight, of: 5) })
@@ -205,7 +205,7 @@ final class ProgressionEngineTests: XCTestCase {
                 let r = try XCTUnwrap(plan(name, history, warmups: true, focus: focus))
                 let top = r.workingSets.map(\.weight).max() ?? 0
                 XCTAssertLessThanOrEqual(r.workingSets.filter { $0.weight >= 0.95 * top }.count, 2, "\(name) \(focus)")
-                XCTAssertLessThanOrEqual(r.workingSets.count, 3, "\(name) \(focus)")
+                XCTAssertLessThanOrEqual(r.workingSets.count, focus == .strength ? 4 : 3, "\(name) \(focus)")
             }
         }
     }
@@ -224,7 +224,7 @@ final class ProgressionEngineTests: XCTestCase {
         XCTAssertEqual(r.repRange, RepRange(lower: 3, upper: 6))
         assertStandardMainStructure(r, strength: true)
         XCTAssertTrue(r.workingSets.filter { $0.role == .top }.allSatisfy { $0.restSeconds == 180 })
-        XCTAssertNil(r.workingSets.first { $0.role == .backoff })
+        XCTAssertEqual(r.workingSets.last?.role, .backoff, "strength still ends with a back-off")
         // 185x6 is the top of the 3-6 range, so the load goes up.
         XCTAssertEqual(r.topSet?.weight, 190)
         XCTAssertEqual(r.topSet?.reps, 3)
@@ -590,7 +590,7 @@ final class ProgressionEngineTests: XCTestCase {
         let targets = fewer.0.setTargets[fewer.1.id] ?? []
         XCTAssertEqual(targets.filter { $0.isWarmup != true }.count, 2)
         XCTAssertTrue(targets.contains { $0.role == .top }, "the top set is never the one removed")
-        XCTAssertFalse(targets.contains { $0.role == .backoff }, "the back-off goes first")
+        XCTAssertTrue(targets.contains { $0.role == .backoff }, "Set 1 goes first; the back-off stays")
         XCTAssertEqual(fewer.0.changes.first?.applied, true)
     }
 
@@ -599,6 +599,92 @@ final class ProgressionEngineTests: XCTestCase {
                            PlanChange(type: .loadAdjust, exercise: "Not In Plan", detail: "-5%", reason: "x", percent: -5),
                            PlanChange(type: .reorder, exercise: bench, detail: "first", reason: "x")])
         XCTAssertEqual(r.0.changes.map(\.applied), [false, false, true])
+    }
+
+    // MARK: - UI-test seed bug: strength plan had two top sets and no back-off
+
+    private let seedBench = "Barbell Bench Press"
+    private var seedHistory: [HistorySession] { [session(10, 20, "95x10@5, 185x6@1, 185x6@1, 180x5@1")] }
+
+    private func seedPlan(focus: CoachFocus, changes: [PlanChange] = [], target: NextTarget? = nil) -> [SetTarget] {
+        let e = Exercise.create(workoutId: UUID(), name: seedBench, muscleGroup: "Chest", orderIndex: 0, targetSets: 3,
+                                targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
+        let group = ExerciseHistoryGroup(names: [seedBench], sessions: seedHistory, best: HistorySet(185, 6))
+        var coach = PlanCoachContext(focus: focus, restPreference: 90, nextTargets: [:], recency: [:], now: Date())
+        if let target { coach.nextTargets[seedBench.lowercased()] = .init(target: target, date: day(10, 21)) }
+        let applied = PlanProgressionApplier.apply(
+            plan: .init(exercises: [e], setTargets: [:]), history: ExerciseHistoryIndex(groups: [group]),
+            energy: 6, feedback: nil, coach: coach, changes: changes)
+        return applied.setTargets[applied.exercises[0].id] ?? []
+    }
+
+    private func assertInvariants(_ t: [SetTarget], strength: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let work = t.filter { $0.isWarmup != true }
+        let tops = work.filter { $0.resolvedRole == .top }
+        let topW = tops.compactMap { Double($0.prefillWeight) }.max() ?? 0
+        XCTAssertEqual(work.filter { $0.resolvedRole == .backoff }.count, 1, "\(t)", file: file, line: line)
+        XCTAssertEqual(work.last?.resolvedRole, .backoff, file: file, line: line)
+        XCTAssertLessThanOrEqual(tops.count, strength ? 2 : 1, file: file, line: line)
+        XCTAssertLessThanOrEqual(work.filter { (Double($0.prefillWeight) ?? 0) >= topW * 0.95 }.count, 2, file: file, line: line)
+        let topReps = Int(tops.first?.prefillReps ?? "") ?? 0
+        if let ramp = work.first(where: { $0.resolvedRole == .ramp }) {
+            XCTAssertGreaterThanOrEqual(Int(ramp.prefillReps) ?? 0, topReps, file: file, line: line)
+        }
+        XCTAssertLessThanOrEqual(topW, 194.25, "top within +5% of 185", file: file, line: line)
+    }
+
+    func testStrengthFocusSeedPlanEndsWithBackoff() {
+        let t = seedPlan(focus: .strength)
+        assertInvariants(t, strength: true)
+        XCTAssertEqual(t.filter { $0.resolvedRole == .top }.count, 2)
+    }
+
+    func testHypertrophySeedPlanHasOneTopAndBackoffAndTenToTwelveRepSet1() {
+        let t = seedPlan(focus: .hypertrophy)
+        assertInvariants(t, strength: false)
+        let ramp = t.first { $0.resolvedRole == .ramp }
+        XCTAssertTrue((10...12).contains(Int(ramp?.prefillReps ?? "") ?? 0), "\(t)")
+        XCTAssertEqual(t.first { $0.resolvedRole == .top }?.restSeconds, 120)
+    }
+
+    func testReviewChangesCannotRemoveBackoffOrDuplicateTop() {
+        for focus in [CoachFocus.hypertrophy, .strength] {
+            for sets in [2, 3, 4, 5] {
+                let t = seedPlan(focus: focus, changes: [
+                    PlanChange(type: .setCount, exercise: seedBench, detail: "\(sets) sets", reason: "x", sets: sets),
+                    PlanChange(type: .loadAdjust, exercise: seedBench, detail: "+5%", reason: "x", percent: 5)])
+                assertInvariants(t, strength: focus == .strength)
+            }
+        }
+    }
+
+    func testTopWeightNeverJumpsAboveFivePercentUnlessTargetWithinE1RMLimit() {
+        // A silly review target is ignored by the engine and, if it slips through, clamped by the final pass.
+        let silly = seedPlan(focus: .hypertrophy, target: NextTarget(weight: 225, reps: 5))
+        XCTAssertLessThanOrEqual(silly.compactMap { Double($0.prefillWeight) }.max() ?? 0, 194.25)
+        let ctx = PlanGuardrails.StructureContext(name: seedBench, focus: .hypertrophy, restPreference: 90,
+                                                  bestRecentTop: 185, bestE1RM: 222, nextTarget: NextTarget(weight: 200, reps: 3))
+        XCTAssertEqual(PlanGuardrails.topWeightLimit(ctx), 200, "target 200x3 is under the e1RM limit")
+        var bad = ctx; bad.nextTarget = NextTarget(weight: 215, reps: 5)
+        XCTAssertEqual(PlanGuardrails.topWeightLimit(bad) ?? 0, 185 * 1.05, accuracy: 0.001)
+        let raw = [SetTarget(weight: "150", reps: "8", rir: "2", role: .ramp), SetTarget(weight: "215", reps: "3", rir: "1", role: .top),
+                   SetTarget(weight: "215", reps: "3", rir: "1", role: .top)]
+        let fixed = PlanGuardrails.enforceMainLiftStructure(raw, ctx: bad).targets
+        XCTAssertEqual(fixed.map(\.resolvedRole), [.ramp, .top, .backoff])
+        XCTAssertEqual(fixed[1].prefillWeight, "190")
+    }
+
+    func testFallbackOverallReadMatchesMissedMainLift() {
+        let pTop = PrescribedSet(role: .top, weight: 190, reps: 5, rir: 1, restSeconds: 120)
+        let pres = ExercisePrescription(name: seedBench, muscleGroup: "Chest", sets: [pTop])
+        let logged = [LoggedExercise(name: seedBench, muscleGroup: "Chest", sets: [HistorySet(190, 2, rir: 0)])]
+        let analysis = SessionAnalyzer.analyze(logged: logged, prescription: [pres], energy: 6, userNote: nil, reasons: [:],
+                                               previous: [], history: ExerciseHistoryIndex(), focus: .hypertrophy)
+        let read = SessionAnalyzer.fallbackReview(analysis, workoutType: "Push").overallRead
+        XCTAssertTrue(read.contains("missed"), read)
+        XCTAssertFalse(read.lowercased().contains("everything"), read)
+        let merged = SessionAnalyzer.merge(analysis, model: ModelReview(exercises: [], overallRead: "Everything moved well, add 5 lbs.", recurringFlags: []), workoutType: "Push")
+        XCTAssertTrue(merged.overallRead.contains("missed"), merged.overallRead)
     }
 
     func testRecencyRuleReachesThePlanAndExplainsItself() {

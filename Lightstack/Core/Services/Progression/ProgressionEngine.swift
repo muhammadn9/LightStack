@@ -261,7 +261,8 @@ enum ProgressionEngine {
         var sets: [ProgressionSet] = []
 
         let rampWeight = rampWeight(forTop: top.weight, step: ctx.step)
-        let rampReps = strength ? min(8, top.reps + 2) : min(12, max(8, top.reps + 3))
+        // Set 1 is lighter, so it gets more reps than the top set (hypertrophy ~10-12, strength up to 8).
+        let rampReps = strength ? max(top.reps, min(8, top.reps + 2)) : max(top.reps, min(12, max(10, top.reps + 3)))
 
         if warmup {
             var w = ExerciseTraits.round(top.weight * 0.5, step: ctx.step)
@@ -276,16 +277,15 @@ enum ProgressionEngine {
         guard !recency else { return sets }
 
         if strength {
-            // Strength focus: a second top set instead of a back-off.
+            // Strength focus may repeat the top weight once, but a back-off still follows.
             sets.append(ProgressionSet(weight: top.weight, reps: max(ctx.range.lower, top.reps - 1), rir: 1,
                                        role: .top, restSeconds: strengthTopRest))
-        } else {
-            var weight = ExerciseTraits.round(top.weight * backoffShare, step: ctx.step)
-            if weight >= top.weight { weight = max(ctx.step, top.weight - ctx.step) }
-            let reps = max(top.reps, min(ctx.range.upper, top.reps + 1))
-            sets.append(ProgressionSet(weight: weight, reps: reps, rir: 2, role: .backoff,
-                                       restSeconds: max(backoffRest, restPreference)))
         }
+        var weight = ExerciseTraits.round(top.weight * backoffShare, step: ctx.step)
+        if weight >= top.weight { weight = max(ctx.step, top.weight - ctx.step) }
+        let reps = max(top.reps, min(ctx.range.upper, top.reps + 1))
+        sets.append(ProgressionSet(weight: weight, reps: reps, rir: 2, role: .backoff,
+                                   restSeconds: max(backoffRest, restPreference)))
         return sets
     }
 

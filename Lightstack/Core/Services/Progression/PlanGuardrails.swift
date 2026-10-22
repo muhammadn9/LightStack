@@ -143,6 +143,106 @@ enum PlanGuardrails {
         return (out, changed)
     }
 
+    // MARK: - Final structure pass
+
+    /// What the final structure pass needs to know about the lift.
+    struct StructureContext {
+        var name: String
+        var focus: CoachFocus
+        var restPreference: Int
+        /// Heaviest recent top-set weight and the best e1RM, from logged history.
+        var bestRecentTop: Double?
+        var bestE1RM: Double?
+        /// The last review's target, honoured above the +5% limit when it is within the e1RM limit.
+        var nextTarget: NextTarget?
+        /// The back-off was dropped on purpose (muscle trained in the last 48 h).
+        var backoffDropped: Bool = false
+    }
+
+    /// The highest top-set weight a plan may carry: +5% (at least one plate step) over the best recent top set,
+    /// or the review's target when that stays within the e1RM-based limit.
+    static func topWeightLimit(_ ctx: StructureContext) -> Double? {
+        guard let best = ctx.bestRecentTop, best > 0 else { return nil }
+        let step = ExerciseTraits.roundingStep(ctx.name)
+        var limit = max(best * (1 + weightTolerance), best + step)
+        if let t = ctx.nextTarget, t.weight > limit, let e1 = ctx.bestE1RM, e1 > 0,
+           t.weight * (1 + Double(t.reps) / 30) <= e1 * 1.03 {
+            limit = t.weight
+        }
+        return limit
+    }
+
+    /// Runs after every other edit (engine, AI review changes, caps). Enforces, for main lifts with a top set:
+    /// exactly one back-off, at most one top set (two for strength), Set 1 reps at least the top reps,
+    /// and a top weight within `topWeightLimit`. Isolation work and plans without a top set pass through.
+    static func enforceMainLiftStructure(_ targets: [SetTarget], ctx: StructureContext) -> (targets: [SetTarget], reasons: [String]) {
+        guard ExerciseTraits.classify(ctx.name) != .isolation,
+              targets.contains(where: { $0.resolvedRole == .top }) else { return (targets, []) }
+        var reasons: [String] = []
+        let step = ExerciseTraits.roundingStep(ctx.name)
+        let warm = targets.filter { $0.isWarmup == true }
+        var ramps = targets.filter { $0.isWarmup != true && $0.resolvedRole == .ramp }
+        var tops = targets.filter { $0.isWarmup != true && $0.resolvedRole == .top }
+        var backs = targets.filter { $0.isWarmup != true && $0.resolvedRole == .backoff }
+        // Anything else (straight sets in a mixed list) stays where the model put it, after the back-off.
+        let others = targets.filter { $0.isWarmup != true && ![SetRole.ramp, .top, .backoff].contains($0.resolvedRole) }
+
+        let maxTops = ctx.focus == .strength ? 2 : 1
+        if tops.count > maxTops {
+            tops = Array(tops.prefix(maxTops))
+            reasons.append("Kept \(maxTops) top set\(maxTops == 1 ? "" : "s") (a back-off follows instead)")
+        }
+
+        // Top weight limit.
+        func weight(_ t: SetTarget) -> Double { Double(t.prefillWeight) ?? 0 }
+        if let limit = topWeightLimit(ctx), let topW = tops.map(weight).max(), topW > limit {
+            let clamp = ExerciseTraits.floorStep(limit, step: step)
+            for i in tops.indices where weight(tops[i]) > clamp { tops[i].weight = String(format: "%g", clamp) }
+            reasons.append("Top set limited to \(String(format: "%g", clamp)) (more than +5% over your best recent top set)")
+        }
+        let topW = tops.map(weight).max() ?? 0
+        let topReps = tops.compactMap { Int($0.prefillReps) }.min() ?? 0
+
+        // Set 1: lighter than the top set, never fewer reps.
+        for i in ramps.indices {
+            if topW > 0, weight(ramps[i]) >= topW * 0.95 || weight(ramps[i]) >= topW {
+                ramps[i].weight = String(format: "%g", ExerciseTraits.floorStep(topW * 0.8, step: step))
+            }
+            if let r = Int(ramps[i].prefillReps), r < topReps { ramps[i].reps = String(topReps) }
+        }
+
+        // Exactly one back-off (unless dropped on purpose for recovery).
+        if backs.count > 1 {
+            backs = Array(backs.prefix(1))
+            reasons.append("Kept one back-off")
+        }
+        if backs.isEmpty, !ctx.backoffDropped, topW > 0 {
+            var w = ExerciseTraits.round(topW * ProgressionEngine.backoffShare, step: step)
+            if w >= topW * 0.95 { w = max(step, ExerciseTraits.floorStep(topW * 0.95 - 0.001, step: step)) }
+            backs = [SetTarget(weight: String(format: "%g", w), reps: String(max(topReps, 1)), rir: "2", role: .backoff,
+                               restSeconds: max(ProgressionEngine.backoffRest, ctx.restPreference))]
+            reasons.append("Added the missing back-off")
+        }
+        for i in backs.indices {
+            if topW > 0, weight(backs[i]) >= topW * 0.95 {
+                var w = ExerciseTraits.round(topW * ProgressionEngine.backoffShare, step: step)
+                if w >= topW * 0.95 { w = max(step, ExerciseTraits.floorStep(topW * 0.95 - 0.001, step: step)) }
+                backs[i].weight = String(format: "%g", w)
+            }
+            if let r = Int(backs[i].prefillReps), r < topReps { backs[i].reps = String(topReps) }
+        }
+
+        // Top-set rest: 180 s is for strength only.
+        if ctx.focus != .strength {
+            for i in tops.indices where (tops[i].restSeconds ?? 0) > ProgressionEngine.topRest {
+                tops[i].restSeconds = ProgressionEngine.topRest
+            }
+        }
+
+        let result = warm + ramps + tops + backs + others
+        return (result == targets ? targets : result, reasons)
+    }
+
     /// Roles and per-set rest for AI-written targets (new exercises), so every plan row carries them.
     /// Working sets: the heaviest becomes the top set, earlier ones Set 1 / ramp, later ones back-offs;
     /// isolation work stays straight sets.

@@ -147,7 +147,7 @@ final class WorkoutSessionService {
         let context = coachContextBuilder.buildContext(userId: userId, workoutType: sanitizedType)
         let resolvedTime = time ?? context.medianSessionMinutes ?? CoachPreferences.fallbackMinutes
         let resolvedEnergy = energy ?? CoachPreferences.neutralEnergy
-        let resolvedFocus = CoachPreferences.resolvedFocus(override: focus, profileGoals: context.profile?.primaryGoals ?? [])
+        let resolvedFocus = CoachPreferences.resolvedFocus(override: focus)
 
         // Pre-build the workout value. It is only held in memory (so the plan parser
         // has a workout id) and is NOT saved or queued until the plan succeeds: a
@@ -315,7 +315,7 @@ final class WorkoutSessionService {
                 sessions: context.recentSessions, exercises: context.recentSessionSets,
                 loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
                 feedbackFor: { ExerciseFeedbackStore.shared.feedback(forExercise: $0) })
-            let focus = CoachPreferences.resolvedFocus(profileGoals: context.profile?.primaryGoals ?? [])
+            let focus = CoachPreferences.resolvedFocus()
             let analysis = SessionAnalyzer.analyze(
                 logged: logged, prescription: prescription, energy: energy, userNote: workout.userNote,
                 reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus)

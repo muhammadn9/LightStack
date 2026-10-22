@@ -42,6 +42,8 @@ final class CoachV2Tests: LightstackUITestCase {
         XCTAssertTrue(labels.first?.hasPrefix("Warm-up") == true, "First row should be the warm-up: \(labels)")
         XCTAssertTrue(labels.contains { $0.hasPrefix("Set 1") }, "Set 1 missing: \(labels)")
         XCTAssertTrue(labels.contains { $0.hasPrefix("Top set") }, "Top set missing: \(labels)")
+        XCTAssertEqual(labels.filter { $0.hasPrefix("Back-off") }.count, 1, "Bench must end with exactly one Back-off: \(labels)")
+        XCTAssertTrue(labels.last?.hasPrefix("Back-off") == true, "Back-off should be last: \(labels)")
         XCTAssertTrue(labels.allSatisfy { $0.contains("rest ") }, "Every row should show rest: \(labels)")
 
         // The pushdown has a known form issue: its cue shows under the rows.

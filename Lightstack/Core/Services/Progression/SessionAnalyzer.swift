@@ -288,6 +288,9 @@ enum SessionAnalyzer {
         if !missed.isEmpty { read += ", missed \(missed.joined(separator: ", "))" }
         if !prs.isEmpty { read += ", best ever on \(prs.joined(separator: ", "))" }
         read += ". Energy \(analysis.energy)/10."
+        if let first = analysis.exercises.first(where: \.isMiss), let t = first.target {
+            read += " Next for \(first.name): \(t.text), no added load."
+        } else if missed.isEmpty, total > 0 { read += " Everything hit target." }
         return read
     }
 
@@ -355,7 +358,12 @@ enum SessionAnalyzer {
         for mandatory in mandatoryFlags(analysis) where !flags.contains(where: { $0.lowercased() == mandatory.lowercased() }) {
             flags.append(mandatory)
         }
-        let read = model.overallRead ?? deterministicOverallRead(analysis, workoutType: workoutType)
+        var read = model.overallRead ?? deterministicOverallRead(analysis, workoutType: workoutType)
+        // A rosy read that ignores a rule-detected miss is replaced by the deterministic one.
+        let missed = analysis.exercises.filter(\.isMiss).map(\.name)
+        if !missed.isEmpty, !missed.contains(where: { read.lowercased().contains($0.lowercased()) }) {
+            read = deterministicOverallRead(analysis, workoutType: workoutType)
+        }
         return SessionReview(exercises: exercises, overallRead: String(read.prefix(600)),
                              recurringFlags: Array(flags.prefix(6)), createdAt: now, aiAuthored: true)
     }

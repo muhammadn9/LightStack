@@ -11,17 +11,6 @@ enum CoachFocus: String, Codable, CaseIterable, Equatable {
         case .maintenance: return "Maintain"
         }
     }
-
-    /// Best guess from free-text profile goals; nil when the goals say nothing obvious.
-    static func infer(fromGoals goals: [String]) -> CoachFocus? {
-        let text = goals.joined(separator: " ").lowercased()
-        guard !text.isEmpty else { return nil }
-        let muscle = ["muscle", "hypertrophy", "size", "bulk", "mass", "physique", "aesthetic"]
-        if muscle.contains(where: { text.contains($0) }) { return .hypertrophy }
-        if text.contains("strength") || text.contains("stronger") || text.contains("powerlift") { return .strength }
-        if text.contains("maintain") || text.contains("maintenance") { return .maintenance }
-        return nil
-    }
 }
 
 /// Coach settings kept in UserDefaults (no schema change). Hands-off by default:
@@ -48,9 +37,8 @@ enum CoachPreferences {
         if let focus { defaults.set(focus.rawValue, forKey: focusKey) } else { defaults.removeObject(forKey: focusKey) }
     }
 
-    /// Request override > stored preference > profile goals > hypertrophy.
-    static func resolvedFocus(override: CoachFocus? = nil, profileGoals: [String] = [],
-                              in defaults: UserDefaults = .standard) -> CoachFocus {
-        override ?? storedFocus(in: defaults) ?? CoachFocus.infer(fromGoals: profileGoals) ?? .hypertrophy
+    /// Request override > stored preference > hypertrophy. Never inferred from profile text.
+    static func resolvedFocus(override: CoachFocus? = nil, in defaults: UserDefaults = .standard) -> CoachFocus {
+        override ?? storedFocus(in: defaults) ?? .hypertrophy
     }
 }

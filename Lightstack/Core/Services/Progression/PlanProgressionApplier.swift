@@ -34,6 +34,7 @@ enum PlanProgressionApplier {
         var evidence: [UUID: ExerciseEvidence] = [:]
         var adjustments: [String] = []
         var safeguards: [String] = []
+        var recencyHeld: Set<UUID> = []
 
         // Heavy compounds first (unless supersets pin the order).
         if let moved = heavyFirst(exercises) {
@@ -84,6 +85,7 @@ enum PlanProgressionApplier {
                     warmupCount: engine.warmupCount, adjustedByGuardrails: false, guardrailReasons: [])
                 adjustments.append("\(ex.name): engine set the targets (\(engine.rationale))")
                 if engine.recencyApplied {
+                    recencyHeld.insert(ex.id)
                     safeguards.append("\(ex.name): \(muscle) trained hard in the last 48 h, so the load is held at RIR 2 and the back-off is dropped")
                 }
             } else {
@@ -91,7 +93,8 @@ enum PlanProgressionApplier {
                 var report = GuardrailReport()
                 if !isCardio {
                     let cls = ExerciseTraits.classify(ex.name)
-                    let cap = cls == .isolation ? ProgressionEngine.isolationWorkingSets : ProgressionEngine.mainWorkingSets
+                    let cap = cls == .isolation ? ProgressionEngine.isolationWorkingSets
+                        : (coach.focus == .strength ? ProgressionEngine.mainWorkingSets + 1 : ProgressionEngine.mainWorkingSets)
                     let bestWeight = best?.weight ?? bestLookup(ex.name)
                     if let existing = targets[ex.id], !existing.isEmpty {
                         let guarded = PlanGuardrails.apply(
@@ -139,6 +142,29 @@ enum PlanProgressionApplier {
             var queue = capped.targets[...]
             targets[ex.id] = list.map { t in t.isWarmup == true ? t : (queue.popFirst() ?? t) }
             safeguards.append("\(ex.name): heavy sets capped at \(PlanGuardrails.maxHeavySets)")
+        }
+
+        // Final pass, after every other edit: the main-lift structure invariants.
+        for i in exercises.indices {
+            let ex = exercises[i]
+            guard ex.trackingType != .cardio, let list = targets[ex.id], !list.isEmpty else { continue }
+            let group = history.group(for: ex.name)
+            let recentTops = (group?.sessions.prefix(3) ?? []).compactMap { session -> HistorySet? in
+                ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups(session.sets).working)
+            }
+            let ctx = PlanGuardrails.StructureContext(
+                name: ex.name, focus: coach.focus, restPreference: coach.restPreference,
+                bestRecentTop: recentTops.map(\.weight).max(), bestE1RM: group?.best?.e1RM,
+                nextTarget: coach.nextTarget(for: ex.name, lastSessionDate: group?.sessions.first?.date),
+                backoffDropped: recencyHeld.contains(ex.id))
+            let fixed = PlanGuardrails.enforceMainLiftStructure(list, ctx: ctx)
+            guard !fixed.reasons.isEmpty || fixed.targets != list else { continue }
+            targets[ex.id] = fixed.targets
+            for reason in fixed.reasons {
+                safeguards.append("\(ex.name): \(reason)")
+                adjustments.append("\(ex.name): guardrail: \(reason)")
+            }
+            refreshNoteWeight(&exercises[i], targets: fixed.targets)
         }
 
         // Re-number, and keep evidence and set counts in step with the final targets.
@@ -273,9 +299,10 @@ enum PlanProgressionApplier {
             var toRemove = working.count - target
             while toRemove > 0 {
                 let now = list.indices.filter { list[$0].isWarmup != true }
-                let victim = now.last { list[$0].resolvedRole == .backoff }
+                let firstTop = now.first { list[$0].resolvedRole == .top }
+                let victim = now.last { list[$0].resolvedRole == .top && $0 != firstTop }
                     ?? now.last { list[$0].resolvedRole == .ramp }
-                    ?? now.last { list[$0].resolvedRole != .top }
+                    ?? now.last { list[$0].resolvedRole == .backoff }
                 guard let v = victim else { break }
                 list.remove(at: v)
                 toRemove -= 1
@@ -363,7 +390,9 @@ enum PlanProgressionApplier {
                     if count > PlanGuardrails.minWorkingSets {
                         if var list = targets[ex.id], !list.isEmpty {
                             let now = list.indices.filter { list[$0].isWarmup != true }
-                            if let v = now.last(where: { list[$0].resolvedRole == .backoff })
+                            let firstTop = now.first { list[$0].resolvedRole == .top }
+                            if let v = now.last(where: { list[$0].resolvedRole == .top && $0 != firstTop })
+                                ?? now.last(where: { list[$0].resolvedRole == .ramp })
                                 ?? now.last(where: { list[$0].resolvedRole != .top }) {
                                 list.remove(at: v)
                                 targets[ex.id] = list
