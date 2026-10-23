@@ -49,6 +49,8 @@ enum UITestMode {
         guard let i = args.firstIndex(of: "-uiTestingRestoreDelay"), i + 1 < args.count else { return 0 }
         return TimeInterval(args[i + 1]) ?? 0
     }
+    /// `-uiTestingExpiredSession` starts with the signed-out banner showing, as if the session had been revoked.
+    static let wantsExpiredSession: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingExpiredSession")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -77,6 +79,7 @@ enum UITestMode {
         }
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: sessionStateKey)
+        defaults.removeObject(forKey: SessionExpiryTracker.defaultsKey)
         defaults.removeObject(forKey: RestPreference.key)
         defaults.removeObject(forKey: PerArmPreference.key)
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")

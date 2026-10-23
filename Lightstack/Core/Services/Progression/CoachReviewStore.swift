@@ -122,6 +122,16 @@ final class CoachReviewStore {
         recordInSessionReason(exercise: exercise, reason: reason.rawValue, workoutId: workoutId)
     }
 
+    /// Records (or clears, with nil) the "too easy / about right / too hard" answer for an exercise.
+    /// Stored in the workout's document, so it syncs and comes back on a new device.
+    @discardableResult
+    func recordFeedback(_ feedback: SessionFeedback?, exerciseId: UUID, workoutId: UUID) -> Bool {
+        update(workoutId: workoutId) { doc in
+            if let feedback { doc.feedback[exerciseId.uuidString] = feedback.rawValue }
+            else { doc.feedback.removeValue(forKey: exerciseId.uuidString) }
+        }
+    }
+
     /// Stores the finished review, keeping the prescription and reasons already there.
     @discardableResult
     func recordReview(_ review: SessionReview, prescription: [ExercisePrescription]? = nil, for workoutId: UUID) -> Bool {

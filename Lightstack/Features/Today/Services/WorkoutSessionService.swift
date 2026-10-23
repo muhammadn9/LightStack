@@ -170,7 +170,8 @@ final class WorkoutSessionService {
             let history = ExerciseHistoryIndex(
                 sessions: context.recentSessions, exercises: context.recentSessionSets,
                 loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
-                feedbackFor: { ExerciseFeedbackStore.shared.feedback(forExercise: $0) })
+                feedbackFor: ExerciseFeedbackStore.reader(workouts: context.recentSessions,
+                                                          fallback: { ExerciseFeedbackStore.shared.deviceFeedback(forExercise: $0) }))
             let coach = PlanCoachContext(
                 focus: resolvedFocus, restPreference: RestPreference.defaultSeconds,
                 nextTargets: CoachReviewStore.nextTargets(from: context.recentReviews),
@@ -314,7 +315,8 @@ final class WorkoutSessionService {
             let history = ExerciseHistoryIndex(
                 sessions: context.recentSessions, exercises: context.recentSessionSets,
                 loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
-                feedbackFor: { ExerciseFeedbackStore.shared.feedback(forExercise: $0) })
+                feedbackFor: ExerciseFeedbackStore.reader(workouts: context.recentSessions,
+                                                          fallback: { ExerciseFeedbackStore.shared.deviceFeedback(forExercise: $0) }))
             let focus = CoachPreferences.resolvedFocus()
             let analysis = SessionAnalyzer.analyze(
                 logged: logged, prescription: prescription, energy: energy, userNote: workout.userNote,

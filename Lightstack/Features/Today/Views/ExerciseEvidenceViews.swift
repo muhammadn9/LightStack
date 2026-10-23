@@ -209,13 +209,13 @@ struct ExerciseFeedbackPicker: View {
                 }
             }
         }
-        .onAppear { selection = ExerciseFeedbackStore.shared.feedback(forExercise: exercise.id) }
+        .onAppear { selection = ExerciseFeedbackStore.shared.feedback(forExercise: exercise.id, workoutId: exercise.workoutId) }
     }
 
     private func choose(_ option: SessionFeedback) {
         // Tapping the chosen answer again clears it.
         let next: SessionFeedback? = selection == option ? nil : option
         selection = next
-        ExerciseFeedbackStore.shared.set(next, forExercise: exercise.id)
+        ExerciseFeedbackStore.shared.set(next, forExercise: exercise.id, workoutId: exercise.workoutId)
     }
 }
