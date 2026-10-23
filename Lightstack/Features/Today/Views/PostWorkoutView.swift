@@ -85,9 +85,7 @@ struct PostWorkoutView: View {
     private var sessionVolume: Double {
         var volume = 0.0
         for exercise in todayViewModel.exercises {
-            for s in todayViewModel.loggedSetsForExercise(exercise.id) {
-                volume += s.weightLbs * Double(s.reps)
-            }
+            volume += exercise.volume(of: todayViewModel.loggedSetsForExercise(exercise.id))
         }
         return volume
     }

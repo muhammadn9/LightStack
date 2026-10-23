@@ -513,7 +513,7 @@ final class SyncRestoreService {
     private static func sameExercise(_ a: Exercise, _ b: Exercise) -> Bool {
         a.workoutId == b.workoutId && a.name == b.name && a.muscleGroup == b.muscleGroup && a.orderIndex == b.orderIndex
             && a.targetSets == b.targetSets && a.targetReps == b.targetReps && a.targetRir == b.targetRir
-            && a.restSeconds == b.restSeconds && a.coachNote == b.coachNote && a.supersetGroupId == b.supersetGroupId
+            && a.restSeconds == b.restSeconds && a.coachNote == b.coachNote && a.supersetGroupId == b.supersetGroupId && a.isPerArm == b.isPerArm
     }
 
     private static func sameSet(_ a: WorkoutSet, _ b: WorkoutSet) -> Bool {

@@ -352,7 +352,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetRir: ex.targetRir,
                 restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
                 coachNote: ex.coachNote,
-                supersetGroupId: groupIds[index]
+                supersetGroupId: groupIds[index],
+                isPerArm: ex.isPerArm
             )
         }
         workoutRepository.createWorkout(newWorkout)
@@ -407,7 +408,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetRir: ex.targetRir,
                 restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
                 coachNote: coachNote,
-                supersetGroupId: groupIds[index]
+                supersetGroupId: groupIds[index],
+                isPerArm: ex.isPerArm
             )
             if newExercise.trackingType == .strength, !sets.isEmpty {
                 hints[newExercise.id] = sets.map {
@@ -777,6 +779,19 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         applyGrouping(linked)
         saveSessionState()
         return true
+    }
+
+    /// Marks an exercise as per-arm (single-side) or not, saves it, and remembers the choice
+    /// for that lift's name so it becomes the default next time.
+    func setPerArm(_ value: Bool, forExerciseId id: UUID) {
+        guard let index = exercises.firstIndex(where: { $0.id == id }),
+              exercises[index].isPerArm != value else { return }
+        exercises[index].isPerArm = value
+        PerArmPreference.remember(value, for: exercises[index].name)
+        if let workoutId = sessionService.currentWorkoutId {
+            workoutRepository.saveExercises([exercises[index]], workoutId: workoutId)
+        }
+        saveSessionState()
     }
 
     /// Splits a superset back into separate exercises.

@@ -15,7 +15,8 @@ struct LoggedSetRow: View {
         if exercise.trackingType == .cardio {
             CardioLoggedSetRow(workoutSet: workoutSet, number: number, idPrefix: idPrefix, onDelete: onDelete)
         } else {
-            StrengthLoggedSetRow(workoutSet: workoutSet, number: number, idPrefix: idPrefix, onDelete: onDelete)
+            StrengthLoggedSetRow(workoutSet: workoutSet, number: number, idPrefix: idPrefix,
+                                 isPerArm: exercise.isPerArm, onDelete: onDelete)
         }
     }
 }
@@ -24,6 +25,7 @@ private struct StrengthLoggedSetRow: View {
     let workoutSet: WorkoutSet
     let number: Int
     var idPrefix: String = ""
+    var isPerArm = false
     let onDelete: () -> Void
 
     var body: some View {
@@ -34,9 +36,10 @@ private struct StrengthLoggedSetRow: View {
                 .font(AppTheme.caveat(16, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
                 .accessibilityIdentifier("\(idPrefix).weight")
-            Text("lbs")
+            Text(isPerArm ? "lbs / arm" : "lbs")
                 .font(AppTheme.caveat(12))
                 .foregroundStyle(AppTheme.textSecondary)
+                .accessibilityIdentifier("\(idPrefix).unit")
 
             Spacer()
 
@@ -123,6 +126,8 @@ struct StrengthPendingSetRow: View {
     let exerciseId: UUID
     /// Prefix for UI-test accessibility identifiers, e.g. "setRow.0.1".
     var idPrefix: String = ""
+    /// Single-side exercise: the weight is per arm/side.
+    var isPerArm = false
     let onLog: () -> Void
     let onDelete: () -> Void
 
@@ -134,7 +139,7 @@ struct StrengthPendingSetRow: View {
     }
 
     private var weightHintText: String {
-        guard let hint else { return "lbs" }
+        guard let hint else { return isPerArm ? "lb/arm" : "lbs" }
         return hint.weightLbs == 0 ? "BW" : String(format: "%g", hint.weightLbs)
     }
 
@@ -168,7 +173,7 @@ struct StrengthPendingSetRow: View {
                     .frame(width: 78)
                     .foregroundStyle(AppTheme.textPrimary)
                     .accessibilityIdentifier("\(idPrefix).weight")
-                    .accessibilityLabel(hint.map { "Weight, last time \($0.weightLbs == 0 ? "bodyweight" : String(format: "%g", $0.weightLbs))" } ?? "Weight")
+                    .accessibilityLabel(hint.map { "Weight\(isPerArm ? " per arm" : ""), last time \($0.weightLbs == 0 ? "bodyweight" : String(format: "%g", $0.weightLbs))" } ?? (isPerArm ? "Weight per arm" : "Weight"))
                 Rectangle()
                     .fill(entry.weight.isEmpty ? AppTheme.border : AppTheme.accent.opacity(0.7))
                     .frame(width: 78, height: 1.5)

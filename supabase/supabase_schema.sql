@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   target_rir     TEXT,
   rest_seconds   INTEGER,
   coach_note     TEXT,
-  superset_group_id UUID  -- exercises sharing an id form one superset
+  superset_group_id UUID,  -- exercises sharing an id form one superset
+  is_per_arm BOOLEAN NOT NULL DEFAULT false  -- weight is per arm/side; volume counts both sides
 );
 
 -- ============================================================

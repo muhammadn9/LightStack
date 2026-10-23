@@ -182,7 +182,8 @@ struct WorkoutEditDraft {
                 targetRir: ex.original?.targetRir,
                 restSeconds: ex.original?.restSeconds,
                 coachNote: ex.original?.coachNote,
-                supersetGroupId: ex.supersetGroupId
+                supersetGroupId: ex.supersetGroupId,
+                isPerArm: ex.original?.isPerArm
             )
             var sets: [WorkoutSet] = []
             for (n, s) in ex.sets.enumerated() {

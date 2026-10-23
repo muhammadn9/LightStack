@@ -288,7 +288,8 @@ struct ActiveWorkoutView: View {
                         if let gid = page.groupId { todayViewModel.unlinkSuperset(groupId: gid) }
                     },
                     onRemove: { exercisePendingRemoval = $0 },
-                    onReorder: { showReorder = true }
+                    onReorder: { showReorder = true },
+                    onTogglePerArm: { todayViewModel.setPerArm(!$0.isPerArm, forExerciseId: $0.id) }
                 )
 
                 InkDivider()
@@ -497,6 +498,7 @@ struct ActiveWorkoutView: View {
                     pendingSets: binding,
                     exerciseId: exercise.id,
                     idPrefix: "setRow.\(exerciseIndex(of: exercise)).\(index)",
+                    isPerArm: exercise.isPerArm,
                     onLog: { logSet(at: index, exerciseId: exercise.id) },
                     onDelete: {
                         viewModel.deletePendingSet(at: index, exerciseId: exercise.id)

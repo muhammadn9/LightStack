@@ -79,9 +79,7 @@ final class ActiveWorkoutViewModel: ObservableObject {
     func runningVolume(exercises: [Exercise]) -> Double {
         var volume = 0.0
         for exercise in exercises {
-            for s in loggedSets[exercise.id] ?? [] {
-                volume += s.weightLbs * Double(s.reps)
-            }
+            volume += exercise.volume(of: loggedSets[exercise.id] ?? [])
         }
         return volume
     }

@@ -180,11 +180,32 @@ struct ConfirmWorkoutView: View {
                 cueBox(cue, exerciseIndex: todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0)
             }
 
+            if exercise.trackingType == .strength {
+                perArmToggle(for: exercise)
+            }
+
             supersetControls(for: exercise, isInSuperset: isInSuperset)
         }
         .padding(12)
         .background(AppTheme.surfaceElevated)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+    }
+
+    /// "Per arm" switch: the logged weight is per side, and volume counts both sides.
+    private func perArmToggle(for exercise: Exercise) -> some View {
+        let exerciseIndex = todayViewModel.exercises.firstIndex(where: { $0.id == exercise.id }) ?? 0
+        return Toggle(isOn: Binding(
+            get: { exercise.isPerArm },
+            set: { todayViewModel.setPerArm($0, forExerciseId: exercise.id) }
+        )) {
+            Text("Per arm (weight is per side)")
+                .font(AppTheme.caveat(13, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .tint(AppTheme.accent)
+        .frame(minHeight: AppTheme.minTouchSize)
+        .accessibilityIdentifier("exercise.perArmToggle.\(exerciseIndex)")
+        .accessibilityLabel("Per arm for \(exercise.name)")
     }
 
     /// "Superset" tag plus link/unlink actions for one exercise card.
@@ -292,7 +313,7 @@ struct ConfirmWorkoutView: View {
                 let isTop = role == .top
                 let roleText = role == .straight ? "Set \(setNum)" : role.label
                 let restText = (target?.restSeconds ?? exercise.restSeconds).flatMap { $0 > 0 ? CoachRestFormat.short($0) : nil } ?? ""
-                let weightText = Self.compactWeight(rowWeight)
+                let weightText = Self.compactWeight(rowWeight, perArm: exercise.isPerArm)
                 let repsText = "× \(rowReps)"
                 let rirText = rowRir == "—" ? "" : "@ RIR \(rowRir)"
                 GridRow {
@@ -335,14 +356,15 @@ struct ConfirmWorkoutView: View {
     }
 
     /// "140 lb" for numbers (any trailing "lbs"/"lb" normalised), "BW" kept, "—" when empty.
-    private static func compactWeight(_ raw: String) -> String {
+    private static func compactWeight(_ raw: String, perArm: Bool = false) -> String {
         let t = raw.trimmingCharacters(in: .whitespaces)
         if t.isEmpty { return "—" }
         if t.uppercased().contains("BW") || t.lowercased().contains("bodyweight") { return "BW" }
         guard let r = t.range(of: #"^\d+(\.\d+)?"#, options: .regularExpression) else { return t }
         let num = String(t[r])
-        if t.lowercased().contains("kg") { return "\(num) kg" }
-        return "\(num) lb"
+        let suffix = perArm ? " / arm" : ""
+        if t.lowercased().contains("kg") { return "\(num) kg\(suffix)" }
+        return "\(num) lb\(suffix)"
     }
 
     private static func rowLabel(_ role: String, _ weight: String, _ reps: String, _ rir: String, _ rest: String) -> String {
