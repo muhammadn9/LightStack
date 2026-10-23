@@ -60,7 +60,7 @@ enum RemoteProfileOutcome {
 final class SyncRestoreService {
 
     static let restoreInterval: TimeInterval = 6 * 60 * 60
-    static let profileTimeout: TimeInterval = 15
+    nonisolated static let profileTimeout: TimeInterval = 15
 
     private static let logger = Logger(subsystem: "org.lightstack.app", category: "SyncRestore")
 

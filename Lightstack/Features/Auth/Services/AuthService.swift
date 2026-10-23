@@ -379,7 +379,7 @@ final class AuthService: NSObject {
             ) { (session: ASWebAuthenticationSession) in
                 session.prefersEphemeralWebBrowserSession = true
             }
-            await notifySignIn()
+            notifySignIn()
         } catch {
             // Don't report user cancellation as an error
             let nsError = error as NSError
@@ -388,7 +388,7 @@ final class AuthService: NSObject {
                 logger.info("Google Sign-In: user cancelled ephemeral web session")
                 return
             }
-            await notifyError(error)
+            notifyError(error)
         }
     }
 

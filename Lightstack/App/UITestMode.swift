@@ -323,11 +323,12 @@ final class UITestFakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable 
 
     /// Only the first read waits (`-uiTestingRestoreDelay`), so the restore screen stays up long enough to see.
     private func read(_ name: String) async throws {
-        lock.lock()
-        calls.append(name)
-        let delay = didDelay ? 0 : UITestMode.restoreDelay
-        didDelay = true
-        lock.unlock()
+        let delay: Double = lock.withLock {
+            calls.append(name)
+            let delay = didDelay ? 0 : UITestMode.restoreDelay
+            didDelay = true
+            return delay
+        }
         if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
         if !online { throw URLError(.notConnectedToInternet) }
     }
