@@ -78,8 +78,10 @@ struct Exercise: Codable, Identifiable {
         try c.encodeIfPresent(restSeconds, forKey: .restSeconds)
         try c.encodeIfPresent(coachNote, forKey: .coachNote)
         try c.encodeIfPresent(supersetGroupId, forKey: .supersetGroupId)
-        // Omitted when false so payloads still work before the is_per_arm column exists.
-        if isPerArm { try c.encode(true, forKey: .isPerArm) }
+        // Always sent: a bulk insert where only some rows carry the key makes PostgREST send NULL for
+        // the rest, and the column is NOT NULL. Queued payloads that lack it decode to false and are
+        // re-encoded here at replay, so old queue entries are repaired too.
+        try c.encode(isPerArm, forKey: .isPerArm)
     }
 
     func toSupabase() -> Exercise {

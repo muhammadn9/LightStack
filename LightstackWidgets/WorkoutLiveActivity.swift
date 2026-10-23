@@ -13,12 +13,13 @@ private enum Palette {
 struct WorkoutLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LightstackWorkoutAttributes.self) { context in
-            LockScreenView(state: context.state)
+            LockScreenView(state: context.state, isStale: context.isStale)
                 .padding(16)
                 .activityBackgroundTint(Color(red: 0.043, green: 0.051, blue: 0.055))
                 .activitySystemActionForegroundColor(Palette.accent)
         } dynamicIsland: { context in
             let state = context.state
+            let isStale = context.isStale
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     Text(state.allDone ? "Done" : state.exerciseName)
@@ -35,14 +36,14 @@ struct WorkoutLiveActivity: Widget {
                     SetSummary(state: state)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    ControlsView(state: state)
+                    ControlsView(state: state, isStale: isStale)
                 }
             } compactLeading: {
                 Text(state.allDone ? "OK" : Self.initials(state.exerciseName))
                     .font(.caption.bold())
                     .foregroundStyle(Palette.accent)
             } compactTrailing: {
-                if let end = state.restEndDate, end > Date() {
+                if let end = state.restEndDate, state.isResting(now: Date(), isStale: isStale) {
                     RestCountdown(end: end)
                         .font(.caption.monospacedDigit().bold())
                         .frame(width: 40)
@@ -51,7 +52,7 @@ struct WorkoutLiveActivity: Widget {
                         .font(.caption.monospacedDigit().bold())
                 }
             } minimal: {
-                if let end = state.restEndDate, end > Date() {
+                if let end = state.restEndDate, state.isResting(now: Date(), isStale: isStale) {
                     RestCountdown(end: end)
                         .font(.system(size: 10).monospacedDigit().bold())
                         .minimumScaleFactor(0.5)
@@ -145,11 +146,12 @@ private struct StepButton: View {
 
 private struct ControlsView: View {
     let state: LightstackWorkoutAttributes.ContentState
+    let isStale: Bool
 
     var body: some View {
         if state.allDone {
             EmptyView()
-        } else if let end = state.restEndDate, end > Date() {
+        } else if let end = state.restEndDate, state.isResting(now: Date(), isStale: isStale) {
             HStack {
                 Text("Rest")
                     .foregroundStyle(Palette.secondary)
@@ -196,6 +198,7 @@ private struct ControlsView: View {
 
 private struct LockScreenView: View {
     let state: LightstackWorkoutAttributes.ContentState
+    let isStale: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -210,7 +213,7 @@ private struct LockScreenView: View {
             }
             SetSummary(state: state)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            ControlsView(state: state)
+            ControlsView(state: state, isStale: isStale)
             if let next = state.nextExercise, !state.allDone {
                 Text("Next: \(next)")
                     .font(.caption)

@@ -39,6 +39,19 @@ struct LightstackWorkoutAttributes: ActivityAttributes {
     var workoutName: String
 }
 
+extension LightstackWorkoutAttributes.ContentState {
+    /// True while the rest countdown should show. The system marks the content stale at `restEndDate`
+    /// (see `staleDate`) and re-renders, so rest flips to the next-set controls with no app wake-up;
+    /// comparing against `now` keeps any render after the end correct as well.
+    func isResting(now: Date, isStale: Bool = false) -> Bool {
+        guard !isStale, let end = restEndDate else { return false }
+        return now < end
+    }
+
+    /// When the system should treat this content as stale: the moment rest ends.
+    var staleDate: Date? { restEndDate }
+}
+
 /// Buttons on the Live Activity.
 enum LiveActivityAction: String, Codable, Sendable {
     case weightDown, weightUp, repsDown, repsUp, logSet, skipRest

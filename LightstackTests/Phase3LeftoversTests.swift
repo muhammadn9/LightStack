@@ -154,7 +154,10 @@ final class BackupStatusTests: XCTestCase {
     }
 
     func testWaitingAndBackingUp() {
-        XCTAssertEqual(derive(pending: 2, failed: 1), .waiting(count: 3))
+        XCTAssertEqual(derive(pending: 2), .waiting(count: 2))
+        XCTAssertEqual(derive(pending: 2, failed: 1), .failed(count: 1))
+        XCTAssertEqual(derive(failed: 2).title, "2 changes couldn't back up")
+        XCTAssertEqual(derive(failed: 1).subtitle(), "Tap for details")
         XCTAssertEqual(derive(pending: 3).title, "3 changes waiting to back up")
         XCTAssertEqual(derive(pending: 1).title, "1 change waiting to back up")
         XCTAssertEqual(derive(pending: 2, flushing: true), .backingUp)

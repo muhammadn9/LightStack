@@ -526,6 +526,22 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         }
     }
 
+    /// "Back up now": revives every dead-lettered change (so a fixed server-side problem is retried at once),
+    /// flushes, and refreshes the status row when the flush has finished.
+    @MainActor
+    func backUpNow() {
+        #if DEBUG
+        if UITestMode.isActive && UITestMode.fakeRemoteMode == nil { backupStatus.refresh(); return }
+        #endif
+        let manager = offlineQueueManager
+        let model = backupStatus
+        Task {
+            await manager.retryFailed()
+            await manager.flush()
+            await model.refreshNow()
+        }
+    }
+
     // MARK: - Restore
 
     /// Blocks on a full-screen "Restoring your history..." while the cloud profile is looked up:

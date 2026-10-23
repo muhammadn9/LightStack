@@ -274,6 +274,13 @@ final class SubmitTracker: @unchecked Sendable {
     }
 }
 
+/// What the backup-status details list for one operation the server refused (no row contents).
+struct FailedOperationSummary: Equatable, Sendable {
+    let type: String
+    let code: String
+    let message: String
+}
+
 /// Point-in-time view of the outbox for the current user (no payloads).
 struct OutboxSnapshot: Equatable, Sendable {
     var pending = 0
@@ -1030,9 +1037,11 @@ actor OfflineQueueManager {
         // Only the contiguous arrived prefix: a later write (e.g. a child) must not run
         // while an earlier one (its parent) is still on its way to the queue.
         let prefix = sequencer.contiguousPrefix
+        let blocked = blockedParents(for: owner)
         let eligible = queue.filter { op in
             op.ownerUserId == owner && (op.sequence == 0 || op.sequence <= prefix)
                 && (op.nextAttemptAt.map { $0 <= startNow } ?? true)
+                && !isBlockedByFailedParent(op, blocked)
         }
         let ordered = Self.fkOrdered(eligible)
         let seenIds = Set(ordered.map(\.id))
@@ -1058,6 +1067,8 @@ actor OfflineQueueManager {
             }
             // Might have been superseded (enqueueDeleteExercises) or cleared meanwhile.
             guard let current = queue.first(where: { $0.id == snapshotOp.id }) else { continue }
+            // A parent that was refused earlier in this very pass blocks its children too.
+            if !failed.isEmpty, isBlockedByFailedParent(current, blockedParents(for: owner)) { continue }
 
             executingId = current.id
             defer { executingId = nil }
@@ -1114,6 +1125,59 @@ actor OfflineQueueManager {
         }
         if late { needsAnotherPass = true }
         return true
+    }
+
+    // MARK: - Children of failed parents
+
+    private struct BlockedParents {
+        var workouts = Set<UUID>()
+        var exercises = Set<UUID>()
+        var isEmpty: Bool { workouts.isEmpty && exercises.isEmpty }
+    }
+
+    /// Workouts / exercises whose own upload is dead-lettered. Their children would only be refused
+    /// (RLS 403) until the parent is fixed, so they wait instead of hammering the server.
+    private func blockedParents(for owner: UUID) -> BlockedParents {
+        var result = BlockedParents()
+        for op in failed where Self.belongs(op, to: owner) {
+            switch op.type {
+            case .insertWorkout:
+                if let w = try? decoder.decode(Workout.self, from: op.payload) { result.workouts.insert(w.id) }
+            case .insertExercises:
+                if let list = try? decoder.decode([Exercise].self, from: op.payload) {
+                    for e in list { result.exercises.insert(e.id); result.workouts.insert(e.workoutId) }
+                }
+            default:
+                break
+            }
+        }
+        return result
+    }
+
+    private func isBlockedByFailedParent(_ op: QueuedOperation, _ blocked: BlockedParents) -> Bool {
+        guard !blocked.isEmpty else { return false }
+        // Only after the child itself was refused for a missing parent once; its first try always goes out.
+        guard op.lastErrorCode.map({ Self.parentMissingCodes.contains($0) }) ?? false else { return false }
+        switch op.type {
+        case .insertSet:
+            guard let s = try? decoder.decode(WorkoutSet.self, from: op.payload) else { return false }
+            return blocked.exercises.contains(s.exerciseId)
+        case .insertExercises:
+            guard let list = try? decoder.decode([Exercise].self, from: op.payload), !list.isEmpty else { return false }
+            return list.allSatisfy { blocked.workouts.contains($0.workoutId) }
+        default:
+            return false
+        }
+    }
+
+    /// Short, payload-free descriptions of the current user's dead-lettered operations (for the backup-status details).
+    func failedSummaries() async -> [FailedOperationSummary] {
+        loadIfNeeded()
+        let owner = await ownerProvider()
+        return failed.filter { Self.belongs($0, to: owner) }.map {
+            FailedOperationSummary(type: $0.type.rawValue, code: $0.lastErrorCode ?? "unknown",
+                                   message: $0.lastErrorMessage ?? "")
+        }
     }
 
     // MARK: - State mutation (by id, never from a stale snapshot)

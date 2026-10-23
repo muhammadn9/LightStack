@@ -73,10 +73,10 @@ final class PerArmTests: XCTestCase {
 
     // MARK: Supabase coding
 
-    func testEncodingOmitsKeyWhenFalseAndIncludesWhenTrue() throws {
+    func testEncodingAlwaysIncludesKey() throws {
         let off = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(exercise(perArm: false))) as? [String: Any]
-        XCTAssertNil(off?["is_per_arm"])
+        XCTAssertEqual(off?["is_per_arm"] as? Bool, false)
         let on = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(exercise(perArm: true))) as? [String: Any]
         XCTAssertEqual(on?["is_per_arm"] as? Bool, true)

@@ -52,13 +52,33 @@ struct BackupStatusRow: View {
 
     var body: some View {
         RowContent(model: environment.backupStatus) {
-            if environment.backupStatus.status == .signedOut {
+            switch environment.backupStatus.status {
+            case .signedOut:
                 environment.beginReauthentication()
-            } else {
-                environment.flushReviving()
-                environment.backupStatus.refresh()
+            case .failed:
+                Task {
+                    details = await environment.offlineQueueManager.failedSummaries()
+                    showDetails = true
+                }
+            default:
+                environment.backUpNow()
             }
         }
+        .alert("Couldn't back up", isPresented: $showDetails) {
+            Button("Retry") { environment.backUpNow() }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(detailsText)
+        }
+    }
+
+    @State private var showDetails = false
+    @State private var details: [FailedOperationSummary] = []
+
+    private var detailsText: String {
+        let lines = details.prefix(5).map { "\($0.type): \($0.message.isEmpty ? $0.code : $0.message)" }
+        let more = details.count > 5 ? "\n+\(details.count - 5) more" : ""
+        return lines.joined(separator: "\n") + more
     }
 
     private struct RowContent: View {
@@ -69,7 +89,7 @@ struct BackupStatusRow: View {
             Button(action: action) {
                 HStack(spacing: 12) {
                     Image(systemName: model.status.systemImage)
-                        .foregroundStyle(model.status == .signedOut ? AppTheme.warning : AppTheme.accent)
+                        .foregroundStyle(model.status.needsAttention ? AppTheme.warning : AppTheme.accent)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.status.title)
                             .foregroundStyle(AppTheme.textPrimary)

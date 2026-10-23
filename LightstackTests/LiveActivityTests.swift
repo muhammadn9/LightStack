@@ -83,6 +83,33 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertNil(expired.restEndDate)
     }
 
+    func testRestEndsAutomaticallyAtStaleDate() {
+        let bench = exercise("Barbell Bench Press", sets: 2)
+        let now = Date()
+        let end = now.addingTimeInterval(60)
+        let s = state([bench], pending: [bench.id: [pending("185", "6")]],
+                      restId: bench.id, restDates: [bench.id: end], now: now)
+        XCTAssertEqual(s.staleDate, end)
+        // Before the end: rest shows. At/after the end, or once the system marks it stale: next-set controls.
+        XCTAssertTrue(s.isResting(now: now))
+        XCTAssertTrue(s.isResting(now: end.addingTimeInterval(-1)))
+        XCTAssertFalse(s.isResting(now: end))
+        XCTAssertFalse(s.isResting(now: end.addingTimeInterval(5)))
+        XCTAssertFalse(s.isResting(now: now, isStale: true))
+        // The same content already describes the next set, so nothing is lost when rest hides.
+        XCTAssertEqual(s.setNumber, 1)
+        XCTAssertEqual(s.weightText, "185")
+        XCTAssertEqual(s.reps, 6)
+        XCTAssertTrue(s.canLog)
+    }
+
+    func testNoRestMeansNoStaleDateAndNeverResting() {
+        let bench = exercise("Barbell Bench Press", sets: 2)
+        let s = state([bench], pending: [bench.id: [pending("135", "8")]])
+        XCTAssertNil(s.staleDate)
+        XCTAssertFalse(s.isResting(now: Date()))
+    }
+
     func testAllDoneWhenNothingPending() {
         let bench = exercise("Barbell Bench Press", sets: 1)
         let s = state([bench], pending: [bench.id: []])

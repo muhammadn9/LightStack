@@ -5,13 +5,16 @@ enum BackupStatus: Equatable {
     case signedOut
     case backingUp
     case waiting(count: Int)
+    /// The server refused these changes (payload / schema error); they will not fix themselves.
+    case failed(count: Int)
     case allBackedUp(lastBackup: Date?)
 
     static func derive(pending: Int, failed: Int, isFlushing: Bool, signedOut: Bool,
                        lastSuccessfulFlush: Date?) -> BackupStatus {
         if signedOut { return .signedOut }
-        let waiting = pending + failed
-        if waiting > 0 { return isFlushing ? .backingUp : .waiting(count: waiting) }
+        if isFlushing && pending + failed > 0 { return .backingUp }
+        if failed > 0 { return .failed(count: failed) }
+        if pending > 0 { return .waiting(count: pending) }
         return .allBackedUp(lastBackup: lastSuccessfulFlush)
     }
 
@@ -20,6 +23,7 @@ enum BackupStatus: Equatable {
         case .signedOut: return "Signed out \u{2014} not backing up"
         case .backingUp: return "Backing up\u{2026}"
         case .waiting(let n): return "\(n) \(n == 1 ? "change" : "changes") waiting to back up"
+        case .failed(let n): return "\(n) \(n == 1 ? "change" : "changes") couldn't back up"
         case .allBackedUp: return "All changes backed up"
         }
     }
@@ -32,7 +36,15 @@ enum BackupStatus: Equatable {
             return "Last backed up \(f.localizedString(for: last, relativeTo: now))"
         case .signedOut: return "Tap to sign in again"
         case .waiting: return "Tap to back up now"
+        case .failed: return "Tap for details"
         default: return nil
+        }
+    }
+
+    var needsAttention: Bool {
+        switch self {
+        case .signedOut, .failed: return true
+        default: return false
         }
     }
 
@@ -41,6 +53,7 @@ enum BackupStatus: Equatable {
         case .signedOut: return "exclamationmark.icloud"
         case .backingUp: return "arrow.triangle.2.circlepath.icloud"
         case .waiting: return "icloud.and.arrow.up"
+        case .failed: return "exclamationmark.icloud"
         case .allBackedUp: return "checkmark.icloud"
         }
     }
