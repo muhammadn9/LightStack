@@ -49,6 +49,15 @@ struct SettingsView: View {
                     .listRowBackground(AppTheme.surface)
                 }
 
+                Section("Backup") {
+                    BackupStatusRow()
+                    NavigationLink(destination: DiagnosticsView()) {
+                        Text("Diagnostics")
+                    }
+                    .accessibilityIdentifier("settings.diagnostics")
+                    .listRowBackground(AppTheme.surface)
+                }
+
                 #if DEBUG
                 AIUsageDebugSection()
                 SyncQueueDebugSection()

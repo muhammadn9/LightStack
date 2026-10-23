@@ -46,6 +46,7 @@ struct MainTabView: View {
             }
         }
         .tint(AppTheme.accent)
+        .safeAreaInset(edge: .top, spacing: 0) { SessionExpiredBanner() }
         .themedBackground()
         .sensoryFeedback(.selection, trigger: selectedTab)
         .onAppear {
