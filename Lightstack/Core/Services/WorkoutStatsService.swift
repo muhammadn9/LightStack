@@ -31,8 +31,9 @@ final class WorkoutStatsService {
             let exercises = localStorage.fetchExercises(workoutId: workout.id)
             for cdExercise in exercises {
                 let sets = localStorage.fetchSets(exerciseId: cdExercise.id ?? UUID())
+                let side = cdExercise.isPerArm ? 2.0 : 1.0
                 for cdSet in sets {
-                    volume += cdSet.weightLbs * Double(cdSet.reps)
+                    volume += cdSet.weightLbs * Double(cdSet.reps) * side
                 }
             }
         }
@@ -82,8 +83,9 @@ final class WorkoutStatsService {
             for cdExercise in exercises {
                 let group = cdExercise.muscleGroup ?? "Unknown"
                 let sets = localStorage.fetchSets(exerciseId: cdExercise.id ?? UUID())
+                let side = cdExercise.isPerArm ? 2.0 : 1.0
                 for cdSet in sets {
-                    let volume = cdSet.weightLbs * Double(cdSet.reps)
+                    let volume = cdSet.weightLbs * Double(cdSet.reps) * side
                     result[group, default: 0] += volume
                 }
             }
@@ -155,9 +157,7 @@ final class WorkoutStatsService {
     func sessionVolume(exercises: [Exercise], loggedSets: [UUID: [WorkoutSet]]) -> Double {
         var volume = 0.0
         for exercise in exercises {
-            for s in loggedSets[exercise.id] ?? [] {
-                volume += s.weightLbs * Double(s.reps)
-            }
+            volume += exercise.volume(of: loggedSets[exercise.id] ?? [])
         }
         return volume
     }

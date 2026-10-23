@@ -56,6 +56,7 @@ final class CoachPromptService {
     - Progressive overload drives programming.
     - Time: 30 min = 3-4 exercises (supersets ok); 45 = 4-5; 60 = 5-6 with full rest.
     - Energy: 1-4 = higher RIR, less volume; 5-7 = standard; 8-10 = push harder, lower RIR.
+    - An exercise marked "(per arm)" is single-side: its weights are per arm, not totals (25 lb per arm = 50 lb moved).
     - Cardio or non-strength requests (run, HIIT, ...): don't refuse; give a complementary \
     strength or conditioning workout that fits time and energy.
     """
@@ -216,7 +217,7 @@ final class CoachPromptService {
                 let formatted = ex.trackingType == .cardio
                     ? logged.map { formatCardioSet($0) }
                     : logged.map { formatLoggedSet($0) }
-                var line = "\n  - \(ex.name): " + formatted.joined(separator: ", ")
+                var line = "\n  - \(ex.name)\(Self.perArmTag(ex)): " + formatted.joined(separator: ", ")
                 if ex.trackingType != .cardio, let best = index.group(for: ex.name)?.best {
                     line += " | best \(String(format: "%g", best.weight))x\(best.reps)"
                 }
@@ -227,8 +228,10 @@ final class CoachPromptService {
             let trendGroups = index.groups.filter { $0.sessions.count >= 2 }
             if !trendGroups.isEmpty {
                 message += "\n\nEARLIER TREND PER EXERCISE (oldest to newest, same-lift names merged, working and warm-up sets as weight x reps, \"top\" = heaviest set of a pyramid/top-set day):"
+                let perArmGroups = Set(recentSessionExercises.values.flatMap { $0 }
+                    .filter(\.isPerArm).compactMap { index.group(for: $0.name)?.displayName })
                 for group in trendGroups {
-                    message += "\n  - \(group.displayName): "
+                    message += "\n  - \(group.displayName)\(perArmGroups.contains(group.displayName) ? " (per arm)" : ""): "
                         + ExerciseHistoryIndex.trendLine(for: group.sessions) { Self.trendDate.string(from: $0) }
                 }
             }
@@ -274,7 +277,7 @@ final class CoachPromptService {
                     return "\(String(format: "%g", s.weightLbs))x\(s.reps)\(rir)"
                 }
             }
-            lines.append("\(exercise.name): " + formatted.joined(separator: "; "))
+            lines.append("\(exercise.name)\(Self.perArmTag(exercise)): " + formatted.joined(separator: "; "))
         }
         lines.append("(weight lb x reps @RIR)")
         if let analysis {
@@ -293,6 +296,11 @@ final class CoachPromptService {
         }
         lines.append("\nReturn the review JSON.")
         return lines.joined(separator: "\n")
+    }
+
+    /// " (per arm)" after the name of a single-side exercise, so its weights are not read as totals.
+    static func perArmTag(_ exercise: Exercise) -> String {
+        exercise.isPerArm ? " (per arm)" : ""
     }
 
     // MARK: - Private Cardio Formatting

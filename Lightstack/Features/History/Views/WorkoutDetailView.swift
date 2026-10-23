@@ -272,7 +272,7 @@ struct WorkoutDetailView: View {
             exerciseHeader(exercise)
             VStack(spacing: 4) {
                 ForEach(setsForExercise(exercise.id)) { set in
-                    SetRowView(workoutSet: set)
+                    SetRowView(workoutSet: set, isPerArm: exercise.isPerArm)
                 }
             }
         }
@@ -295,7 +295,7 @@ struct WorkoutDetailView: View {
                             Text(members[entry.member].name)
                                 .font(AppTheme.caveat(11))
                                 .foregroundStyle(AppTheme.textSecondary)
-                            SetRowView(workoutSet: entry.set)
+                            SetRowView(workoutSet: entry.set, isPerArm: members[entry.member].isPerArm)
                         }
                     }
                 }
@@ -318,9 +318,7 @@ struct WorkoutDetailView: View {
     private var totalVolume: Double {
         var volume = 0.0
         for exercise in exercises {
-            for set in setsForExercise(exercise.id) {
-                volume += set.weightLbs * Double(set.reps)
-            }
+            volume += exercise.volume(of: setsForExercise(exercise.id))
         }
         return volume
     }

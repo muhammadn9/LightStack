@@ -35,6 +35,11 @@ enum ExerciseNameResolver {
         return Set(words)
     }
 
+    /// Stable key for "the same lift": order-insensitive normalised tokens (cable kept).
+    static func groupKey(_ name: String) -> String {
+        tokens(name, dropCable: false).sorted().joined(separator: " ")
+    }
+
     private static func jaccard(_ a: Set<String>, _ b: Set<String>) -> Double {
         guard !a.isEmpty, !b.isEmpty else { return 0 }
         return Double(a.intersection(b).count) / Double(a.union(b).count)

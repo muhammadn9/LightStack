@@ -8,6 +8,8 @@ struct LoggedSet {
     let exerciseName: String
     let weightLbs: Double
     let reps: Int
+    /// Logged from a per-arm (single-side) exercise: the weight is per arm.
+    var isPerArm = false
 }
 
 struct LoggedWorkout {
@@ -42,6 +44,8 @@ struct LiftTrend: Identifiable, Equatable {
     let lastMonth: BestSet?
     /// This month's best e1RM minus the best e1RM before this month.
     let monthDelta: Double?
+    /// Weights are per arm (latest sets came from a per-arm exercise); labelled "/ arm" in charts.
+    var isPerArm = false
     var id: String { key }
 }
 
@@ -249,14 +253,15 @@ enum ProgressStats {
                     }
                 }
             }
-            let latest = group.max { $0.date < $1.date }?.exerciseName ?? key
+            let latestSet = group.max { $0.date < $1.date }
+            let latest = latestSet?.exerciseName ?? key
             let delta: Double? = {
                 guard let thisMonth, beforeThisMonth > 0 else { return nil }
                 return thisMonth.e1rm - beforeThisMonth
             }()
             return LiftTrend(key: key, name: latest, setCount: group.count, weeklyE1RM: weekly,
                              allTimeBest: allTime, thisMonth: thisMonth, lastMonth: lastMonth,
-                             monthDelta: delta)
+                             monthDelta: delta, isPerArm: latestSet?.isPerArm ?? false)
         }
     }
 
@@ -305,7 +310,8 @@ final class ProgressStatsService {
                 let name = cdExercise.name ?? ""
                 for cdSet in localStorage.fetchSets(exerciseId: exerciseId) {
                     sets.append(LoggedSet(date: date, exerciseName: name,
-                                          weightLbs: cdSet.weightLbs, reps: Int(cdSet.reps)))
+                                          weightLbs: cdSet.weightLbs, reps: Int(cdSet.reps),
+                                          isPerArm: cdExercise.isPerArm))
                 }
             }
         }

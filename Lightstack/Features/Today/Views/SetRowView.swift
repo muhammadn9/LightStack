@@ -5,6 +5,8 @@ import SwiftUI
 struct SetRowView: View {
     let workoutSet: WorkoutSet
     var exercise: Exercise? = nil
+    /// Single-side exercise: the weight is per arm/side.
+    var isPerArm = false
 
     var body: some View {
         if exercise?.trackingType == .cardio {
@@ -28,7 +30,7 @@ struct SetRowView: View {
                 .font(AppTheme.caveat(13))
                 .fontWeight(.semibold)
                 .foregroundStyle(AppTheme.textPrimary)
-            Text("lbs")
+            Text(isPerArm ? "lbs / arm" : "lbs")
                 .font(AppTheme.caveat(11))
                 .foregroundStyle(AppTheme.textSecondary)
 
