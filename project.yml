@@ -20,6 +20,7 @@ targets:
     type: application
     platform: iOS
     sources:
+      - path: Shared
       - path: Lightstack
         excludes:
           - "Resources/ExerciseGuides/**"
@@ -54,10 +55,43 @@ targets:
       Debug: Lightstack/Config/Secrets.xcconfig
       Release: Lightstack/Config/Secrets.xcconfig
     dependencies:
+      - target: LightstackWidgets
       - package: Supabase
         product: Supabase
       - package: GoogleSignIn
         product: GoogleSignIn
+
+  # Lock screen / Dynamic Island Live Activity for the active workout. Its bundle id must
+  # be prefixed by the app's, and its version numbers must equal the app's.
+  LightstackWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LightstackWidgets
+      - path: Shared
+    info:
+      path: LightstackWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Lightstack
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.muhammadn9.lightstack.widgets
+        # Same line format as the app's: scripts/testflight-release.sh bumps both with one sed.
+        CURRENT_PROJECT_VERSION: 50
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 7X8799T6N2
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
 
   LightstackTests:
     type: bundle.unit-test

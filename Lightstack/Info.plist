@@ -47,6 +47,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Lightstack uses your camera to analyze exercise form and count reps during your workout.</string>
 	<key>SUPABASE_ANON_KEY</key>

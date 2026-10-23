@@ -16,7 +16,14 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     private let logger = Logger(subsystem: "org.lightstack.app", category: "TodayViewModel")
 
-    @Published var phase: TodayPhase = .setup
+    @Published var phase: TodayPhase = .setup {
+        didSet {
+            // Finishing or discarding the workout takes its lock screen Live Activity with it.
+            if oldValue == .active, phase != .active {
+                Task { @MainActor in LiveActivityController.shared.end() }
+            }
+        }
+    }
     @Published var exercises: [Exercise] = []
     @Published var exerciseListResetToken: Int = 0
     /// Bumped whenever a coach modification rewrites exercise targets, so the
