@@ -14,6 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Must match the local XcodeGen version used to generate project.pbxproj (check `xcodegen --version`).
+  XCODEGEN_VERSION: 2.45.3
   DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
   SPM_DIR: ${{ github.workspace }}/.spm
 
@@ -32,8 +34,11 @@ jobs:
         # Git-ignored but referenced by the project; placeholder values are enough to compile.
         run: scripts/ci_write_secrets.sh
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen (pinned)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
       - name: Project is up to date with project.yml
         run: |
@@ -101,8 +106,11 @@ jobs:
       - name: Write placeholder Secrets.xcconfig
         run: scripts/ci_write_secrets.sh
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen (pinned)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
       - name: Generate project
         run: xcodegen generate
