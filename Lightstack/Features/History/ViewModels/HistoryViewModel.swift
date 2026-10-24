@@ -73,9 +73,7 @@ final class HistoryViewModel: ObservableObject {
 
         for exercise in exercises {
             let sets = fetchSets(exerciseId: exercise.id)
-            for set in sets {
-                totalVolume += set.weightLbs * Double(set.reps)
-            }
+            totalVolume += exercise.volume(of: sets)
         }
 
         return (exerciseCount: exercises.count, totalVolume: totalVolume)

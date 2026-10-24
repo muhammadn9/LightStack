@@ -274,6 +274,22 @@ final class SubmitTracker: @unchecked Sendable {
     }
 }
 
+/// What the backup-status details list for one operation the server refused (no row contents).
+struct FailedOperationSummary: Equatable, Sendable {
+    let type: String
+    let code: String
+    let message: String
+}
+
+/// Point-in-time view of the outbox for the current user (no payloads).
+struct OutboxSnapshot: Equatable, Sendable {
+    var pending = 0
+    var failed = 0
+    var isFlushing = false
+    var lastSuccessfulFlush: Date?
+    var authBlocked = false
+}
+
 // MARK: - OfflineQueueManager
 
 /// Durable queue of writes that couldn't reach Supabase yet.
@@ -314,6 +330,12 @@ actor OfflineQueueManager {
     private var isFlushing = false
     private var needsAnotherPass = false
     private var unsavedOutcomes = 0
+    /// Told (without payloads) whenever the pending count, flush state or last-success time may have changed.
+    private var changeObserver: (@Sendable () -> Void)?
+    /// Told when a pass stopped on an auth error (expired / revoked session). Operations are never dropped.
+    private var authFailureObserver: (@Sendable () -> Void)?
+    /// True from an auth failure until the next successful upload.
+    private(set) var authBlocked = false
 
     /// Stop a pass after this many consecutive transient failures (likely offline).
     private let transientStreakLimit = 3
@@ -383,6 +405,38 @@ actor OfflineQueueManager {
             let owner = await ownerProvider()
             return failed.filter { Self.belongs($0, to: owner) }.count
         }
+    }
+
+    /// Everything the backup-status UI needs, for the current user.
+    func snapshot() async -> OutboxSnapshot {
+        loadIfNeeded()
+        let owner = await ownerProvider()
+        return OutboxSnapshot(
+            pending: queue.filter { Self.belongs($0, to: owner) }.count,
+            failed: failed.filter { Self.belongs($0, to: owner) }.count,
+            isFlushing: isFlushing,
+            lastSuccessfulFlush: owner.flatMap { lastSuccessfulFlush(for: $0) },
+            authBlocked: authBlocked
+        )
+    }
+
+    /// When the queue last finished a pass with nothing wrong (persisted per user).
+    func lastSuccessfulFlush(for owner: UUID) -> Date? {
+        let t = defaults.double(forKey: Self.lastSuccessKey(owner))
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }
+
+    static func lastSuccessKey(_ owner: UUID) -> String { "lightstack.lastSuccessfulFlush.\(owner.uuidString)" }
+
+    func setObservers(onChange: (@Sendable () -> Void)?, onAuthFailure: (@Sendable () -> Void)?) {
+        changeObserver = onChange
+        authFailureObserver = onAuthFailure
+    }
+
+    private func notifyChanged() { changeObserver?() }
+
+    private func recordSuccessfulFlush(owner: UUID) {
+        defaults.set(now().timeIntervalSince1970, forKey: Self.lastSuccessKey(owner))
     }
 
     // MARK: - Submitting writes (call-site API)
@@ -514,7 +568,7 @@ actor OfflineQueueManager {
     /// (the higher sequence wins). Deletes and inserts are never merged: only an
     /// operation of the same type can absorb it.
     private func append(_ type: QueuedOperationType, data: Data, recordKey: String?, sequence: Int64, owner: UUID?) {
-        defer { sequencer.markArrived(sequence) }
+        defer { sequencer.markArrived(sequence); notifyChanged() }
         if let key = recordKey,
            let idx = queue.firstIndex(where: {
                $0.type == type && $0.recordKey == key && $0.ownerUserId == owner && $0.id != executingId
@@ -606,6 +660,7 @@ actor OfflineQueueManager {
         failed = []
         saveQueue()
         saveFailed()
+        notifyChanged()
     }
 
     /// Move the current user's dead-lettered operations back into the queue.
@@ -957,7 +1012,8 @@ actor OfflineQueueManager {
             return
         }
         isFlushing = true
-        defer { isFlushing = false }
+        notifyChanged()
+        defer { isFlushing = false; notifyChanged() }
 
         await resolveDependencies()
         repeat {
@@ -981,19 +1037,26 @@ actor OfflineQueueManager {
         // Only the contiguous arrived prefix: a later write (e.g. a child) must not run
         // while an earlier one (its parent) is still on its way to the queue.
         let prefix = sequencer.contiguousPrefix
+        let blocked = blockedParents(for: owner)
         let eligible = queue.filter { op in
             op.ownerUserId == owner && (op.sequence == 0 || op.sequence <= prefix)
                 && (op.nextAttemptAt.map { $0 <= startNow } ?? true)
+                && !isBlockedByFailedParent(op, blocked)
         }
         let ordered = Self.fkOrdered(eligible)
         let seenIds = Set(ordered.map(\.id))
-        guard !ordered.isEmpty else { return true }
+        guard !ordered.isEmpty else {
+            // Nothing due and nothing waiting: the cloud is up to date as far as this device knows.
+            if !queue.contains(where: { $0.ownerUserId == owner }) { recordSuccessfulFlush(owner: owner) }
+            return true
+        }
 
         Self.logger.info("flush pass start: \(ordered.count) due of \(self.queue.count) queued")
 
         var succeeded = 0, retrying = 0, deadLettered = 0
         var transientStreak = 0
         var stopped = false
+        var authFailed = false
 
         for snapshotOp in ordered {
             // The owner can change mid-pass (sign-out / account switch).
@@ -1004,6 +1067,8 @@ actor OfflineQueueManager {
             }
             // Might have been superseded (enqueueDeleteExercises) or cleared meanwhile.
             guard let current = queue.first(where: { $0.id == snapshotOp.id }) else { continue }
+            // A parent that was refused earlier in this very pass blocks its children too.
+            if !failed.isEmpty, isBlockedByFailedParent(current, blockedParents(for: owner)) { continue }
 
             executingId = current.id
             defer { executingId = nil }
@@ -1012,6 +1077,7 @@ actor OfflineQueueManager {
                 removeFromQueue(id: current.id)
                 succeeded += 1
                 transientStreak = 0
+                authBlocked = false
             } catch {
                 let cls = SyncErrorClassifier.classify(error, opType: current.type)
                 let code = SyncErrorClassifier.errorCode(for: error)
@@ -1023,6 +1089,7 @@ actor OfflineQueueManager {
                     transientStreak = 0
                 case .auth:
                     stopped = true
+                    authFailed = true
                 case .permanent:
                     deadLetter(id: current.id, code: code, message: SyncErrorClassifier.errorMessage(for: error))
                     deadLettered += 1
@@ -1040,6 +1107,11 @@ actor OfflineQueueManager {
         }
 
         savePendingChanges()
+        if succeeded > 0 && !stopped { recordSuccessfulFlush(owner: owner) }
+        if authFailed {
+            authBlocked = true
+            authFailureObserver?()
+        }
         Self.logger.info("flush pass end: ok=\(succeeded) retrying=\(retrying) failed=\(deadLettered) stopped=\(stopped)")
 
         if stopped { return false }
@@ -1055,11 +1127,65 @@ actor OfflineQueueManager {
         return true
     }
 
+    // MARK: - Children of failed parents
+
+    private struct BlockedParents {
+        var workouts = Set<UUID>()
+        var exercises = Set<UUID>()
+        var isEmpty: Bool { workouts.isEmpty && exercises.isEmpty }
+    }
+
+    /// Workouts / exercises whose own upload is dead-lettered. Their children would only be refused
+    /// (RLS 403) until the parent is fixed, so they wait instead of hammering the server.
+    private func blockedParents(for owner: UUID) -> BlockedParents {
+        var result = BlockedParents()
+        for op in failed where Self.belongs(op, to: owner) {
+            switch op.type {
+            case .insertWorkout:
+                if let w = try? decoder.decode(Workout.self, from: op.payload) { result.workouts.insert(w.id) }
+            case .insertExercises:
+                if let list = try? decoder.decode([Exercise].self, from: op.payload) {
+                    for e in list { result.exercises.insert(e.id); result.workouts.insert(e.workoutId) }
+                }
+            default:
+                break
+            }
+        }
+        return result
+    }
+
+    private func isBlockedByFailedParent(_ op: QueuedOperation, _ blocked: BlockedParents) -> Bool {
+        guard !blocked.isEmpty else { return false }
+        // Only after the child itself was refused for a missing parent once; its first try always goes out.
+        guard op.lastErrorCode.map({ Self.parentMissingCodes.contains($0) }) ?? false else { return false }
+        switch op.type {
+        case .insertSet:
+            guard let s = try? decoder.decode(WorkoutSet.self, from: op.payload) else { return false }
+            return blocked.exercises.contains(s.exerciseId)
+        case .insertExercises:
+            guard let list = try? decoder.decode([Exercise].self, from: op.payload), !list.isEmpty else { return false }
+            return list.allSatisfy { blocked.workouts.contains($0.workoutId) }
+        default:
+            return false
+        }
+    }
+
+    /// Short, payload-free descriptions of the current user's dead-lettered operations (for the backup-status details).
+    func failedSummaries() async -> [FailedOperationSummary] {
+        loadIfNeeded()
+        let owner = await ownerProvider()
+        return failed.filter { Self.belongs($0, to: owner) }.map {
+            FailedOperationSummary(type: $0.type.rawValue, code: $0.lastErrorCode ?? "unknown",
+                                   message: $0.lastErrorMessage ?? "")
+        }
+    }
+
     // MARK: - State mutation (by id, never from a stale snapshot)
 
     private func removeFromQueue(id: String) {
         queue.removeAll { $0.id == id }
         unsavedOutcomes += 1
+        notifyChanged()
     }
 
     private func scheduleRetry(id: String, code: String, message: String, dependency: Bool = false) {

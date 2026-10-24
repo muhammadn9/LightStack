@@ -15,8 +15,8 @@ enum LiftChartSelection {
     }
 
     /// "Sep 22 · 185 lb est. 1RM" (the date is the Monday of that week).
-    static func callout(date: Date?, value: Double) -> String {
-        "\(weekLabel(date)) \u{00B7} \(LiftFormat.lb(value)) est. 1RM"
+    static func callout(date: Date?, value: Double, perArm: Bool = false) -> String {
+        "\(weekLabel(date)) \u{00B7} \(LiftFormat.lb(value, perArm: perArm)) est. 1RM"
     }
 }
 
@@ -83,6 +83,7 @@ struct SparklineView: View {
 struct LiftChartView: View {
     let values: [Double?]
     let weekStarts: [Date]
+    var perArm = false
     @Binding var selection: Int?
 
     var body: some View {
@@ -110,7 +111,7 @@ struct LiftChartView: View {
                                 overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
                         Text(LiftChartSelection.callout(
                             date: weekStarts.indices.contains(picked.index) ? weekStarts[picked.index] : nil,
-                            value: picked.value))
+                            value: picked.value, perArm: perArm))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.textPrimary)
                             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -147,7 +148,9 @@ struct LiftChartView: View {
 }
 
 enum LiftFormat {
-    static func lb(_ value: Double) -> String { "\(Int(value.rounded())) lb" }
+    static func lb(_ value: Double, perArm: Bool = false) -> String {
+        "\(Int(value.rounded())) lb" + (perArm ? " / arm" : "")
+    }
 
     static func delta(_ lift: LiftTrend) -> String {
         guard lift.thisMonth != nil else { return "No sets this month" }
@@ -184,7 +187,7 @@ struct LiftTrendRow: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.textPrimary)
                         .lineLimit(1).minimumScaleFactor(0.8)
-                    Text(LiftFormat.lb(picked?.value ?? latest))
+                    Text(LiftFormat.lb(picked?.value ?? latest, perArm: lift.isPerArm))
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textPrimary)
                     Text(subtitle)
@@ -200,7 +203,7 @@ struct LiftTrendRow: View {
                 }
             }
             if expanded, pointCount >= 1 {
-                LiftChartView(values: lift.weeklyE1RM, weekStarts: weekStarts, selection: $selection)
+                LiftChartView(values: lift.weeklyE1RM, weekStarts: weekStarts, perArm: lift.isPerArm, selection: $selection)
                     .frame(height: 130)
                     .accessibilityIdentifier("lift.chart.\(lift.name)")
             }

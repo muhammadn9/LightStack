@@ -42,17 +42,18 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     }
 
     private func record(_ type: QueuedOperationType, _ label: String) async throws {
-        lock.lock()
-        let index = _calls.count
-        _calls.append("\(type.rawValue):\(label)")
-        let shouldSuspend = _gateArmed
-        _gateArmed = false
-        lock.unlock()
+        let (index, shouldSuspend): (Int, Bool) = lock.withLock {
+            let index = _calls.count
+            _calls.append("\(type.rawValue):\(label)")
+            let shouldSuspend = _gateArmed
+            _gateArmed = false
+            return (index, shouldSuspend)
+        }
 
         onCall?(index)
         if shouldSuspend {
             await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-                lock.lock(); _suspended = c; lock.unlock()
+                lock.withLock { _suspended = c }
             }
         }
         if let error = script?(type, index) { throw error }
@@ -221,10 +222,11 @@ extension FakeRemote {
     var readLog: [String] { lock.lock(); defer { lock.unlock() }; return _readLog }
 
     private func read(_ name: String) async throws {
-        lock.lock()
-        let count = _readLog.filter { $0 == name }.count
-        _readLog.append(name)
-        lock.unlock()
+        let count: Int = lock.withLock {
+            let count = _readLog.filter { $0 == name }.count
+            _readLog.append(name)
+            return count
+        }
         onRead?(name, count)
         if let error = readScript?(name, count) { throw error }
     }
@@ -255,55 +257,54 @@ extension FakeRemote {
 
     func fetchProfile(userId: UUID) async throws -> UserProfile? {
         try await read("fetchProfile")
-        lock.lock(); defer { lock.unlock() }
-        return _profiles[userId]
+        return lock.withLock { _profiles[userId] }
     }
 
     func fetchWorkoutHistoryPage(userId: UUID, offset: Int, limit: Int) async throws -> [RemoteWorkoutRecord] {
         try await read("fetchWorkoutHistoryPage")
-        lock.lock(); defer { lock.unlock() }
-        let ordered = _workouts.values.filter { $0.userId == userId }
-            .sorted { ($0.date, $0.id.uuidString) > ($1.date, $1.id.uuidString) }
-        return ordered.dropFirst(offset).prefix(limit).map { workout in
-            let exercises = _exercises.values.filter { $0.workoutId == workout.id }.map { exercise in
-                (exercise, _sets.values.filter { $0.exerciseId == exercise.id }.sorted { $0.setNumber < $1.setNumber })
+        return lock.withLock {
+            let ordered = _workouts.values.filter { $0.userId == userId }
+                .sorted { ($0.date, $0.id.uuidString) > ($1.date, $1.id.uuidString) }
+            return ordered.dropFirst(offset).prefix(limit).map { workout in
+                let exercises = _exercises.values.filter { $0.workoutId == workout.id }.map { exercise in
+                    (exercise, _sets.values.filter { $0.exerciseId == exercise.id }.sorted { $0.setNumber < $1.setNumber })
+                }
+                return RemoteWorkoutRecord(workout: workout, exercises: exercises)
             }
-            return RemoteWorkoutRecord(workout: workout, exercises: exercises)
         }
     }
 
     func fetchContextSummaries(userId: UUID) async throws -> [AIContextSummary] {
         try await read("fetchContextSummaries")
-        lock.lock(); defer { lock.unlock() }
-        return _summaries.values.filter { $0.userId == userId }
+        return lock.withLock { _summaries.values.filter { $0.userId == userId } }
     }
 
     func fetchActiveMonthPlan(userId: UUID) async throws -> MonthPlan? {
         try await read("fetchActiveMonthPlan")
-        lock.lock(); defer { lock.unlock() }
-        return _monthPlans.values.filter { $0.userId == userId && $0.endDate >= Calendar.current.startOfDay(for: Date()) }
-            .max { $0.createdAt < $1.createdAt }
+        return lock.withLock {
+            _monthPlans.values.filter { $0.userId == userId && $0.endDate >= Calendar.current.startOfDay(for: Date()) }
+                .max { $0.createdAt < $1.createdAt }
+        }
     }
 
     func fetchPlannedSessions(monthPlanId: UUID) async throws -> [PlannedSession] {
         try await read("fetchPlannedSessions")
-        lock.lock(); defer { lock.unlock() }
-        return _plannedSessions.values.filter { $0.monthPlanId == monthPlanId }
+        return lock.withLock { _plannedSessions.values.filter { $0.monthPlanId == monthPlanId } }
     }
 
     func fetchRestDays(userId: UUID) async throws -> [RestDay] {
         try await read("fetchRestDays")
-        lock.lock(); defer { lock.unlock() }
-        return _restDays.values.filter { $0.userId == userId }
+        return lock.withLock { _restDays.values.filter { $0.userId == userId } }
     }
 
     func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone] {
         try await read("fetchTombstones")
-        lock.lock(); defer { lock.unlock() }
-        return _tombstones.compactMap { text in
-            let parts = text.split(separator: ":")
-            guard parts.count == 2, let id = UUID(uuidString: String(parts[1])) else { return nil }
-            return RemoteTombstone(entity: String(parts[0]), recordId: id)
+        return lock.withLock {
+            _tombstones.compactMap { text in
+                let parts = text.split(separator: ":")
+                guard parts.count == 2, let id = UUID(uuidString: String(parts[1])) else { return nil }
+                return RemoteTombstone(entity: String(parts[0]), recordId: id)
+            }
         }
     }
 }

@@ -93,7 +93,7 @@ struct ExerciseTableView: View {
                     .font(AppTheme.caveat(11, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(width: 40, alignment: .leading)
-                SetRowView(workoutSet: workoutSet)
+                SetRowView(workoutSet: workoutSet, isPerArm: exercise.isPerArm)
                 Spacer()
                 if let onDelete = onDeleteSet {
                     Button(action: { onDelete(workoutSet) }) {

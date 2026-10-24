@@ -27,15 +27,18 @@ final class GoogleAttemptStateTests: XCTestCase {
     /// The reported bug: the SDK never calls back. A new tap must still start a fresh attempt.
     func testHungAttemptIsSupersededByNewTap() async {
         let runner = LatestAttemptRunner()
-        var firstCancelled = false
+        let firstCancelled = expectation(description: "hung attempt is cancelled")
+        let firstStarted = expectation(description: "hung attempt is waiting on the SDK")
         runner.start {
             do {
-                _ = try await AuthService.awaitCancellable { (_: @escaping (Result<Int, Error>) -> Void) in }
+                _ = try await AuthService.awaitCancellable { (_: @escaping (Result<Int, Error>) -> Void) in
+                    firstStarted.fulfill()
+                }
             } catch is CancellationError {
-                firstCancelled = true
+                firstCancelled.fulfill()
             } catch {}
         }
-        await Task.yield()
+        await fulfillment(of: [firstStarted], timeout: 5)
         XCTAssertTrue(runner.isRunning)
 
         var secondRan = false
@@ -43,8 +46,7 @@ final class GoogleAttemptStateTests: XCTestCase {
         await runner.waitUntilIdle()
         XCTAssertTrue(secondRan)
         XCTAssertFalse(runner.isRunning)
-        await Task.yield()
-        XCTAssertTrue(firstCancelled)
+        await fulfillment(of: [firstCancelled], timeout: 5)
     }
 
     func testCancelClearsRunningAttempt() async {

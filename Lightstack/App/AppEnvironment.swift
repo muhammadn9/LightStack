@@ -61,6 +61,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let sessionPersistence: WorkoutSessionPersistence
     let syncRestoreService: SyncRestoreService
     let dataHygieneService: DataHygieneService
+    let sessionExpiry: SessionExpiryTracker
+    @MainActor let backupStatus: BackupStatusModel
 
     // MARK: - Repositories
 
@@ -109,7 +111,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             )
         )
 
-        self.authService = AuthService(client: supabaseClient)
+        let expiryTracker = SessionExpiryTracker()
+        self.sessionExpiry = expiryTracker
+        self.authService = AuthService(client: supabaseClient, expiry: expiryTracker)
         self.localStorageService = LocalStorageService()
         localStorageService.removeDuplicateExercises()
         #if DEBUG
@@ -142,6 +146,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             localLookup: StorageParentLookup(storage: localStorageService)
         )
         self.syncService = SyncService(offlineQueueManager: offlineQueueManager)
+        self.backupStatus = BackupStatusModel(queue: offlineQueueManager, expiry: expiryTracker)
         #if DEBUG
         if UITestMode.isActive {
             let queue = offlineQueueManager
@@ -262,7 +267,18 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             }
         )
 
+        ExerciseFeedbackStore.shared.attach(reviewStore: workoutSessionService.reviewStore)
         authService.delegate = self
+        backupStatus.onAuthFailure = { [weak self] in self?.handleOutboxAuthFailure() }
+        authService.startObservingSession()
+        #if DEBUG
+        if !UITestMode.isActive { MetricKitCollector.shared.start() }
+        #else
+        MetricKitCollector.shared.start()
+        #endif
+        #if DEBUG
+        if UITestMode.isActive { simulateExpiredSessionForUITest(UITestMode.wantsExpiredSession) }
+        #endif
         checkExistingSession()
         loadOnboardingState()
     }
@@ -360,6 +376,18 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationPassword = nil
         isAuthenticated = true
 
+        if let userId = authService.currentUser()?.userId {
+            switch sessionExpiry.handleSignIn(userId: userId) {
+            case .resumed:
+                logger.info("same user signed in again; resuming the outbox")
+            case .differentUser:
+                logger.info("a different user signed in; the previous user's changes stay queued under their own id")
+            case .notExpired:
+                break
+            }
+            Task { @MainActor in backupStatus.refresh() }
+        }
+
         // A profile on this device skips onboarding. Without one this may be a new device or a
         // reinstall: look for the account's cloud profile before deciding to onboard.
         if let userId = authService.currentUser()?.userId {
@@ -391,6 +419,10 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         // their owner and upload the next time that user signs in on this device.
     }
 
+    func authServiceSessionExpired(_ service: AuthService, userId: UUID) {
+        Task { @MainActor in backupStatus.refresh() }
+    }
+
     func authServiceNeedsEmailVerification(_ service: AuthService, email: String) {
         pendingVerificationEmail = email
         needsEmailVerification = true
@@ -400,6 +432,50 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     func authService(_ service: AuthService, didFailWith error: Error) {
         authErrorMessage = error.localizedDescription
     }
+
+    // MARK: - Expired session
+
+    private var lastRefreshAttempt: Date?
+
+    /// An upload pass stopped on an auth error. Try to refresh the session once (rate limited); if the
+    /// refresh token is dead, record the expiry (banner) while keeping every queued change.
+    @MainActor
+    func handleOutboxAuthFailure() {
+        backupStatus.refresh()
+        #if DEBUG
+        if UITestMode.isActive { return }
+        #endif
+        guard !sessionExpiry.isExpired else { return }
+        if let last = lastRefreshAttempt, Date().timeIntervalSince(last) < 30 { return }
+        lastRefreshAttempt = Date()
+        let client = supabaseClient
+        let auth = authService
+        let userId = auth.currentUser()?.userId ?? UserDefaults.standard.string(forKey: AuthService.lastKnownUserKey).flatMap(UUID.init(uuidString:))
+        Task { @MainActor [weak self] in
+            do {
+                _ = try await client.auth.refreshSession()
+                self?.syncService.triggerFlush()
+            } catch {
+                guard SyncErrorClassifier.isSessionRejected(error), let userId else { return }
+                auth.reportSessionExpired(userId: userId)
+            }
+        }
+    }
+
+    /// "Sign in" on the banner: show the login screen without deleting anything. Signing in as the same
+    /// user resumes uploading; another user is handled by `authServiceDidSignIn`.
+    @MainActor
+    func beginReauthentication() {
+        isAuthenticated = false
+    }
+
+    #if DEBUG
+    @MainActor
+    private func simulateExpiredSessionForUITest(_ expired: Bool) {
+        if expired { sessionExpiry.markExpired(userId: UITestMode.userId) } else { sessionExpiry.clear() }
+        backupStatus.refresh()
+    }
+    #endif
 
     // MARK: - Private
 
@@ -447,6 +523,22 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         Task {
             if revive { await manager.reviveDueFailedOperations() }
             await manager.flush()
+        }
+    }
+
+    /// "Back up now": revives every dead-lettered change (so a fixed server-side problem is retried at once),
+    /// flushes, and refreshes the status row when the flush has finished.
+    @MainActor
+    func backUpNow() {
+        #if DEBUG
+        if UITestMode.isActive && UITestMode.fakeRemoteMode == nil { backupStatus.refresh(); return }
+        #endif
+        let manager = offlineQueueManager
+        let model = backupStatus
+        Task {
+            await manager.retryFailed()
+            await manager.flush()
+            await model.refreshNow()
         }
     }
 

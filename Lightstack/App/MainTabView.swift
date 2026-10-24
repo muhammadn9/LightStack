@@ -46,6 +46,7 @@ struct MainTabView: View {
             }
         }
         .tint(AppTheme.accent)
+        .safeAreaInset(edge: .top, spacing: 0) { SessionExpiredBanner() }
         .themedBackground()
         .sensoryFeedback(.selection, trigger: selectedTab)
         .onAppear {
@@ -153,6 +154,8 @@ private struct TodayTabContent: View {
                 if let userId = environment.authService.currentUser()?.userId {
                     viewModel.setUserId(userId)
                 }
+                // A Live Activity outliving its session (force-quit, crash) is cleared on launch.
+                LiveActivityController.shared.endIfNoSession(phase: viewModel.phase)
             }
             .onChange(of: viewModel.phase) { _, newPhase in
                 if newPhase == .setup {

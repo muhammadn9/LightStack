@@ -98,7 +98,7 @@ struct SessionReview: Codable, Equatable {
 /// `Workout.aiProgressionNote` (a TEXT column locally and in Supabase, so no schema change).
 /// Old plain-text notes load as `legacyNote`.
 struct CoachReviewDocument: Codable, Equatable {
-    static let currentVersion = 1
+    static let currentVersion = 2
     /// Marker key that tells a document apart from a plain-text note.
     private static let marker = "coachReview"
 
@@ -111,6 +111,9 @@ struct CoachReviewDocument: Codable, Equatable {
     var review: SessionReview?
     /// Exercise name -> the athlete's answer to "why was that short?" (`MissReason` raw value or free text).
     var inSessionReasons: [String: String] = [:]
+    /// Exercise id (UUID string) -> the athlete's "too easy / about right / too hard" answer
+    /// (`SessionFeedback` raw value). Added in version 2; older documents simply have none.
+    var feedback: [String: String] = [:]
     /// A pre-v2 plain-text progression note.
     var legacyNote: String?
 
@@ -120,7 +123,7 @@ struct CoachReviewDocument: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case marker = "coachReview"
-        case prescription, planReview, review, inSessionReasons, legacyNote
+        case prescription, planReview, review, inSessionReasons, feedback, legacyNote
     }
 
     init(from decoder: Decoder) throws {
@@ -131,6 +134,7 @@ struct CoachReviewDocument: Codable, Equatable {
         planReview = try? c.decodeIfPresent(CoachPlanReview.self, forKey: .planReview)
         review = try? c.decodeIfPresent(SessionReview.self, forKey: .review)
         inSessionReasons = try c.decodeIfPresent([String: String].self, forKey: .inSessionReasons) ?? [:]
+        feedback = (try? c.decodeIfPresent([String: String].self, forKey: .feedback)) ?? [:]
         legacyNote = try c.decodeIfPresent(String.self, forKey: .legacyNote)
     }
 
@@ -141,6 +145,7 @@ struct CoachReviewDocument: Codable, Equatable {
         try c.encodeIfPresent(planReview, forKey: .planReview)
         try c.encodeIfPresent(review, forKey: .review)
         if !inSessionReasons.isEmpty { try c.encode(inSessionReasons, forKey: .inSessionReasons) }
+        if !feedback.isEmpty { try c.encode(feedback, forKey: .feedback) }
         try c.encodeIfPresent(legacyNote, forKey: .legacyNote)
     }
 
@@ -210,6 +215,11 @@ struct CoachReviewDocument: Codable, Equatable {
 
     func prescription(for name: String) -> ExercisePrescription? {
         prescription.first { ExerciseNameResolver.isMatch($0.name, name) }
+    }
+
+    /// The saved answer for one exercise of this workout.
+    func feedback(forExercise id: UUID) -> SessionFeedback? {
+        feedback[id.uuidString].flatMap(SessionFeedback.init(rawValue:))
     }
 
     func reason(for name: String) -> String? {

@@ -49,6 +49,8 @@ enum UITestMode {
         guard let i = args.firstIndex(of: "-uiTestingRestoreDelay"), i + 1 < args.count else { return 0 }
         return TimeInterval(args[i + 1]) ?? 0
     }
+    /// `-uiTestingExpiredSession` starts with the signed-out banner showing, as if the session had been revoked.
+    static let wantsExpiredSession: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingExpiredSession")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -77,7 +79,9 @@ enum UITestMode {
         }
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: sessionStateKey)
+        defaults.removeObject(forKey: SessionExpiryTracker.defaultsKey)
         defaults.removeObject(forKey: RestPreference.key)
+        defaults.removeObject(forKey: PerArmPreference.key)
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
         defaults.set(0, forKey: "selectedTab")
@@ -319,11 +323,12 @@ final class UITestFakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable 
 
     /// Only the first read waits (`-uiTestingRestoreDelay`), so the restore screen stays up long enough to see.
     private func read(_ name: String) async throws {
-        lock.lock()
-        calls.append(name)
-        let delay = didDelay ? 0 : UITestMode.restoreDelay
-        didDelay = true
-        lock.unlock()
+        let delay: Double = lock.withLock {
+            calls.append(name)
+            let delay = didDelay ? 0 : UITestMode.restoreDelay
+            didDelay = true
+            return delay
+        }
         if delay > 0 { try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
         if !online { throw URLError(.notConnectedToInternet) }
     }

@@ -24,6 +24,8 @@ struct Exercise: Codable, Identifiable {
     var coachNote: String?
     /// Exercises sharing a non-nil id form a superset (2-4 adjacent members).
     var supersetGroupId: UUID?
+    /// Single-side (unilateral) exercise: logged weight is per arm/side, so volume counts both sides.
+    var isPerArm: Bool = false
     var syncStatus: SyncStatus
 
     enum CodingKeys: String, CodingKey {
@@ -39,6 +41,7 @@ struct Exercise: Codable, Identifiable {
         case restSeconds = "rest_seconds"
         case coachNote = "coach_note"
         case supersetGroupId = "superset_group_id"
+        case isPerArm = "is_per_arm"
     }
 
     // syncStatus is local-only
@@ -57,6 +60,7 @@ struct Exercise: Codable, Identifiable {
         restSeconds = try c.decodeIfPresent(Int.self, forKey: .restSeconds)
         coachNote = try c.decodeIfPresent(String.self, forKey: .coachNote)
         supersetGroupId = try c.decodeIfPresent(UUID.self, forKey: .supersetGroupId)
+        isPerArm = try c.decodeIfPresent(Bool.self, forKey: .isPerArm) ?? false
         syncStatus = .synced
     }
 
@@ -74,6 +78,10 @@ struct Exercise: Codable, Identifiable {
         try c.encodeIfPresent(restSeconds, forKey: .restSeconds)
         try c.encodeIfPresent(coachNote, forKey: .coachNote)
         try c.encodeIfPresent(supersetGroupId, forKey: .supersetGroupId)
+        // Always sent: a bulk insert where only some rows carry the key makes PostgREST send NULL for
+        // the rest, and the column is NOT NULL. Queued payloads that lack it decode to false and are
+        // re-encoded here at replay, so old queue entries are repaired too.
+        try c.encode(isPerArm, forKey: .isPerArm)
     }
 
     func toSupabase() -> Exercise {
@@ -95,6 +103,7 @@ struct Exercise: Codable, Identifiable {
         self.restSeconds = cdEntity.restSeconds == 0 ? nil : Int(cdEntity.restSeconds)
         self.coachNote = cdEntity.coachNote
         self.supersetGroupId = cdEntity.supersetGroupId
+        self.isPerArm = cdEntity.isPerArm
         self.syncStatus = SyncStatus(rawValue: cdEntity.syncStatus ?? "pending") ?? .pending
     }
 
@@ -110,7 +119,16 @@ struct Exercise: Codable, Identifiable {
         entity.restSeconds = Int32(restSeconds ?? 0)
         entity.coachNote = coachNote
         entity.supersetGroupId = supersetGroupId
+        entity.isPerArm = isPerArm
         entity.syncStatus = syncStatus.rawValue
+    }
+
+    /// Volume multiplier: per-arm exercises count both sides.
+    var sideMultiplier: Double { isPerArm ? 2 : 1 }
+
+    /// Tonnage of `sets` (weight x reps), counting both sides for per-arm exercises.
+    func volume(of sets: [WorkoutSet]) -> Double {
+        sets.reduce(0) { $0 + $1.weightLbs * Double($1.reps) } * sideMultiplier
     }
 
     // MARK: - Tracking Type
@@ -132,7 +150,8 @@ struct Exercise: Codable, Identifiable {
         targetRir: String?,
         restSeconds: Int?,
         coachNote: String?,
-        supersetGroupId: UUID? = nil
+        supersetGroupId: UUID? = nil,
+        isPerArm: Bool? = nil
     ) -> Exercise {
         Exercise(
             id: UUID(),
@@ -147,7 +166,8 @@ struct Exercise: Codable, Identifiable {
             restSeconds: restSeconds,
             coachNote: coachNote,
             syncStatus: .pending,
-            supersetGroupId: supersetGroupId
+            supersetGroupId: supersetGroupId,
+            isPerArm: isPerArm ?? PerArmPreference.defaultValue(for: name)
         )
     }
 
@@ -158,7 +178,8 @@ struct Exercise: Codable, Identifiable {
         muscleGroup: String, orderIndex: Int, targetSets: Int?,
         targetReps: String?, targetRir: String?, restSeconds: Int?,
         coachNote: String?, syncStatus: SyncStatus,
-        supersetGroupId: UUID? = nil
+        supersetGroupId: UUID? = nil,
+        isPerArm: Bool = false
     ) {
         self.id = id
         self.workoutId = workoutId
@@ -172,6 +193,7 @@ struct Exercise: Codable, Identifiable {
         self.restSeconds = restSeconds
         self.coachNote = coachNote
         self.supersetGroupId = supersetGroupId
+        self.isPerArm = isPerArm
         self.syncStatus = syncStatus
     }
 }

@@ -25,6 +25,8 @@ struct ExerciseHeaderView: View {
     let onRemove: (Exercise) -> Void
     /// Opens the reorder sheet. The button only shows with two or more pages.
     var onReorder: (() -> Void)? = nil
+    /// Flips "Per arm" (single-side) for a member. The menu entry shows for strength exercises.
+    var onTogglePerArm: ((Exercise) -> Void)? = nil
 
     private var isSuperset: Bool { members.count > 1 }
 
@@ -37,9 +39,9 @@ struct ExerciseHeaderView: View {
         }
         guard let exercise = members.first else { return "" }
         if let target = exercise.targetSets {
-            return "\(exercise.muscleGroup) · \(target) sets"
+            return "\(exercise.muscleGroup) · \(target) sets" + (exercise.isPerArm ? " · per arm" : "")
         }
-        return exercise.muscleGroup
+        return exercise.muscleGroup + (exercise.isPerArm ? " · per arm" : "")
     }
 
     var body: some View {
@@ -140,6 +142,15 @@ struct ExerciseHeaderView: View {
                         }
                         .accessibilityIdentifier("reorderExercisesButton")
                     }
+                    if let onTogglePerArm {
+                        ForEach(members.filter { $0.trackingType == .strength }) { member in
+                            Button { onTogglePerArm(member) } label: {
+                                Label(perArmMenuTitle(member),
+                                      systemImage: member.isPerArm ? "checkmark.circle.fill" : "circle")
+                            }
+                            .accessibilityIdentifier("perArmToggle.\(exerciseIndex(member))")
+                        }
+                    }
                     if FeatureFlags.formAnalysisEnabled {
                         Button(action: onFormDemo) { Label("Form guide", systemImage: "figure.stand") }
                         Button(action: onRecordForm) { Label("Record form", systemImage: "camera.fill") }
@@ -162,7 +173,11 @@ struct ExerciseHeaderView: View {
     }
 
     private var showsMoreMenu: Bool {
-        FeatureFlags.formAnalysisEnabled || (onReorder != nil && totalCount > 1)
+        FeatureFlags.formAnalysisEnabled || (onReorder != nil && totalCount > 1) || onTogglePerArm != nil
+    }
+
+    private func perArmMenuTitle(_ member: Exercise) -> String {
+        isSuperset ? "Per arm · \(member.name)" : "Per arm"
     }
 
     private func iconLabel(_ systemName: String) -> some View {

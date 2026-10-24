@@ -9,6 +9,13 @@ struct LightstackApp: App {
     @State private var ignoredLaunchActive = false
     #endif
 
+    init() {
+        // Live Activity buttons run in this process, even while it is backgrounded.
+        LiveActivityActionRouter.handler = { action, setKey in
+            await LiveActivityController.shared.handle(action, setKey: setKey)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

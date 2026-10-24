@@ -61,6 +61,7 @@ struct ActiveWorkoutView: View {
             for exercise in todayViewModel.exercises {
                 viewModel.prefillTargets(for: exercise)
             }
+            LiveActivityController.shared.attach(active: viewModel, today: todayViewModel)
             if formViewModel == nil {
                 formViewModel = FormAnalysisViewModel(
                     poseService: PoseEstimationService(),
@@ -288,7 +289,8 @@ struct ActiveWorkoutView: View {
                         if let gid = page.groupId { todayViewModel.unlinkSuperset(groupId: gid) }
                     },
                     onRemove: { exercisePendingRemoval = $0 },
-                    onReorder: { showReorder = true }
+                    onReorder: { showReorder = true },
+                    onTogglePerArm: { todayViewModel.setPerArm(!$0.isPerArm, forExerciseId: $0.id) }
                 )
 
                 InkDivider()
@@ -497,6 +499,7 @@ struct ActiveWorkoutView: View {
                     pendingSets: binding,
                     exerciseId: exercise.id,
                     idPrefix: "setRow.\(exerciseIndex(of: exercise)).\(index)",
+                    isPerArm: exercise.isPerArm,
                     onLog: { logSet(at: index, exerciseId: exercise.id) },
                     onDelete: {
                         viewModel.deletePendingSet(at: index, exerciseId: exercise.id)
@@ -659,34 +662,7 @@ struct ActiveWorkoutView: View {
     }
 
     private func logSet(at index: Int, exerciseId: UUID, startRest: Bool = true) {
-        let exercise = todayViewModel.exercises.first { $0.id == exerciseId }
-        guard let workoutSet = viewModel.logPendingSet(at: index, exerciseId: exerciseId, exercise: exercise) else { return }
-        let isPR = todayViewModel.logSet(workoutSet, exerciseId: exerciseId)
-
-        if isPR {
-            var sets = viewModel.loggedSets[exerciseId] ?? []
-            if var lastSet = sets.last {
-                lastSet.isPR = true
-                sets[sets.count - 1] = lastSet
-                viewModel.loggedSets[exerciseId] = sets
-            }
-        }
-
-        // Strength exercises without a rest time (e.g. repeated from an imported
-        // workout) fall back to the preferred rest, matching manual entry.
-        // In a superset, only the last member's row in a round starts rest, using
-        // the longest rest among the members.
-        if startRest,
-           let plan = SupersetRounds.restPlan(afterLogging: exerciseId, in: todayViewModel.exercises) {
-            // The coach prescribes rest per set; a superset keeps its shared rest.
-            var seconds = plan.seconds
-            let isSuperset = SupersetRounds.page(containing: exerciseId, in: todayViewModel.exercises)?.isSuperset == true
-            let loggedIndex = (viewModel.loggedSets[exerciseId]?.count ?? 1) - 1
-            if !isSuperset, let prescribed = todayViewModel.setTargets[exerciseId]?[safe: loggedIndex]?.restSeconds, prescribed > 0 {
-                seconds = prescribed
-            }
-            viewModel.startRestTimer(for: exerciseId, seconds: seconds, exerciseName: plan.name)
-        }
+        viewModel.logSetAndStartRest(at: index, exerciseId: exerciseId, today: todayViewModel, startRest: startRest)
     }
 
     /// Manual rest button: starts the page's rest with the seconds a logged set would use,
@@ -716,11 +692,7 @@ struct ActiveWorkoutView: View {
     }
 
     private func persistSession() {
-        viewModel.syncElapsed()
-        todayViewModel.activeWorkoutElapsed = viewModel.elapsedSeconds
-        todayViewModel.timerPaused = viewModel.isPaused
-        todayViewModel.pendingSetsSnapshot = viewModel.pendingSets
-        todayViewModel.saveSessionState()
+        viewModel.persistSession(to: todayViewModel)
     }
 
     private func performFinish() {

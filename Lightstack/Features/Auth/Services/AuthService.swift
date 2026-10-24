@@ -13,6 +13,12 @@ protocol AuthServiceDelegate: AnyObject {
     func authServiceDidSignOut(_ service: AuthService)
     func authServiceNeedsEmailVerification(_ service: AuthService, email: String)
     func authService(_ service: AuthService, didFailWith error: Error)
+    /// The stored session was revoked or could not be refreshed. Local data and queued changes are kept.
+    func authServiceSessionExpired(_ service: AuthService, userId: UUID)
+}
+
+extension AuthServiceDelegate {
+    func authServiceSessionExpired(_ service: AuthService, userId: UUID) {}
 }
 
 // MARK: - AuthService
@@ -30,6 +36,13 @@ final class AuthService: NSObject {
 
     let supabaseClient: SupabaseClient
 
+    /// Which user's session died (persisted). While set, `currentUser()` keeps answering with that user
+    /// so local-first screens and the outbox owner tags keep working until they sign in again.
+    let expiry: SessionExpiryTracker
+    static let lastKnownUserKey = "lightstack.lastKnownSignedInUserId"
+    private var userSignOutAt: Date?
+    private var sessionObserver: Task<Void, Never>?
+
     /// Redirect URL for email verification links — must match the
     /// CFBundleURLSchemes entry in Info.plist AND the "Redirect URLs"
     /// allow-list in the Supabase dashboard.
@@ -42,8 +55,9 @@ final class AuthService: NSObject {
 
     // MARK: - Init
 
-    init(client: SupabaseClient) {
+    init(client: SupabaseClient, expiry: SessionExpiryTracker = SessionExpiryTracker()) {
         self.supabaseClient = client
+        self.expiry = expiry
         super.init()
     }
 
@@ -365,7 +379,7 @@ final class AuthService: NSObject {
             ) { (session: ASWebAuthenticationSession) in
                 session.prefersEphemeralWebBrowserSession = true
             }
-            await notifySignIn()
+            notifySignIn()
         } catch {
             // Don't report user cancellation as an error
             let nsError = error as NSError
@@ -374,7 +388,7 @@ final class AuthService: NSObject {
                 logger.info("Google Sign-In: user cancelled ephemeral web session")
                 return
             }
-            await notifyError(error)
+            notifyError(error)
         }
     }
 
@@ -400,15 +414,72 @@ final class AuthService: NSObject {
 
     func signOut() {
         CoachDebugStore.shared.clear()
+        userSignOutAt = Date()
         Task {
             do {
                 try await supabaseClient.auth.signOut()
-                await resetGoogleState()
-                await notifySignOut()
+                await finishSignOut()
+            } catch AuthError.sessionMissing {
+                // Already signed out on the server side (expired / revoked): finish locally.
+                await finishSignOut()
             } catch {
                 await notifyError(error)
             }
         }
+    }
+
+    @MainActor
+    private func finishSignOut() {
+        expiry.clear()
+        UserDefaults.standard.removeObject(forKey: Self.lastKnownUserKey)
+        resetGoogleState()
+        notifySignOut()
+    }
+
+    // MARK: - Session expiry
+
+    /// Which user a `.signedOut` event means "session lost" for, or nil when the user asked for it.
+    static func expiredUserId(for event: AuthChangeEvent, userSignOutAt: Date?, lastKnownUserId: UUID?,
+                              now: Date = Date()) -> UUID? {
+        guard event == .signedOut else { return nil }
+        if let at = userSignOutAt, now.timeIntervalSince(at) < 10 { return nil }
+        return lastKnownUserId
+    }
+
+    /// Watches the Supabase client: a `.signedOut` we did not ask for means the refresh token was
+    /// revoked or expired.
+    func startObservingSession() {
+        #if DEBUG
+        if UITestMode.isActive { return }
+        #endif
+        sessionObserver?.cancel()
+        let client = supabaseClient
+        sessionObserver = Task { [weak self] in
+            for await (event, session) in client.auth.authStateChanges {
+                await self?.handleAuthEvent(event, session: session)
+            }
+        }
+    }
+
+    @MainActor
+    private func handleAuthEvent(_ event: AuthChangeEvent, session: Session?) {
+        let defaults = UserDefaults.standard
+        if let user = session?.user, event != .signedOut {
+            defaults.set(user.id.uuidString, forKey: Self.lastKnownUserKey)
+            return
+        }
+        let last = defaults.string(forKey: Self.lastKnownUserKey).flatMap(UUID.init(uuidString:))
+        if let id = Self.expiredUserId(for: event, userSignOutAt: userSignOutAt, lastKnownUserId: last) {
+            reportSessionExpired(userId: id)
+        }
+    }
+
+    /// Records the expiry and tells the delegate. Safe to call more than once.
+    @MainActor
+    func reportSessionExpired(userId: UUID) {
+        logger.info("session expired or revoked; keeping local data and queued changes")
+        expiry.markExpired(userId: userId)
+        delegate?.authServiceSessionExpired(self, userId: userId)
     }
 
     /// Forget the Google account and any pending attempt so the next sign-in starts clean
@@ -426,6 +497,7 @@ final class AuthService: NSObject {
         if UITestMode.isActive { return UITestMode.testUser }
         #endif
         guard let user = supabaseClient.auth.currentUser else {
+            if let expired = expiry.expiredUserId { return Self.expiredStub(userId: expired) }
             return nil
         }
         return UserProfile(
@@ -444,6 +516,15 @@ final class AuthService: NSObject {
             notesToCoach: nil,
             createdAt: user.createdAt,
             updatedAt: user.createdAt
+        )
+    }
+
+    /// Placeholder profile for a user whose session expired (only the id is meaningful).
+    private static func expiredStub(userId: UUID) -> UserProfile {
+        UserProfile(
+            id: userId, userId: userId, displayName: nil, age: nil, heightInches: nil, weightLbs: nil,
+            trainingAgeMonths: nil, primaryGoals: [], splitDays: [], avoidExercises: [], equipment: [:],
+            customEquipment: nil, notesToCoach: nil, createdAt: Date(), updatedAt: Date()
         )
     }
 

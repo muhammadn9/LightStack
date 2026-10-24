@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("restTimerNotificationsEnabled") private var restTimerNotif = true
     @AppStorage(RestPreference.key) private var defaultRestSeconds = 90
     @AppStorage("weightUnit") private var weightUnit = "lbs"
+    @AppStorage(LiveActivityController.settingKey) private var liveActivityEnabled = true
     @State private var unsyncedCount = 0
     @State private var showUnsyncedAlert = false
 
@@ -28,6 +29,16 @@ struct SettingsView: View {
                     Toggle("Rest Timer Alerts", isOn: $restTimerNotif)
                         .tint(AppTheme.accent)
                         .listRowBackground(AppTheme.surface)
+
+                    if LiveActivityController.isSystemAvailable {
+                        Toggle("Live Activity on lock screen", isOn: $liveActivityEnabled)
+                            .tint(AppTheme.accent)
+                            .accessibilityIdentifier("settings.liveActivityToggle")
+                            .listRowBackground(AppTheme.surface)
+                            .onChange(of: liveActivityEnabled) { _, _ in
+                                LiveActivityController.shared.settingChanged()
+                            }
+                    }
                 }
 
                 Section("Workout") {
@@ -46,6 +57,15 @@ struct SettingsView: View {
                         Text("lbs").tag("lbs")
                         Text("kg").tag("kg")
                     }
+                    .listRowBackground(AppTheme.surface)
+                }
+
+                Section("Backup") {
+                    BackupStatusRow()
+                    NavigationLink(destination: DiagnosticsView()) {
+                        Text("Diagnostics")
+                    }
+                    .accessibilityIdentifier("settings.diagnostics")
                     .listRowBackground(AppTheme.surface)
                 }
 
