@@ -73,6 +73,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let workoutTypeMergeService: WorkoutTypeMergeService
     let monthPlanRepository: MonthPlanRepository
     let restDayRepository: RestDayRepository
+    let nutritionRepository: NutritionRepository
 
     // MARK: - AI + Session Services
 
@@ -204,6 +205,10 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         )
 
         self.restDayRepository = RestDayRepository(
+            localStorage: localStorageService,
+            offlineQueueManager: offlineQueueManager
+        )
+        self.nutritionRepository = NutritionRepository(
             localStorage: localStorageService,
             offlineQueueManager: offlineQueueManager
         )

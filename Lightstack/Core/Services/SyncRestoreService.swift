@@ -28,6 +28,8 @@ struct RestoreSummary: Equatable {
     var localRecordsDeleted = 0
     var repairedWorkouts = 0
     var repairedRestDays = 0
+    var nutritionApplied = 0
+    var repairedNutrition = 0
     /// First-reconciliation mode (local data is authoritative) was used.
     var reconciled = false
     /// Local workouts whose differing parts were queued for upload in that mode.
@@ -120,6 +122,9 @@ final class SyncRestoreService {
         storage.fetchProfile(userId: userId) != nil
             || !storage.fetchRecentWorkouts(userId: userId, limit: 1).isEmpty
             || !storage.fetchRestDays(userId: userId).isEmpty
+            || !storage.fetchAllFoodEntries(userId: userId).isEmpty
+            || !storage.fetchNutritionTargets(userId: userId).isEmpty
+            || !storage.fetchFoods(userId: userId).isEmpty
     }
 
     func forgetLastRestore(userId: UUID) {
@@ -253,6 +258,9 @@ final class SyncRestoreService {
         let restPending = try await pendingChanges(userId)
         summary.restDaysApplied = applyRestDays(remoteRestDays, userId: userId, tombstones: tombstones, pending: restPending, reconcile: reconcile)
 
+        // 4b. Nutrition: targets, foods, then diary entries page by page.
+        let remoteNutrition = try await restoreNutrition(userId: userId, tombstones: tombstones, reconcile: reconcile, summary: &summary)
+
         // 5. Context summaries.
         let summaries = try await remote.fetchContextSummaries(userId: userId)
         try ensureUser(userId)
@@ -277,6 +285,7 @@ final class SyncRestoreService {
             remoteWithoutWork: remoteWithoutWork,
             alreadyReconciled: reconciledIds,
             remoteRestDays: Set(remoteRestDays.map { RestDay.dayString($0.date) }),
+            remoteNutrition: remoteNutrition,
             summary: &summary
         )
 
@@ -352,6 +361,9 @@ final class SyncRestoreService {
         deleted.monthPlans = tombstones.ids(.monthPlan)
         deleted.plannedSessions = tombstones.ids(.plannedSession)
         deleted.restDays = tombstones.ids(.restDay)
+        deleted.nutritionTargets = tombstones.ids(.nutritionTarget)
+        deleted.foods = tombstones.ids(.food)
+        deleted.foodEntries = tombstones.ids(.foodEntry)
         await queue.discardPendingUpserts(for: userId, deleted: deleted)
     }
 
@@ -365,6 +377,14 @@ final class SyncRestoreService {
         removed += storage.deleteMonthPlans(ids: tombstones.ids(.monthPlan))
         removed += storage.deletePlannedSessions(ids: tombstones.ids(.plannedSession))
         removed += storage.deleteRestDays(ids: tombstones.ids(.restDay), userId: userId).count
+        removed += storage.deleteNutritionTargets(ids: tombstones.ids(.nutritionTarget))
+        removed += storage.deleteFoodEntries(ids: tombstones.ids(.foodEntry))
+        let deletedFoods = tombstones.ids(.food)
+        if !deletedFoods.isEmpty {
+            // The cloud nulls the reference when a food goes; mirror that locally (no upload).
+            _ = storage.detachFoodEntries(foodIds: deletedFoods, userId: userId)
+            removed += storage.deleteFoods(ids: deletedFoods)
+        }
         return removed
     }
 
@@ -459,6 +479,92 @@ final class SyncRestoreService {
         }
         storage.restoreRestDays(toApply)
         return toApply.count
+    }
+
+    // MARK: - Nutrition
+
+    /// Ids the cloud holds, known only after every nutrition fetch succeeded.
+    struct RemoteNutritionIds {
+        var targets = Set<UUID>()
+        var foods = Set<UUID>()
+        var entries = Set<UUID>()
+    }
+
+    /// Applies one kind of nutrition record. Tombstoned and pending-change records are skipped (local wins).
+    /// In first-reconciliation mode a record that exists locally is kept and, if it differs, queued for upload.
+    private func applyNutritionRecords<R: Equatable>(
+        _ records: [R], id: (R) -> UUID, owner: (R) -> UUID, userId: UUID,
+        isTombstoned: (UUID) -> Bool, isPending: (UUID) -> Bool, reconcile: Bool,
+        local: (UUID) -> R?, queueUpload: (R) -> Void, save: ([R]) -> Void
+    ) -> Int {
+        var toApply: [R] = []
+        for record in records where owner(record) == userId {
+            let recordId = id(record)
+            if isTombstoned(recordId) || isPending(recordId) { continue }
+            if reconcile, let existing = local(recordId) {
+                if existing != record { queueUpload(existing) }
+                continue
+            }
+            toApply.append(record)
+        }
+        save(toApply)
+        return toApply.count
+    }
+
+    private func restoreNutrition(
+        userId: UUID, tombstones: TombstoneSet, reconcile: Bool, summary: inout RestoreSummary
+    ) async throws -> RemoteNutritionIds {
+        var ids = RemoteNutritionIds()
+
+        let targets = try await remote.fetchNutritionTargets(userId: userId)
+        try ensureUser(userId)
+        var pending = try await pendingChanges(userId)
+        ids.targets = Set(targets.map(\.id))
+        summary.nutritionApplied += applyNutritionRecords(
+            targets, id: { $0.id }, owner: { $0.userId }, userId: userId,
+            isTombstoned: { tombstones.contains(.nutritionTarget, $0) }, isPending: { pending.nutritionTargets.contains($0) },
+            reconcile: reconcile, local: { self.storage.fetchNutritionTarget(id: $0) },
+            queueUpload: { self.queue.submit(.upsertNutritionTarget, payload: $0, recordKey: $0.id.uuidString) },
+            save: { self.storage.restoreNutritionTargets($0) }
+        )
+
+        let foods = try await remote.fetchFoods(userId: userId)
+        try ensureUser(userId)
+        pending = try await pendingChanges(userId)
+        ids.foods = Set(foods.map(\.id))
+        summary.nutritionApplied += applyNutritionRecords(
+            foods, id: { $0.id }, owner: { $0.userId }, userId: userId,
+            isTombstoned: { tombstones.contains(.food, $0) }, isPending: { pending.foods.contains($0) },
+            reconcile: reconcile, local: { self.storage.fetchFood(id: $0) },
+            queueUpload: { self.queue.submit(.upsertFood, payload: $0, recordKey: $0.id.uuidString) },
+            save: { self.storage.restoreFoods($0) }
+        )
+
+        var offset = 0
+        while true {
+            try Task.checkCancellation()
+            let page = try await remote.fetchFoodEntriesPage(userId: userId, offset: offset, limit: pageSize)
+            try ensureUser(userId)
+            pending = try await pendingChanges(userId)
+            page.forEach { ids.entries.insert($0.id) }
+            // An entry whose food was deleted elsewhere keeps its snapshot but loses the link.
+            let cleaned: [FoodEntry] = page.map { entry in
+                var entry = entry
+                if let foodId = entry.foodId, tombstones.contains(.food, foodId) { entry.foodId = nil }
+                return entry
+            }
+            summary.nutritionApplied += applyNutritionRecords(
+                cleaned, id: { $0.id }, owner: { $0.userId }, userId: userId,
+                isTombstoned: { tombstones.contains(.foodEntry, $0) }, isPending: { pending.foodEntries.contains($0) },
+                reconcile: reconcile, local: { self.storage.fetchFoodEntry(id: $0) },
+                queueUpload: { self.queue.submit(.upsertFoodEntry, payload: $0, recordKey: $0.id.uuidString) },
+                save: { self.storage.restoreFoodEntries($0) }
+            )
+            offset += page.count
+            if page.count < pageSize { break }
+            await Task.yield()
+        }
+        return ids
     }
 
     private func applyContextSummaries(
@@ -615,6 +721,7 @@ final class SyncRestoreService {
         remoteWithoutWork: Set<UUID>,
         alreadyReconciled: Set<UUID>,
         remoteRestDays: Set<String>,
+        remoteNutrition: RemoteNutritionIds,
         summary: inout RestoreSummary
     ) async throws {
         // Child operations whose parent never reached the cloud get their parent queued (or are dropped
@@ -674,6 +781,26 @@ final class SyncRestoreService {
                   !pending.restDayDays.contains(key) else { continue }
             queue.submit(.upsertRestDay, payload: day, recordKey: day.id.uuidString)
             summary.repairedRestDays += 1
+        }
+
+        // Nutrition: parents (targets, foods) are ordered before entries by the queue.
+        for target in storage.fetchNutritionTargets(userId: userId)
+        where !remoteNutrition.targets.contains(target.id) && !tombstones.contains(.nutritionTarget, target.id)
+            && !pending.nutritionTargets.contains(target.id) {
+            queue.submit(.upsertNutritionTarget, payload: target, recordKey: target.id.uuidString)
+            summary.repairedNutrition += 1
+        }
+        for food in storage.fetchFoods(userId: userId)
+        where !remoteNutrition.foods.contains(food.id) && !tombstones.contains(.food, food.id)
+            && !pending.foods.contains(food.id) {
+            queue.submit(.upsertFood, payload: food, recordKey: food.id.uuidString)
+            summary.repairedNutrition += 1
+        }
+        for entry in storage.fetchAllFoodEntries(userId: userId)
+        where !remoteNutrition.entries.contains(entry.id) && !tombstones.contains(.foodEntry, entry.id)
+            && !pending.foodEntries.contains(entry.id) {
+            queue.submit(.upsertFoodEntry, payload: entry, recordKey: entry.id.uuidString)
+            summary.repairedNutrition += 1
         }
     }
 }

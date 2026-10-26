@@ -282,6 +282,33 @@ final class SupabaseService {
             .execute()
     }
 
+    // MARK: - Nutrition
+    // Rows are written through `cloudRow()`, which always sends every column (nil as null).
+
+    func upsertNutritionTarget(_ target: NutritionTarget) async throws {
+        try await client.from("nutrition_targets").upsert(target.cloudRow()).execute()
+    }
+
+    func deleteNutritionTarget(id: UUID) async throws {
+        try await client.from("nutrition_targets").delete().eq("id", value: id.uuidString).execute()
+    }
+
+    func upsertFood(_ food: NutritionFood) async throws {
+        try await client.from("foods").upsert(food.cloudRow()).execute()
+    }
+
+    func deleteFood(id: UUID) async throws {
+        try await client.from("foods").delete().eq("id", value: id.uuidString).execute()
+    }
+
+    func upsertFoodEntry(_ entry: FoodEntry) async throws {
+        try await client.from("food_entries").upsert(entry.cloudRow()).execute()
+    }
+
+    func deleteFoodEntry(id: UUID) async throws {
+        try await client.from("food_entries").delete().eq("id", value: id.uuidString).execute()
+    }
+
     // MARK: - Tombstones
 
     /// Records that these rows were deleted on this device, so other devices

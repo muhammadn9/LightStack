@@ -68,6 +68,9 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     private var _monthPlans: [UUID: MonthPlan] = [:]
     private var _plannedSessions: [UUID: PlannedSession] = [:]
     private var _restDays: [UUID: RestDay] = [:]
+    private var _nutritionTargets: [UUID: NutritionTarget] = [:]
+    private var _foods: [UUID: NutritionFood] = [:]
+    private var _foodEntries: [UUID: FoodEntry] = [:]
     private var _tombstones: [String] = []
     private var _profiles: [UUID: UserProfile] = [:]
     private var _summaries: [String: AIContextSummary] = [:]
@@ -86,6 +89,9 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     var monthPlans: [UUID: MonthPlan] { locked { _monthPlans } }
     var plannedSessions: [UUID: PlannedSession] { locked { _plannedSessions } }
     var restDays: [UUID: RestDay] { locked { _restDays } }
+    var nutritionTargets: [UUID: NutritionTarget] { locked { _nutritionTargets } }
+    var foods: [UUID: NutritionFood] { locked { _foods } }
+    var foodEntries: [UUID: FoodEntry] { locked { _foodEntries } }
     /// "entity:recordId" for every tombstone written.
     var tombstones: [String] { locked { _tombstones } }
     var renames: [(ids: [UUID], name: String)] { locked { _renames } }
@@ -205,6 +211,36 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
         let day = RestDay.dayString(date)
         locked { _restDays = _restDays.filter { !($0.value.userId == userId && RestDay.dayString($0.value.date) == day) } }
     }
+    func upsertNutritionTarget(_ target: NutritionTarget) async throws {
+        try await record(.upsertNutritionTarget, "")
+        locked { _nutritionTargets[target.id] = target }
+    }
+    func deleteNutritionTarget(id: UUID) async throws {
+        try await record(.deleteNutritionTarget, "")
+        locked { _nutritionTargets[id] = nil }
+    }
+    func upsertFood(_ food: NutritionFood) async throws {
+        try await record(.upsertFood, food.name)
+        locked { _foods[food.id] = food }
+    }
+    func deleteFood(id: UUID) async throws {
+        try await record(.deleteFood, "")
+        locked {
+            _foods[id] = nil
+            // ON DELETE SET NULL
+            for (key, entry) in _foodEntries where entry.foodId == id { var e = entry; e.foodId = nil; _foodEntries[key] = e }
+        }
+    }
+    func upsertFoodEntry(_ entry: FoodEntry) async throws {
+        try await record(.upsertFoodEntry, entry.name)
+        // Like the foreign key: an entry pointing at a food that is not in the "cloud" is refused.
+        if let foodId = entry.foodId, locked({ _foods[foodId] == nil }) { throw QueueTestError.postgres("23503") }
+        locked { _foodEntries[entry.id] = entry }
+    }
+    func deleteFoodEntry(id: UUID) async throws {
+        try await record(.deleteFoodEntry, "")
+        locked { _foodEntries[id] = nil }
+    }
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws {
         try await record(.insertTombstone, entity)
         locked {
@@ -242,6 +278,9 @@ extension FakeRemote {
         lock.unlock()
     }
     func seedRestDay(_ day: RestDay) { lock.lock(); _restDays[day.id] = day; lock.unlock() }
+    func seedNutritionTarget(_ t: NutritionTarget) { lock.lock(); _nutritionTargets[t.id] = t; lock.unlock() }
+    func seedFood(_ f: NutritionFood) { lock.lock(); _foods[f.id] = f; lock.unlock() }
+    func seedFoodEntry(_ e: FoodEntry) { lock.lock(); _foodEntries[e.id] = e; lock.unlock() }
     func seedTombstone(_ entity: TombstoneEntity, _ id: UUID) {
         lock.lock(); _tombstones.append("\(entity.rawValue):\(id.uuidString)"); lock.unlock()
     }
@@ -295,6 +334,25 @@ extension FakeRemote {
     func fetchRestDays(userId: UUID) async throws -> [RestDay] {
         try await read("fetchRestDays")
         return lock.withLock { _restDays.values.filter { $0.userId == userId } }
+    }
+
+    func fetchNutritionTargets(userId: UUID) async throws -> [NutritionTarget] {
+        try await read("fetchNutritionTargets")
+        return lock.withLock { _nutritionTargets.values.filter { $0.userId == userId } }
+    }
+
+    func fetchFoods(userId: UUID) async throws -> [NutritionFood] {
+        try await read("fetchFoods")
+        return lock.withLock { _foods.values.filter { $0.userId == userId } }
+    }
+
+    func fetchFoodEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [FoodEntry] {
+        try await read("fetchFoodEntriesPage")
+        return lock.withLock {
+            let ordered = _foodEntries.values.filter { $0.userId == userId }
+                .sorted { $0.date != $1.date ? $0.date > $1.date : $0.id.uuidString < $1.id.uuidString }
+            return Array(ordered.dropFirst(offset).prefix(limit))
+        }
     }
 
     func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone] {
