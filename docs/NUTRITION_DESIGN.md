@@ -33,7 +33,7 @@ Manual only: kcal, protein, carbs, fat. Kcal auto-derives from macros (4/4/9) un
 ## 6. Label scanning (headline)
 **Flow:** Scan button -> camera (live scan) -> OCR text -> `NutritionLabelParser` -> **review form prefilled** -> user edits name, serving size, servings, any value -> Save (creates `CDFood` and optionally logs an entry). Uncertain fields are highlighted; nothing is saved without the user confirming.
 
-**Frameworks (Apple only, no AI, no 3rd party):** `VisionKit.DataScannerViewController` (`.text()` recognized items, live) as primary; fallback `VNRecognizeTextRequest` (`.accurate`, language correction off, `recognitionLanguages` en-US/en-GB) on a captured photo or the simulator/unsupported devices (`DataScannerViewController.isSupported`/`isAvailable` false). Needs `NSCameraUsageDescription`. SwiftUI wrapper via `UIViewControllerRepresentable` (existing pattern; no UIKit view controllers of our own). Gather recognized lines with bounding boxes, accumulate across frames, and let the user tap "Use this" (no auto-commit).
+**Frameworks (Apple only, no AI, no 3rd party):** `VisionKit.DataScannerViewController` (`.text()` recognized items, live) as primary; fallback `VNRecognizeTextRequest` (`.accurate`, language correction off, `recognitionLanguages` en-US/en-GB) on a captured camera frame or the simulator/unsupported devices (`DataScannerViewController.isSupported`/`isAvailable` false). Needs `NSCameraUsageDescription`. SwiftUI wrapper via `UIViewControllerRepresentable` (existing pattern; no UIKit view controllers of our own). Gather recognized lines with bounding boxes, accumulate across frames, and let the user tap "Use this" (no auto-commit).
 
 **Parser design** (`NutritionLabelParser`, pure Swift, no Vision import; input is `[OCRLine]` of text + normalized bounding box, plus a convenience `parse(text:)`):
 1. **Normalise:** lowercase, fold OCR confusions in numeric context (`O->0`, `l/I->1`, `,`->`.` decimal when one comma and <=2 trailing digits, `S->5` only next to digits), strip `%DV` tokens and collapse whitespace. Join a nutrient name with its value when OCR splits them across lines/columns (same baseline within a y-tolerance, value to the right).
@@ -75,11 +75,12 @@ Daily totals are computed from entries, not stored. Micro fields are optional (n
 - OCR accuracy varies (glare, curved packs, multi-column EU labels): always show a review form, highlight low confidence, never auto-save.
 - Sync scope (three new tables): ship sync with tests in Phase 1.
 - Migration mistakes crash on launch: test v4 -> v5 on a real store copy.
-- Scanner is device-only (camera): simulator uses the photo-picker/stub path; verify on device before TestFlight.
+- Scanner is device-only (camera): simulator uses the stub path; verify on device before TestFlight.
 - Scope creep into a full calorie tracker; hold the macro-first line.
 - Health-adjacent sensitivity: no "bad food" language, sane target floors, disclaimer.
 
-## 11. Open questions
-1. Units: grams only for serving size in Phase 1 (with the label's household text shown), or also oz/cups conversions? Imperial/metric follows profile?
-2. Per-100g-only labels with no serving size: default to 100 g serving (proposed), or require the user to enter a serving?
-3. Is a photo-from-library fallback for scanning wanted in Phase 1 (proposed: yes, via `PhotosPicker` + Vision)?
+## 11. Decisions
+
+D1. **Serving units are user-selectable** (g, oz, cup, ml, piece, serving, etc.). The label's household text is kept; conversion to grams/ml is stored where known.
+D2. **Per-100g-only labels** (no serving size) default to a 100 g serving, highlighted in the review form, and editable.
+D3. **No photo-library scan in Phase 1.** Scanning is camera-only (plus the test stub); `PhotosPicker` is deferred.

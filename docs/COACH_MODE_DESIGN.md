@@ -30,7 +30,7 @@ This replaces the earlier "guided session / periodisation / trainer sharing" int
 1. Coach opens a guest client and taps "Link account". App creates a `coach_links` row (`status = pending`, single-use invite code, 7-day expiry) and shows a code / share link.
 2. Client opens Settings > Coaches in their own app, enters the code, sees "Alex wants to log workouts for you" with scope text, and taps Approve (`status = active`) or Decline.
 3. Client can **revoke** any time (Settings > Coaches > Remove). Coach can also unlink. Revoke is immediate and stops all future inserts; already-written workouts stay in the client's account (client can delete them like any workout).
-4. On link, existing guest history for that client stays with the coach only unless the coach explicitly taps "Send past sessions" (client sees them as a normal import). Default: do not send.
+4. On link, the client's guest history and past sessions migrate to the client's account automatically (decision D3). They arrive as coach-logged sessions the client can reject or delete.
 
 **Supabase**
 ```sql
@@ -87,7 +87,7 @@ Lessons from the `is_per_arm` incident: send **every NOT NULL column in every in
 - During the workout, the coach's exercise cards are unchanged. Under each exercise a **collapsible "Client: Alex" section** (tinted AppTheme accent, labelled) holds the client's pending/logged set rows, reusing `SetRowView` / `PendingSetInput` with a second state dictionary (`clientPendingSets`, `clientLoggedSets`, keyed by exercise id). A header chip "Logging for: You | Alex" is **not** used, because it invites logging to the wrong person; both areas are visible at once.
 - The client area is prefilled with the client's own targets (section 6). "Copy my set" button copies the coach's last logged weight/reps for equal-load partners.
 - Rest timer, Live Activity and superset logic follow the **coach's** sets only. Logging a client set never starts or resets the coach's rest timer.
-- Client exercises mirror the coach's list by default; the coach can hide an exercise for the client or add one only the client does ("client-only" exercise, in the client area).
+- During the coach's workout the client area copies the coach's exercise list by default (decision D4). It is editable: the coach can hide an exercise for the client or add a client-only exercise.
 - Session persistence (`WorkoutSessionPersistence`) stores client state too so a kill/resume restores both.
 - Finish: coach's normal post-workout flow, then a second "Client review" step (section 7).
 
@@ -106,7 +106,7 @@ Targets come from **the client's own history**, never the coach's. `ExerciseHist
 ## 8. Export and sync-out
 
 **Export (phase 1)**, from the client session detail and the History row:
-- Text summary (default, for iMessage/WhatsApp), CSV (`date, exercise, set, weight, unit, reps, rir`), and PDF (one page, branded, with the review summary).
+- Text summary (default, for iMessage/WhatsApp), CSV (`date, exercise, set, weight, unit, reps, rir`), and PDF. Text and PDF use the **same layout as the workout format the app ingests**: the markdown exercise table read by `WorkoutSessionService.parseExerciseTable` (`Lightstack/Features/Today/Services/WorkoutSessionService.swift`), header `| Muscle Group | Exercise | Sets | Target Weight | Reps | RIR | Rest |` followed by a `|---|` separator row and one row per exercise. The PDF renders that table. No LightStack branding in either (decision D5).
 - Via `ShareLink` / share sheet; files generated into a temp dir and deleted after.
 - Respect the coach's weight unit and print it in the file.
 
@@ -164,11 +164,10 @@ VoiceOver: client section is a labelled group "Alex's sets for Bench press"; row
 - **Migration/sync wedges** (is_per_arm class): explicit NOT NULL columns, migration before build.
 - **Scope creep** into a full trainer product (programs, billing, chat): out of scope.
 
-## 15. Open questions
+## 15. Decisions
 
-1. Multiple clients in one session (group training) in v1 or later?
-2. Should the client be able to edit or reject a coach-written session, or only delete it?
-3. Is guest-client data allowed to move into an account later automatically (on link), or only by the coach's explicit "send past sessions"?
-4. Does the client area mirror the coach's exercise list by default, or start empty?
-5. PDF branding and whether exports include the AI review text.
-6. Any limit on the number of clients (free tier / storage)?
+D1. **One client per workout** at a time. Group training is out of scope for now.
+D2. **Clients can reject** a coach-logged session (as well as delete it). Rejected sessions are removed from the client's account and the coach sees "Rejected by Alex".
+D3. **On account link, guest history and past sessions migrate** to the client's account automatically (the "Send past sessions" opt-in is dropped).
+D4. **Client area copies the coach's exercise list** by default during the coach's workout, and is editable.
+D5. **PDF and text export use the ingest workout format** (the markdown exercise table above, matching `parseExerciseTable`), with no LightStack branding.
