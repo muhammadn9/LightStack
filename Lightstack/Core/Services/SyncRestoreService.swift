@@ -125,6 +125,8 @@ final class SyncRestoreService {
             || !storage.fetchAllFoodEntries(userId: userId).isEmpty
             || !storage.fetchNutritionTargets(userId: userId).isEmpty
             || !storage.fetchFoods(userId: userId).isEmpty
+            || !storage.fetchAllWaterEntries(userId: userId).isEmpty
+            || !storage.fetchAllDayNotes(userId: userId).isEmpty
     }
 
     func forgetLastRestore(userId: UUID) {
@@ -364,6 +366,7 @@ final class SyncRestoreService {
         deleted.nutritionTargets = tombstones.ids(.nutritionTarget)
         deleted.foods = tombstones.ids(.food)
         deleted.foodEntries = tombstones.ids(.foodEntry)
+        deleted.waterEntries = tombstones.ids(.waterEntry)
         await queue.discardPendingUpserts(for: userId, deleted: deleted)
     }
 
@@ -379,6 +382,7 @@ final class SyncRestoreService {
         removed += storage.deleteRestDays(ids: tombstones.ids(.restDay), userId: userId).count
         removed += storage.deleteNutritionTargets(ids: tombstones.ids(.nutritionTarget))
         removed += storage.deleteFoodEntries(ids: tombstones.ids(.foodEntry))
+        removed += storage.deleteWaterEntries(ids: tombstones.ids(.waterEntry))
         let deletedFoods = tombstones.ids(.food)
         if !deletedFoods.isEmpty {
             // The cloud nulls the reference when a food goes; mirror that locally (no upload).
@@ -488,6 +492,9 @@ final class SyncRestoreService {
         var targets = Set<UUID>()
         var foods = Set<UUID>()
         var entries = Set<UUID>()
+        var mealSlots = Set<UUID>()
+        var waterEntries = Set<UUID>()
+        var dayNotes = Set<UUID>()
     }
 
     /// Applies one kind of nutrition record. Tombstoned and pending-change records are skipped (local wins).
@@ -516,9 +523,30 @@ final class SyncRestoreService {
     ) async throws -> RemoteNutritionIds {
         var ids = RemoteNutritionIds()
 
-        let targets = try await remote.fetchNutritionTargets(userId: userId)
+        // Meal slots first: entries point at them. The cloud wins over local copies unless this device has an
+        // unuploaded edit; a never-edited seeded default always loses to the cloud copy (and its queued upload
+        // is replaced by the cloud copy, so the seed cannot overwrite a rename made on another device).
+        let slots = try await remote.fetchMealSlots(userId: userId)
         try ensureUser(userId)
         var pending = try await pendingChanges(userId)
+        ids.mealSlots = Set(slots.map(\.id))
+        var slotsToApply: [MealSlot] = []
+        for slot in slots where slot.userId == userId {
+            if pending.mealSlots.contains(slot.id) {
+                if let local = storage.fetchMealSlot(id: slot.id), local.isUntouchedSeed {
+                    queue.submit(.upsertMealSlot, payload: slot, recordKey: slot.id.uuidString)
+                    slotsToApply.append(slot)
+                }
+            } else {
+                slotsToApply.append(slot)
+            }
+        }
+        storage.restoreMealSlots(slotsToApply)
+        summary.nutritionApplied += slotsToApply.count
+
+        let targets = try await remote.fetchNutritionTargets(userId: userId)
+        try ensureUser(userId)
+        pending = try await pendingChanges(userId)
         ids.targets = Set(targets.map(\.id))
         summary.nutritionApplied += applyNutritionRecords(
             targets, id: { $0.id }, owner: { $0.userId }, userId: userId,
@@ -564,6 +592,37 @@ final class SyncRestoreService {
             if page.count < pageSize { break }
             await Task.yield()
         }
+
+        var waterOffset = 0
+        while true {
+            try Task.checkCancellation()
+            let page = try await remote.fetchWaterEntriesPage(userId: userId, offset: waterOffset, limit: pageSize)
+            try ensureUser(userId)
+            pending = try await pendingChanges(userId)
+            page.forEach { ids.waterEntries.insert($0.id) }
+            summary.nutritionApplied += applyNutritionRecords(
+                page, id: { $0.id }, owner: { $0.userId }, userId: userId,
+                isTombstoned: { tombstones.contains(.waterEntry, $0) }, isPending: { pending.waterEntries.contains($0) },
+                reconcile: reconcile, local: { self.storage.fetchWaterEntry(id: $0) },
+                queueUpload: { self.queue.submit(.upsertWaterEntry, payload: $0, recordKey: $0.id.uuidString) },
+                save: { self.storage.restoreWaterEntries($0) }
+            )
+            waterOffset += page.count
+            if page.count < pageSize { break }
+            await Task.yield()
+        }
+
+        let notes = try await remote.fetchDayNotes(userId: userId)
+        try ensureUser(userId)
+        pending = try await pendingChanges(userId)
+        ids.dayNotes = Set(notes.map(\.id))
+        summary.nutritionApplied += applyNutritionRecords(
+            notes, id: { $0.id }, owner: { $0.userId }, userId: userId,
+            isTombstoned: { tombstones.contains(.dayNote, $0) }, isPending: { pending.dayNotes.contains($0) },
+            reconcile: reconcile, local: { self.storage.fetchDayNote(id: $0) },
+            queueUpload: { self.queue.submit(.upsertDayNote, payload: $0, recordKey: $0.id.uuidString) },
+            save: { self.storage.restoreDayNotes($0) }
+        )
         return ids
     }
 
@@ -796,10 +855,28 @@ final class SyncRestoreService {
             queue.submit(.upsertFood, payload: food, recordKey: food.id.uuidString)
             summary.repairedNutrition += 1
         }
+        for slot in storage.fetchMealSlots(userId: userId)
+        where !remoteNutrition.mealSlots.contains(slot.id) && !tombstones.contains(.mealSlot, slot.id)
+            && !pending.mealSlots.contains(slot.id) {
+            queue.submit(.upsertMealSlot, payload: slot, recordKey: slot.id.uuidString)
+            summary.repairedNutrition += 1
+        }
         for entry in storage.fetchAllFoodEntries(userId: userId)
         where !remoteNutrition.entries.contains(entry.id) && !tombstones.contains(.foodEntry, entry.id)
             && !pending.foodEntries.contains(entry.id) {
             queue.submit(.upsertFoodEntry, payload: entry, recordKey: entry.id.uuidString)
+            summary.repairedNutrition += 1
+        }
+        for water in storage.fetchAllWaterEntries(userId: userId)
+        where !remoteNutrition.waterEntries.contains(water.id) && !tombstones.contains(.waterEntry, water.id)
+            && !pending.waterEntries.contains(water.id) {
+            queue.submit(.upsertWaterEntry, payload: water, recordKey: water.id.uuidString)
+            summary.repairedNutrition += 1
+        }
+        for note in storage.fetchAllDayNotes(userId: userId)
+        where !remoteNutrition.dayNotes.contains(note.id) && !tombstones.contains(.dayNote, note.id)
+            && !pending.dayNotes.contains(note.id) {
+            queue.submit(.upsertDayNote, payload: note, recordKey: note.id.uuidString)
             summary.repairedNutrition += 1
         }
     }

@@ -309,6 +309,22 @@ final class SupabaseService {
         try await client.from("food_entries").delete().eq("id", value: id.uuidString).execute()
     }
 
+    func upsertMealSlot(_ slot: MealSlot) async throws {
+        try await client.from("meal_slots").upsert(slot.cloudRow()).execute()
+    }
+
+    func upsertWaterEntry(_ entry: WaterEntry) async throws {
+        try await client.from("water_entries").upsert(entry.cloudRow()).execute()
+    }
+
+    func deleteWaterEntry(id: UUID) async throws {
+        try await client.from("water_entries").delete().eq("id", value: id.uuidString).execute()
+    }
+
+    func upsertDayNote(_ note: DayNote) async throws {
+        try await client.from("day_notes").upsert(note.cloudRow()).execute()
+    }
+
     // MARK: - Tombstones
 
     /// Records that these rows were deleted on this device, so other devices

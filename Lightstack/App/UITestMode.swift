@@ -114,6 +114,8 @@ enum UITestMode {
     static func seedIfNeeded(localStorage: LocalStorageService) {
         guard isActive, !freshInstall, localStorage.fetchProfile(userId: userId) == nil else { return }
         localStorage.saveProfile(makeProfile())
+        // Same deterministic default meals the app seeds on first use (Breakfast, Lunch, Dinner, Snack).
+        localStorage.saveMealSlots(MealSlot.defaults(userId: userId))
 
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
         var workout = Workout.create(userId: userId, workoutType: "Push",

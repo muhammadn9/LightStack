@@ -433,22 +433,25 @@ struct FoodEntry: NutritionRow, Identifiable, Equatable {
     var source: EntrySource
     var createdAt: Date
     var updatedAt: Date
+    /// The meal it belongs to; nil for entries logged before meal slots existed (or whose slot is gone).
+    var mealSlotId: UUID?
 
     var total: NutrientValues { perServing.scaled(by: servings) }
 
     init(id: UUID, userId: UUID, date: Date, foodId: UUID?, name: String, servings: Double, servingLabel: String,
-         perServing: NutrientValues, source: EntrySource, createdAt: Date, updatedAt: Date) {
+         perServing: NutrientValues, source: EntrySource, createdAt: Date, updatedAt: Date,
+         mealSlotId: UUID? = nil) {
         self.id = id; self.userId = userId; self.date = date; self.foodId = foodId; self.name = name
         self.servings = servings; self.servingLabel = servingLabel; self.perServing = perServing
-        self.source = source; self.createdAt = createdAt; self.updatedAt = updatedAt
+        self.source = source; self.createdAt = createdAt; self.updatedAt = updatedAt; self.mealSlotId = mealSlotId
     }
 
     /// Snapshot of a saved food.
     static func make(from food: NutritionFood, servings: Double, on day: Date, source: EntrySource = .saved,
-                     now: Date = Date()) -> FoodEntry {
+                     mealSlotId: UUID? = nil, now: Date = Date()) -> FoodEntry {
         FoodEntry(id: UUID(), userId: food.userId, date: day.startOfDay, foodId: food.id, name: food.name,
                   servings: servings, servingLabel: food.servingLabel, perServing: food.nutrients,
-                  source: source, createdAt: now, updatedAt: now)
+                  source: source, createdAt: now, updatedAt: now, mealSlotId: mealSlotId)
     }
 
     init(from entity: CDFoodEntry) {
@@ -464,10 +467,12 @@ struct FoodEntry: NutritionRow, Identifiable, Equatable {
         source = EntrySource(rawValue: entity.source ?? "") ?? .quick
         createdAt = entity.createdAt ?? Date()
         updatedAt = entity.updatedAt ?? Date()
+        mealSlotId = entity.mealSlotId
     }
 
     func apply(to entity: CDFoodEntry) {
         entity.id = id; entity.userId = userId; entity.date = date.startOfDay; entity.foodId = foodId
+        entity.mealSlotId = mealSlotId
         entity.name = name; entity.servings = servings; entity.servingLabel = servingLabel
         entity.kcal = perServing.kcal; entity.protein = perServing.protein
         entity.carbs = perServing.carbs; entity.fat = perServing.fat
@@ -495,6 +500,7 @@ struct FoodEntry: NutritionRow, Identifiable, Equatable {
         source = EntrySource(rawValue: try c.decodeIfPresent(String.self, forKey: NutritionWireKey("source")) ?? "") ?? .quick
         createdAt = try c.decodeIfPresent(Date.self, forKey: NutritionWireKey("created_at")) ?? Date()
         updatedAt = try c.decodeIfPresent(Date.self, forKey: NutritionWireKey("updated_at")) ?? createdAt
+        mealSlotId = try c.decodeIfPresent(UUID.self, forKey: NutritionWireKey("meal_slot_id"))
     }
 
     /// Queue encoding (plain dates).
@@ -505,6 +511,8 @@ struct FoodEntry: NutritionRow, Identifiable, Equatable {
         try c.encode(id, forKey: NutritionWireKey("id"))
         try c.encode(userId, forKey: NutritionWireKey("user_id"))
         try encodeDay(date, "date", forCloud: forCloud, into: &c)
+        if let mealSlotId { try c.encode(mealSlotId, forKey: NutritionWireKey("meal_slot_id")) }
+        else { try c.encodeNil(forKey: NutritionWireKey("meal_slot_id")) }
         if let foodId { try c.encode(foodId, forKey: NutritionWireKey("food_id")) }
         else { try c.encodeNil(forKey: NutritionWireKey("food_id")) }
         try c.encode(name, forKey: NutritionWireKey("name"))

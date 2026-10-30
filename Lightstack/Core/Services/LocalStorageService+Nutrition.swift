@@ -121,6 +121,17 @@ extension LocalStorageService {
         save()
     }
 
+    /// Upserts several entries with one save.
+    func saveFoodEntries(_ entries: [FoodEntry]) {
+        guard !entries.isEmpty else { return }
+        performBatch {
+            for entry in entries {
+                let entity = foodEntryEntity(id: entry.id) ?? CDFoodEntry(context: context)
+                entry.apply(to: entity)
+            }
+        }
+    }
+
     @discardableResult
     func deleteFoodEntries(ids: Set<UUID>) -> Int {
         var count = 0

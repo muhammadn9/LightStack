@@ -4,9 +4,9 @@ import Foundation
 /// the offline queue. Daily totals are always computed from entries, never stored.
 final class NutritionRepository {
 
-    private let localStorage: LocalStorageService
-    private let offlineQueueManager: OfflineQueueManager
-    private let now: () -> Date
+    let localStorage: LocalStorageService
+    let offlineQueueManager: OfflineQueueManager
+    let now: () -> Date
 
     init(localStorage: LocalStorageService, offlineQueueManager: OfflineQueueManager, now: @escaping () -> Date = { Date() }) {
         self.localStorage = localStorage
@@ -134,10 +134,13 @@ final class NutritionRepository {
 
     /// Logs `servings` of a saved food on a local day. The entry snapshots the food's values.
     @discardableResult
-    func logFood(_ food: NutritionFood, servings: Double, on date: Date, source: EntrySource? = nil) -> FoodEntry {
+    func logFood(_ food: NutritionFood, servings: Double, on date: Date, source: EntrySource? = nil,
+                 mealSlotId: UUID? = nil) -> FoodEntry {
         let stamp = now()
         let entry = FoodEntry.make(from: food, servings: max(0, servings), on: date,
-                                   source: source ?? (food.source == .scan ? .scan : .saved), now: stamp)
+                                   source: source ?? (food.source == .scan ? .scan : .saved),
+                                   mealSlotId: mealSlotId, now: stamp)
+        queueMealSlotIfNeeded(mealSlotId)
         localStorage.saveFoodEntry(entry)
         queue(entry)
         if var stored = localStorage.fetchFood(id: food.id) {
@@ -151,13 +154,15 @@ final class NutritionRepository {
 
     /// Quick add: no saved food. Name is optional.
     @discardableResult
-    func quickAdd(userId: UUID, on date: Date, name: String? = nil, nutrients: NutrientValues, servings: Double = 1) -> FoodEntry {
+    func quickAdd(userId: UUID, on date: Date, name: String? = nil, nutrients: NutrientValues, servings: Double = 1,
+                  mealSlotId: UUID? = nil) -> FoodEntry {
         let stamp = now()
         let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let entry = FoodEntry(id: UUID(), userId: userId, date: date.startOfDay, foodId: nil,
                               name: trimmed.isEmpty ? "Quick add" : trimmed, servings: max(0, servings),
                               servingLabel: "serving", perServing: nutrients, source: .quick,
-                              createdAt: stamp, updatedAt: stamp)
+                              createdAt: stamp, updatedAt: stamp, mealSlotId: mealSlotId)
+        queueMealSlotIfNeeded(mealSlotId)
         localStorage.saveFoodEntry(entry)
         queue(entry)
         return entry
@@ -169,6 +174,7 @@ final class NutritionRepository {
         var saved = entry
         saved.date = entry.date.startOfDay
         saved.updatedAt = now()
+        queueMealSlotIfNeeded(saved.mealSlotId)
         localStorage.saveFoodEntry(saved)
         queue(saved)
         return saved

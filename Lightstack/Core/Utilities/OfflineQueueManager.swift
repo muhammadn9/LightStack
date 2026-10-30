@@ -31,6 +31,10 @@ enum QueuedOperationType: String, Codable {
     case deleteFood
     case upsertFoodEntry
     case deleteFoodEntry
+    case upsertMealSlot
+    case upsertWaterEntry
+    case deleteWaterEntry
+    case upsertDayNote
     case insertTombstone
 }
 
@@ -46,6 +50,9 @@ enum TombstoneEntity: String, Codable {
     case nutritionTarget = "nutrition_target"
     case food
     case foodEntry = "food_entry"
+    case mealSlot = "meal_slot"
+    case waterEntry = "water_entry"
+    case dayNote = "day_note"
 }
 
 /// Payload for `.insertTombstone`: these records were deleted on this device.
@@ -69,7 +76,7 @@ struct DeleteRestDayPayload: Codable {
     let date: Date
 }
 
-/// Payload for `.deleteNutritionTarget`, `.deleteFood` and `.deleteFoodEntry`.
+/// Payload for `.deleteNutritionTarget`, `.deleteFood`, `.deleteFoodEntry` and `.deleteWaterEntry`.
 struct DeleteNutritionRecordPayload: Codable {
     let id: UUID
 }
@@ -134,6 +141,10 @@ protocol RemoteWriting: Sendable {
     func deleteFood(id: UUID) async throws
     func upsertFoodEntry(_ entry: FoodEntry) async throws
     func deleteFoodEntry(id: UUID) async throws
+    func upsertMealSlot(_ slot: MealSlot) async throws
+    func upsertWaterEntry(_ entry: WaterEntry) async throws
+    func deleteWaterEntry(id: UUID) async throws
+    func upsertDayNote(_ note: DayNote) async throws
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws
 }
 
@@ -145,6 +156,10 @@ extension RemoteWriting {
     func deleteFood(id: UUID) async throws {}
     func upsertFoodEntry(_ entry: FoodEntry) async throws {}
     func deleteFoodEntry(id: UUID) async throws {}
+    func upsertMealSlot(_ slot: MealSlot) async throws {}
+    func upsertWaterEntry(_ entry: WaterEntry) async throws {}
+    func deleteWaterEntry(id: UUID) async throws {}
+    func upsertDayNote(_ note: DayNote) async throws {}
 }
 
 extension SupabaseService: RemoteWriting, @unchecked Sendable {}
@@ -949,6 +964,7 @@ actor OfflineQueueManager {
         var nutritionTargets = Set<UUID>()
         var foods = Set<UUID>()
         var foodEntries = Set<UUID>()
+        var waterEntries = Set<UUID>()
     }
 
     /// Drops the owner's pending UPSERT operations for records that were deleted elsewhere, so they
@@ -1022,6 +1038,8 @@ actor OfflineQueueManager {
                         if let data = try? encoder.encode(m) { op.payload = data; changed += 1 }
                     }
                 }
+            case .upsertWaterEntry:
+                if let m = try? decoder.decode(WaterEntry.self, from: op.payload), deleted.waterEntries.contains(m.id) { changed += 1; continue }
             default:
                 break
             }
@@ -1316,11 +1334,13 @@ actor OfflineQueueManager {
             .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession,
             .upsertRestDay,
             // Foods before the entries that point at them.
-            .upsertNutritionTarget, .upsertFood, .upsertFoodEntry,
+            .upsertNutritionTarget, .upsertFood,
+            // Meal slots before the entries that point at them.
+            .upsertMealSlot, .upsertFoodEntry, .upsertWaterEntry, .upsertDayNote,
             // Delete operations should be last, tombstones after the deletes they record.
             .deleteWorkout, .deleteSet, .deleteExercise, .deleteMonthPlan, .deleteRestDay,
             .deletePersonalRecords,
-            .deleteFoodEntry, .deleteFood, .deleteNutritionTarget,
+            .deleteFoodEntry, .deleteFood, .deleteNutritionTarget, .deleteWaterEntry,
             .insertTombstone
         ]
         var rank: [QueuedOperationType: Int] = [:]
@@ -1421,6 +1441,14 @@ actor OfflineQueueManager {
             try await remote.upsertFoodEntry(try decoder.decode(FoodEntry.self, from: op.payload))
         case .deleteFoodEntry:
             try await remote.deleteFoodEntry(id: try decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload).id)
+        case .upsertMealSlot:
+            try await remote.upsertMealSlot(try decoder.decode(MealSlot.self, from: op.payload))
+        case .upsertWaterEntry:
+            try await remote.upsertWaterEntry(try decoder.decode(WaterEntry.self, from: op.payload))
+        case .deleteWaterEntry:
+            try await remote.deleteWaterEntry(id: try decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload).id)
+        case .upsertDayNote:
+            try await remote.upsertDayNote(try decoder.decode(DayNote.self, from: op.payload))
         case .insertTombstone:
             let model = try decoder.decode(TombstonePayload.self, from: op.payload)
             guard let userId = model.userId ?? op.ownerUserId else {
@@ -1556,6 +1584,9 @@ struct PendingChangeIndex {
     var nutritionTargets = Set<UUID>()
     var foods = Set<UUID>()
     var foodEntries = Set<UUID>()
+    var mealSlots = Set<UUID>()
+    var waterEntries = Set<UUID>()
+    var dayNotes = Set<UUID>()
     /// Tombstones queued here but not yet uploaded.
     var tombstones: [TombstoneEntity: Set<UUID>] = [:]
 
@@ -1638,6 +1669,14 @@ struct PendingChangeIndex {
             if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { foods.insert(model.id) }
         case .deleteFoodEntry:
             if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { foodEntries.insert(model.id) }
+        case .upsertMealSlot:
+            if let model = try? decoder.decode(MealSlot.self, from: op.payload) { mealSlots.insert(model.id) }
+        case .upsertWaterEntry:
+            if let model = try? decoder.decode(WaterEntry.self, from: op.payload) { waterEntries.insert(model.id) }
+        case .deleteWaterEntry:
+            if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { waterEntries.insert(model.id) }
+        case .upsertDayNote:
+            if let model = try? decoder.decode(DayNote.self, from: op.payload) { dayNotes.insert(model.id) }
         case .insertTombstone:
             if let model = try? decoder.decode(TombstonePayload.self, from: op.payload) {
                 tombstones[model.entity, default: []].formUnion(model.recordIds)

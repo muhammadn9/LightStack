@@ -71,6 +71,9 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     private var _nutritionTargets: [UUID: NutritionTarget] = [:]
     private var _foods: [UUID: NutritionFood] = [:]
     private var _foodEntries: [UUID: FoodEntry] = [:]
+    private var _mealSlots: [UUID: MealSlot] = [:]
+    private var _waterEntries: [UUID: WaterEntry] = [:]
+    private var _dayNotes: [UUID: DayNote] = [:]
     private var _tombstones: [String] = []
     private var _profiles: [UUID: UserProfile] = [:]
     private var _summaries: [String: AIContextSummary] = [:]
@@ -92,6 +95,9 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     var nutritionTargets: [UUID: NutritionTarget] { locked { _nutritionTargets } }
     var foods: [UUID: NutritionFood] { locked { _foods } }
     var foodEntries: [UUID: FoodEntry] { locked { _foodEntries } }
+    var mealSlots: [UUID: MealSlot] { locked { _mealSlots } }
+    var waterEntries: [UUID: WaterEntry] { locked { _waterEntries } }
+    var dayNotes: [UUID: DayNote] { locked { _dayNotes } }
     /// "entity:recordId" for every tombstone written.
     var tombstones: [String] { locked { _tombstones } }
     var renames: [(ids: [UUID], name: String)] { locked { _renames } }
@@ -235,11 +241,28 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
         try await record(.upsertFoodEntry, entry.name)
         // Like the foreign key: an entry pointing at a food that is not in the "cloud" is refused.
         if let foodId = entry.foodId, locked({ _foods[foodId] == nil }) { throw QueueTestError.postgres("23503") }
+        if let slotId = entry.mealSlotId, locked({ _mealSlots[slotId] == nil }) { throw QueueTestError.postgres("23503") }
         locked { _foodEntries[entry.id] = entry }
     }
     func deleteFoodEntry(id: UUID) async throws {
         try await record(.deleteFoodEntry, "")
         locked { _foodEntries[id] = nil }
+    }
+    func upsertMealSlot(_ slot: MealSlot) async throws {
+        try await record(.upsertMealSlot, slot.name)
+        locked { _mealSlots[slot.id] = slot }
+    }
+    func upsertWaterEntry(_ entry: WaterEntry) async throws {
+        try await record(.upsertWaterEntry, "")
+        locked { _waterEntries[entry.id] = entry }
+    }
+    func deleteWaterEntry(id: UUID) async throws {
+        try await record(.deleteWaterEntry, "")
+        locked { _waterEntries[id] = nil }
+    }
+    func upsertDayNote(_ note: DayNote) async throws {
+        try await record(.upsertDayNote, "")
+        locked { _dayNotes[note.id] = note }
     }
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws {
         try await record(.insertTombstone, entity)
@@ -281,6 +304,9 @@ extension FakeRemote {
     func seedNutritionTarget(_ t: NutritionTarget) { lock.lock(); _nutritionTargets[t.id] = t; lock.unlock() }
     func seedFood(_ f: NutritionFood) { lock.lock(); _foods[f.id] = f; lock.unlock() }
     func seedFoodEntry(_ e: FoodEntry) { lock.lock(); _foodEntries[e.id] = e; lock.unlock() }
+    func seedMealSlot(_ m: MealSlot) { lock.lock(); _mealSlots[m.id] = m; lock.unlock() }
+    func seedWaterEntry(_ w: WaterEntry) { lock.lock(); _waterEntries[w.id] = w; lock.unlock() }
+    func seedDayNote(_ n: DayNote) { lock.lock(); _dayNotes[n.id] = n; lock.unlock() }
     func seedTombstone(_ entity: TombstoneEntity, _ id: UUID) {
         lock.lock(); _tombstones.append("\(entity.rawValue):\(id.uuidString)"); lock.unlock()
     }
@@ -353,6 +379,25 @@ extension FakeRemote {
                 .sorted { $0.date != $1.date ? $0.date > $1.date : $0.id.uuidString < $1.id.uuidString }
             return Array(ordered.dropFirst(offset).prefix(limit))
         }
+    }
+
+    func fetchMealSlots(userId: UUID) async throws -> [MealSlot] {
+        try await read("fetchMealSlots")
+        return lock.withLock { _mealSlots.values.filter { $0.userId == userId } }
+    }
+
+    func fetchWaterEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [WaterEntry] {
+        try await read("fetchWaterEntriesPage")
+        return lock.withLock {
+            let ordered = _waterEntries.values.filter { $0.userId == userId }
+                .sorted { $0.date != $1.date ? $0.date > $1.date : $0.id.uuidString < $1.id.uuidString }
+            return Array(ordered.dropFirst(offset).prefix(limit))
+        }
+    }
+
+    func fetchDayNotes(userId: UUID) async throws -> [DayNote] {
+        try await read("fetchDayNotes")
+        return lock.withLock { _dayNotes.values.filter { $0.userId == userId } }
     }
 
     func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone] {
