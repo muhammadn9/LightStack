@@ -358,6 +358,10 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         )
     }
 
+    @MainActor func makeNutritionViewModel() -> NutritionViewModel {
+        NutritionViewModel(repository: nutritionRepository, userIdProvider: { [authService] in authService.currentUser()?.userId })
+    }
+
     func makeMonthPlanViewModel() -> MonthPlanViewModel {
         MonthPlanViewModel(monthPlanRepository: monthPlanRepository)
     }

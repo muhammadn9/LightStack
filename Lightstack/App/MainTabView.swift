@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Main app container: native bottom tab bar (Today · History · Progress · Profile).
+/// Main app container: native bottom tab bar (Today · History · Progress · Profile · Nutrition).
 struct MainTabView: View {
     @EnvironmentObject var environment: AppEnvironment
     /// 0 Today, 1 History, 2 Progress, 3 Profile (4 Month, only when its flag is on).
@@ -43,6 +43,12 @@ struct MainTabView: View {
                 }
                 .tabItem { Label("Month", systemImage: "calendar") }
                 .tag(4)
+            }
+
+            if FeatureFlags.nutritionTabEnabled {
+                NutritionTabView()
+                    .tabItem { Label("Nutrition", systemImage: "fork.knife") }
+                    .tag(5)
             }
         }
         .tint(AppTheme.accent)
