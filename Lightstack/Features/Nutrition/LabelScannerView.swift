@@ -5,6 +5,8 @@ import VisionKit
 /// Scan sheet: live camera text capture, then the review form. Camera only (no photo-library import).
 struct ScanFlowView: View {
     @ObservedObject var viewModel: NutritionViewModel
+    var mealSlotId: UUID?
+    var onLogged: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var parsed: ParsedLabel?
 
@@ -21,7 +23,10 @@ struct ScanFlowView: View {
             }
             .navigationDestination(isPresented: Binding(get: { parsed != nil }, set: { if !$0 { parsed = nil } })) {
                 if let parsed {
-                    FoodReviewView(viewModel: viewModel, parsed: parsed) { dismiss() }
+                    FoodReviewView(viewModel: viewModel, mealSlotId: mealSlotId, parsed: parsed) {
+                        onLogged?()
+                        dismiss()
+                    }
                 }
             }
         }

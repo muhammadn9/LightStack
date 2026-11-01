@@ -53,15 +53,19 @@ struct WorkoutSetupView: View {
             VStack(alignment: .leading, spacing: 18) {
 
                 // Greeting + date
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(greeting)
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                        .accessibilityIdentifier("today.greeting")
-                    Text(dateText)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(AppTheme.textSecondary)
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(greeting)
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                            .accessibilityIdentifier("today.greeting")
+                        Text(dateText)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    Spacer(minLength: 8)
+                    SideSwitchButton()
                 }
                 .padding(.top, 4)
 

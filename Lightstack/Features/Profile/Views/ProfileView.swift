@@ -118,6 +118,8 @@ struct ProfileView: View {
                 }
                 .accessibilityLabel("Settings")
                 .accessibilityIdentifier("profile.settings")
+
+                SideSwitchButton()
             }
             .padding(.bottom, 12)
 

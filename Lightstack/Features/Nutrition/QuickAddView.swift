@@ -3,6 +3,9 @@ import SwiftUI
 /// Log calories and macros without saving a food. Name is optional.
 struct QuickAddView: View {
     @ObservedObject var viewModel: NutritionViewModel
+    /// The meal to log into (nil = no meal).
+    var mealSlotId: UUID?
+    var onAdded: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
@@ -54,7 +57,8 @@ struct QuickAddView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         guard let nutrients else { return }
-                        viewModel.quickAdd(name: name, nutrients: nutrients)
+                        viewModel.quickAdd(name: name, nutrients: nutrients, mealSlotId: mealSlotId)
+                        onAdded?()
                         dismiss()
                     }
                     .disabled(nutrients == nil)

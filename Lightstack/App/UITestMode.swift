@@ -85,6 +85,9 @@ enum UITestMode {
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
         defaults.set(0, forKey: "selectedTab")
+        defaults.set("gym", forKey: "appSide")
+        defaults.removeObject(forKey: "nutritionSelectedTab")
+        defaults.removeObject(forKey: WaterUnit.storageKey)
         defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
         CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
@@ -110,12 +113,29 @@ enum UITestMode {
         )
     }
 
+    /// A few saved foods so the add-food flow has something to pick in UI tests.
+    private static func seedNutritionFoods(localStorage: LocalStorageService) {
+        let stamp = Date()
+        func food(_ name: String, _ label: String, kcal: Double, p: Double, c: Double, f: Double, recent: Bool) -> NutritionFood {
+            var item = NutritionFood.make(userId: userId, name: name, servingLabel: label,
+                                          nutrients: NutrientValues(kcal: kcal, protein: p, carbs: c, fat: f), now: stamp)
+            if recent { item.lastUsedAt = stamp }
+            return item
+        }
+        [
+            food("Egg", "2 large egg", kcal: 140, p: 12, c: 0, f: 10, recent: true),
+            food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true),
+            food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false)
+        ].forEach { localStorage.saveFood($0) }
+    }
+
     /// Writes the profile and one past Push workout when the store has no profile yet.
     static func seedIfNeeded(localStorage: LocalStorageService) {
         guard isActive, !freshInstall, localStorage.fetchProfile(userId: userId) == nil else { return }
         localStorage.saveProfile(makeProfile())
         // Same deterministic default meals the app seeds on first use (Breakfast, Lunch, Dinner, Snack).
         localStorage.saveMealSlots(MealSlot.defaults(userId: userId))
+        seedNutritionFoods(localStorage: localStorage)
 
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
         var workout = Workout.create(userId: userId, workoutType: "Push",

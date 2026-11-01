@@ -70,6 +70,9 @@ enum ServingGuess {
 /// Review form for a scanned (or hand-entered) food. Everything is editable; nothing is saved until Save.
 struct FoodReviewView: View {
     @ObservedObject var viewModel: NutritionViewModel
+    var mealSlotId: UUID?
+    /// Whether "Log it now" starts switched on (off when only saving to the Kitchen).
+    var logByDefault = true
     let parsed: ParsedLabel
     let onSaved: () -> Void
 
@@ -224,6 +227,7 @@ struct FoodReviewView: View {
     private func load() {
         guard !loaded else { return }
         loaded = true
+        logNow = logByDefault
         name = parsed.name ?? ""
         let guess = ServingGuess.make(from: parsed)
         servingLabel = parsed.servingLabel.isEmpty || parsed.servingIsUncertain
@@ -260,7 +264,7 @@ struct FoodReviewView: View {
                                       servingUnit: servingUnit.rawValue, servingAmount: amount, servingGrams: grams,
                                       nutrients: nutrients, source: .scan)
         let toLog = logNow ? (NutritionFormat.parse(servingsToLog) ?? 1) : nil
-        viewModel.saveFood(food, logServings: toLog)
+        viewModel.saveFood(food, logServings: toLog, mealSlotId: mealSlotId)
         onSaved()
     }
 }
