@@ -13,6 +13,24 @@ protocol RemoteReading: Sendable {
     /// Every tombstone for the user. Deliberately not "since a cursor": a tombstone keeps the
     /// device's deletion time, and a device that was offline uploads it days later.
     func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone]
+    func fetchNutritionTargets(userId: UUID) async throws -> [NutritionTarget]
+    func fetchFoods(userId: UUID) async throws -> [NutritionFood]
+    /// One page of diary entries (newest day first).
+    func fetchFoodEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [FoodEntry]
+    func fetchMealSlots(userId: UUID) async throws -> [MealSlot]
+    /// One page of water logs (newest day first).
+    func fetchWaterEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [WaterEntry]
+    func fetchDayNotes(userId: UUID) async throws -> [DayNote]
+}
+
+/// Nutrition reads default to "nothing in the cloud" so fakes that predate nutrition keep compiling.
+extension RemoteReading {
+    func fetchNutritionTargets(userId: UUID) async throws -> [NutritionTarget] { [] }
+    func fetchFoods(userId: UUID) async throws -> [NutritionFood] { [] }
+    func fetchFoodEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [FoodEntry] { [] }
+    func fetchMealSlots(userId: UUID) async throws -> [MealSlot] { [] }
+    func fetchWaterEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [WaterEntry] { [] }
+    func fetchDayNotes(userId: UUID) async throws -> [DayNote] { [] }
 }
 
 extension SupabaseService: RemoteReading {
@@ -69,6 +87,106 @@ extension SupabaseService: RemoteReading {
                 .eq("user_id", value: userId.uuidString)
                 .order("entity", ascending: true)
                 .order("record_id", ascending: true)
+                .range(from: offset, to: offset + Self.readPageSize - 1)
+                .execute()
+                .value
+            all.append(contentsOf: page)
+            if page.count < Self.readPageSize { return all }
+            offset += page.count
+        }
+    }
+
+    func fetchNutritionTargets(userId: UUID) async throws -> [NutritionTarget] {
+        var all: [NutritionTarget] = []
+        var offset = 0
+        while true {
+            let page: [NutritionTarget] = try await client
+                .from("nutrition_targets")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("effective_date", ascending: false)
+                .order("id", ascending: true)
+                .range(from: offset, to: offset + Self.readPageSize - 1)
+                .execute()
+                .value
+            all.append(contentsOf: page)
+            if page.count < Self.readPageSize { return all }
+            offset += page.count
+        }
+    }
+
+    func fetchFoods(userId: UUID) async throws -> [NutritionFood] {
+        var all: [NutritionFood] = []
+        var offset = 0
+        while true {
+            let page: [NutritionFood] = try await client
+                .from("foods")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("created_at", ascending: false)
+                .order("id", ascending: true)
+                .range(from: offset, to: offset + Self.readPageSize - 1)
+                .execute()
+                .value
+            all.append(contentsOf: page)
+            if page.count < Self.readPageSize { return all }
+            offset += page.count
+        }
+    }
+
+    func fetchFoodEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [FoodEntry] {
+        try await client
+            .from("food_entries")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .order("date", ascending: false)
+            .order("id", ascending: true)
+            .range(from: offset, to: offset + limit - 1)
+            .execute()
+            .value
+    }
+
+    func fetchMealSlots(userId: UUID) async throws -> [MealSlot] {
+        var all: [MealSlot] = []
+        var offset = 0
+        while true {
+            let page: [MealSlot] = try await client
+                .from("meal_slots")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("sort_order", ascending: true)
+                .order("id", ascending: true)
+                .range(from: offset, to: offset + Self.readPageSize - 1)
+                .execute()
+                .value
+            all.append(contentsOf: page)
+            if page.count < Self.readPageSize { return all }
+            offset += page.count
+        }
+    }
+
+    func fetchWaterEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [WaterEntry] {
+        try await client
+            .from("water_entries")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .order("date", ascending: false)
+            .order("id", ascending: true)
+            .range(from: offset, to: offset + limit - 1)
+            .execute()
+            .value
+    }
+
+    func fetchDayNotes(userId: UUID) async throws -> [DayNote] {
+        var all: [DayNote] = []
+        var offset = 0
+        while true {
+            let page: [DayNote] = try await client
+                .from("day_notes")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("date", ascending: false)
+                .order("id", ascending: true)
                 .range(from: offset, to: offset + Self.readPageSize - 1)
                 .execute()
                 .value

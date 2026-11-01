@@ -34,7 +34,7 @@ targets:
         INFOPLIST_FILE: Lightstack/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.muhammadn9.lightstack
         MARKETING_VERSION: "1.0.0"
-        CURRENT_PROJECT_VERSION: 52
+        CURRENT_PROJECT_VERSION: 53
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
         # iPhone only. The UI is portrait-locked, and App Store validation
@@ -81,7 +81,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.muhammadn9.lightstack.widgets
         # Same line format as the app's: scripts/testflight-release.sh bumps both with one sed.
-        CURRENT_PROJECT_VERSION: 52
+        CURRENT_PROJECT_VERSION: 53
         SWIFT_VERSION: "5.9"
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"

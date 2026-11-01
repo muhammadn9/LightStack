@@ -16,4 +16,7 @@ enum FeatureFlags {
     /// is untouched. Gates: the Month entry in NotebookTabRow and its page in
     /// MainTabView.
     static let monthTabEnabled: Bool = false
+
+    /// Nutrition tab (targets, quick add, label scan, food diary). On by default.
+    static let nutritionTabEnabled: Bool = true
 }
