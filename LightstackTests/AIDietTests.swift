@@ -220,4 +220,41 @@ final class AIDietTests: XCTestCase {
             XCTAssertNil(parse(text), text)
         }
     }
+
+    // MARK: - Goal intent
+
+    private let goalNames = ["Barbell Bench Press", "Dumbbell Bench Press", "Back Squat", "Cable Triceps Pushdown"]
+
+    private func goal(_ text: String, preferred: [String] = []) -> GoalIntent? {
+        LocalChatCommandParser.parseGoal(text, knownNames: goalNames, preferredNames: preferred)
+    }
+
+    func testGoalIntentFromTheThreePhrasings() {
+        let expected = GoalIntent(exerciseName: "Barbell Bench Press", weight: 225, reps: 1)
+        XCTAssertEqual(goal("225x1 bench"), expected)
+        XCTAssertEqual(goal("hit 225 on bench"), expected)
+        XCTAssertEqual(goal("how do I get to 225 bench"), expected)
+        XCTAssertEqual(goal("How do I get to 225 on bench?"), expected)
+        XCTAssertEqual(goal("how do i get my bench to 225"), expected)
+        XCTAssertEqual(goal("I want to hit 225 for bench"), expected)
+    }
+
+    func testGoalIntentReadsRepsAndResolvesTheLift() {
+        XCTAssertEqual(goal("225 x 5 on bench press"),
+                       GoalIntent(exerciseName: "Barbell Bench Press", weight: 225, reps: 5))
+        XCTAssertEqual(goal("hit 315x3 squats"), GoalIntent(exerciseName: "Back Squat", weight: 315, reps: 3))
+        XCTAssertEqual(goal("hit 62.5 lbs on cable triceps pushdown")?.weight, 62.5)
+        // Logged lifts beat the catalog when several names fit.
+        XCTAssertEqual(goal("225x1 bench", preferred: ["Smith Machine Flat Bench Press"])?.exerciseName,
+                       "Smith Machine Flat Bench Press")
+        // Timing words are not part of the lift.
+        XCTAssertEqual(goal("hit 225 on bench by december")?.exerciseName, "Barbell Bench Press")
+    }
+
+    func testChatThatIsNotAGoalIsLeftAlone() {
+        for text in ["how was my bench today?", "remove bench", "add a set to bench", "can I go heavier on bench",
+                     "hit 5 on bench", "225x1 deadlift", "do 3 sets of bench", "what is my bench max"] {
+            XCTAssertNil(goal(text), text)
+        }
+    }
 }

@@ -58,6 +58,34 @@ final class CoachChatTests: LightstackUITestCase {
         shot("coach-change-on-rows")
     }
 
+    /// Goals via chat: setup -> Talk to the coach -> ask for a lift goal -> agree -> Save goal.
+    /// The fake AI proposes a plan first and writes the goal block only after "agree".
+    func testGoalFromSetupChatCanBeSaved() throws {
+        launchApp()
+        tap(app.buttons["talkToCoachButton"])
+        let field = chatInput
+        waitFor(field)
+
+        type("225x1 bench", into: field)
+        let proposal = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Does that plan work'")).firstMatch
+        tap(app.buttons["chatSendButton"], until: proposal)
+        waitFor(proposal, "The coach never answered the goal")
+        XCTAssertFalse(app.buttons["coach.goalCard.save"].exists, "A goal card appeared before the athlete agreed")
+
+        type("I agree", into: chatInput)
+        let save = app.buttons["coach.goalCard.save"]
+        tap(app.buttons["chatSendButton"], until: save)
+        waitFor(app.descendants(matching: .any)["coach.goalCard"], "No goal card")
+        shot("goal-card")
+
+        tap(save)
+        let saved = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Saved:'")).firstMatch
+        waitFor(saved, "The goal was not confirmed in the chat")
+        XCTAssertTrue(app.buttons["coach.goals.toggle"].waitForExistence(timeout: 5), "Saved goal is not listed")
+        XCTAssertTrue(app.buttons["coach.buildPlan"].exists, "Build today's plan is missing in planning mode")
+        shot("goal-saved")
+    }
+
     /// "remove <exercise>" is handled on the phone: the confirmation sheet appears with a
     /// one-line reply and the fake AI (whose canned chat text is "Sounds good...") is never asked.
     func testRemoveCommandNeedsNoAI() throws {

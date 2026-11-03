@@ -5,6 +5,9 @@ struct WorkoutSetupView: View {
     @EnvironmentObject var environment: AppEnvironment
     @ObservedObject var viewModel: WorkoutSetupViewModel
     @ObservedObject var todayViewModel: TodayViewModel
+    /// When provided, "Talk to the coach" opens the chat before any plan exists.
+    var chatViewModel: CoachChatViewModel? = nil
+    @State private var showCoachChat = false
     @State private var showManualEntry = false
     @State private var lastSessionMatch: Workout?
     @State private var snapshot = ProgressSnapshot()
@@ -170,6 +173,20 @@ struct WorkoutSetupView: View {
                     .disabled(viewModel.selectedWorkoutType.isEmpty)
                     .opacity(viewModel.selectedWorkoutType.isEmpty ? 0.55 : 1)
 
+                    if let chatViewModel, let userId {
+                        Button {
+                            chatViewModel.configurePlanning(userId: userId)
+                            showCoachChat = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "text.bubble")
+                                Text("Talk to the coach")
+                            }
+                        }
+                        .buttonStyle(SetupSecondaryButtonStyle())
+                        .accessibilityIdentifier("talkToCoachButton")
+                    }
+
                     Button(action: { showManualEntry = true }) {
                         HStack(spacing: 8) {
                             Image(systemName: "pencil.and.list.clipboard")
@@ -226,6 +243,16 @@ struct WorkoutSetupView: View {
                     manualEntryDate = date
                 }
                 .presentationDetents([.medium, .large])
+            }
+        }
+        .sheet(isPresented: $showCoachChat) {
+            if let chatViewModel {
+                CoachChatView(
+                    viewModel: chatViewModel,
+                    todayViewModel: todayViewModel,
+                    onBuildPlan: { notes in buildPlan(withChatNotes: notes) },
+                    canBuildPlan: !viewModel.selectedWorkoutType.isEmpty
+                )
             }
         }
         .sheet(isPresented: $showManualEntry, onDismiss: { manualEntryDate = nil }) {
@@ -359,6 +386,18 @@ struct WorkoutSetupView: View {
         case .strength: return "Strength"
         case .maintenance: return "Maintenance"
         }
+    }
+
+    /// The plan request with what was agreed in the chat as the session notes (at most 300 characters).
+    private func buildPlan(withChatNotes notes: String) {
+        let agreed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !agreed.isEmpty {
+            let typed = viewModel.additionalNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let merged = typed.isEmpty || agreed.contains(typed) ? agreed : "\(typed); \(agreed)"
+            viewModel.additionalNotes = CoachChatViewModel.truncated(merged, CoachChatViewModel.planNotesLimit)
+        }
+        showCoachChat = false
+        submitWorkout()
     }
 
     private func submitWorkout() {

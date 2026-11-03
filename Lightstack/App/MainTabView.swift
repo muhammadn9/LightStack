@@ -119,7 +119,7 @@ private struct TodayTabContent: View {
                     switch viewModel.phase {
                     case .setup:
                         if let setupVM = setupViewModel {
-                            WorkoutSetupView(viewModel: setupVM, todayViewModel: viewModel)
+                            WorkoutSetupView(viewModel: setupVM, todayViewModel: viewModel, chatViewModel: chatViewModel)
                         }
                     case .generating:
                         generatingView
@@ -138,7 +138,7 @@ private struct TodayTabContent: View {
                             )
                         }
                     case .postWorkout:
-                        PostWorkoutView(todayViewModel: viewModel)
+                        PostWorkoutView(todayViewModel: viewModel, chatViewModel: chatViewModel)
                     }
                 }
             }
