@@ -120,7 +120,11 @@ enum ExerciseNameResolver {
         let cleaned = stripped.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
             .trimmingCharacters(in: CharacterSet(charactersIn: " -,:;"))
         guard !cleaned.isEmpty else { return (original, false) }
-        return (cleaned, cleaned != original)
+        // Compare against the whitespace-collapsed original so extra spaces alone
+        // never count as "per arm" wording.
+        let collapsed = original.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+            .trimmingCharacters(in: CharacterSet(charactersIn: " -,:;"))
+        return (cleaned, cleaned != collapsed)
     }
 
     /// Maps an AI-proposed name onto the athlete's existing spelling, in order:
