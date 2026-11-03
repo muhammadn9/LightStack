@@ -285,4 +285,45 @@ final class NutritionTests: LightstackUITestCase {
         waitFor(app.buttons["settings.meal.Breakfast"])
         shot("60-meal-settings")
     }
+
+    // MARK: - Owner-reported bugs (build 54)
+
+    func testManualNewFoodShowsNoScanWarnings() throws {
+        launchApp(colorScheme: "light")
+        openNutrition()
+        tap(app.buttons["journal.plus"])
+        tap(app.buttons["addmenu.createFood"])
+        waitFor(app.textFields["nutrition.review.name"])
+        shot("70-manual-new-food")
+        XCTAssertFalse(app.staticTexts["Check the scan"].exists)
+        XCTAssertFalse(app.staticTexts["No nutrition information found"].exists)
+        XCTAssertFalse(app.staticTexts["Some values were not read. Fill in the highlighted fields."].exists)
+        XCTAssertFalse(any("nutrition.review.flag.serving").exists)
+        XCTAssertTrue(app.navigationBars["New food"].exists)
+    }
+
+    private func assertRingsDoNotOverlap() {
+        let ids = ["protein", "carbs", "fat", "calories"]
+        let frames = ids.map { waitFor(any("journal.ring.\($0)")).frame }
+        for a in 0..<frames.count {
+            for b in (a + 1)..<frames.count {
+                XCTAssertFalse(frames[a].intersects(frames[b]), "\(ids[a]) overlaps \(ids[b]): \(frames[a]) \(frames[b])")
+            }
+        }
+    }
+
+    func testJournalRingsDoNotOverlap() throws {
+        launchApp(colorScheme: "light")
+        openNutrition()
+        assertRingsDoNotOverlap()
+        shot("71-rings-default")
+    }
+
+    func testJournalRingsDoNotOverlapAtLargeTextSize() throws {
+        launchApp(colorScheme: "light",
+                  extraArguments: ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"])
+        openNutrition()
+        assertRingsDoNotOverlap()
+        shot("72-rings-large-text")
+    }
 }

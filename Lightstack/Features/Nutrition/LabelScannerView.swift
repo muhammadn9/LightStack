@@ -9,12 +9,13 @@ struct ScanFlowView: View {
     var onLogged: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var parsed: ParsedLabel?
+    @State private var enteredManually = false
 
     var body: some View {
         NavigationStack {
             LabelScannerView(
-                onUse: { lines in parsed = NutritionLabelParser.parse(lines: lines) },
-                onManual: { parsed = NutritionLabelParser.parse(text: "") }
+                onUse: { lines in enteredManually = false; parsed = NutritionLabelParser.parse(lines: lines) },
+                onManual: { enteredManually = true; parsed = NutritionLabelParser.parse(text: "") }
             )
             .navigationTitle("Scan label")
             .navigationBarTitleDisplayMode(.inline)
@@ -23,7 +24,7 @@ struct ScanFlowView: View {
             }
             .navigationDestination(isPresented: Binding(get: { parsed != nil }, set: { if !$0 { parsed = nil } })) {
                 if let parsed {
-                    FoodReviewView(viewModel: viewModel, mealSlotId: mealSlotId, parsed: parsed) {
+                    FoodReviewView(viewModel: viewModel, mealSlotId: mealSlotId, parsed: parsed, isManualEntry: enteredManually) {
                         onLogged?()
                         dismiss()
                     }

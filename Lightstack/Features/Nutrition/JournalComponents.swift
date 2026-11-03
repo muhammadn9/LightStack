@@ -109,8 +109,9 @@ struct MacroRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(AppTheme.macroTint(color), lineWidth: 9)
+            Circle().strokeBorder(AppTheme.macroTint(color), lineWidth: 9)
             Circle()
+                .inset(by: 4.5)
                 .trim(from: 0, to: min(1, max(0, progress)))
                 .stroke(color, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                 .rotationEffect(.degrees(-90))
@@ -120,9 +121,11 @@ struct MacroRing: View {
                 Text(secondary).font(.caption2).foregroundStyle(AppTheme.textSecondary)
                     .minimumScaleFactor(0.7).lineLimit(1)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
         }
-        .frame(width: size, height: size)
+        // Shrinks to fit a narrow column (never wider than `size`) and stays circular.
+        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: size, maxHeight: size)
     }
 }
 

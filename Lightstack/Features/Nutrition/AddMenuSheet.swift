@@ -175,7 +175,7 @@ struct CreateFoodView: View {
     var body: some View {
         NavigationStack {
             FoodReviewView(viewModel: viewModel, mealSlotId: mealSlotId, logByDefault: logByDefault,
-                           parsed: NutritionLabelParser.parse(text: "")) {
+                           parsed: NutritionLabelParser.parse(text: ""), isManualEntry: true) {
                 onLogged?()
                 dismiss()
             }

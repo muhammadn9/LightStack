@@ -74,6 +74,8 @@ struct FoodReviewView: View {
     /// Whether "Log it now" starts switched on (off when only saving to the Kitchen).
     var logByDefault = true
     let parsed: ParsedLabel
+    /// True when the user types the food in by hand: no scan happened, so no scan warnings or "missing" highlights.
+    var isManualEntry = false
     let onSaved: () -> Void
 
     @State private var name = ""
@@ -99,13 +101,14 @@ struct FoodReviewView: View {
 
     private func flagged(_ n: Nutrient) -> Bool {
         let text = texts[n] ?? ""
+        if isManualEntry { return false }
         if Self.macroOrder.contains(n), text.trimmingCharacters(in: .whitespaces).isEmpty { return true }
         guard let field = parsed.fields[n], field.needsReview else { return false }
         return text == initial[n]
     }
 
     private var servingFlagged: Bool {
-        guard parsed.servingIsUncertain || parsed.servingLabel.isEmpty else { return false }
+        guard !isManualEntry, parsed.servingIsUncertain || parsed.servingLabel.isEmpty else { return false }
         return servingAmount == NutritionFormat.field(ServingGuess.make(from: parsed).amount)
             && servingUnit == ServingGuess.make(from: parsed).unit
     }
@@ -120,7 +123,7 @@ struct FoodReviewView: View {
 
     var body: some View {
         Form {
-            if !parsed.warnings.isEmpty || !parsed.missingRequired.isEmpty {
+            if !isManualEntry, !parsed.warnings.isEmpty || !parsed.missingRequired.isEmpty {
                 Section {
                     ForEach(parsed.warnings, id: \.self) { warning in
                         Label(warning, systemImage: "exclamationmark.triangle")
@@ -203,7 +206,7 @@ struct FoodReviewView: View {
             .listRowBackground(AppTheme.surface)
         }
         .nutritionFormStyle()
-        .navigationTitle("Review food")
+        .navigationTitle(isManualEntry ? "New food" : "Review food")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

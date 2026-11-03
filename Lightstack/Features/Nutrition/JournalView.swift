@@ -243,7 +243,7 @@ struct JournalView: View {
             }
             TabView(selection: $macroPage) {
                 ForEach(0..<3, id: \.self) { page in
-                    HStack(spacing: 0) {
+                    HStack(spacing: 6) {
                         ForEach(macroSpecs, id: \.id) { spec in ringColumn(spec, page: page) }
                     }
                     .tag(page)
@@ -298,6 +298,7 @@ struct JournalView: View {
         }()
         return VStack(spacing: 6) {
             Text(spec.name).font(.subheadline.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
             MacroRing(color: spec.color, progress: progress, primary: primary, secondary: secondary)
         }
         .frame(maxWidth: .infinity)
