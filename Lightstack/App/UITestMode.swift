@@ -518,6 +518,9 @@ final class UITestFakeAIProvider: AIProvider {
             reply = Self.postWorkoutJSON
         } else if expectsJSON {
             reply = Self.planJSON
+        } else if messages.contains(where: { $0.content.contains("APP CHECK:") }) {
+            // A lift-goal chat: first a proposal, then the goal block once the athlete agrees.
+            reply = last.lowercased().contains("agree") ? Self.goalAgreedReply : Self.goalProposalReply
         } else if last.lowercased().contains("heavier bench") {
             // Uses a shorter name than the workout's "Barbell Bench Press", like the real model does.
             reply = Self.benchModificationReply
@@ -530,6 +533,18 @@ final class UITestFakeAIProvider: AIProvider {
     static let postWorkoutJSON = """
     {"note": "Solid session. Everything moved well, so add 5 lbs to the first lift next time.",
      "summary": "Steady push session with all target weights hit. Add a little load next time."}
+    """
+
+    static let goalProposalReply = "That is a real step up from where you are, so I would build it over a few weeks with a heavy single each week. Does that plan work for you?"
+
+    static let goalAgreedReply = """
+    Locked in. Heavy single each week, attempt on the last one.
+
+    ```json
+    {"goal": {"exercise": "Barbell Bench Press", "weight": 225, "reps": 1, "deadline": null,
+      "steps": [{"date": "2026-12-01", "text": "Work up to a heavy single at 205", "weight": 205, "reps": 1, "attempt": false},
+                {"date": "2026-12-15", "text": "Attempt 225x1", "weight": 225, "reps": 1, "attempt": true}]}}
+    ```
     """
 
     static let benchModificationReply = """

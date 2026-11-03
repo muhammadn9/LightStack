@@ -356,3 +356,231 @@ enum ProgressionEngine {
 
     private static func g(_ value: Double) -> String { String(format: "%g", value) }
 }
+
+// MARK: - Goal assessment
+
+/// Is a lift goal ("225x1 bench") realistic, and what is the path? Deterministic, from the lift's own
+/// recent top sets. The chat hands these facts to the AI as a hidden "APP CHECK" line.
+enum GoalAssessor {
+
+    /// A session's best working set for the lift.
+    struct Point: Equatable {
+        var date: Date
+        var weight: Double
+        var reps: Int
+
+        /// Epley, as everywhere else in the app.
+        var e1RM: Double { weight * (1 + Double(reps) / 30) }
+        var text: String { "\(String(format: "%g", weight))x\(reps)" }
+    }
+
+    enum Verdict: Equatable {
+        /// Within `realisticGapPercent` of the current e1RM: attempt it with a warm-up ladder.
+        case realisticNow
+        /// Up to `blockGapPercent` away: a multi-session block of about this many weeks.
+        case block(weeks: Int)
+        /// Further away: aim for this weight (at the goal's reps) first.
+        case longTerm(intermediateWeight: Double)
+    }
+
+    struct LadderStep: Equatable {
+        var weight: Double
+        var reps: Int
+        var isAttempt: Bool
+        var text: String { "\(String(format: "%g", weight))x\(reps)" }
+    }
+
+    struct Assessment: Equatable {
+        var exercise: String
+        var targetWeight: Double
+        var targetReps: Int
+        var best: Point
+        var currentE1RM: Double
+        /// e1RM change per week over the recent window (0 when there is not enough data).
+        var weeklySlope: Double
+        var spanWeeks: Int
+        /// True when nothing was logged inside the recent window.
+        var stale: Bool
+        var targetE1RM: Double
+        /// How far the target e1RM is above the current one, in percent (negative when already past it).
+        var gapPercent: Double
+        var verdict: Verdict
+        var ladder: [LadderStep]
+    }
+
+    static let realisticGapPercent = 3.0
+    static let blockGapPercent = 10.0
+    static let slopeWindowDays = 42
+    /// Weekly gain assumed (share of the current e1RM) when the recent slope is flat or negative.
+    static let assumedWeeklyGainShare = 0.005
+    static let maxBlockWeeks = 16
+    /// An intermediate goal sits this far above the current e1RM.
+    static let intermediateShare = 1.05
+    /// Sets above this many reps say too little about a max.
+    static let maxUsefulReps = 10
+
+    // MARK: History
+
+    /// The best working set of each session, oldest first.
+    static func topPoints(from sessions: [HistorySession]) -> [Point] {
+        sessions.compactMap { session -> Point? in
+            let working = SetStyleDetector.splitWarmups(session.sets).working
+                .filter { $0.weight > 0 && $0.reps > 0 && $0.reps <= maxUsefulReps }
+            guard let top = ProgressionEngine.referenceTop(working) else { return nil }
+            return Point(date: session.date, weight: top.weight, reps: top.reps)
+        }.sorted { $0.date < $1.date }
+    }
+
+    // MARK: Assessment
+
+    /// nil when the lift has no usable history.
+    static func assess(exercise: String, targetWeight: Double, targetReps: Int,
+                       history: [Point], now: Date = Date()) -> Assessment? {
+        guard targetWeight > 0, targetReps > 0 else { return nil }
+        let all = history.filter { $0.weight > 0 && $0.reps > 0 && $0.date <= now.addingTimeInterval(86_400) }
+            .sorted { $0.date < $1.date }
+        guard let newest = all.last else { return nil }
+
+        let cutoff = now.addingTimeInterval(-Double(slopeWindowDays) * 86_400)
+        var window = all.filter { $0.date >= cutoff }
+        let stale = window.isEmpty
+        if stale { window = [newest] }
+
+        guard let best = window.max(by: { $0.e1RM < $1.e1RM }) else { return nil }
+        let current = best.e1RM
+
+        // One value per day (the day's best), then a least-squares slope in e1RM per week.
+        let calendar = Calendar.current
+        var perDay: [Date: Double] = [:]
+        for point in window {
+            let day = calendar.startOfDay(for: point.date)
+            perDay[day] = max(perDay[day] ?? 0, point.e1RM)
+        }
+        let days = perDay.keys.sorted()
+        var slope = 0.0
+        var spanWeeks = 1
+        if let first = days.first, let last = days.last, days.count >= 2 {
+            let spanDays = last.timeIntervalSince(first) / 86_400
+            spanWeeks = max(1, Int((spanDays / 7).rounded()))
+            if spanDays >= 7 {
+                let xs = days.map { $0.timeIntervalSince(first) / (7 * 86_400) }
+                let ys = days.map { perDay[$0] ?? 0 }
+                slope = leastSquaresSlope(xs, ys)
+            }
+        }
+
+        let targetE1RM = Point(date: now, weight: targetWeight, reps: targetReps).e1RM
+        let gap = (targetE1RM - current) / current * 100
+
+        let verdict: Verdict
+        if gap <= realisticGapPercent {
+            verdict = .realisticNow
+        } else if gap <= blockGapPercent {
+            let weekly = slope > 0.1 ? slope : current * assumedWeeklyGainShare
+            let weeks = Int(((targetE1RM - current) / weekly).rounded(.up))
+            verdict = .block(weeks: min(maxBlockWeeks, max(1, weeks)))
+        } else {
+            verdict = .longTerm(intermediateWeight: intermediateWeight(
+                exercise: exercise, current: current, reps: targetReps, targetWeight: targetWeight))
+        }
+
+        return Assessment(
+            exercise: exercise, targetWeight: targetWeight, targetReps: targetReps, best: best,
+            currentE1RM: current, weeklySlope: slope, spanWeeks: spanWeeks, stale: stale,
+            targetE1RM: targetE1RM, gapPercent: gap, verdict: verdict,
+            ladder: ladder(exercise: exercise, weight: targetWeight, reps: targetReps))
+    }
+
+    private static func leastSquaresSlope(_ xs: [Double], _ ys: [Double]) -> Double {
+        let n = Double(xs.count)
+        guard n >= 2 else { return 0 }
+        let mx = xs.reduce(0, +) / n
+        let my = ys.reduce(0, +) / n
+        var num = 0.0
+        var den = 0.0
+        for (x, y) in zip(xs, ys) {
+            num += (x - mx) * (y - my)
+            den += (x - mx) * (x - mx)
+        }
+        return den > 0.0001 ? num / den : 0
+    }
+
+    /// The weight at the goal's reps that is about `intermediateShare` above the current e1RM,
+    /// rounded to the lift's plate step and always below the final target.
+    private static func intermediateWeight(exercise: String, current: Double, reps: Int, targetWeight: Double) -> Double {
+        let step = ExerciseTraits.roundingStep(exercise)
+        let raw = current * intermediateShare / (1 + Double(reps) / 30)
+        var weight = ExerciseTraits.round(raw, step: step)
+        if weight >= targetWeight { weight = max(step, targetWeight - step) }
+        return weight
+    }
+
+    // MARK: Warm-up ladder
+
+    /// The bar (or about 40% of the attempt) for 5, then 60% x3, 75% x2, 85% x1, 92% x1, then the attempt.
+    static func ladder(exercise: String, weight: Double, reps: Int) -> [LadderStep] {
+        guard weight > 0, reps > 0 else { return [] }
+        let step = ExerciseTraits.roundingStep(exercise)
+        let name = exercise.lowercased()
+        let barbellLift = !name.contains("dumbbell")
+            && ["barbell", "bench", "squat", "deadlift", "overhead press"].contains { name.contains($0) }
+
+        var first = ExerciseTraits.round(weight * 0.40, step: step)
+        if barbellLift && first < 45 { first = 45 }
+        let plan: [(weight: Double, reps: Int)] = [
+            (first, 5),
+            (ExerciseTraits.round(weight * 0.60, step: step), 3),
+            (ExerciseTraits.round(weight * 0.75, step: step), 2),
+            (ExerciseTraits.round(weight * 0.85, step: step), 1),
+            (ExerciseTraits.round(weight * 0.92, step: step), 1)
+        ]
+        var steps: [LadderStep] = []
+        var previous = 0.0
+        for entry in plan where entry.weight > previous && entry.weight < weight {
+            steps.append(LadderStep(weight: entry.weight, reps: entry.reps, isAttempt: false))
+            previous = entry.weight
+        }
+        steps.append(LadderStep(weight: weight, reps: reps, isAttempt: true))
+        return steps
+    }
+
+    // MARK: APP CHECK line
+
+    /// The hidden line appended to the athlete's goal message. The AI writes the conversation around it.
+    static func appCheckLine(_ a: Assessment) -> String {
+        var line = "APP CHECK: \(a.exercise) e1RM \(whole(a.currentE1RM)) (\(a.best.text) \(shortDate(a.best.date)))"
+        if a.stale {
+            line += ", nothing logged in the last \(slopeWindowDays / 7) wks"
+        } else {
+            line += ", \(String(format: "%+.1f", a.weeklySlope)) lb/wk over \(a.spanWeeks) wks"
+        }
+        let target = "\(String(format: "%g", a.targetWeight))x\(a.targetReps)"
+        line += "; \(target) = e1RM \(whole(a.targetE1RM)), gap \(max(0, Int(a.gapPercent.rounded())))% → "
+        switch a.verdict {
+        case .realisticNow:
+            line += "within reach now. Warm-up ladder: " + a.ladder.map(\.text).joined(separator: ", ")
+                + " (last one is the attempt)"
+        case .block(let weeks):
+            line += "not this week, ~\(max(1, weeks - 1))-\(weeks + 1) wks"
+        case .longTerm(let intermediate):
+            line += "far off. Suggest an intermediate goal first: \(String(format: "%g", intermediate))x\(a.targetReps)"
+        }
+        return line
+    }
+
+    /// Used when the lift has no logged history.
+    static func noHistoryLine(exercise: String, targetWeight: Double, targetReps: Int) -> String {
+        let e1RM = Point(date: Date(), weight: targetWeight, reps: targetReps).e1RM
+        return "APP CHECK: no logged \(exercise) sets, so the app cannot judge "
+            + "\(String(format: "%g", targetWeight))x\(targetReps) (e1RM \(whole(e1RM))). "
+            + "Ask for a recent top set before promising dates."
+    }
+
+    private static func whole(_ value: Double) -> String { String(format: "%.0f", value) }
+
+    private static func shortDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+        return formatter.string(from: date)
+    }
+}

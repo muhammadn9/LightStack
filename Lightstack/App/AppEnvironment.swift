@@ -371,12 +371,36 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     }
 
     func makeCoachChatViewModel() -> CoachChatViewModel {
-        CoachChatViewModel(
+        let repository = workoutRepository
+        return CoachChatViewModel(
             aiServiceManager: aiServiceManager,
             coachPromptService: coachPromptService,
             coachContextBuilder: coachContextBuilder,
-            validationService: validationService
+            validationService: validationService,
+            liftHistory: { userId, exercise in
+                AppEnvironment.goalHistory(repository, userId: userId, exercise: exercise)
+            },
+            loggedLiftNames: { userId in
+                repository.fetchDistinctExerciseNames(userId: userId).map(\.name)
+            }
         )
+    }
+
+    /// The best working set of each of the lift's sessions in the last half year, for goal checks.
+    private static func goalHistory(_ repository: WorkoutRepository, userId: UUID, exercise: String) -> [GoalAssessor.Point] {
+        let cutoff = Date().addingTimeInterval(-180 * 86_400)
+        var sessions: [HistorySession] = []
+        for workout in repository.fetchRecentWorkouts(userId: userId, limit: 80) where workout.date >= cutoff {
+            var sets: [HistorySet] = []
+            for item in repository.fetchExercises(workoutId: workout.id)
+            where item.trackingType != .cardio
+                && (item.name.lowercased() == exercise.lowercased() || ExerciseNameResolver.isMatch(item.name, exercise)) {
+                let logged = repository.fetchSets(exerciseId: item.id).sorted { $0.setNumber < $1.setNumber }
+                sets += logged.map { HistorySet($0.weightLbs, $0.reps, rir: $0.rir) }
+            }
+            if !sets.isEmpty { sessions.append(HistorySession(date: workout.date, sets: sets)) }
+        }
+        return GoalAssessor.topPoints(from: sessions)
     }
 
     @MainActor func makeNutritionViewModel() -> NutritionViewModel {

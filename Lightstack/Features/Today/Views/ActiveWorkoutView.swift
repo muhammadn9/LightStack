@@ -557,7 +557,8 @@ struct ActiveWorkoutView: View {
                     userId: userId,
                     workoutType: workoutType,
                     exercises: todayViewModel.exercises,
-                    loggedSets: todayViewModel.loggedSets
+                    loggedSets: todayViewModel.loggedSets,
+                    seed: CoachChatViewModel.seed(from: todayViewModel)
                 )
             }
             showChat = true

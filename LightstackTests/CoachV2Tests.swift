@@ -1054,3 +1054,316 @@ final class CoachV3Tests: XCTestCase {
         XCTAssertEqual(EvidenceFormat.sourceTitle(.engineFallback), "Safety rail: rule-based")
     }
 }
+
+// MARK: - Coach v3 goals: assessor, ladder, store, threads
+
+final class GoalAssessorTests: XCTestCase {
+
+    private let bench = "Barbell Bench Press"
+    private let now = V2.day(11, 3)
+
+    private func daysAgo(_ days: Int) -> Date { now.addingTimeInterval(-Double(days) * 86_400) }
+
+    /// 185, 190, 195, 200 x3 over the last three weeks: e1RM 203.5, 209, 214.5, 220 (+5.5 a week).
+    private var risingBench: [GoalAssessor.Point] {
+        [GoalAssessor.Point(date: daysAgo(21), weight: 185, reps: 3),
+         GoalAssessor.Point(date: daysAgo(14), weight: 190, reps: 3),
+         GoalAssessor.Point(date: daysAgo(7), weight: 195, reps: 3),
+         GoalAssessor.Point(date: daysAgo(0), weight: 200, reps: 3)]
+    }
+
+    private func assess(_ weight: Double, _ reps: Int = 1, history: [GoalAssessor.Point]? = nil) throws -> GoalAssessor.Assessment {
+        try XCTUnwrap(GoalAssessor.assess(exercise: bench, targetWeight: weight, targetReps: reps,
+                                          history: history ?? risingBench, now: now))
+    }
+
+    func testCurrentE1RMSlopeAndGap() throws {
+        let a = try assess(225)
+        XCTAssertEqual(a.currentE1RM, 220, accuracy: 0.01)
+        XCTAssertEqual(a.targetE1RM, 232.5, accuracy: 0.01)
+        XCTAssertEqual(a.weeklySlope, 5.5, accuracy: 0.3)
+        XCTAssertEqual(a.gapPercent, 5.68, accuracy: 0.05)
+        XCTAssertFalse(a.stale)
+    }
+
+    func testWithinThreePercentIsRealisticNow() throws {
+        XCTAssertEqual(try assess(215).verdict, .realisticNow)   // gap about 1%
+        XCTAssertEqual(try assess(218).verdict, .realisticNow)   // gap about 2.4%
+        XCTAssertEqual(try assess(190).verdict, .realisticNow)   // already past it
+    }
+
+    func testThreeToTenPercentIsABlockOfWeeks() throws {
+        XCTAssertEqual(try assess(220).verdict, .block(weeks: 2))   // gap 3.3%: 7.3 to go at 5.5 a week
+        XCTAssertEqual(try assess(225).verdict, .block(weeks: 3))   // gap 5.7%: 12.5 to go
+        XCTAssertEqual(try assess(232).verdict, .block(weeks: 4))   // gap 9.0%: 19.7 to go
+        XCTAssertGreaterThan(try assess(235).gapPercent, 10)        // just past the block range
+        if case .longTerm = try assess(235).verdict {} else { XCTFail("10.4% should be long term") }
+    }
+
+    func testBeyondTenPercentIsLongTermWithAnIntermediateGoal() throws {
+        let a = try assess(250)
+        XCTAssertGreaterThan(a.gapPercent, 10)
+        // About 5% over the current e1RM at one rep, on the 5 lb step.
+        XCTAssertEqual(a.verdict, .longTerm(intermediateWeight: 225))
+    }
+
+    func testFlatTrendFallsBackToAnAssumedGain() throws {
+        let flat = [GoalAssessor.Point(date: daysAgo(14), weight: 200, reps: 3),
+                    GoalAssessor.Point(date: daysAgo(0), weight: 200, reps: 3)]
+        let a = try assess(225, history: flat)
+        XCTAssertEqual(a.weeklySlope, 0, accuracy: 0.01)
+        guard case .block(let weeks) = a.verdict else { return XCTFail("expected a block, got \(a.verdict)") }
+        XCTAssertEqual(weeks, 12)   // 12.5 to go at 0.5% of 220 a week
+    }
+
+    func testStaleHistoryStillAssessesButIsFlagged() throws {
+        let old = [GoalAssessor.Point(date: daysAgo(70), weight: 200, reps: 3)]
+        let a = try assess(225, history: old)
+        XCTAssertTrue(a.stale)
+        XCTAssertEqual(a.weeklySlope, 0, accuracy: 0.001)
+        XCTAssertTrue(GoalAssessor.appCheckLine(a).contains("nothing logged"))
+    }
+
+    func testNoHistoryHasNoAssessment() {
+        XCTAssertNil(GoalAssessor.assess(exercise: bench, targetWeight: 225, targetReps: 1, history: [], now: now))
+        XCTAssertTrue(GoalAssessor.noHistoryLine(exercise: bench, targetWeight: 225, targetReps: 1).hasPrefix("APP CHECK:"))
+    }
+
+    func testWarmupLadderForA225Single() {
+        let ladder = GoalAssessor.ladder(exercise: bench, weight: 225, reps: 1)
+        XCTAssertEqual(ladder.map(\.weight), [90, 135, 170, 190, 205, 225])
+        XCTAssertEqual(ladder.map(\.reps), [5, 3, 2, 1, 1, 1])
+        XCTAssertEqual(ladder.map(\.isAttempt), [false, false, false, false, false, true])
+    }
+
+    func testLadderStartsAtTheBarForLightTargets() {
+        let ladder = GoalAssessor.ladder(exercise: bench, weight: 95, reps: 1)
+        XCTAssertEqual(ladder.first?.weight, 45)
+        XCTAssertEqual(ladder.last?.weight, 95)
+        XCTAssertEqual(ladder.last?.isAttempt, true)
+        XCTAssertEqual(ladder.map(\.weight), ladder.map(\.weight).sorted())
+        XCTAssertEqual(Set(ladder.map(\.weight)).count, ladder.count, "ladder repeats a weight")
+    }
+
+    func testLadderRoundsToDumbbellSteps() {
+        let ladder = GoalAssessor.ladder(exercise: "Incline Dumbbell Press", weight: 100, reps: 1)
+        for step in ladder { XCTAssertEqual(step.weight.truncatingRemainder(dividingBy: 2.5), 0, "\(step.weight)") }
+        XCTAssertEqual(ladder.last?.weight, 100)
+    }
+
+    func testAppCheckLineStatesTheFacts() throws {
+        let line = GoalAssessor.appCheckLine(try assess(225))
+        XCTAssertTrue(line.hasPrefix("APP CHECK: \(bench) e1RM 220"), line)
+        XCTAssertTrue(line.contains("225x1 = e1RM 233") || line.contains("225x1 = e1RM 232"), line)
+        XCTAssertTrue(line.contains("gap 6%"), line)
+        XCTAssertTrue(line.contains("not this week"), line)
+        let near = GoalAssessor.appCheckLine(try assess(215))
+        XCTAssertTrue(near.contains("Warm-up ladder"), near)
+        let far = GoalAssessor.appCheckLine(try assess(250))
+        XCTAssertTrue(far.contains("intermediate goal"), far)
+    }
+
+    func testTopPointsTakeEachSessionsBestWorkingSetNotWarmups() {
+        let sessions = [
+            HistorySession(date: daysAgo(7), sets: V2.sets("95x8@4, 185x5@2, 200x3@1")),
+            HistorySession(date: daysAgo(14), sets: V2.sets("100x5@4, 185x3@2"))
+        ]
+        let points = GoalAssessor.topPoints(from: sessions)
+        XCTAssertEqual(points.count, 2)
+        XCTAssertEqual(points.first?.weight, 185)          // oldest first
+        XCTAssertEqual(points.last?.weight, 200)
+        XCTAssertEqual(points.last?.reps, 3)
+    }
+}
+
+final class CoachGoalStoreTests: XCTestCase {
+
+    private func makeDefaults() throws -> UserDefaults {
+        let suite = "coach-goals-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return defaults
+    }
+
+    func testGoalRoundTripsThroughTheStore() throws {
+        let store = CoachGoalStore(defaults: try makeDefaults())
+        let user = UUID()
+        XCTAssertTrue(store.goals(for: user).isEmpty)
+
+        var goal = CoachGoal(exerciseName: "Barbell Bench Press", targetWeight: 225, targetReps: 1,
+                             deadline: CoachGoal.parseDay("2026-12-15"),
+                             steps: [CoachGoalStep(date: "2026-12-01", text: "Heavy single 205", weight: 205, reps: 1, attempt: false),
+                                     CoachGoalStep(date: "2026-12-15", text: "Attempt 225x1", weight: 225, reps: 1, attempt: true)],
+                             assessment: "APP CHECK: x")
+        store.add(goal, for: user)
+
+        let loaded = try XCTUnwrap(store.goals(for: user).first)
+        XCTAssertEqual(loaded, goal)
+        XCTAssertEqual(loaded.targetText, "225x1")
+        XCTAssertEqual(loaded.steps.last?.attempt, true)
+        XCTAssertEqual(store.activeGoals(for: user).count, 1)
+
+        goal.status = .achieved
+        store.update(goal, for: user)
+        XCTAssertEqual(store.goals(for: user).first?.status, .achieved)
+        XCTAssertTrue(store.activeGoals(for: user).isEmpty)
+    }
+
+    func testGoalsAreKeptPerUserAndDroppedGoalsLeaveTheActiveList() throws {
+        let store = CoachGoalStore(defaults: try makeDefaults())
+        let a = UUID(), b = UUID()
+        let first = CoachGoal(exerciseName: "Back Squat", targetWeight: 315, targetReps: 1)
+        let second = CoachGoal(exerciseName: "Deadlift", targetWeight: 405, targetReps: 1)
+        store.add(first, for: a)
+        store.add(second, for: a)
+        XCTAssertTrue(store.goals(for: b).isEmpty)
+        XCTAssertEqual(store.activeGoals(for: a).map(\.exerciseName), ["Back Squat", "Deadlift"])
+
+        store.setStatus(.dropped, goalId: first.id, for: a)
+        XCTAssertEqual(store.activeGoals(for: a).map(\.exerciseName), ["Deadlift"])
+        XCTAssertEqual(store.goals(for: a).count, 2, "dropped goals stay in the list")
+
+        store.add(second, for: a)   // same id replaces, never duplicates
+        XCTAssertEqual(store.goals(for: a).count, 2)
+    }
+
+    func testUpdateIgnoresUnknownGoals() throws {
+        let store = CoachGoalStore(defaults: try makeDefaults())
+        let user = UUID()
+        store.update(CoachGoal(exerciseName: "Back Squat", targetWeight: 315, targetReps: 1), for: user)
+        XCTAssertTrue(store.goals(for: user).isEmpty)
+    }
+}
+
+final class CoachThreadTests: XCTestCase {
+
+    private func makeStore() throws -> CoachThreadStore {
+        let suite = "coach-threads-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return CoachThreadStore(defaults: defaults)
+    }
+
+    private func exercise(_ name: String, sets: Int = 3) -> Exercise {
+        Exercise.create(workoutId: UUID(), name: name, muscleGroup: "Chest", orderIndex: 0,
+                        targetSets: sets, targetReps: "8", targetRir: "2", restSeconds: 90, coachNote: nil)
+    }
+
+    private func seed(review: SessionReview? = nil) -> ThreadSeed {
+        let bench = exercise("Barbell Bench Press")
+        let fly = exercise("Cable Fly")
+        let targets: [UUID: [SetTarget]] = [
+            bench.id: [SetTarget(weight: "95", reps: "8", role: .warmup),
+                       SetTarget(weight: "135", reps: "8", rir: "2", role: .top),
+                       SetTarget(weight: "135", reps: "8", rir: "1", role: .straight)]
+        ]
+        return ThreadSeed.build(
+            workoutId: UUID(),
+            summary: "Good order for a push day.",
+            notes: "Controlled reps.",
+            exercises: [bench, fly],
+            setTargets: targets,
+            reasons: [CoachExerciseReason(exercise: "Barbell Bench Press", railFallback: false, text: "Repeat last top set."),
+                      CoachExerciseReason(exercise: "Cable Fly", railFallback: true, text: "Capped at last session.")],
+            review: review)
+    }
+
+    func testPlanMessageHasSummaryNotesReasonsAndTargets() throws {
+        let message = try XCTUnwrap(seed().planMessage)
+        XCTAssertTrue(message.contains("Good order for a push day."))
+        XCTAssertTrue(message.contains("Controlled reps."))
+        XCTAssertTrue(message.contains("Barbell Bench Press: 95x8 warm-up, 135x8 @RIR2, 135x8 @RIR1"), message)
+        XCTAssertTrue(message.contains("Repeat last top set."))
+        XCTAssertTrue(message.contains("Safety rail: Capped at last session."))
+        // No prescription: the exercise's own targets are used.
+        XCTAssertTrue(message.contains("Cable Fly: 3 sets of 8"), message)
+    }
+
+    func testCompactSummaryIsShortAndKeepsTopSets() throws {
+        let compact = try XCTUnwrap(seed().compactSummary)
+        XCTAssertTrue(compact.contains("Barbell Bench Press (2 sets, top 135x8)"), compact)
+        XCTAssertLessThanOrEqual(compact.count, ThreadSeed.compactLimit + 1)
+        XCTAssertNil(ThreadSeed(workoutId: UUID(), summary: nil, notes: nil, items: [], reviewText: nil).planMessage)
+    }
+
+    func testReviewTextComesFromTheSessionReview() throws {
+        let review = SessionReview(
+            exercises: [ExerciseReview(name: "Bench", notes: "Hit every target.", outcome: .hold,
+                                       nextTarget: NextTarget(weight: 140, reps: 8), missAnalysis: nil)],
+            overallRead: "Solid push day.", recurringFlags: [])
+        let text = try XCTUnwrap(seed(review: review).reviewText)
+        XCTAssertTrue(text.hasPrefix("Workout review: Solid push day."), text)
+        XCTAssertTrue(text.contains("Next time: 140 x 8"), text)
+        XCTAssertNil(seed().reviewText)
+    }
+
+    func testThreadStoreRoundTripKeepsIdsOrderAndFlags() throws {
+        let store = try makeStore()
+        let workoutId = UUID()
+        XCTAssertNil(store.thread(forWorkout: workoutId))
+
+        let messages = [ChatMessage(role: .coach, content: "Plan"), ChatMessage(role: .user, content: "Swap flies?")]
+        store.save(StoredChatThread(messages: messages.map(StoredChatMessage.init), planSeeded: true,
+                                    reviewAppended: false, updatedAt: Date()), forWorkout: workoutId)
+
+        let loaded = try XCTUnwrap(store.thread(forWorkout: workoutId))
+        XCTAssertTrue(loaded.planSeeded)
+        XCTAssertFalse(loaded.reviewAppended)
+        let restored = loaded.messages.map(\.message)
+        XCTAssertEqual(restored.map(\.id), messages.map(\.id))
+        XCTAssertEqual(restored.map(\.content), ["Plan", "Swap flies?"])
+        XCTAssertEqual(restored.first?.role, .coach)
+        XCTAssertEqual(restored.last?.role, .user)
+        XCTAssertNil(store.thread(forWorkout: UUID()), "another workout has its own thread")
+    }
+
+    func testThreadStoreCapsMessagesLengthAndThreads() throws {
+        let store = try makeStore()
+        let id = UUID()
+        let many = (0..<(CoachThreadStore.maxMessages + 20)).map { ChatMessage(role: .user, content: "m\($0)") }
+        let long = ChatMessage(role: .coach, content: String(repeating: "x", count: CoachThreadStore.maxCharacters + 500))
+        store.save(StoredChatThread(messages: (many + [long]).map(StoredChatMessage.init), planSeeded: false,
+                                    reviewAppended: false, updatedAt: Date()), forWorkout: id)
+        let loaded = try XCTUnwrap(store.thread(forWorkout: id))
+        XCTAssertEqual(loaded.messages.count, CoachThreadStore.maxMessages)
+        XCTAssertEqual(loaded.messages.last?.content.count, CoachThreadStore.maxCharacters + 1)   // text plus "…"
+
+        // The oldest threads are dropped past the cap.
+        let ids = (0..<(CoachThreadStore.maxThreads + 3)).map { _ in UUID() }
+        for (index, threadId) in ids.enumerated() {
+            store.save(StoredChatThread(messages: [StoredChatMessage(ChatMessage(role: .user, content: "t"))],
+                                        planSeeded: true, reviewAppended: false,
+                                        updatedAt: Date(timeIntervalSince1970: Double(1_000 + index))), forWorkout: threadId)
+        }
+        XCTAssertNil(store.thread(forWorkout: ids[0]))
+        XCTAssertNotNil(store.thread(forWorkout: ids[ids.count - 1]))
+    }
+
+    func testHiddenContextIsAppendedOnlyForTheAIAndWindowKeepsTheContextMessage() {
+        let context = ChatMessage(role: .user, content: "ctx")
+        let ask = ChatMessage(role: .user, content: "225x1 bench")
+        var all = [context, ask]
+        for i in 0..<10 { all.append(ChatMessage(role: i % 2 == 0 ? .coach : .user, content: "m\(i)")) }
+        let windowed = CoachChatViewModel.windowedMessages(all)
+        XCTAssertEqual(windowed.count, CoachChatViewModel.historyWindow + 1)
+        XCTAssertEqual(windowed.first?.content, "ctx")
+
+        let sent = CoachChatViewModel.withHiddenContext([context, ask], hidden: [ask.id: "APP CHECK: Bench e1RM 221"])
+        XCTAssertEqual(sent[0].content, "ctx")
+        XCTAssertEqual(sent[1].content, "225x1 bench\n\nAPP CHECK: Bench e1RM 221")
+        XCTAssertEqual(ask.content, "225x1 bench", "the visible message is unchanged")
+    }
+
+    func testAgreedNotesPreferTheCoachsPlanNotesLineAndStayWithin300() {
+        let context = ChatMessage(role: .user, content: "ctx")
+        let said = ChatMessage(role: .user, content: "my left shoulder is sore")
+        let reply = ChatMessage(role: .coach, content: "Got it.\nPlan notes: Left shoulder sore, no overhead pressing.")
+        XCTAssertEqual(CoachChatViewModel.agreedNotes(from: [context, said, reply]),
+                       "Left shoulder sore, no overhead pressing.")
+        // Without a coach line it is what the athlete said.
+        XCTAssertEqual(CoachChatViewModel.agreedNotes(from: [context, said]), "my left shoulder is sore")
+        let rambling = ChatMessage(role: .user, content: String(repeating: "a", count: 500))
+        XCTAssertLessThanOrEqual(CoachChatViewModel.agreedNotes(from: [context, rambling]).count, 300)
+        XCTAssertEqual(CoachChatViewModel.agreedNotes(from: [context]), "")
+    }
+}

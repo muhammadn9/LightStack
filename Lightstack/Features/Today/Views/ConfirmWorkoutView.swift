@@ -385,7 +385,8 @@ struct ConfirmWorkoutView: View {
                             userId: userId,
                             workoutType: wt,
                             exercises: todayViewModel.exercises,
-                            loggedSets: [:]
+                            loggedSets: [:],
+                            seed: CoachChatViewModel.seed(from: todayViewModel)
                         )
                     }
                     showChat = true
