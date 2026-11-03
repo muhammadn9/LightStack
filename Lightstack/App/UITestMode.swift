@@ -51,6 +51,9 @@ enum UITestMode {
     }
     /// `-uiTestingExpiredSession` starts with the signed-out banner showing, as if the session had been revoked.
     static let wantsExpiredSession: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingExpiredSession")
+    /// `-uiTestingNutritionWizard` lets the nutrition setup wizard open by itself on first visit (it is off in
+    /// UI tests otherwise, so the other nutrition tests are not interrupted).
+    static let wantsNutritionWizard: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingNutritionWizard")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -87,6 +90,7 @@ enum UITestMode {
         defaults.set(0, forKey: "selectedTab")
         defaults.set("gym", forKey: "appSide")
         defaults.removeObject(forKey: "nutritionSelectedTab")
+        defaults.removeObject(forKey: "nutritionSetupSkipped")
         defaults.removeObject(forKey: WaterUnit.storageKey)
         defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
         CoachDebugStore.shared.clear()
