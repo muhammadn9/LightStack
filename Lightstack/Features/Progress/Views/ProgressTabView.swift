@@ -22,6 +22,7 @@ struct ProgressTabView: View {
                         .foregroundStyle(AppTheme.textPrimary)
                         .accessibilityIdentifier("progress.title")
                     Spacer()
+                    SideSwitchButton()
                 }
                 segmented
                 if loaded && snapshot.totalWorkouts == 0 {

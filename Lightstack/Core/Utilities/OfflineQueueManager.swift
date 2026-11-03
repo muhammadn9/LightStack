@@ -25,6 +25,16 @@ enum QueuedOperationType: String, Codable {
     case deleteMonthPlan
     case upsertRestDay
     case deleteRestDay
+    case upsertNutritionTarget
+    case deleteNutritionTarget
+    case upsertFood
+    case deleteFood
+    case upsertFoodEntry
+    case deleteFoodEntry
+    case upsertMealSlot
+    case upsertWaterEntry
+    case deleteWaterEntry
+    case upsertDayNote
     case insertTombstone
 }
 
@@ -37,6 +47,12 @@ enum TombstoneEntity: String, Codable {
     case monthPlan = "month_plan"
     case plannedSession = "planned_session"
     case restDay = "rest_day"
+    case nutritionTarget = "nutrition_target"
+    case food
+    case foodEntry = "food_entry"
+    case mealSlot = "meal_slot"
+    case waterEntry = "water_entry"
+    case dayNote = "day_note"
 }
 
 /// Payload for `.insertTombstone`: these records were deleted on this device.
@@ -58,6 +74,11 @@ struct DeleteMonthPlanPayload: Codable {
 struct DeleteRestDayPayload: Codable {
     let id: UUID
     let date: Date
+}
+
+/// Payload for `.deleteNutritionTarget`, `.deleteFood`, `.deleteFoodEntry` and `.deleteWaterEntry`.
+struct DeleteNutritionRecordPayload: Codable {
+    let id: UUID
 }
 
 /// Payload for `.deletePersonalRecords`: removes the cloud PR rows of one exercise name, except
@@ -114,7 +135,31 @@ protocol RemoteWriting: Sendable {
     func deleteMonthPlan(planId: UUID) async throws
     func upsertRestDay(_ restDay: RestDay) async throws
     func deleteRestDay(userId: UUID, date: Date) async throws
+    func upsertNutritionTarget(_ target: NutritionTarget) async throws
+    func deleteNutritionTarget(id: UUID) async throws
+    func upsertFood(_ food: NutritionFood) async throws
+    func deleteFood(id: UUID) async throws
+    func upsertFoodEntry(_ entry: FoodEntry) async throws
+    func deleteFoodEntry(id: UUID) async throws
+    func upsertMealSlot(_ slot: MealSlot) async throws
+    func upsertWaterEntry(_ entry: WaterEntry) async throws
+    func deleteWaterEntry(id: UUID) async throws
+    func upsertDayNote(_ note: DayNote) async throws
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws
+}
+
+/// Nutrition writes default to a no-op so test fakes that predate nutrition keep compiling.
+extension RemoteWriting {
+    func upsertNutritionTarget(_ target: NutritionTarget) async throws {}
+    func deleteNutritionTarget(id: UUID) async throws {}
+    func upsertFood(_ food: NutritionFood) async throws {}
+    func deleteFood(id: UUID) async throws {}
+    func upsertFoodEntry(_ entry: FoodEntry) async throws {}
+    func deleteFoodEntry(id: UUID) async throws {}
+    func upsertMealSlot(_ slot: MealSlot) async throws {}
+    func upsertWaterEntry(_ entry: WaterEntry) async throws {}
+    func deleteWaterEntry(id: UUID) async throws {}
+    func upsertDayNote(_ note: DayNote) async throws {}
 }
 
 extension SupabaseService: RemoteWriting, @unchecked Sendable {}
@@ -916,6 +961,10 @@ actor OfflineQueueManager {
         var monthPlans = Set<UUID>()
         var plannedSessions = Set<UUID>()
         var restDays = Set<UUID>()
+        var nutritionTargets = Set<UUID>()
+        var foods = Set<UUID>()
+        var foodEntries = Set<UUID>()
+        var waterEntries = Set<UUID>()
     }
 
     /// Drops the owner's pending UPSERT operations for records that were deleted elsewhere, so they
@@ -976,6 +1025,21 @@ actor OfflineQueueManager {
                    deleted.plannedSessions.contains(m.id) || deleted.monthPlans.contains(m.monthPlanId) { changed += 1; continue }
             case .upsertRestDay:
                 if let m = try? decoder.decode(RestDay.self, from: op.payload), deleted.restDays.contains(m.id) { changed += 1; continue }
+            case .upsertNutritionTarget:
+                if let m = try? decoder.decode(NutritionTarget.self, from: op.payload), deleted.nutritionTargets.contains(m.id) { changed += 1; continue }
+            case .upsertFood:
+                if let m = try? decoder.decode(NutritionFood.self, from: op.payload), deleted.foods.contains(m.id) { changed += 1; continue }
+            case .upsertFoodEntry:
+                if var m = try? decoder.decode(FoodEntry.self, from: op.payload) {
+                    if deleted.foodEntries.contains(m.id) { changed += 1; continue }
+                    // The food was deleted elsewhere (the cloud nulls the reference): don't send a dangling food_id.
+                    if let foodId = m.foodId, deleted.foods.contains(foodId) {
+                        m.foodId = nil
+                        if let data = try? encoder.encode(m) { op.payload = data; changed += 1 }
+                    }
+                }
+            case .upsertWaterEntry:
+                if let m = try? decoder.decode(WaterEntry.self, from: op.payload), deleted.waterEntries.contains(m.id) { changed += 1; continue }
             default:
                 break
             }
@@ -1269,9 +1333,14 @@ actor OfflineQueueManager {
             .deleteContextSummaries,
             .insertMonthPlan, .insertPlannedSessions, .updatePlannedSession,
             .upsertRestDay,
+            // Foods before the entries that point at them.
+            .upsertNutritionTarget, .upsertFood,
+            // Meal slots before the entries that point at them.
+            .upsertMealSlot, .upsertFoodEntry, .upsertWaterEntry, .upsertDayNote,
             // Delete operations should be last, tombstones after the deletes they record.
             .deleteWorkout, .deleteSet, .deleteExercise, .deleteMonthPlan, .deleteRestDay,
             .deletePersonalRecords,
+            .deleteFoodEntry, .deleteFood, .deleteNutritionTarget, .deleteWaterEntry,
             .insertTombstone
         ]
         var rank: [QueuedOperationType: Int] = [:]
@@ -1360,6 +1429,26 @@ actor OfflineQueueManager {
                 throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "rest day delete without user"))
             }
             try await remote.deleteRestDay(userId: userId, date: model.date)
+        case .upsertNutritionTarget:
+            try await remote.upsertNutritionTarget(try decoder.decode(NutritionTarget.self, from: op.payload))
+        case .deleteNutritionTarget:
+            try await remote.deleteNutritionTarget(id: try decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload).id)
+        case .upsertFood:
+            try await remote.upsertFood(try decoder.decode(NutritionFood.self, from: op.payload))
+        case .deleteFood:
+            try await remote.deleteFood(id: try decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload).id)
+        case .upsertFoodEntry:
+            try await remote.upsertFoodEntry(try decoder.decode(FoodEntry.self, from: op.payload))
+        case .deleteFoodEntry:
+            try await remote.deleteFoodEntry(id: try decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload).id)
+        case .upsertMealSlot:
+            try await remote.upsertMealSlot(try decoder.decode(MealSlot.self, from: op.payload))
+        case .upsertWaterEntry:
+            try await remote.upsertWaterEntry(try decoder.decode(WaterEntry.self, from: op.payload))
+        case .deleteWaterEntry:
+            try await remote.deleteWaterEntry(id: try decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload).id)
+        case .upsertDayNote:
+            try await remote.upsertDayNote(try decoder.decode(DayNote.self, from: op.payload))
         case .insertTombstone:
             let model = try decoder.decode(TombstonePayload.self, from: op.payload)
             guard let userId = model.userId ?? op.ownerUserId else {
@@ -1492,6 +1581,12 @@ struct PendingChangeIndex {
     var restDayIds = Set<UUID>()
     /// `yyyy-MM-dd` of rest days with an unuploaded add or remove.
     var restDayDays = Set<String>()
+    var nutritionTargets = Set<UUID>()
+    var foods = Set<UUID>()
+    var foodEntries = Set<UUID>()
+    var mealSlots = Set<UUID>()
+    var waterEntries = Set<UUID>()
+    var dayNotes = Set<UUID>()
     /// Tombstones queued here but not yet uploaded.
     var tombstones: [TombstoneEntity: Set<UUID>] = [:]
 
@@ -1562,6 +1657,26 @@ struct PendingChangeIndex {
                 restDayIds.insert(model.id)
                 restDayDays.insert(RestDay.dayString(model.date))
             }
+        case .upsertNutritionTarget:
+            if let model = try? decoder.decode(NutritionTarget.self, from: op.payload) { nutritionTargets.insert(model.id) }
+        case .upsertFood:
+            if let model = try? decoder.decode(NutritionFood.self, from: op.payload) { foods.insert(model.id) }
+        case .upsertFoodEntry:
+            if let model = try? decoder.decode(FoodEntry.self, from: op.payload) { foodEntries.insert(model.id) }
+        case .deleteNutritionTarget:
+            if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { nutritionTargets.insert(model.id) }
+        case .deleteFood:
+            if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { foods.insert(model.id) }
+        case .deleteFoodEntry:
+            if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { foodEntries.insert(model.id) }
+        case .upsertMealSlot:
+            if let model = try? decoder.decode(MealSlot.self, from: op.payload) { mealSlots.insert(model.id) }
+        case .upsertWaterEntry:
+            if let model = try? decoder.decode(WaterEntry.self, from: op.payload) { waterEntries.insert(model.id) }
+        case .deleteWaterEntry:
+            if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { waterEntries.insert(model.id) }
+        case .upsertDayNote:
+            if let model = try? decoder.decode(DayNote.self, from: op.payload) { dayNotes.insert(model.id) }
         case .insertTombstone:
             if let model = try? decoder.decode(TombstonePayload.self, from: op.payload) {
                 tombstones[model.entity, default: []].formUnion(model.recordIds)

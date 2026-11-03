@@ -32,6 +32,7 @@ struct HistoryListView: View {
                         }
                         .accessibilityIdentifier("importWorkoutsButton")
                         .accessibilityLabel("Import workouts")
+                        SideSwitchButton()
                     }
                     .padding(.horizontal, 16)
                 }

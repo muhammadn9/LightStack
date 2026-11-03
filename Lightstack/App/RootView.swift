@@ -30,7 +30,7 @@ struct RootView: View {
             } else if !environment.hasCompletedOnboarding {
                 OnboardingView()
             } else {
-                MainTabView()
+                AppShellView()
             }
         }
         .keyboardDoneButton()

@@ -1,0 +1,3 @@
+{"format":"us","servingLabel":"1 bar (40g)","servingGrams":40,"servingIsUncertain":false,
+ "fields":{"calories":{"value":150,"unit":"kcal"},"totalFat":{"value":6,"unit":"g"},"saturatedFat":{"value":0.5,"unit":"g"},"transFat":{"value":0,"unit":"g"},"cholesterol":{"value":0,"unit":"mg"},"sodium":{"value":2.5,"unit":"mg"},"totalCarbs":{"value":20,"unit":"g"},"fibre":{"value":0,"unit":"g"},"sugars":{"value":9,"unit":"g"},"protein":{"value":5,"unit":"g"}},
+ "lowConfidence":["saturatedFat","sodium"]}
