@@ -211,6 +211,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             logged: loggedSets[exercise.id] ?? [])
     }
 
+    func inSessionDrop(for exercise: Exercise) -> InSessionAdjuster.LoweredWeight? {
+        InSessionAdjuster.evaluateDrop(prescribed: setTargets[exercise.id] ?? [], logged: loggedSets[exercise.id] ?? [])
+    }
+
     /// Saves the athlete's answer to "what got in the way?" so the post-workout review can tell
     /// a bad day from a weight that is too heavy now.
     @discardableResult

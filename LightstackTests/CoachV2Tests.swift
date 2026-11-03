@@ -465,7 +465,8 @@ final class InSessionAdjusterTests: XCTestCase {
         XCTAssertEqual(s.changes.first?.weight, 150, "170 -10% = 153, rounded down to the plate step")
         XCTAssertEqual(s.changes.first?.reps, 8)
         XCTAssertFalse(s.question.isEmpty)
-        XCTAssertEqual(s.reasons, MissReason.allCases)
+        XCTAssertEqual(s.reasons, MissReason.missCases)
+        XCTAssertFalse(s.reasons.contains(.plannedDrop))
     }
 
     func testFirstWorkingSetShortLowersTopAndBackoff() throws {
@@ -496,6 +497,47 @@ final class InSessionAdjusterTests: XCTestCase {
         XCTAssertEqual(s.triggerIndex, 1)
         XCTAssertEqual(s.triggerLoggedIndex, 0)
         XCTAssertEqual(s.changes.map(\.index), [2, 3])
+    }
+
+    // MARK: Lowered weight
+
+    func testDropVersusPreviousSetFiresWithNoPlan() throws {
+        let d = try XCTUnwrap(InSessionAdjuster.evaluateDrop(prescribed: [], logged: logged("50x15, 47.5x11@1")))
+        XCTAssertEqual(d.loggedIndex, 1)
+        XCTAssertEqual(d.previousWeight, 50)
+        XCTAssertEqual(d.weight, 47.5)
+        XCTAssertFalse(d.fromPlan)
+        XCTAssertEqual(d.message, "You dropped to 47.5 lb from 50 lb. What's the reason?")
+        XCTAssertEqual(d.reasons.first, .plannedDrop)
+    }
+
+    func testDropVersusPlanTargetFires() throws {
+        let plan = [SetTarget(weight: "50", reps: "12", rir: "2")]
+        let d = try XCTUnwrap(InSessionAdjuster.evaluateDrop(prescribed: plan, logged: logged("47.5x11@1")))
+        XCTAssertTrue(d.fromPlan)
+        XCTAssertEqual(d.previousWeight, 50)
+    }
+
+    func testNoDropWhenWeightIsEqualOrHigher() {
+        XCTAssertNil(InSessionAdjuster.evaluateDrop(prescribed: [], logged: logged("50x15, 50x12")))
+        XCTAssertNil(InSessionAdjuster.evaluateDrop(prescribed: [], logged: logged("50x15, 55x10")))
+        XCTAssertNil(InSessionAdjuster.evaluateDrop(prescribed: [], logged: logged("50x15")))
+    }
+
+    func testNoDropForWarmupSets() {
+        let plan = [SetTarget(weight: "95", reps: "10", rir: nil, role: .warmup),
+                    SetTarget(weight: "150", reps: "8", rir: "2")]
+        XCTAssertNil(InSessionAdjuster.evaluateDrop(prescribed: plan, logged: logged("60x10")), "logged set is the planned warm-up")
+    }
+
+    func testNoDropForTinyChange() {
+        XCTAssertNil(InSessionAdjuster.evaluateDrop(prescribed: [], logged: logged("100x8, 98x8")), "2% is noise")
+        XCTAssertNil(InSessionAdjuster.evaluateDrop(prescribed: [], logged: logged("100x8, 0x8")), "zero weight is bodyweight")
+    }
+
+    func testPlannedDropIsNotOfferedForMisses() {
+        XCTAssertEqual(MissReason.from("plannedDrop"), .plannedDrop)
+        XCTAssertFalse(MissReason.missCases.contains(.plannedDrop))
     }
 
     func testIsolationStraightSetsAndDeterminism() throws {

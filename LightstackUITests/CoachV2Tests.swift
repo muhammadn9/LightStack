@@ -105,6 +105,32 @@ final class CoachV2Tests: LightstackUITestCase {
         shot("41-miss-banner-applied")
     }
 
+    // MARK: - Lowered weight
+
+    func testLoweringTheWeightAsksWhy() throws {
+        launchApp(extraArguments: engineHistory)
+        generateAndStartPushWorkout()
+
+        replaceText(in: weightField(), with: "50")
+        replaceText(in: repsField(), with: "15")
+        dismissKeyboardIfNeeded()
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.0.weight"], "Set 1 was not logged")
+
+        replaceText(in: weightField(), with: "47.5")
+        replaceText(in: repsField(), with: "11")
+        dismissKeyboardIfNeeded()
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.1.weight"], "Set 2 was not logged")
+
+        waitFor(anyElement("coach.dropReason"), "Lowered-weight question did not appear")
+        XCTAssertTrue(anyElement("coach.dropReason.message").label.contains("47.5"))
+        shot("42-drop-reason")
+        tap(app.buttons["coach.dropReason.plannedDrop"])
+        let status = waitFor(anyElement("coach.dropReason.status"))
+        XCTAssertTrue(status.label.contains("Planned"), "Reason not recorded: \(status.label)")
+    }
+
     // MARK: - Post-workout review
 
     func testPostWorkoutReviewShowsNextTargetsAndPersistsInHistory() throws {
