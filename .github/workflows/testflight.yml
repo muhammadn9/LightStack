@@ -1,0 +1,125 @@
+name: TestFlight
+
+# Manual only: Actions tab -> TestFlight -> Run workflow, pick the branch.
+# Uploads that branch to TestFlight with scripts/testflight-release.sh and
+# commits the build-number bump back to the branch.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch to ship (defaults to the branch the run is started from)"
+        required: false
+        type: string
+
+permissions:
+  contents: write   # push the build bump back to the branch
+
+# One upload at a time so build numbers never collide.
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+env:
+  XCODEGEN_VERSION: 2.45.3
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+
+jobs:
+  release:
+    name: Archive and upload to TestFlight
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Write Secrets.xcconfig
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_REVERSED_CLIENT_ID: ${{ secrets.GOOGLE_REVERSED_CLIENT_ID }}
+        run: |
+          for v in SUPABASE_URL SUPABASE_ANON_KEY GOOGLE_CLIENT_ID GOOGLE_REVERSED_CLIENT_ID; do
+            [[ -n "${!v}" ]] || { echo "::error::Missing secret $v"; exit 1; }
+          done
+          # $() stops xcconfig treating the // in the URL as a comment.
+          URL_ESCAPED="${SUPABASE_URL/:\/\//:\/\$()\/}"
+          {
+            echo "SUPABASE_URL = ${URL_ESCAPED}"
+            echo "SUPABASE_ANON_KEY = ${SUPABASE_ANON_KEY}"
+            echo "GOOGLE_CLIENT_ID = ${GOOGLE_CLIENT_ID}"
+            echo "GOOGLE_REVERSED_CLIENT_ID = ${GOOGLE_REVERSED_CLIENT_ID}"
+          } > Lightstack/Config/Secrets.xcconfig
+
+      - name: Write App Store Connect config
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          ASC_BETA_GROUP_ID: ${{ secrets.ASC_BETA_GROUP_ID }}
+        run: |
+          for v in ASC_KEY_P8 ASC_KEY_ID ASC_ISSUER_ID ASC_APP_ID; do
+            [[ -n "${!v}" ]] || { echo "::error::Missing secret $v"; exit 1; }
+          done
+          KEY="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$KEY"
+          chmod 600 "$KEY"
+          {
+            echo "export ASC_KEY_ID=\"${ASC_KEY_ID}\""
+            echo "export ASC_ISSUER_ID=\"${ASC_ISSUER_ID}\""
+            echo "export ASC_KEY_PATH=\"${KEY}\""
+            echo "export ASC_TEAM_ID=\"7X8799T6N2\""
+            echo "export ASC_APP_ID=\"${ASC_APP_ID}\""
+            echo "export ASC_BETA_GROUP_ID=\"${ASC_BETA_GROUP_ID}\""
+          } > scripts/asc-config.sh
+
+      - name: Install XcodeGen (pinned)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Sync build number with App Store Connect
+        # Other branches and sessions upload too: start from the highest build
+        # Apple already has, so the release script's +1 never repeats a number.
+        run: |
+          python3 -m venv scripts/.venv
+          scripts/.venv/bin/pip install -q pyjwt cryptography certifi
+          source scripts/asc-config.sh
+          LATEST=$(scripts/.venv/bin/python scripts/asc_api.py \
+            "/v1/builds?filter%5Bapp%5D=$ASC_APP_ID&limit=200&sort=-uploadedDate&fields%5Bbuilds%5D=version" \
+            | scripts/.venv/bin/python -c "import json,sys; v=[int(b['attributes']['version']) for b in json.load(sys.stdin)['data'] if b['attributes']['version'].isdigit()]; print(max(v) if v else 0)")
+          CURRENT=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Lightstack/Info.plist)
+          echo "Latest uploaded build: $LATEST, branch build: $CURRENT"
+          if (( LATEST > CURRENT )); then
+            python3 -c '
+          import re, sys
+          p, v = sys.argv[1], sys.argv[2]
+          s = open(p).read()
+          s, n = re.subn(r"(<key>CFBundleVersion</key>\s*<string>)[^<]*(</string>)", r"\g<1>" + v + r"\g<2>", s, count=1)
+          assert n == 1, "CFBundleVersion not found"
+          open(p, "w").write(s)
+          ' Lightstack/Info.plist "$LATEST"
+          fi
+
+      - name: Archive and upload
+        run: scripts/testflight-release.sh --skip-tests
+
+      - name: Commit build bump to the branch
+        env:
+          TARGET_REF: ${{ inputs.ref || github.ref_name }}
+        run: |
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Lightstack/Info.plist)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Lightstack/Info.plist project.yml Lightstack.xcodeproj/project.pbxproj
+          git commit -m "build: bump to build $BUILD for TestFlight" || exit 0
+          git push origin "HEAD:${TARGET_REF}"
+          echo "### Build $BUILD uploaded to TestFlight from \`${TARGET_REF}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8 scripts/asc-config.sh
