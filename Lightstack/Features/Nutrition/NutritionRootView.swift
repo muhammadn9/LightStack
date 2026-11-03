@@ -5,13 +5,17 @@ struct NutritionRootView: View {
     @EnvironmentObject var environment: AppEnvironment
     @EnvironmentObject var side: AppSideController
     @AppStorage("nutritionSelectedTab") private var selectedTab = 0
+    @AppStorage("nutritionSetupSkipped") private var setupSkipped = false
     @State private var viewModel: NutritionViewModel?
+    @State private var setupRequest: SetupRequest?
+
+    private struct SetupRequest: Identifiable { let id = UUID() }
 
     var body: some View {
         Group {
             if let viewModel {
                 TabView(selection: $selectedTab) {
-                    JournalView(viewModel: viewModel)
+                    JournalView(viewModel: viewModel, onStartSetup: startSetup)
                         .tabItem { Label("Journal", systemImage: "fork.knife") }
                         .tag(0)
                         .accessibilityIdentifier("nutrition.tab.journal")
@@ -19,7 +23,7 @@ struct NutritionRootView: View {
                         .tabItem { Label("Dashboard", systemImage: "chart.line.uptrend.xyaxis") }
                         .tag(1)
                         .accessibilityIdentifier("nutrition.tab.dashboard")
-                    GoalsView(viewModel: viewModel)
+                    GoalsView(viewModel: viewModel, onStartSetup: startSetup)
                         .tabItem { Label("Goals", systemImage: "target") }
                         .tag(2)
                         .accessibilityIdentifier("nutrition.tab.goals")
@@ -38,10 +42,36 @@ struct NutritionRootView: View {
         .themedBackground()
         .onAppear {
             if viewModel == nil { viewModel = environment.makeNutritionViewModel() }
+            autoShowSetupIfNeeded()
         }
         .onChange(of: side.side) { _, newSide in
-            if newSide == .nutrition { viewModel?.reload() }
+            if newSide == .nutrition {
+                viewModel?.reload()
+                autoShowSetupIfNeeded()
+            }
         }
+        .fullScreenCover(item: $setupRequest) { _ in
+            if let viewModel {
+                NutritionSetupWizardView(viewModel: viewModel) { finished in
+                    if !finished { setupSkipped = true }
+                    setupRequest = nil
+                    viewModel.reload()
+                }
+            }
+        }
+    }
+
+    private func startSetup() { setupRequest = SetupRequest() }
+
+    /// First visit with no targets at all: offer the wizard once. Existing users with targets are never nagged.
+    private func autoShowSetupIfNeeded() {
+        guard let viewModel, setupRequest == nil, !setupSkipped, side.side == .nutrition else { return }
+        #if DEBUG
+        if UITestMode.isActive, !UITestMode.wantsNutritionWizard { return }
+        #endif
+        viewModel.reload()
+        guard !viewModel.isSetupComplete, viewModel.plans.isEmpty, viewModel.currentTarget() == nil else { return }
+        setupRequest = SetupRequest()
     }
 }
 
@@ -128,73 +158,6 @@ struct NutritionDashboardView: View {
             }
             .frame(height: 8)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(id)
-    }
-}
-
-// MARK: - Goals
-
-struct GoalsView: View {
-    @ObservedObject var viewModel: NutritionViewModel
-    @State private var editing = false
-
-    var body: some View {
-        let target = viewModel.currentTarget()
-        return VStack(spacing: 0) {
-            NutritionScreenHeader(title: "My Goals", id: "goals.title")
-            ScrollView {
-                VStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Daily macros").font(.title3.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
-                                    .accessibilityIdentifier("goals.card")
-                                Text("\(viewModel.slots.count) meals").font(.subheadline).foregroundStyle(AppTheme.textSecondary)
-                            }
-                            Spacer()
-                            Button { editing = true } label: {
-                                Text(target == nil ? "Set" : "Edit").font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(AppTheme.accent).padding(.horizontal, 14).frame(minHeight: 44)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("goals.edit")
-                        }
-                        HStack(spacing: 10) {
-                            tile("Protein", target?.protein, AppTheme.macroProtein, "goals.protein")
-                            tile("Carbs", target?.carbs, AppTheme.macroCarbs, "goals.carbs")
-                            tile("Fat", target?.fat, AppTheme.macroFat, "goals.fat")
-                            tile("Calories", target?.kcal, AppTheme.macroKcal, "goals.calories")
-                        }
-                        if target == nil {
-                            Text("No targets yet. Set them to see progress on the Journal.")
-                                .font(.footnote).foregroundStyle(AppTheme.textSecondary)
-                                .accessibilityIdentifier("goals.empty")
-                        }
-                    }
-                    .padding(16)
-                    .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
-                }
-                .padding(16)
-            }
-        }
-        .background(AppTheme.background.ignoresSafeArea())
-        .sheet(isPresented: $editing) { NutritionTargetsView(viewModel: viewModel) }
-        .onAppear { viewModel.reload() }
-    }
-
-    private func tile(_ title: String, _ value: Double?, _ color: Color, _ id: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Circle().fill(color).frame(width: 8, height: 8)
-                Text(title).font(.caption).foregroundStyle(AppTheme.textSecondary).lineLimit(1).minimumScaleFactor(0.7)
-            }
-            Text(value.map { NutritionFormat.whole($0) } ?? "–")
-                .font(.title3.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.surfaceElevated, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(id)
     }

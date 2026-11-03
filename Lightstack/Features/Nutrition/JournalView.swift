@@ -34,6 +34,7 @@ private struct ScrollOffsetKey: PreferenceKey {
 /// The nutrition Journal: day header, week strip, macro rings, trackers, one card per meal, water, notes.
 struct JournalView: View {
     @ObservedObject var viewModel: NutritionViewModel
+    var onStartSetup: () -> Void = {}
 
     @State private var path: [AddFoodRoute] = []
     @State private var sheet: JournalSheet?
@@ -149,7 +150,7 @@ struct JournalView: View {
         case .water:
             WaterSheet(viewModel: viewModel).presentationDetents([.medium])
         case .targets:
-            NutritionTargetsView(viewModel: viewModel)
+            PlanEditorView(viewModel: viewModel, plan: viewModel.plan(for: viewModel.date))
         case .settings:
             NutritionSettingsView(viewModel: viewModel)
         case .quickAdd(let slotId):
@@ -193,6 +194,11 @@ struct JournalView: View {
                 Menu {
                     Button { viewModel.goToToday() } label: { Label("Go to today", systemImage: "calendar") }
                     Button { present(.targets) } label: { Label("Edit targets", systemImage: "target") }
+                        .accessibilityIdentifier("journal.macros.edit")
+                    Button { sheet = nil; onStartSetup() } label: {
+                        Label("Recalculate targets", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .accessibilityIdentifier("journal.macros.recalculate")
                     Button { present(.settings) } label: { Label("Journal settings", systemImage: "gearshape") }
                         .accessibilityIdentifier("journal.menu.settings")
                 } label: {
@@ -259,7 +265,9 @@ struct JournalView: View {
             }
             .accessibilityHidden(true)
             if target == nil {
-                Button { present(.targets) } label: {
+                Button {
+                    if viewModel.isSetupComplete { present(.targets) } else { onStartSetup() }
+                } label: {
                     Label("Set daily targets", systemImage: "target")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.accent)

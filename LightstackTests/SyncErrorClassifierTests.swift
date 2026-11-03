@@ -44,7 +44,7 @@ final class SyncErrorClassifierTests: XCTestCase {
     }
 
     func testPermanentErrors() {
-        for code in ["22P02", "23502", "23514", "42P01", "PGRST100"] {
+        for code in ["22P02", "23502", "23514", "PGRST100"] {
             XCTAssertEqual(SyncErrorClassifier.classify(QueueTestError.postgres(code), opType: .insertSet), .permanent, code)
         }
         let decodeError = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "x"))

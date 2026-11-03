@@ -25,14 +25,14 @@ final class NutritionTests: LightstackUITestCase {
     /// Goals tab -> set targets -> back to Journal.
     private func setTargets(protein: String = "100", carbs: String = "200", fat: String = "50") {
         openTab("Goals")
-        tap(app.buttons["goals.edit"])
+        tap(app.buttons["goals.add"])
         type(protein, into: app.textFields["nutrition.target.protein"])
         type(carbs, into: app.textFields["nutrition.target.carbs"])
         type(fat, into: app.textFields["nutrition.target.fat"])
         dismissKeyboardIfNeeded()
         tap(app.buttons["nutrition.target.save"])
         XCTAssertTrue(app.buttons["nutrition.target.save"].waitForNonExistence(timeout: timeout))
-        waitFor(any("goals.calories"))
+        waitFor(any("goals.plan.Daily"))
         openTab("Journal")
         waitFor(any("journal.ring.calories"))
     }
@@ -269,7 +269,7 @@ final class NutritionTests: LightstackUITestCase {
         waitFor(app.textFields["kitchen.edit.name"])
         tap(app.buttons["Cancel"])
         openTab("Goals")
-        waitFor(any("goals.card"))
+        waitFor(any("goals.personalize"))
         shot("52-goals-dark")
         openTab("Dashboard")
         waitFor(any("dashboard.soon"))

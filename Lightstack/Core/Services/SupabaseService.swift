@@ -325,6 +325,14 @@ final class SupabaseService {
         try await client.from("day_notes").upsert(note.cloudRow()).execute()
     }
 
+    func upsertGoalSettings(_ settings: NutritionGoalSettings) async throws {
+        try await client.from("nutrition_goal_settings").upsert(settings.cloudRow()).execute()
+    }
+
+    func upsertNutritionPlan(_ plan: NutritionPlan) async throws {
+        try await client.from("nutrition_plans").upsert(plan.cloudRow()).execute()
+    }
+
     // MARK: - Tombstones
 
     /// Records that these rows were deleted on this device, so other devices

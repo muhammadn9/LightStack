@@ -35,6 +35,8 @@ enum QueuedOperationType: String, Codable {
     case upsertWaterEntry
     case deleteWaterEntry
     case upsertDayNote
+    case upsertGoalSettings
+    case upsertNutritionPlan
     case insertTombstone
 }
 
@@ -145,6 +147,8 @@ protocol RemoteWriting: Sendable {
     func upsertWaterEntry(_ entry: WaterEntry) async throws
     func deleteWaterEntry(id: UUID) async throws
     func upsertDayNote(_ note: DayNote) async throws
+    func upsertGoalSettings(_ settings: NutritionGoalSettings) async throws
+    func upsertNutritionPlan(_ plan: NutritionPlan) async throws
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws
 }
 
@@ -160,6 +164,8 @@ extension RemoteWriting {
     func upsertWaterEntry(_ entry: WaterEntry) async throws {}
     func deleteWaterEntry(id: UUID) async throws {}
     func upsertDayNote(_ note: DayNote) async throws {}
+    func upsertGoalSettings(_ settings: NutritionGoalSettings) async throws {}
+    func upsertNutritionPlan(_ plan: NutritionPlan) async throws {}
 }
 
 extension SupabaseService: RemoteWriting, @unchecked Sendable {}
@@ -1337,6 +1343,7 @@ actor OfflineQueueManager {
             .upsertNutritionTarget, .upsertFood,
             // Meal slots before the entries that point at them.
             .upsertMealSlot, .upsertFoodEntry, .upsertWaterEntry, .upsertDayNote,
+            .upsertGoalSettings, .upsertNutritionPlan,
             // Delete operations should be last, tombstones after the deletes they record.
             .deleteWorkout, .deleteSet, .deleteExercise, .deleteMonthPlan, .deleteRestDay,
             .deletePersonalRecords,
@@ -1449,6 +1456,10 @@ actor OfflineQueueManager {
             try await remote.deleteWaterEntry(id: try decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload).id)
         case .upsertDayNote:
             try await remote.upsertDayNote(try decoder.decode(DayNote.self, from: op.payload))
+        case .upsertGoalSettings:
+            try await remote.upsertGoalSettings(try decoder.decode(NutritionGoalSettings.self, from: op.payload))
+        case .upsertNutritionPlan:
+            try await remote.upsertNutritionPlan(try decoder.decode(NutritionPlan.self, from: op.payload))
         case .insertTombstone:
             let model = try decoder.decode(TombstonePayload.self, from: op.payload)
             guard let userId = model.userId ?? op.ownerUserId else {
@@ -1587,6 +1598,8 @@ struct PendingChangeIndex {
     var mealSlots = Set<UUID>()
     var waterEntries = Set<UUID>()
     var dayNotes = Set<UUID>()
+    var goalSettings = Set<UUID>()
+    var nutritionPlans = Set<UUID>()
     /// Tombstones queued here but not yet uploaded.
     var tombstones: [TombstoneEntity: Set<UUID>] = [:]
 
@@ -1677,6 +1690,10 @@ struct PendingChangeIndex {
             if let model = try? decoder.decode(DeleteNutritionRecordPayload.self, from: op.payload) { waterEntries.insert(model.id) }
         case .upsertDayNote:
             if let model = try? decoder.decode(DayNote.self, from: op.payload) { dayNotes.insert(model.id) }
+        case .upsertGoalSettings:
+            if let model = try? decoder.decode(NutritionGoalSettings.self, from: op.payload) { goalSettings.insert(model.id) }
+        case .upsertNutritionPlan:
+            if let model = try? decoder.decode(NutritionPlan.self, from: op.payload) { nutritionPlans.insert(model.id) }
         case .insertTombstone:
             if let model = try? decoder.decode(TombstonePayload.self, from: op.payload) {
                 tombstones[model.entity, default: []].formUnion(model.recordIds)

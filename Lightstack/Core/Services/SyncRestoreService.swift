@@ -127,6 +127,8 @@ final class SyncRestoreService {
             || !storage.fetchFoods(userId: userId).isEmpty
             || !storage.fetchAllWaterEntries(userId: userId).isEmpty
             || !storage.fetchAllDayNotes(userId: userId).isEmpty
+            || storage.fetchGoalSettings(userId: userId) != nil
+            || !storage.fetchNutritionPlans(userId: userId).isEmpty
     }
 
     func forgetLastRestore(userId: UUID) {
@@ -495,6 +497,8 @@ final class SyncRestoreService {
         var mealSlots = Set<UUID>()
         var waterEntries = Set<UUID>()
         var dayNotes = Set<UUID>()
+        var goalSettings = Set<UUID>()
+        var nutritionPlans = Set<UUID>()
     }
 
     /// Applies one kind of nutrition record. Tombstoned and pending-change records are skipped (local wins).
@@ -516,6 +520,12 @@ final class SyncRestoreService {
         }
         save(toApply)
         return toApply.count
+    }
+
+    /// Runs a read of a table added by a not-yet-applied migration; a missing table gives an empty list.
+    private func readIfTableExists<T>(_ read: () async throws -> [T]) async throws -> [T] {
+        do { return try await read() }
+        catch where SyncErrorClassifier.isMissingTable(error) { return [] }
     }
 
     private func restoreNutrition(
@@ -622,6 +632,32 @@ final class SyncRestoreService {
             reconcile: reconcile, local: { self.storage.fetchDayNote(id: $0) },
             queueUpload: { self.queue.submit(.upsertDayNote, payload: $0, recordKey: $0.id.uuidString) },
             save: { self.storage.restoreDayNotes($0) }
+        )
+
+        // Goal settings and weekday plans live in tables that may not exist yet (the owner applies the migration
+        // by hand): a missing table reads as "nothing in the cloud" instead of failing the whole restore.
+        let goalSettings = try await readIfTableExists { try await self.remote.fetchGoalSettings(userId: userId) }
+        try ensureUser(userId)
+        pending = try await pendingChanges(userId)
+        ids.goalSettings = Set(goalSettings.map(\.id))
+        summary.nutritionApplied += applyNutritionRecords(
+            goalSettings, id: { $0.id }, owner: { $0.userId }, userId: userId,
+            isTombstoned: { _ in false }, isPending: { pending.goalSettings.contains($0) },
+            reconcile: reconcile, local: { self.storage.fetchGoalSettings(id: $0) },
+            queueUpload: { self.queue.submit(.upsertGoalSettings, payload: $0, recordKey: $0.id.uuidString) },
+            save: { self.storage.restoreGoalSettings($0) }
+        )
+
+        let plans = try await readIfTableExists { try await self.remote.fetchNutritionPlans(userId: userId) }
+        try ensureUser(userId)
+        pending = try await pendingChanges(userId)
+        ids.nutritionPlans = Set(plans.map(\.id))
+        summary.nutritionApplied += applyNutritionRecords(
+            plans, id: { $0.id }, owner: { $0.userId }, userId: userId,
+            isTombstoned: { _ in false }, isPending: { pending.nutritionPlans.contains($0) },
+            reconcile: reconcile, local: { self.storage.fetchNutritionPlan(id: $0) },
+            queueUpload: { self.queue.submit(.upsertNutritionPlan, payload: $0, recordKey: $0.id.uuidString) },
+            save: { self.storage.restoreNutritionPlans($0) }
         )
         return ids
     }
@@ -877,6 +913,16 @@ final class SyncRestoreService {
         where !remoteNutrition.dayNotes.contains(note.id) && !tombstones.contains(.dayNote, note.id)
             && !pending.dayNotes.contains(note.id) {
             queue.submit(.upsertDayNote, payload: note, recordKey: note.id.uuidString)
+            summary.repairedNutrition += 1
+        }
+        if let settings = storage.fetchGoalSettings(userId: userId),
+           !remoteNutrition.goalSettings.contains(settings.id) && !pending.goalSettings.contains(settings.id) {
+            queue.submit(.upsertGoalSettings, payload: settings, recordKey: settings.id.uuidString)
+            summary.repairedNutrition += 1
+        }
+        for plan in storage.fetchNutritionPlans(userId: userId)
+        where !remoteNutrition.nutritionPlans.contains(plan.id) && !pending.nutritionPlans.contains(plan.id) {
+            queue.submit(.upsertNutritionPlan, payload: plan, recordKey: plan.id.uuidString)
             summary.repairedNutrition += 1
         }
     }

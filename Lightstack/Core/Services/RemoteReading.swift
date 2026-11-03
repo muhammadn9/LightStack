@@ -21,6 +21,8 @@ protocol RemoteReading: Sendable {
     /// One page of water logs (newest day first).
     func fetchWaterEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [WaterEntry]
     func fetchDayNotes(userId: UUID) async throws -> [DayNote]
+    func fetchGoalSettings(userId: UUID) async throws -> [NutritionGoalSettings]
+    func fetchNutritionPlans(userId: UUID) async throws -> [NutritionPlan]
 }
 
 /// Nutrition reads default to "nothing in the cloud" so fakes that predate nutrition keep compiling.
@@ -31,6 +33,8 @@ extension RemoteReading {
     func fetchMealSlots(userId: UUID) async throws -> [MealSlot] { [] }
     func fetchWaterEntriesPage(userId: UUID, offset: Int, limit: Int) async throws -> [WaterEntry] { [] }
     func fetchDayNotes(userId: UUID) async throws -> [DayNote] { [] }
+    func fetchGoalSettings(userId: UUID) async throws -> [NutritionGoalSettings] { [] }
+    func fetchNutritionPlans(userId: UUID) async throws -> [NutritionPlan] { [] }
 }
 
 extension SupabaseService: RemoteReading {
@@ -186,6 +190,34 @@ extension SupabaseService: RemoteReading {
                 .select()
                 .eq("user_id", value: userId.uuidString)
                 .order("date", ascending: false)
+                .order("id", ascending: true)
+                .range(from: offset, to: offset + Self.readPageSize - 1)
+                .execute()
+                .value
+            all.append(contentsOf: page)
+            if page.count < Self.readPageSize { return all }
+            offset += page.count
+        }
+    }
+
+    func fetchGoalSettings(userId: UUID) async throws -> [NutritionGoalSettings] {
+        try await client
+            .from("nutrition_goal_settings")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+            .value
+    }
+
+    func fetchNutritionPlans(userId: UUID) async throws -> [NutritionPlan] {
+        var all: [NutritionPlan] = []
+        var offset = 0
+        while true {
+            let page: [NutritionPlan] = try await client
+                .from("nutrition_plans")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("sort_order", ascending: true)
                 .order("id", ascending: true)
                 .range(from: offset, to: offset + Self.readPageSize - 1)
                 .execute()

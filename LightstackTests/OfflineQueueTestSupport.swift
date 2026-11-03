@@ -74,6 +74,8 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     private var _mealSlots: [UUID: MealSlot] = [:]
     private var _waterEntries: [UUID: WaterEntry] = [:]
     private var _dayNotes: [UUID: DayNote] = [:]
+    private var _goalSettings: [UUID: NutritionGoalSettings] = [:]
+    private var _nutritionPlans: [UUID: NutritionPlan] = [:]
     private var _tombstones: [String] = []
     private var _profiles: [UUID: UserProfile] = [:]
     private var _summaries: [String: AIContextSummary] = [:]
@@ -98,6 +100,8 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     var mealSlots: [UUID: MealSlot] { locked { _mealSlots } }
     var waterEntries: [UUID: WaterEntry] { locked { _waterEntries } }
     var dayNotes: [UUID: DayNote] { locked { _dayNotes } }
+    var goalSettings: [UUID: NutritionGoalSettings] { locked { _goalSettings } }
+    var nutritionPlans: [UUID: NutritionPlan] { locked { _nutritionPlans } }
     /// "entity:recordId" for every tombstone written.
     var tombstones: [String] { locked { _tombstones } }
     var renames: [(ids: [UUID], name: String)] { locked { _renames } }
@@ -264,6 +268,14 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
         try await record(.upsertDayNote, "")
         locked { _dayNotes[note.id] = note }
     }
+    func upsertGoalSettings(_ settings: NutritionGoalSettings) async throws {
+        try await record(.upsertGoalSettings, "")
+        locked { _goalSettings[settings.id] = settings }
+    }
+    func upsertNutritionPlan(_ plan: NutritionPlan) async throws {
+        try await record(.upsertNutritionPlan, plan.name)
+        locked { _nutritionPlans[plan.id] = plan }
+    }
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws {
         try await record(.insertTombstone, entity)
         locked {
@@ -306,6 +318,8 @@ extension FakeRemote {
     func seedFoodEntry(_ e: FoodEntry) { lock.lock(); _foodEntries[e.id] = e; lock.unlock() }
     func seedMealSlot(_ m: MealSlot) { lock.lock(); _mealSlots[m.id] = m; lock.unlock() }
     func seedWaterEntry(_ w: WaterEntry) { lock.lock(); _waterEntries[w.id] = w; lock.unlock() }
+    func seedGoalSettings(_ g: NutritionGoalSettings) { lock.lock(); _goalSettings[g.id] = g; lock.unlock() }
+    func seedNutritionPlan(_ p: NutritionPlan) { lock.lock(); _nutritionPlans[p.id] = p; lock.unlock() }
     func seedDayNote(_ n: DayNote) { lock.lock(); _dayNotes[n.id] = n; lock.unlock() }
     func seedTombstone(_ entity: TombstoneEntity, _ id: UUID) {
         lock.lock(); _tombstones.append("\(entity.rawValue):\(id.uuidString)"); lock.unlock()
@@ -398,6 +412,16 @@ extension FakeRemote {
     func fetchDayNotes(userId: UUID) async throws -> [DayNote] {
         try await read("fetchDayNotes")
         return lock.withLock { _dayNotes.values.filter { $0.userId == userId } }
+    }
+
+    func fetchGoalSettings(userId: UUID) async throws -> [NutritionGoalSettings] {
+        try await read("fetchGoalSettings")
+        return lock.withLock { _goalSettings.values.filter { $0.userId == userId } }
+    }
+
+    func fetchNutritionPlans(userId: UUID) async throws -> [NutritionPlan] {
+        try await read("fetchNutritionPlans")
+        return lock.withLock { _nutritionPlans.values.filter { $0.userId == userId } }
     }
 
     func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone] {

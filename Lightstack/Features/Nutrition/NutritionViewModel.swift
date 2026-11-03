@@ -13,6 +13,9 @@ final class NutritionViewModel: ObservableObject {
     @Published private(set) var waterUnit: WaterUnit = WaterUnit.current()
     /// Bumped whenever the saved-food list changes, so Kitchen and the add-food flow refresh.
     @Published private(set) var foodsVersion = 0
+    /// True once the setup wizard has been finished (on any device).
+    @Published private(set) var isSetupComplete = false
+    @Published private(set) var plans: [NutritionPlan] = []
 
     private let repository: NutritionRepository
     private let userIdProvider: () -> UUID?
@@ -55,6 +58,8 @@ final class NutritionViewModel: ObservableObject {
         waterEntries = repository.waterEntries(userId: userId, on: date).sorted { $0.createdAt > $1.createdAt }
         trackers = trackerStore?.trackers ?? []
         waterUnit = WaterUnit.current()
+        isSetupComplete = repository.isSetupComplete(userId: userId)
+        plans = repository.plans(userId: userId)
     }
 
     func setDate(_ day: Date) {
@@ -81,6 +86,73 @@ final class NutritionViewModel: ObservableObject {
         guard let userId else { return }
         repository.setTarget(userId: userId, effectiveDate: Date(), protein: protein, carbs: carbs, fat: fat,
                              kcalOverride: kcalOverride)
+        reload()
+    }
+
+    // MARK: - Setup and weekday plans
+
+    /// Saved settings, or a draft prefilled from the profile (age, height, weight).
+    func goalSettingsOrDraft() -> NutritionGoalSettings? {
+        guard let userId else { return nil }
+        return repository.goalSettingsOrDraft(userId: userId)
+    }
+
+    /// Live preview for the wizard. Pure; nothing is saved.
+    func calculate(_ settings: NutritionGoalSettings) -> GoalCalculation {
+        NutritionCalculator.calculate(settings)
+    }
+
+    /// Saves the settings without finishing setup (also updates the profile).
+    func saveGoalSettings(_ settings: NutritionGoalSettings) {
+        repository.saveGoalSettings(settings)
+        reload()
+    }
+
+    /// Finishes the wizard: saves the settings as complete and creates one plan covering all seven days.
+    @discardableResult
+    func completeSetup(_ settings: NutritionGoalSettings) -> NutritionPlan? {
+        let result = repository.completeSetup(settings: settings, calculation: NutritionCalculator.calculate(settings))
+        reload()
+        return result.plan
+    }
+
+    /// The plan that applies on a day (nil = that day uses the older target history).
+    func plan(for day: Date) -> NutritionPlan? {
+        guard let userId else { return nil }
+        return repository.plan(userId: userId, on: day)
+    }
+
+    func allPlans(includeArchived: Bool = false) -> [NutritionPlan] {
+        guard let userId else { return [] }
+        return repository.plans(userId: userId, includeArchived: includeArchived)
+    }
+
+    /// Weekdays (Calendar 1...7) no plan covers.
+    func uncoveredWeekdays() -> [Int] {
+        guard let userId else { return [] }
+        return repository.uncoveredWeekdays(userId: userId)
+    }
+
+    /// Creates (`id == nil`) or edits a plan. It takes its weekdays from other plans; see the repository.
+    @discardableResult
+    func savePlan(id: UUID?, name: String, weekdayMask: Int, protein: Double, carbs: Double, fat: Double,
+                  kcalOverride: Double?) -> NutritionPlan? {
+        guard let userId else { return nil }
+        let plan = repository.savePlan(userId: userId, id: id, name: name, weekdayMask: weekdayMask,
+                                       protein: protein, carbs: carbs, fat: fat, kcalOverride: kcalOverride)
+        reload()
+        return plan
+    }
+
+    func deletePlan(_ plan: NutritionPlan) {
+        guard let userId else { return }
+        repository.archivePlan(id: plan.id, userId: userId)
+        reload()
+    }
+
+    func reorderPlans(ids: [UUID]) {
+        guard let userId else { return }
+        repository.reorderPlans(userId: userId, orderedIds: ids)
         reload()
     }
 
