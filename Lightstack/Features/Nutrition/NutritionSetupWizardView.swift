@@ -575,19 +575,21 @@ struct RulerPicker: View {
     var body: some View {
         GeometryReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
+                LazyHStack(alignment: .top, spacing: 0) {
                     ForEach(0..<count, id: \.self) { i in tick(i) }
                 }
                 .scrollTargetLayout()
+                .frame(height: proxy.size.height, alignment: .top)
             }
             .contentMargins(.horizontal, max(0, proxy.size.width / 2 - tickWidth / 2), for: .scrollContent)
             .scrollTargetBehavior(.viewAligned)
             .scrollPosition(id: $position, anchor: .center)
-            .overlay {
-                Rectangle().fill(AppTheme.accent).frame(width: 3, height: 56).allowsHitTesting(false)
+            .overlay(alignment: .top) {
+                // Spans only the tick area (tallest tick = 34pt) so it never covers a number label.
+                Rectangle().fill(AppTheme.accent).frame(width: 3, height: 34).allowsHitTesting(false)
             }
         }
-        .frame(height: 84)
+        .frame(height: 96)
         .onAppear { position = index(value) }
         .onChange(of: position) { _, new in
             guard let new else { return }
@@ -621,7 +623,7 @@ struct RulerPicker: View {
                 .font(.caption2).foregroundStyle(AppTheme.textSecondary)
                 .fixedSize()
         }
-        .frame(width: tickWidth, height: 70, alignment: .top)
+        .frame(width: tickWidth, alignment: .top)
         .id(i)
     }
 }
