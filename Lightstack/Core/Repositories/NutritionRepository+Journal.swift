@@ -211,7 +211,7 @@ extension NutritionRepository {
     /// Four small reads (entries, slots, water, note) and one in-memory pass: cheap enough to run on every change.
     func daySummary(userId: UUID, on date: Date) -> JournalDaySummary {
         let day = date.startOfDay
-        let target = NutritionMath.target(in: localStorage.fetchNutritionTargets(userId: userId), on: day)
+        let target = resolvedTarget(userId: userId, on: day)
         return JournalDaySummaryBuilder.build(
             date: day,
             entries: localStorage.fetchFoodEntries(userId: userId, on: day),

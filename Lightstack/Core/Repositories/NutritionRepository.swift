@@ -59,9 +59,10 @@ final class NutritionRepository {
         localStorage.fetchNutritionTargets(userId: userId)
     }
 
-    /// The target in force on that day (latest effective date on or before it), if any.
+    /// The target in force on that day: the weekday plan if one covers it, else the latest effective-date
+    /// target on or before it.
     func target(userId: UUID, on date: Date) -> NutritionTarget? {
-        NutritionMath.target(in: localStorage.fetchNutritionTargets(userId: userId), on: date)
+        resolvedTarget(userId: userId, on: date)
     }
 
     func deleteTarget(id: UUID, userId: UUID) {
@@ -199,7 +200,7 @@ final class NutritionRepository {
         let day = date.startOfDay
         let entries = localStorage.fetchFoodEntries(userId: userId, on: day)
         let totals = NutritionMath.totals(of: entries)
-        let target = NutritionMath.target(in: localStorage.fetchNutritionTargets(userId: userId), on: day)
+        let target = resolvedTarget(userId: userId, on: day)
         return DailyNutrition(date: day, entries: entries, totals: totals, target: target,
                               remaining: target.map { NutritionMath.remaining(target: $0, totals: totals) })
     }

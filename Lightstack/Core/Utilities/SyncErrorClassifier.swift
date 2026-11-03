@@ -31,8 +31,22 @@ enum SyncErrorClassifier {
         .insertExercises, .insertSet, .renameExercises, .deleteExercise, .deleteExercises, .deleteSet
     ]
 
+    /// The server has no such table yet (a migration that has not been applied): PostgREST `PGRST205`,
+    /// or Postgres `42P01`. A bare HTTP 404 is not enough to tell. This is "not ready yet", never "refused for good".
+    static func isMissingTable(_ error: Error) -> Bool {
+        if let pg = error as? PostgrestError { return isMissingTable(postgresCode: pg.code) }
+        return false
+    }
+
+    static func isMissingTable(postgresCode code: String?) -> Bool {
+        code == "PGRST205" || code == "42P01"
+    }
+
     static func classify(_ error: Error, opType: QueuedOperationType) -> SyncErrorClass {
         if error is DecodingError { return .permanent }
+        // A table that is not there yet backs off and retries (nothing dropped, no dead letter, and it does not
+        // count towards the "offline" streak that stops a pass), so the rest of the queue keeps flowing.
+        if isMissingTable(error) { return .dependency }
         if error is URLError { return .transient }
         if error is CancellationError { return .transient }
 
@@ -68,6 +82,7 @@ enum SyncErrorClassifier {
 
     static func classify(postgresCode code: String?, opType: QueuedOperationType) -> SyncErrorClass {
         guard let code = code, !code.isEmpty else { return .transient }
+        if isMissingTable(postgresCode: code) { return .dependency }
         switch code {
         case "23503":
             return .dependency
