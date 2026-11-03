@@ -1544,11 +1544,11 @@ final class GoalPlannerTests: XCTestCase {
 
     func testAchievedNeedsWeightAndRepsOnAMatchingLift() {
         let g = goal()
-        let hit = logged("Bench Press", [(185, 5), (225, 1)])
+        let hit = logged(bench, [(185, 5), (225, 1)])
         XCTAssertEqual(GoalPlanner.achieved(goals: [g], exercises: [hit.exercise], sets: hit.sets).map(\.id), [g.id])
-        let over = logged("Bench Press", [(230, 3)])
+        let over = logged(bench, [(230, 3)])
         XCTAssertEqual(GoalPlanner.achieved(goals: [g], exercises: [over.exercise], sets: over.sets).count, 1)
-        let light = logged("Bench Press", [(215, 3), (185, 8)])
+        let light = logged(bench, [(215, 3), (185, 8)])
         XCTAssertTrue(GoalPlanner.achieved(goals: [g], exercises: [light.exercise], sets: light.sets).isEmpty, "never reached the weight")
         let other = logged("Barbell Squat", [(315, 5)])
         XCTAssertTrue(GoalPlanner.achieved(goals: [g], exercises: [other.exercise], sets: other.sets).isEmpty, "different lift")
