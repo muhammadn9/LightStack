@@ -91,6 +91,8 @@ final class CoachPromptService {
     for kept exercises the app fills the numbers.
     Change types: reorder (reflect it in the list order), swap ("exercise" is replaced by the lift named in detail), \
     drop, add, setCount ("sets" = working sets; never add heavy sets), loadAdjust ("percent" -15 to 5).
+    Names: for every exercise (kept, swapped or added), use the athlete's existing name from ATHLETE'S EXERCISE NAMES verbatim \
+    when it is the same movement; only invent a new name for a genuinely new movement. Never put "(per arm)" in a name.
     "cue" only for a known form issue. Keep coach_note and coaching_notes to one short sentence. \
     Supersets: set "superset" only when asked or clearly useful; same label alternates sets, adjacent, max 4.
     """
@@ -176,6 +178,7 @@ final class CoachPromptService {
         recentSessionExercises: [UUID: [Exercise]] = [:],
         recentLoggedSets: [UUID: [WorkoutSet]] = [:],
         bestSets: [String: (weightLbs: Double, reps: Int)] = [:],
+        exerciseLibrary: [String] = [],
         coach: PlanPromptExtras? = nil
     ) -> String {
         let sanitizedType = sanitize(workoutType)
@@ -200,6 +203,13 @@ final class CoachPromptService {
 
         if let summary = rollingSummary, !summary.isEmpty {
             message += "\n\nROLLING CONTEXT (recent history summary):\n\(summary)"
+        }
+
+        // Most-used first (the caller sorts by set count); capped to keep the prompt small.
+        let libraryNames = exerciseLibrary.map { sanitize($0) }.filter { !$0.isEmpty }.prefix(80)
+        if !libraryNames.isEmpty {
+            message += "\n\nATHLETE'S EXERCISE NAMES (most used first; reuse verbatim for the same movement):\n"
+                + libraryNames.joined(separator: "; ")
         }
 
         if let latest = recentSessions.first {

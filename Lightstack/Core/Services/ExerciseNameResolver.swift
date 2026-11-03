@@ -97,4 +97,69 @@ enum ExerciseNameResolver {
         }
         return order.compactMap { groups[$0] }.filter { $0.count >= 2 }
     }
+
+    // MARK: - Canonical names for AI-proposed exercises
+
+    /// An AI-proposed name resolved against the athlete's own library.
+    struct Canonical: Equatable {
+        let name: String
+        /// True when the proposed name carried "(per arm)" wording.
+        let isPerArm: Bool
+    }
+
+    /// Lowercased, whitespace-collapsed key used for exact and alias lookups.
+    static func normalizedKey(_ name: String) -> String {
+        name.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    /// Removes "(per arm)" / "per arm" wording from a name; reports whether any was there.
+    static func stripPerArm(_ name: String) -> (name: String, hadPerArm: Bool) {
+        let original = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = "\\s*[\\(\\[]?\\s*per[\\s-]+arm\\s*[\\)\\]]?"
+        let stripped = original.replacingOccurrences(of: pattern, with: " ", options: [.regularExpression, .caseInsensitive])
+        let cleaned = stripped.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+            .trimmingCharacters(in: CharacterSet(charactersIn: " -,:;"))
+        guard !cleaned.isEmpty else { return (original, false) }
+        return (cleaned, cleaned != original)
+    }
+
+    /// Maps an AI-proposed name onto the athlete's existing spelling, in order:
+    /// remembered merge alias, case/whitespace-insensitive match, match after dropping
+    /// "per arm" wording, then a fuzzy match (the most-used spelling wins). Anything
+    /// else stays a genuinely new name, minus the "per arm" wording.
+    static func canonicalName(
+        for proposed: String,
+        existing: [(name: String, count: Int)],
+        defaults: UserDefaults = .standard
+    ) -> Canonical {
+        let trimmed = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let (cleaned, hadPerArm) = stripPerArm(trimmed)
+        guard !cleaned.isEmpty else { return Canonical(name: trimmed, isPerArm: false) }
+
+        func exact(_ name: String) -> String? {
+            let key = normalizedKey(name)
+            return existing.filter { normalizedKey($0.name) == key }
+                .max { $0.count < $1.count }?.name
+        }
+        func result(_ name: String) -> Canonical { Canonical(name: name, isPerArm: hadPerArm) }
+
+        // (a) A merge the athlete already did.
+        if let target = ExerciseMergeAliases.resolve(trimmed, defaults: defaults)
+            ?? ExerciseMergeAliases.resolve(cleaned, defaults: defaults) {
+            return result(exact(target) ?? target)
+        }
+        // (b) + (c) Exact, ignoring case, spacing and "per arm" wording.
+        if let hit = exact(trimmed) ?? exact(cleaned) { return result(hit) }
+        // (d) Same movement under another spelling: prefer the one logged most.
+        let matches = existing.filter {
+            !$0.name.trimmingCharacters(in: .whitespaces).isEmpty && isMatch(cleaned, stripPerArm($0.name).name)
+        }
+        if let best = matches.max(by: { lhs, rhs in
+            if lhs.count != rhs.count { return lhs.count < rhs.count }
+            return similarity(cleaned, lhs.name) < similarity(cleaned, rhs.name)
+        }) {
+            return result(best.name)
+        }
+        return result(cleaned)
+    }
 }

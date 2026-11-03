@@ -452,6 +452,13 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     // MARK: - Workout Modifications
 
+    /// Maps a coach-proposed exercise name onto the athlete's existing spelling.
+    private func canonicalAIName(_ name: String) -> ExerciseNameResolver.Canonical {
+        guard let userId else { return ExerciseNameResolver.canonicalName(for: name, existing: []) }
+        let stats = workoutRepository.fetchExerciseNameStats(userId: userId)
+        return ExerciseNameResolver.canonicalName(for: name, existing: stats.map { ($0.name, $0.setCount) })
+    }
+
     /// Apply a workout modification while preserving already-logged sets.
     /// Applies one coach modification. Returns false when it names an exercise that
     /// isn't in this workout, so the caller can say so instead of claiming success.
@@ -465,16 +472,18 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
         switch modification {
         case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note, let perSet):
+            let canonical = canonicalAIName(name)
             let newExercise = Exercise.create(
                 workoutId: workoutId,
-                name: name,
+                name: canonical.name,
                 muscleGroup: muscleGroup,
                 orderIndex: nextOrderIndex,
                 targetSets: targetSets,
                 targetReps: targetReps,
                 targetRir: targetRir,
                 restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
-                coachNote: Self.coachNote(nil, weight: targetWeight, note: note)
+                coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
+                isPerArm: canonical.isPerArm ? true : nil
             )
             exercises.append(newExercise)
             storeSetTargets(perSet, for: newExercise.id)
@@ -529,9 +538,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 let groupId = exercises[index].supersetGroupId
 
                 // Create new exercise
+                let canonical = canonicalAIName(newName)
                 let newExercise = Exercise.create(
                     workoutId: workoutId,
-                    name: newName,
+                    name: canonical.name,
                     muscleGroup: muscleGroup,
                     orderIndex: orderIndex,
                     targetSets: targetSets,
@@ -539,7 +549,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     targetRir: targetRir,
                     restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
                     coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
-                    supersetGroupId: groupId
+                    supersetGroupId: groupId,
+                    isPerArm: canonical.isPerArm ? true : nil
                 )
 
                 exercises[index] = newExercise
