@@ -22,6 +22,8 @@ struct CoachContext {
     var muscleLoad: [String: MuscleLoad] = [:]
     /// Yesterday's intake and the athlete's nutrition goal, when the nutrition feature has data.
     var fuel: CoachFuelSummary?
+    /// The coach's past calls and notes from up to 60 recent workouts (all types), parsed from the stored documents only.
+    var memory = CoachMemoryIndex()
 
     /// The athlete's usual session length in minutes (median of recent sessions).
     var usualMinutes: Int? { medianSessionMinutes }
@@ -88,7 +90,10 @@ final class CoachContextBuilder {
                                 recentSessions: [], recentSessionSets: [:])
         }
 
-        let everything = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 40).filter { $0.id != excluded }
+        // 60 workouts for the coach's memory (documents only); the history passes use the newest 40.
+        let scanned = workoutRepository.fetchRecentWorkouts(userId: userId, limit: CoachMemoryIndex.scanLimit)
+            .filter { $0.id != excluded }
+        let everything = Array(scanned.prefix(40))
         var candidates = everything
         if let type = workoutType {
             candidates = candidates.filter { $0.workoutType.lowercased() == type.lowercased() }
@@ -171,7 +176,8 @@ final class CoachContextBuilder {
             briefs: ExerciseBriefBuilder.briefs(sessions: sessions, exercises: sessionExercises, loggedSets: loggedSets),
             muscleLoad: MuscleLoadBuilder.build(
                 workouts: windowWorkouts, exercises: windowExercises, loggedSets: windowSets, now: now),
-            fuel: fuel?(userId, now)
+            fuel: fuel?(userId, now),
+            memory: CoachMemoryIndex(workouts: scanned)
         )
     }
 

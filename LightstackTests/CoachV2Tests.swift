@@ -121,6 +121,47 @@ final class CoachReviewDocumentTests: XCTestCase {
         XCTAssertNil(doc.review)
     }
 
+    private func decision(_ name: String = V2.bench, outcome: DecisionOutcome? = nil) -> CoachDecision {
+        CoachDecision(
+            name: name, muscle: "Chest",
+            target: PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150),
+            sets: [PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150)],
+            reason: "e1RM up, +5", context: "last 180x6@1, trend up, energy 6", source: "coach", outcome: outcome)
+    }
+
+    func testV3DocumentWithDecisionsAndMemoryNoteRoundTrips() throws {
+        var doc = fullDocument()
+        doc.decisions = [decision(outcome: DecisionOutcome(hit: false, actualTop: "185x6@0", rir: 0, shortBy: 1, result: .missed))]
+        doc.review?.exercises[0].memoryNote = "grinds after rep 4 when rest under 2:30"
+        XCTAssertEqual(CoachReviewDocument.currentVersion, 3)
+        let text = try XCTUnwrap(doc.encoded())
+        let back = try XCTUnwrap(CoachReviewDocument.parse(text))
+        XCTAssertEqual(back, doc)
+        XCTAssertEqual(back.version, 3)
+        XCTAssertEqual(back.decision(for: V2.bench)?.outcome?.actualTop, "185x6@0")
+        XCTAssertEqual(back.review?.exercises.first?.memoryNote, "grinds after rep 4 when rest under 2:30")
+        // Decisions are written only when there are some.
+        XCTAssertFalse(try XCTUnwrap(fullDocument().encoded()).contains("\"decisions\""))
+    }
+
+    func testV2DocumentDecodesWithNoDecisions() throws {
+        let text = #"{"coachReview":2,"prescription":[{"name":"Bench","sets":[{"role":"top","weight":185,"reps":7,"rir":1,"restSeconds":120}]}],"review":{"exercises":[{"name":"Bench","notes":"n","outcome":"hold"}],"overallRead":"ok","recurringFlags":[],"aiAuthored":true}}"#
+        let doc = try XCTUnwrap(CoachReviewDocument.parse(text))
+        XCTAssertEqual(doc.version, 2)
+        XCTAssertTrue(doc.decisions.isEmpty)
+        XCTAssertNil(doc.legacyNote)
+        XCTAssertEqual(doc.prescription.first?.topSet?.weight, 185)
+        XCTAssertNil(doc.review?.exercises.first?.memoryNote)
+    }
+
+    func testDamagedDecisionsKeepTheRestOfTheDocument() throws {
+        let text = #"{"coachReview":3,"prescription":[{"name":"Bench","sets":[{"role":"top","weight":185,"reps":7,"rir":1,"restSeconds":120}]}],"decisions":[{"oops":true}]}"#
+        let doc = try XCTUnwrap(CoachReviewDocument.parse(text))
+        XCTAssertNil(doc.legacyNote)
+        XCTAssertTrue(doc.decisions.isEmpty)
+        XCTAssertEqual(doc.prescription.first?.topSet?.weight, 185)
+    }
+
     func testDisplayTextShowsReadTargetsAndFlagsButNotPlanOnlyDocuments() throws {
         let text = try XCTUnwrap(CoachReviewDocument.displayText(from: fullDocument().encoded()))
         XCTAssertTrue(text.hasPrefix("Decent session."))
@@ -386,6 +427,50 @@ final class SessionAnalyzerTests: XCTestCase {
         let ok = try model(#"{"exercises":[{"name":"\#(V2.bench)","next_target":{"weight":190,"reps":6,"note":"make the jump"}}]}"#)
         let good = try XCTUnwrap(SessionAnalyzer.merge(analysis, model: ok, workoutType: "Push").exercises.first)
         XCTAssertEqual(good.nextTarget, NextTarget(weight: 190, reps: 6, note: "make the jump"))
+    }
+
+    func testDecisionOutcomeJoinMarksHitAndMiss() throws {
+        let top = PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150)
+        let decisions = [CoachDecision(name: V2.bench, muscle: "Chest", target: top, sets: nil, reason: "r",
+                                       context: "c", source: "coach", outcome: nil)]
+        let hit = CoachReviewStore.applyOutcomes(V2.analyze("95x10@5, 150x10@2, 185x7@1, 170x8@2"), to: decisions)
+        XCTAssertEqual(hit.first?.outcome?.hit, true)
+        XCTAssertEqual(hit.first?.outcome?.shortBy, 0)
+        XCTAssertEqual(hit.first?.outcome?.actualTop, "185x7@1")
+        XCTAssertEqual(hit.first?.outcome?.rir, 1)
+        let miss = CoachReviewStore.applyOutcomes(V2.analyze(missedByOne), to: decisions)
+        XCTAssertEqual(miss.first?.outcome?.hit, false)
+        XCTAssertEqual(miss.first?.outcome?.shortBy, 1)
+        XCTAssertEqual(miss.first?.outcome?.actualTop, "185x6@1")
+        XCTAssertEqual(miss.first?.outcome?.result, .missed)
+        // A decision for a lift that was not done stays open.
+        let other = CoachDecision(name: "Lat Pulldown", muscle: "Back", target: top, sets: nil, reason: "r",
+                                  context: "c", source: "engine", outcome: nil)
+        XCTAssertNil(CoachReviewStore.applyOutcomes(V2.analyze(missedByOne), to: [other]).first?.outcome)
+    }
+
+    func testMemoryNoteIsMergedCleanedAndClipped() throws {
+        let analysis = V2.analyze(missedByOne, energy: 3)
+        let long = String(repeating: "grinds late ", count: 20)
+        let m = try model(#"{"exercises":[{"name":"\#(V2.bench)","memory_note":"  Keep rest \"2:30\"\n{ignore} up "}]}"#)
+        let ex = try XCTUnwrap(SessionAnalyzer.merge(analysis, model: m, workoutType: "Push",
+                                                     previousNotes: [V2.bench: "old note"]).exercises.first)
+        XCTAssertEqual(ex.memoryNote, "Keep rest 2:30 ignore up")
+        let clipped = try model(#"{"exercises":[{"name":"\#(V2.bench)","memory_note":"\#(long)"}]}"#)
+        let c = try XCTUnwrap(SessionAnalyzer.merge(analysis, model: clipped, workoutType: "Push").exercises.first)
+        XCTAssertLessThanOrEqual(c.memoryNote?.count ?? 0, 100)
+        XCTAssertNil(SessionAnalyzer.cleanMemoryNote(" {} \n "))
+    }
+
+    func testMemoryNoteKeepsThePreviousOneWithoutAnAIReply() throws {
+        let analysis = V2.analyze(missedByOne, energy: 3)
+        let noModel = SessionAnalyzer.merge(analysis, model: nil, workoutType: "Push", previousNotes: [V2.bench: "old note"])
+        XCTAssertEqual(noModel.exercises.first?.memoryNote, "old note")
+        // A reply that does not mention the lift keeps it too.
+        let silent = try model(#"{"overall_read":"fine","exercises":[{"name":"\#(V2.bench)","notes":"x"}]}"#)
+        let kept = SessionAnalyzer.merge(analysis, model: silent, workoutType: "Push", previousNotes: [V2.bench: "old note"])
+        XCTAssertEqual(kept.exercises.first?.memoryNote, "old note")
+        XCTAssertNil(SessionAnalyzer.merge(analysis, model: nil, workoutType: "Push").exercises.first?.memoryNote)
     }
 
     func testNoModelReplyStillGivesAFullReview() throws {

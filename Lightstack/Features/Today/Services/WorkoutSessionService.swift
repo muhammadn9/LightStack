@@ -203,7 +203,8 @@ final class WorkoutSessionService {
                     reviews: context.recentReviews, recency: context.muscleRecency, now: coach.now,
                     briefBlock: coachPromptService.briefBlock(
                         briefs: context.briefs(matching: draft), muscleLoad: context.muscleLoad,
-                        fuel: context.fuel, usualMinutes: context.usualMinutes)),
+                        fuel: context.fuel, usualMinutes: context.usualMinutes),
+                    memory: context.memory),
                 aiSetsWeights: aiSetsWeights
             )
 
@@ -336,6 +337,10 @@ final class WorkoutSessionService {
                 logged: logged, prescription: prescription, energy: energy, userNote: workout.userNote,
                 reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus,
                 now: Date())
+            // The coach's last note per lift: shown to the model to rewrite, and kept if it does not.
+            let previousNotes: [String: String] = analysis.exercises.reduce(into: [:]) { result, a in
+                if let note = context.memory.note(for: a.name) { result[a.name] = note }
+            }
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .postWorkout)
             let userMessage = coachPromptService.buildPostWorkoutMessage(
                 workoutType: workoutType,
@@ -344,7 +349,8 @@ final class WorkoutSessionService {
                 previousSummary: context.rollingSummary,
                 analysis: analysis,
                 previousReviews: context.recentReviews,
-                userNote: workout.userNote
+                userNote: workout.userNote,
+                previousNotes: previousNotes
             )
 
             aiServiceManager.generateChat(
@@ -356,9 +362,9 @@ final class WorkoutSessionService {
                 guard let self = self else { return }
                 var model: ModelReview?
                 if case .success(let responseText) = result { model = Self.modelReview(from: responseText) }
-                let review = SessionAnalyzer.merge(analysis, model: model, workoutType: workoutType)
+                let review = SessionAnalyzer.merge(analysis, model: model, workoutType: workoutType, previousNotes: previousNotes)
                 if !analysis.exercises.isEmpty {
-                    self.reviewStore.recordReview(review, prescription: prescription, for: workoutId)
+                    self.reviewStore.recordReview(review, prescription: prescription, analysis: analysis, for: workoutId)
                     self.refreshCurrentWorkoutNote()
                 }
                 if self.finishToken == token, !exercises.isEmpty, !analysis.exercises.isEmpty {
@@ -811,7 +817,7 @@ final class WorkoutSessionService {
         }
         delegate?.sessionServiceDidBuildEvidence(self, evidence: applied.evidence)
         if !final.isEmpty { delegate?.sessionServiceDidBuildCoachReview(self, review: final) }
-        finalizePlan(applied.exercises, setTargets: applied.setTargets, review: final.isEmpty ? nil : final)
+        finalizePlan(applied.exercises, setTargets: applied.setTargets, review: final.isEmpty ? nil : final, applied: applied)
     }
 
     /// The app's own numbers replace the AI's where history exists; guardrails cover the rest.
@@ -844,7 +850,8 @@ final class WorkoutSessionService {
 
     /// The plan succeeded: only now is the workout saved (and queued), followed by its
     /// exercises. The workout is brand new, so there is nothing to clear first.
-    private func finalizePlan(_ exercises: [Exercise], setTargets: [UUID: [SetTarget]] = [:], review: CoachPlanReview? = nil) {
+    private func finalizePlan(_ exercises: [Exercise], setTargets: [UUID: [SetTarget]] = [:], review: CoachPlanReview? = nil,
+                              applied: AppliedPlan? = nil) {
         if var workout = currentWorkout {
             // The prescription and the structure review ride along in the coach document.
             let prescription = CoachReviewStore.prescription(exercises: exercises, targets: setTargets)
@@ -852,6 +859,12 @@ final class WorkoutSessionService {
                 var document = CoachReviewDocument()
                 document.prescription = prescription
                 document.planReview = review
+                // The coach's calls and why, so the next plan can see how they turned out.
+                if let applied {
+                    document.decisions = CoachReviewStore.decisions(
+                        prescription: prescription, exercises: exercises, evidence: applied.evidence,
+                        reasons: applied.reasons, energy: planContext?.energy)
+                }
                 workout.aiProgressionNote = document.encoded()
                 currentWorkout = workout
             }

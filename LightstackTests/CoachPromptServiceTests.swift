@@ -180,4 +180,95 @@ final class CoachPromptServiceTests: XCTestCase {
         XCTAssertTrue(v2.contains("DRAFT PLAN"))
         XCTAssertTrue(v2.contains("Review the DRAFT PLAN"))
     }
+
+    // MARK: - Coach memory
+
+    private func memoryWorkout(_ daysAgo: Int, name: String, muscle: String = "Chest", top: (Double, Int, Int),
+                               reason: String = "e1RM up, +5", actual: String?, hit: Bool = true,
+                               note: String? = nil) -> Workout {
+        var doc = CoachReviewDocument()
+        let outcome = actual.map { DecisionOutcome(hit: hit, actualTop: $0, rir: nil, shortBy: hit ? 0 : 1, result: hit ? .hold : .missed) }
+        doc.decisions = [CoachDecision(
+            name: name, muscle: muscle,
+            target: PrescribedSet(role: .top, weight: top.0, reps: top.1, rir: top.2, restSeconds: 150),
+            sets: nil, reason: reason, context: "last", source: "coach", outcome: outcome)]
+        if let note {
+            doc.review = SessionReview(
+                exercises: [ExerciseReview(name: name, notes: "n", outcome: .hold, nextTarget: nil, missAnalysis: nil, memoryNote: note)],
+                overallRead: "r", recurringFlags: [])
+        }
+        var w = Workout.create(userId: UUID(), workoutType: "Push", energyLevel: 6, timeAvailableMinutes: 45,
+                               date: Date(timeIntervalSinceNow: -Double(daysAgo) * 86_400))
+        w.aiProgressionNote = doc.encoded()
+        return w
+    }
+
+    private func draftExercise(_ name: String, muscle: String = "Chest") throws -> DraftExercise {
+        let history = [HistorySession(date: Date(timeIntervalSinceNow: -86_400 * 3),
+                                      sets: [HistorySet(185, 6, rir: 1), HistorySet(185, 6, rir: 1)]),
+                       HistorySession(date: Date(timeIntervalSinceNow: -86_400 * 10),
+                                      sets: [HistorySet(180, 6, rir: 2), HistorySet(180, 6, rir: 1)])]
+        let result = try XCTUnwrap(ProgressionEngine.plan(ProgressionInput(
+            name: name, sessions: history, best: HistorySet(200, 3), allowWarmups: false)))
+        return DraftExercise(name: name, muscleGroup: muscle, result: result)
+    }
+
+    func testMemoryReturnsTheSameLiftNewestFirstAndLimitsIt() {
+        let workouts = [
+            memoryWorkout(20, name: "Bench Press", top: (200, 5, 1), actual: "200x5@1"),
+            memoryWorkout(3, name: "Bench Press", top: (210, 5, 1), actual: "210x4@0", hit: false, note: "grinds late"),
+            memoryWorkout(10, name: "Bench Press", top: (205, 5, 1), actual: "205x6@1"),
+            memoryWorkout(1, name: "Bench Press", top: (215, 5, 1), actual: nil),   // not finished: no outcome
+            memoryWorkout(5, name: "Incline Dumbbell Press", top: (70, 8, 1), actual: "70x8@1")]
+        let m = CoachReviewStore.memory(for: "Bench Press", muscle: "Chest", from: workouts, limit: 3)
+        XCTAssertEqual(m.lines.map(\.decision.target.weight), [210, 205, 200])
+        XCTAssertEqual(m.note, "grinds late")
+        XCTAssertTrue(m.related.isEmpty, "3 hits on the lift itself: no muscle fallback")
+        XCTAssertEqual(CoachReviewStore.memory(for: "Bench Press", muscle: "Chest", from: workouts, limit: 2).lines.count, 2)
+    }
+
+    func testMemoryFallsBackToTheSameMuscleWhenTheLiftHasFewerThanTwoHits() {
+        let workouts = [
+            memoryWorkout(3, name: "Bench Press", top: (210, 5, 1), actual: "210x4@0", hit: false),
+            memoryWorkout(5, name: "Incline Dumbbell Press", top: (70, 8, 1), actual: "70x8@1"),
+            memoryWorkout(9, name: "Incline Dumbbell Press", top: (65, 8, 1), actual: "65x8@1"),
+            memoryWorkout(6, name: "Lat Pulldown", muscle: "Back", top: (140, 10, 1), actual: "140x10@1")]
+        let m = CoachReviewStore.memory(for: "Bench Press", muscle: "Chest", from: workouts)
+        XCTAssertEqual(m.lines.count, 1)
+        XCTAssertEqual(m.related.count, 1, "one line per other lift, only the same muscle")
+        XCTAssertEqual(m.related.first?.decision.target.weight, 70, "newest call of that lift")
+        let none = CoachReviewStore.memory(for: "Squat", muscle: "Legs", from: workouts)
+        XCTAssertTrue(none.isEmpty)
+    }
+
+    func testMemoryBlockRendersCallsOldestToNewestWithOutcomesAndNote() throws {
+        let workouts = [
+            memoryWorkout(8, name: "Bench Press", top: (210, 5, 1), actual: "210x4@0", hit: false),
+            memoryWorkout(3, name: "Bench Press", top: (205, 5, 1), reason: "retry lighter", actual: "205x6@1", note: "grinds after rep 4")]
+        let block = try XCTUnwrap(service.memoryBlock(CoachMemoryIndex(workouts: workouts),
+                                                      draft: [try draftExercise("Bench Press")]))
+        XCTAssertTrue(block.hasPrefix("COACH MEMORY (your past calls -> what happened; learn from misses):"), block)
+        XCTAssertTrue(block.contains("- Bench Press: "), block)
+        XCTAssertTrue(block.contains("210x5@1 \"e1RM up, +5\" -> 210x4@0 MISS | "), block)
+        XCTAssertTrue(block.contains("205x5@1 \"retry lighter\" -> 205x6@1 HIT"), block)
+        XCTAssertTrue(block.contains("\n  note: grinds after rep 4"), block)
+        XCTAssertLessThan(try XCTUnwrap(block.range(of: "MISS")).lowerBound, try XCTUnwrap(block.range(of: "HIT")).lowerBound)
+        XCTAssertNil(service.memoryBlock(CoachMemoryIndex(), draft: [try draftExercise("Bench Press")]))
+    }
+
+    func testMemoryBlockIsInTheV3PlanMessageAndRulesMentionIt() throws {
+        let workouts = [memoryWorkout(3, name: "Bench Press", top: (205, 5, 1), actual: "205x6@1")]
+        let extras = CoachPromptService.PlanPromptExtras(
+            draft: [try draftExercise("Bench Press")], memory: CoachMemoryIndex(workouts: workouts))
+        let v3 = service.buildWorkoutRequestMessage(workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras,
+                                                    aiSetsWeights: true)
+        XCTAssertTrue(v3.contains("COACH MEMORY"), v3)
+        let v2 = service.buildWorkoutRequestMessage(workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras,
+                                                    aiSetsWeights: false)
+        XCTAssertFalse(v2.contains("COACH MEMORY"))
+        XCTAssertTrue(service.buildSystemPrompt(profile: nil, task: .plan, aiSetsWeights: true)
+            .contains("Use COACH MEMORY: repeat what worked, change what missed, and say so in the reason."))
+        let post = service.buildSystemPrompt(profile: nil, task: .postWorkout)
+        XCTAssertTrue(post.contains("\"memory_note\""))
+    }
 }

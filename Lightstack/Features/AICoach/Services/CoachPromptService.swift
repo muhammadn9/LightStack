@@ -87,6 +87,7 @@ final class CoachPromptService {
     (the APP BASELINE is the rule-based reference, not a limit). Balance movements and muscles; a missing one (e.g. rear delts on a pull day) is worth adding.
     Respect PREVIOUS REVIEWS: a "retry" or "reduceAndRebuild" decision stands. ROLLING CONTEXT is background only. \
     Use the athlete's notes (pain, form, equipment) to choose exercises.
+    Use COACH MEMORY: repeat what worked, change what missed, and say so in the reason.
     """
 
     static let planFormatV3 = """
@@ -209,7 +210,8 @@ final class CoachPromptService {
     Reply with ONLY a JSON object:
     {"exercises": [{"name": "str (as given)", "notes": "1-3 sentences", "outcome": "pr|hold|regression|missed|new", \
     "next_target": {"weight": number, "reps": int, "note": "short goal"}, \
-    "miss": {"cause": "lowEnergy|poorRecovery|painOrForm|strengthLoss|afterBreak|unknown", "decision": "retry|reduceAndRebuild|holdOrSwap", "reason": "str"}}], \
+    "miss": {"cause": "lowEnergy|poorRecovery|painOrForm|strengthLoss|afterBreak|unknown", "decision": "retry|reduceAndRebuild|holdOrSwap", "reason": "str"}, \
+    "memory_note": "max 100 chars: what to remember about this lift; rewrite the previous note"}], \
     "overall_read": "2-3 sentences", "recurring_flags": ["str"]}
     - Use the app's PRESCRIBED vs ACTUAL analysis; do not recompute it. notes: what happened, PR/hold/regression, form flags.
     - "miss" only for exercises marked MISSED. A miss is a learning moment: a single miss (a bad day, or a close \
@@ -218,6 +220,8 @@ final class CoachPromptService {
     not done for 2+ weeks -> afterBreak (a rebuild, not lost strength) -> retry from today's weight; pain or form \
     -> holdOrSwap. Never call one miss "strength loss". Check PREVIOUS REVIEWS for repeats.
     - next_target: one specific goal per exercise, near what was lifted (within -15% to +5%).
+    - memory_note: one short line per exercise, kept for future plans (what works, what misses, rest, cues). \
+    Rewrite the PREVIOUS COACH NOTE with today's evidence instead of piling on; no quotes or line breaks.
     - overall_read: session quality, energy, patterns. recurring_flags: issues seen across sessions \
     (skipped exercises, form, repeated misses).
     """
@@ -342,7 +346,8 @@ final class CoachPromptService {
         previousSummary: String? = nil,
         analysis: SessionAnalysis? = nil,
         previousReviews: [CoachReviewEntry] = [],
-        userNote: String? = nil
+        userNote: String? = nil,
+        previousNotes: [String: String] = [:]
     ) -> String {
         var lines: [String] = []
         if let previous = previousSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !previous.isEmpty {
@@ -377,6 +382,13 @@ final class CoachPromptService {
         if !previousReviews.isEmpty {
             lines.append("\nPREVIOUS REVIEWS (newest first, same workout type):")
             lines.append(contentsOf: previousReviews.map { reviewLine($0) })
+        }
+        let noteLines = previousNotes.sorted { $0.key < $1.key }.compactMap { entry -> String? in
+            clipped(entry.value, SessionAnalyzer.memoryNoteLimit).map { "- \(sanitize(entry.key)): \($0)" }
+        }
+        if !noteLines.isEmpty {
+            lines.append("\nPREVIOUS COACH NOTE (your own, per exercise; rewrite as memory_note):")
+            lines.append(contentsOf: noteLines)
         }
         lines.append("\nReturn the review JSON.")
         return lines.joined(separator: "\n")
@@ -457,6 +469,8 @@ final class CoachPromptService {
         var now: Date = Date()
         /// Compact per-exercise brief from `briefBlock`, appended after the draft.
         var briefBlock: String?
+        /// The coach's past calls and notes; rendered as COACH MEMORY for the draft's exercises.
+        var memory: CoachMemoryIndex = CoachMemoryIndex()
     }
 
     static func focusText(_ focus: CoachFocus) -> String {
@@ -518,7 +532,42 @@ final class CoachPromptService {
             out += "\n  Estimated length of the \(aiSetsWeights ? "baseline" : "draft"): ~\(Int(minutes.rounded())) min."
         }
         if let brief = coach.briefBlock, !brief.isEmpty { out += "\n\n" + brief }
+        if aiSetsWeights, let memory = memoryBlock(coach.memory, draft: coach.draft) { out += "\n\n" + memory }
         return out
+    }
+
+    // MARK: - Memory
+
+    /// COACH MEMORY: per draft exercise, the coach's past calls (oldest to newest) with what happened,
+    /// then its note. Exercises with nothing remembered are left out; nil when nothing is left.
+    func memoryBlock(_ memory: CoachMemoryIndex, draft: [DraftExercise], limit: Int = 3) -> String? {
+        guard !memory.isEmpty else { return nil }
+        var lines: [String] = []
+        for d in draft {
+            let m = memory.memory(for: d.name, muscle: d.muscleGroup, limit: limit)
+            guard !m.isEmpty else { continue }
+            let name = sanitize(d.name)
+            if !m.lines.isEmpty {
+                lines.append("- \(name): " + m.lines.reversed().map { memoryEntry($0) }.joined(separator: " | "))
+            } else if m.note != nil {
+                lines.append("- \(name):")
+            }
+            if let note = clipped(m.note, SessionAnalyzer.memoryNoteLimit) { lines.append("  note: \(note)") }
+            for related in m.related {
+                lines.append("- \(sanitize(related.decision.name)) (same muscle, other lift): " + memoryEntry(related))
+            }
+        }
+        guard !lines.isEmpty else { return nil }
+        return "COACH MEMORY (your past calls -> what happened; learn from misses):\n" + lines.joined(separator: "\n")
+    }
+
+    /// `10/28 210x5@1 "e1RM up, +5" -> 210x4@0 MISS`
+    private func memoryEntry(_ line: CoachMemoryLine) -> String {
+        let d = line.decision
+        var text = "\(Self.trendDate.string(from: line.date)) \(d.target.text)"
+        if let reason = clipped(d.reason, 80) { text += " \"\(reason)\"" }
+        if let outcome = d.outcome { text += " -> \(outcome.actualTop) \(outcome.hit ? "HIT" : "MISS")" }
+        return text
     }
 
     // MARK: - Brief
