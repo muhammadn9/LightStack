@@ -42,6 +42,12 @@ enum SyncErrorClassifier {
         code == "PGRST205" || code == "42P01"
     }
 
+    /// The server lacks a column the client sent (PostgREST `PGRST204`, Postgres `42703`): a migration has not
+    /// been applied yet. Retry later; never dead-letter the write.
+    static func isMissingColumn(postgresCode code: String?) -> Bool {
+        code == "PGRST204" || code == "42703"
+    }
+
     static func classify(_ error: Error, opType: QueuedOperationType) -> SyncErrorClass {
         if error is DecodingError { return .permanent }
         // A table that is not there yet backs off and retries (nothing dropped, no dead letter, and it does not
@@ -82,7 +88,9 @@ enum SyncErrorClassifier {
 
     static func classify(postgresCode code: String?, opType: QueuedOperationType) -> SyncErrorClass {
         guard let code = code, !code.isEmpty else { return .transient }
-        if isMissingTable(postgresCode: code) { return .dependency }
+        if isMissingTable(postgresCode: code) || isMissingColumn(postgresCode: code) { return .dependency }
+        // A food saved with a source the server's CHECK does not know yet ('off' before the barcode migration).
+        if code == "23514", opType == .upsertFood { return .dependency }
         switch code {
         case "23503":
             return .dependency

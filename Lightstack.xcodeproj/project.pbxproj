@@ -95,6 +95,7 @@
 		43972B1D65A4D23A73B66174 /* InSessionAdjuster.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFBA50EBE6F1DF73C45A4A5B /* InSessionAdjuster.swift */; };
 		43A4896536FDD8BFEFD0A55E /* LiftTrendViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BDDFB8A82A45863514BEE9A /* LiftTrendViews.swift */; };
 		447FF83BF9679DD1F6339BDC /* us_decimals.txt in Resources */ = {isa = PBXBuildFile; fileRef = D6E02698F15E0213BB90A1B4 /* us_decimals.txt */; };
+		44B0A10FA92C1939D854DCA8 /* FakeOpenFoodFactsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CECB78383FF4592A3E95C8F /* FakeOpenFoodFactsService.swift */; };
 		453DEC8CF96E388A8F8524E8 /* LabelScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A505EE919E8F1952E9E46627 /* LabelScannerView.swift */; };
 		46D46C4F2FF98BF12DF65B40 /* OutboxWritePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66CC68D785783373B08968F3 /* OutboxWritePathTests.swift */; };
 		47D9960FFFB680F078BB42D6 /* Nutrition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17100E72935B1DE134A0CF16 /* Nutrition.swift */; };
@@ -140,6 +141,7 @@
 		651541F02C31FDEC9DEF6227 /* macro_inconsistent.txt in Resources */ = {isa = PBXBuildFile; fileRef = A499D7673C7CCBFC58879C12 /* macro_inconsistent.txt */; };
 		651F0CC07A3812B3C5B138A9 /* EditWorkoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17921365F8A14586A19F8147 /* EditWorkoutTests.swift */; };
 		657782A0CDC4EBBDE0CC0CA5 /* FinishWorkoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0DFE8492128FA612750BE3 /* FinishWorkoutTests.swift */; };
+		65FA798D81643E8F24E06953 /* OpenFoodFactsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1397150440C8372EAEB0B07F /* OpenFoodFactsModels.swift */; };
 		66601773DB1227340742FA55 /* WorkoutModificationJSONParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FCEB04776246C1DE3A4DEDD /* WorkoutModificationJSONParser.swift */; };
 		667A15341E2C46A8F94C62DA /* SessionExpiredBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48AF4287D92686FA27C57D4C /* SessionExpiredBanner.swift */; };
 		66841ECE2939A6742FBE068C /* CardioFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99D94EB37C98A77432C227F7 /* CardioFormatting.swift */; };
@@ -212,6 +214,7 @@
 		9D98769EC4A34AE37C6A28D9 /* MuscleGroupChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC3B52A6C11367ED0218606E /* MuscleGroupChartView.swift */; };
 		9DECFDC7B55C34F2FC45BC73 /* MergeWorkoutTypesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B8B4B45D0D3F8F04B0C736B /* MergeWorkoutTypesView.swift */; };
 		9F29E75AF9E7ECA9EA51B38F /* ExerciseFeedbackStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F44AA5DF30F0FA0A847AA04F /* ExerciseFeedbackStore.swift */; };
+		A03D24BB25DCF39D126756E9 /* OpenFoodFactsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E93F5105FF662228CF3755BB /* OpenFoodFactsTests.swift */; };
 		A07F47A644E8C8F432B6C6B0 /* PlanReview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A9379F4886AAEF97310682 /* PlanReview.swift */; };
 		A0EE039B50CD21FA92984115 /* PerArmTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEAF06ECBC8E9B852393B5A0 /* PerArmTests.swift */; };
 		A14910CBD666C9E418A0CE79 /* SupersetSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10FBC0E17160032D7B198F72 /* SupersetSession.swift */; };
@@ -220,6 +223,7 @@
 		A34EFE5CA51CF01E30EA09E8 /* NotebookComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A049A3CB8EED029EB74346C4 /* NotebookComponents.swift */; };
 		A43C475BA62F19708BD27C2E /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F3610212DE9B047C649205 /* ProfileView.swift */; };
 		A53A72D4570DB4470C7A259F /* WorkoutImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC4F0E935A23C9209FB4C507 /* WorkoutImportService.swift */; };
+		A54E9D856ECB69B6B8ED2A5C /* OpenFoodFactsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0E230E06EA79F94514B570B /* OpenFoodFactsService.swift */; };
 		A6257B416A3CD36BD467177D /* DiagnosticPayloadParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42FCDE3F7E95BA04D4A1883 /* DiagnosticPayloadParser.swift */; };
 		A6743BAC75AE4ACF1776B246 /* HeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62F2FC41C8600C48FFB671D0 /* HeatmapView.swift */; };
 		A69F6F7DFDF0AC60A7A17AD7 /* ExerciseNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC9E8C76147B003FE2BEFC9F /* ExerciseNameResolver.swift */; };
@@ -423,6 +427,7 @@
 		105C63EF6C52BA8488A716BF /* AppTheme+Nutrition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppTheme+Nutrition.swift"; sourceTree = "<group>"; };
 		10FBC0E17160032D7B198F72 /* SupersetSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupersetSession.swift; sourceTree = "<group>"; };
 		124A57EEEA80E46FF7462B27 /* Lightstack 5.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Lightstack 5.xcdatamodel"; sourceTree = "<group>"; };
+		1397150440C8372EAEB0B07F /* OpenFoodFactsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFoodFactsModels.swift; sourceTree = "<group>"; };
 		13B5769A04FC7EFFAC489ACE /* KeyboardDoneButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDoneButton.swift; sourceTree = "<group>"; };
 		141492EF9B5CB291F9A21074 /* WorkoutDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutDetailView.swift; sourceTree = "<group>"; };
 		14287BD52ED94C421E05DF80 /* NutritionGoals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionGoals.swift; sourceTree = "<group>"; };
@@ -443,6 +448,7 @@
 		1C48010D6E8588D794E4A142 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
 		1C4DB41551CA3B8A11BAB05E /* Exercise.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Exercise.swift; sourceTree = "<group>"; };
 		1CB65C7B8CA10A2C22D1EB6F /* NutritionJournalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionJournalTests.swift; sourceTree = "<group>"; };
+		1CECB78383FF4592A3E95C8F /* FakeOpenFoodFactsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeOpenFoodFactsService.swift; sourceTree = "<group>"; };
 		1D48A4799BEA8766EB6B14CC /* LiveActivityMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityMapper.swift; sourceTree = "<group>"; };
 		1DCAB13553929D1CB1ABD3F4 /* StaleWorkoutCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaleWorkoutCleanup.swift; sourceTree = "<group>"; };
 		1DDAFCA58E26A9DA10478C76 /* Phase3LeftoversTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase3LeftoversTests.swift; sourceTree = "<group>"; };
@@ -522,6 +528,7 @@
 		5BAFB59D0B81658DD06F38F0 /* SyncRestoreService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRestoreService.swift; sourceTree = "<group>"; };
 		5C5B52511B11E3C66713206D /* LiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityController.swift; sourceTree = "<group>"; };
 		5D15559EF53292C74889CEFE /* eu_dual_column.expected.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = eu_dual_column.expected.json; sourceTree = "<group>"; };
+		5D5ED82ECA7514B427FAE63A /* Lightstack 8.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Lightstack 8.xcdatamodel"; sourceTree = "<group>"; };
 		5EF3257A28254FC6A32A81D3 /* SupersetImportEditTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupersetImportEditTests.swift; sourceTree = "<group>"; };
 		5F3905FE1CAEC80E496E92E5 /* WorkoutModificationJSONParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutModificationJSONParserTests.swift; sourceTree = "<group>"; };
 		61E7BE1D9BF02B225B357CAD /* NutritionRepository+Plans.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NutritionRepository+Plans.swift"; sourceTree = "<group>"; };
@@ -616,6 +623,7 @@
 		A030BEB883DA759A9F8AE48A /* PlanBuilderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanBuilderViewModel.swift; sourceTree = "<group>"; };
 		A049A3CB8EED029EB74346C4 /* NotebookComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookComponents.swift; sourceTree = "<group>"; };
 		A0D1A01F95E573C9E748BA21 /* ExerciseGuideLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseGuideLibrary.swift; sourceTree = "<group>"; };
+		A0E230E06EA79F94514B570B /* OpenFoodFactsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFoodFactsService.swift; sourceTree = "<group>"; };
 		A1237C3764D9207309F8EFD3 /* SecurityHardeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityHardeningTests.swift; sourceTree = "<group>"; };
 		A1ECB04B5DCE2896EA94494F /* LocalStorageService+Restore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalStorageService+Restore.swift"; sourceTree = "<group>"; };
 		A21439901BE53CEAA4F2C880 /* LightstackApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightstackApp.swift; sourceTree = "<group>"; };
@@ -723,6 +731,7 @@
 		E751DCD349D7A48BBFA68528 /* StreakView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreakView.swift; sourceTree = "<group>"; };
 		E75F43C954C4BDE242435736 /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
 		E919A4A29C33B34493106590 /* ProgressionContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionContextTests.swift; sourceTree = "<group>"; };
+		E93F5105FF662228CF3755BB /* OpenFoodFactsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenFoodFactsTests.swift; sourceTree = "<group>"; };
 		E97C185D7E1E901B6DE1318D /* EquipmentClassifierTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EquipmentClassifierTests.swift; sourceTree = "<group>"; };
 		E9CCB4A9551EE9702BCF6C76 /* ExerciseMergeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseMergeService.swift; sourceTree = "<group>"; };
 		E9DBEEE5C8E92684A2832932 /* PerArmPreference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerArmPreference.swift; sourceTree = "<group>"; };
@@ -1076,8 +1085,11 @@
 		66C9B27146BD7B6EF260B774 /* Nutrition */ = {
 			isa = PBXGroup;
 			children = (
+				1CECB78383FF4592A3E95C8F /* FakeOpenFoodFactsService.swift */,
 				699657C2F79460A46A8C0E9E /* NutritionLabelParser.swift */,
 				C746447FAAB13ED722F9C1EA /* NutritionUnit.swift */,
+				1397150440C8372EAEB0B07F /* OpenFoodFactsModels.swift */,
+				A0E230E06EA79F94514B570B /* OpenFoodFactsService.swift */,
 			);
 			path = Nutrition;
 			sourceTree = "<group>";
@@ -1335,6 +1347,7 @@
 				28675330F1C0CA3590572372 /* NutritionLabelParserTests.swift */,
 				C78A2791954A107FDE6EE1D1 /* OfflineQueueManagerTests.swift */,
 				320842800A74B7EF0E3AC9CF /* OfflineQueueTestSupport.swift */,
+				E93F5105FF662228CF3755BB /* OpenFoodFactsTests.swift */,
 				0020393A466EC8A7EB945677 /* OutboxDependencyResolverTests.swift */,
 				66CC68D785783373B08968F3 /* OutboxWritePathTests.swift */,
 				231EB2C7FD8714EAD42D50A7 /* PerArmTests.swift */,
@@ -1833,6 +1846,7 @@
 				93F9F360B5C677A4C3BA80EA /* ExerciseSwapSuggestions.swift in Sources */,
 				FA6E005E2FCF14CC2A515BD3 /* ExerciseTableView.swift in Sources */,
 				C81A2132EF1701927C250345 /* ExerciseTraits.swift in Sources */,
+				44B0A10FA92C1939D854DCA8 /* FakeOpenFoodFactsService.swift in Sources */,
 				843DF525C433A53DBA8254EF /* FeatureFlags.swift in Sources */,
 				09588CE04FF075C5C8517A3D /* FlowLayout.swift in Sources */,
 				BBFAC35DC322E42315F0E6C4 /* FoodReviewView.swift in Sources */,
@@ -1907,6 +1921,8 @@
 				D3B6421E3CC6CC0EC4E31EBA /* NutritionViewModel.swift in Sources */,
 				AE4C263835B9E1565F60CBA9 /* OfflineQueueManager.swift in Sources */,
 				EDF9C0EF3DF4668882D87609 /* OnboardingView.swift in Sources */,
+				65FA798D81643E8F24E06953 /* OpenFoodFactsModels.swift in Sources */,
+				A54E9D856ECB69B6B8ED2A5C /* OpenFoodFactsService.swift in Sources */,
 				15BFA33868E0625E2B28A468 /* PRRepository.swift in Sources */,
 				C2DEB0C266BDAB74EE496913 /* PerArmPreference.swift in Sources */,
 				7DD3567AF9DFA8ABC4DFD269 /* PersonalRecord.swift in Sources */,
@@ -2020,6 +2036,7 @@
 				B4356F143BF44E0A6940DA9D /* NutritionLabelParserTests.swift in Sources */,
 				B75376712268AC41CA284A77 /* OfflineQueueManagerTests.swift in Sources */,
 				F73C9EB4064A0C78FE295EA6 /* OfflineQueueTestSupport.swift in Sources */,
+				A03D24BB25DCF39D126756E9 /* OpenFoodFactsTests.swift in Sources */,
 				FAD3F8F1F1CEC5670F4D939B /* OutboxDependencyResolverTests.swift in Sources */,
 				46D46C4F2FF98BF12DF65B40 /* OutboxWritePathTests.swift in Sources */,
 				7DFF5AA7ACF21F035C4E6BBF /* PRRecalculationTests.swift in Sources */,
@@ -2499,9 +2516,10 @@
 				124A57EEEA80E46FF7462B27 /* Lightstack 5.xcdatamodel */,
 				50FC50577063FCE834D8A8E8 /* Lightstack 6.xcdatamodel */,
 				74D48E0A7B0D560E22867644 /* Lightstack 7.xcdatamodel */,
+				5D5ED82ECA7514B427FAE63A /* Lightstack 8.xcdatamodel */,
 				23BC3EC52D64C159FB993891 /* Lightstack.xcdatamodel */,
 			);
-			currentVersion = 74D48E0A7B0D560E22867644 /* Lightstack 7.xcdatamodel */;
+			currentVersion = 5D5ED82ECA7514B427FAE63A /* Lightstack 8.xcdatamodel */;
 			path = Lightstack.xcdatamodeld;
 			sourceTree = "<group>";
 			versionGroupType = wrapper.xcdatamodel;

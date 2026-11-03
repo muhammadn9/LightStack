@@ -131,6 +131,27 @@ final class NutritionRepository {
         return Array(matches.prefix(max(0, limit)))
     }
 
+    // MARK: - Branded foods (Open Food Facts)
+
+    /// The user's own saved food with this barcode, if any. Checked before any network lookup.
+    func food(barcode: String, userId: UUID) -> NutritionFood? {
+        guard let code = Barcode.normalized(barcode) else { return nil }
+        return localStorage.fetchFood(barcode: code, userId: userId)
+    }
+
+    /// Turns an Open Food Facts product into a saved food (source Open Food Facts, with its barcode).
+    /// Saving the same barcode again returns the food already saved instead of creating a duplicate.
+    @discardableResult
+    func saveBrandedFood(_ product: OpenFoodFactsProduct, userId: UUID) -> NutritionFood {
+        if let existing = food(barcode: product.barcode, userId: userId) { return existing }
+        let food = NutritionFood.make(
+            userId: userId, name: product.name, brand: product.brand, servingLabel: product.servingLabel,
+            servingUnit: product.servingUnit, servingAmount: product.servingAmount, servingGrams: product.servingGrams,
+            nutrients: product.nutrients, source: .openFoodFacts, barcode: product.barcode, now: now()
+        )
+        return saveFood(food)
+    }
+
     // MARK: - Entries
 
     /// Logs `servings` of a saved food on a local day. The entry snapshots the food's values.
