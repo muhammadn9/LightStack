@@ -88,6 +88,7 @@ final class CoachPromptService {
     Respect PREVIOUS REVIEWS: a "retry" or "reduceAndRebuild" decision stands. ROLLING CONTEXT is background only. \
     Use the athlete's notes (pain, form, equipment) to choose exercises.
     Use COACH MEMORY: repeat what worked, change what missed, and say so in the reason.
+    ACTIVE GOALS: move toward them; follow today's step when given.
     """
 
     static let planFormatV3 = """
@@ -222,6 +223,7 @@ final class CoachPromptService {
     - next_target: one specific goal per exercise, near what was lifted (within -15% to +5%).
     - memory_note: one short line per exercise, kept for future plans (what works, what misses, rest, cues). \
     Rewrite the PREVIOUS COACH NOTE with today's evidence instead of piling on; no quotes or line breaks.
+    - GOAL HIT: when the message says an athlete goal was reached, congratulate them in overall_read.
     - overall_read: session quality, energy, patterns. recurring_flags: issues seen across sessions \
     (skipped exercises, form, repeated misses).
     """
@@ -347,7 +349,8 @@ final class CoachPromptService {
         analysis: SessionAnalysis? = nil,
         previousReviews: [CoachReviewEntry] = [],
         userNote: String? = nil,
-        previousNotes: [String: String] = [:]
+        previousNotes: [String: String] = [:],
+        achievedGoals: [CoachGoal] = []
     ) -> String {
         var lines: [String] = []
         if let previous = previousSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !previous.isEmpty {
@@ -389,6 +392,10 @@ final class CoachPromptService {
         if !noteLines.isEmpty {
             lines.append("\nPREVIOUS COACH NOTE (your own, per exercise; rewrite as memory_note):")
             lines.append(contentsOf: noteLines)
+        }
+        if !achievedGoals.isEmpty {
+            lines.append("\nGOAL HIT today: " + achievedGoals.map { "\(sanitize($0.exerciseName)) \($0.targetText)" }.joined(separator: "; ")
+                + ". Congratulate the athlete in overall_read.")
         }
         lines.append("\nReturn the review JSON.")
         return lines.joined(separator: "\n")
@@ -471,6 +478,10 @@ final class CoachPromptService {
         var briefBlock: String?
         /// The coach's past calls and notes; rendered as COACH MEMORY for the draft's exercises.
         var memory: CoachMemoryIndex = CoachMemoryIndex()
+        /// Lifts outside the baseline whose memory is still worth showing (goal lifts, lifts of this workout type).
+        var memoryLifts: [CoachLiftRef] = []
+        /// ACTIVE GOALS block from `goalsBlock`, appended after COACH MEMORY (coach v3 only).
+        var goalsBlock: String?
     }
 
     static func focusText(_ focus: CoachFocus) -> String {
@@ -532,20 +543,77 @@ final class CoachPromptService {
             out += "\n  Estimated length of the \(aiSetsWeights ? "baseline" : "draft"): ~\(Int(minutes.rounded())) min."
         }
         if let brief = coach.briefBlock, !brief.isEmpty { out += "\n\n" + brief }
-        if aiSetsWeights, let memory = memoryBlock(coach.memory, draft: coach.draft) { out += "\n\n" + memory }
+        if aiSetsWeights, let memory = memoryBlock(coach.memory, draft: coach.draft, extra: coach.memoryLifts) {
+            out += "\n\n" + memory
+        }
+        if aiSetsWeights, let goals = coach.goalsBlock, !goals.isEmpty { out += "\n\n" + goals }
         return out
     }
+
+    // MARK: - Goals
+
+    /// ACTIVE GOALS: one line per goal with the app's e1RM numbers and today's step; nil with no goals.
+    func goalsBlock(_ items: [GoalPlanItem], now: Date = Date()) -> String? {
+        let shown = items.prefix(GoalPlanner.maxGoalsInPrompt)
+        guard !shown.isEmpty else { return nil }
+        var lines: [String] = []
+        for item in shown {
+            let goal = item.goal
+            var line = "\(sanitize(goal.exerciseName)) \(goal.targetText)"
+            if let deadline = goal.deadline { line += " by \(Self.goalDate.string(from: deadline))" }
+            if let a = item.assessment {
+                line += " (e1RM \(String(format: "%.0f", a.currentE1RM)) -> need \(String(format: "%.0f", a.targetE1RM)))"
+            } else {
+                line += " (no logged history)"
+            }
+            line += "."
+            if let step = item.step {
+                var text = clipped(step.text, 140) ?? ""
+                if text.isEmpty, let w = step.weight, let r = step.reps { text = "\(String(format: "%g", w))x\(r)" }
+                if !text.isEmpty {
+                    let label = item.stepIsToday ? "Today's step" : "Next step"
+                    let when = item.stepIsToday ? "" : (CoachGoal.parseDay(step.date).map { " (\(Self.goalDate.string(from: $0)))" } ?? "")
+                    line += " \(label)\(when): \(text)"
+                    if !text.hasSuffix(".") { line += "." }
+                }
+            }
+            if item.attemptToday, let a = item.assessment {
+                line += " Attempt day: warm-up ladder " + a.ladder.map(\.text).joined(separator: ", ")
+                    + " (the last is the attempt; the rails allow up to \(String(format: "%g", goal.targetWeight)))."
+            }
+            lines.append("- " + line)
+        }
+        return "ACTIVE GOALS:\n" + lines.joined(separator: "\n") + "\nBuild toward them within the rails."
+    }
+
+    private static let goalDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MM/dd"
+        return f
+    }()
 
     // MARK: - Memory
 
     /// COACH MEMORY: per draft exercise, the coach's past calls (oldest to newest) with what happened,
     /// then its note. Exercises with nothing remembered are left out; nil when nothing is left.
-    func memoryBlock(_ memory: CoachMemoryIndex, draft: [DraftExercise], limit: Int = 3) -> String? {
+    /// `extra` lifts (goal lifts, lifts of this workout type) come first and are not in the baseline; at most
+    /// `maxLifts` lifts are shown in all.
+    func memoryBlock(_ memory: CoachMemoryIndex, draft: [DraftExercise], extra: [CoachLiftRef] = [],
+                     limit: Int = 3, maxLifts: Int = 8) -> String? {
         guard !memory.isEmpty else { return nil }
+        var lifts: [CoachLiftRef] = []
+        for lift in extra + draft.map({ CoachLiftRef(name: $0.name, muscle: $0.muscleGroup) })
+        where !lifts.contains(where: { ExerciseNameResolver.isMatch($0.name, lift.name) }) {
+            lifts.append(lift)
+        }
         var lines: [String] = []
-        for d in draft {
-            let m = memory.memory(for: d.name, muscle: d.muscleGroup, limit: limit)
+        var shownLifts = 0
+        for d in lifts {
+            if shownLifts >= maxLifts { break }
+            let m = memory.memory(for: d.name, muscle: d.muscle, limit: limit)
             guard !m.isEmpty else { continue }
+            if !m.lines.isEmpty || m.note != nil { shownLifts += 1 }
             let name = sanitize(d.name)
             if !m.lines.isEmpty {
                 lines.append("- \(name): " + m.lines.reversed().map { memoryEntry($0) }.joined(separator: " | "))

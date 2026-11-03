@@ -87,9 +87,11 @@ enum PlanProgressionApplier {
                 let cls = ExerciseTraits.classify(ex.name)
                 let lastTop = lastSession.flatMap { ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups($0.sets).working) }
                 let days = lastSession.map { max(0, Int(coach.now.timeIntervalSince($0.date) / 86_400)) }
+                let goal = coach.goalAllowance(for: ex.name)
                 let rail = PlanGuardrails.RailContext(
                     name: ex.name, cls: cls, focus: coach.focus, lastTop: lastTop, daysSinceLast: days,
-                    capBestE1RM: group.capBest?.e1RM, prWeight: allTimeBest?.weight ?? bestLookup(ex.name))
+                    capBestE1RM: group.capBest?.e1RM, prWeight: allTimeBest?.weight ?? bestLookup(ex.name),
+                    goalAllowance: goal?.weight, goalReps: goal?.reps ?? 1)
                 let checked = PlanGuardrails.validateCoachSets(name: ex.name, targets: coachSets, ctx: rail)
                 switch checked.verdict {
                 case .accepted(let fixes):

@@ -248,11 +248,18 @@ struct CoachExerciseMemory: Equatable {
     var isEmpty: Bool { lines.isEmpty && related.isEmpty && note == nil }
 }
 
+/// A lift by name and muscle group (for memory lookups of lifts outside the baseline).
+struct CoachLiftRef: Equatable {
+    var name: String
+    var muscle: String
+}
+
 /// The coach documents of recent workouts, parsed once (only `aiProgressionNote`, no set fetches).
 struct CoachMemoryIndex: Equatable {
     struct Record: Equatable {
         var date: Date
         var document: CoachReviewDocument
+        var workoutType: String = ""
     }
 
     /// Newest first. Only documents that carry decisions or a review.
@@ -270,12 +277,25 @@ struct CoachMemoryIndex: Equatable {
         for w in workouts.sorted(by: { $0.date > $1.date }).prefix(Self.scanLimit) {
             guard let doc = CoachReviewDocument.parse(w.aiProgressionNote),
                   !doc.decisions.isEmpty || doc.review != nil else { continue }
-            found.append(Record(date: w.date, document: doc))
+            found.append(Record(date: w.date, document: doc, workoutType: w.workoutType))
         }
         records = found
     }
 
     var isEmpty: Bool { records.isEmpty }
+
+    /// Lifts the coach made a call on (with an outcome) in sessions of this workout type, newest first, once each.
+    func lifts(forWorkoutType type: String, limit: Int = 12) -> [CoachLiftRef] {
+        var found: [CoachLiftRef] = []
+        for record in records where record.workoutType.lowercased() == type.lowercased() {
+            for d in record.document.decisions where d.outcome != nil {
+                if found.contains(where: { ExerciseNameResolver.isMatch($0.name, d.name) }) { continue }
+                found.append(CoachLiftRef(name: d.name, muscle: d.muscle))
+                if found.count >= limit { return found }
+            }
+        }
+        return found
+    }
 
     /// The newest memory note for a lift.
     func note(for name: String) -> String? {

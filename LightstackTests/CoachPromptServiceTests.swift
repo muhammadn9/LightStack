@@ -271,4 +271,71 @@ final class CoachPromptServiceTests: XCTestCase {
         let post = service.buildSystemPrompt(profile: nil, task: .postWorkout)
         XCTAssertTrue(post.contains("\"memory_note\""))
     }
+
+    // MARK: Goals and memory coverage
+
+    private func goalItems(attempt: Bool) -> [GoalPlanItem] {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 3, hour: 12)) ?? Date()
+        let deadline = calendar.date(from: DateComponents(year: 2026, month: 11, day: 7, hour: 12))
+        let step = attempt
+            ? CoachGoalStep(text: "attempt 225x1", weight: 225, reps: 1, attempt: true)
+            : CoachGoalStep(text: "top single 215x1 @1, then 2 work sets", weight: 215, reps: 1)
+        let goal = CoachGoal(exerciseName: "Bench Press", targetWeight: 225, targetReps: 1, deadline: deadline, steps: [step])
+        let points = [GoalAssessor.Point(date: now.addingTimeInterval(-3 * 86_400), weight: 220, reps: 1)]
+        return GoalPlanner.items(goals: [goal], history: { _ in points }, now: now)
+    }
+
+    func testGoalsBlockRendersNumbersDateAndTodaysStep() throws {
+        let block = try XCTUnwrap(service.goalsBlock(goalItems(attempt: false)))
+        XCTAssertTrue(block.hasPrefix("ACTIVE GOALS:"), block)
+        XCTAssertTrue(block.contains("Bench Press 225x1 by 11/07 (e1RM 227 -> need 232)"), block)
+        XCTAssertTrue(block.contains("Today's step: top single 215x1 @1, then 2 work sets."), block)
+        XCTAssertTrue(block.contains("Build toward them within the rails."), block)
+        XCTAssertFalse(block.contains("Attempt day"), block)
+        XCTAssertNil(service.goalsBlock([]))
+    }
+
+    func testGoalsBlockListsTheLadderOnAnAttemptDay() throws {
+        let block = try XCTUnwrap(service.goalsBlock(goalItems(attempt: true)))
+        XCTAssertTrue(block.contains("Attempt day: warm-up ladder"), block)
+        XCTAssertTrue(block.contains("225x1 (the last is the attempt; the rails allow up to 225)"), block)
+    }
+
+    func testGoalsAndOutOfBaselineMemoryAreInTheV3PlanMessageOnly() throws {
+        let workouts = [memoryWorkout(3, name: "Cable Fly", top: (40, 12, 2), actual: "40x12@2")]
+        let extras = CoachPromptService.PlanPromptExtras(
+            draft: [try draftExercise("Bench Press")], memory: CoachMemoryIndex(workouts: workouts),
+            memoryLifts: [CoachLiftRef(name: "Cable Fly", muscle: "Chest")],
+            goalsBlock: service.goalsBlock(goalItems(attempt: false)))
+        let v3 = service.buildWorkoutRequestMessage(workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras,
+                                                    aiSetsWeights: true)
+        XCTAssertTrue(v3.contains("ACTIVE GOALS:"), v3)
+        XCTAssertTrue(v3.contains("- Cable Fly: "), v3)
+        let v2 = service.buildWorkoutRequestMessage(workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras,
+                                                    aiSetsWeights: false)
+        XCTAssertFalse(v2.contains("ACTIVE GOALS:"))
+        XCTAssertTrue(CoachPromptService.writeRules.contains("ACTIVE GOALS: move toward them; follow today's step when given."))
+    }
+
+    func testMemoryBlockCapsLiftsAndSkipsLiftsWithoutMemory() throws {
+        var workouts: [Workout] = []
+        let names = ["Barbell Row", "Cable Fly", "Goblet Squat", "Hip Thrust", "Lat Pulldown",
+                     "Hammer Curl", "Face Pull", "Calf Raise", "Skull Crusher", "Overhead Press"]
+        for (i, name) in names.enumerated() {
+            workouts.append(memoryWorkout(i + 1, name: name, top: (100, 8, 2), actual: "100x8@2"))
+        }
+        let extra = [CoachLiftRef(name: "Never Done", muscle: "Chest")] + names.map { CoachLiftRef(name: $0, muscle: "Chest") }
+        let block = try XCTUnwrap(service.memoryBlock(CoachMemoryIndex(workouts: workouts), draft: [], extra: extra))
+        let own = block.components(separatedBy: "\n").filter { $0.hasPrefix("- ") && !$0.contains("same muscle") }
+        XCTAssertEqual(own.count, 8, block)
+        XCTAssertFalse(block.contains("Never Done"), block)
+    }
+
+    func testPostWorkoutMessageAsksToCongratulateAGoalHit() {
+        let goal = CoachGoal(exerciseName: "Bench Press", targetWeight: 225, targetReps: 1)
+        let message = service.buildPostWorkoutMessage(workoutType: "Push", exercises: [], sets: [:], achievedGoals: [goal])
+        XCTAssertTrue(message.contains("GOAL HIT today: Bench Press 225x1. Congratulate the athlete in overall_read."), message)
+        XCTAssertFalse(service.buildPostWorkoutMessage(workoutType: "Push", exercises: [], sets: [:]).contains("GOAL HIT"))
+    }
 }

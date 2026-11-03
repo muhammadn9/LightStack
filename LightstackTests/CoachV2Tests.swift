@@ -961,6 +961,29 @@ final class CoachV3Tests: XCTestCase {
         XCTAssertNotNil(rejection(check([set("work", 210, 5, 1)], ctx).verdict), "gap rules still win")
     }
 
+    func testGoalAllowanceLetsTheAttemptAndItsLadderPassTheE1RMAndTopWeightRails() {
+        // Last top 200x1, recent best e1RM 221: 225x1 (e1RM 232.5) breaks both the +10% top limit and the +5% e1RM limit.
+        let base = rail(last: HistorySet(200, 1, rir: 1), days: 3, best: 221)
+        let ladder = [set("warmup", 90, 5, 5, rest: 60), set("warmup", 135, 3, 4, rest: 60), set("warmup", 185, 1, 3, rest: 90),
+                      set("work", 225, 1, 1, rest: 240), set("work", 205, 3, 2, rest: 180)]
+        XCTAssertNotNil(rejection(check(ladder, base).verdict), "without an allowance the attempt is rejected")
+        var allowed = base
+        allowed.goalAllowance = 225
+        allowed.goalReps = 1
+        XCTAssertEqual(check(ladder, allowed).verdict, .accepted(softFixes: []))
+        XCTAssertNotNil(rejection(check([set("work", 230, 1, 1)], allowed).verdict), "above the goal weight is still rejected")
+        XCTAssertNotNil(rejection(check([set("work", 225, 5, 1)], allowed).verdict), "more reps than the goal is still rejected")
+    }
+
+    func testGoalAllowanceNeverRelaxesTheUnitConfusionOrGapRules() {
+        var ctx = rail(last: HistorySet(200, 1, rir: 1), days: 3, best: 221)
+        ctx.goalAllowance = 225
+        ctx.goalReps = 1
+        XCTAssertTrue(rejection(check([set("work", 60, 5, 1)], ctx).verdict)?.contains("half") ?? false, "unit rail stays")
+        ctx.daysSinceLast = 20
+        XCTAssertNotNil(rejection(check([set("work", 225, 1, 1)], ctx).verdict), "gap rules stay")
+    }
+
     func testSoftFixesClampInsteadOfRejecting() {
         let sets = [set("warmup", 20, 10, 5, rest: 60), set("warmup", 40, 10, 5, rest: 60), set("warmup", 60, 8, 4, rest: 60),
                     set("warmup", 80, 6, 3, rest: 60), set("warmup", 100, 5, 3, rest: 60),
@@ -1450,5 +1473,112 @@ final class CoachThreadTests: XCTestCase {
         let rambling = ChatMessage(role: .user, content: String(repeating: "a", count: 500))
         XCTAssertLessThanOrEqual(CoachChatViewModel.agreedNotes(from: [context, rambling]).count, 300)
         XCTAssertEqual(CoachChatViewModel.agreedNotes(from: [context]), "")
+    }
+}
+
+
+// MARK: - Goals in the plan
+
+final class GoalPlannerTests: XCTestCase {
+
+    private let bench = "Barbell Bench Press"
+    private let now = V2.day(11, 3)
+
+    private func goal(steps: [CoachGoalStep] = [], deadline: Date? = nil) -> CoachGoal {
+        CoachGoal(exerciseName: bench, targetWeight: 225, targetReps: 1, deadline: deadline, steps: steps)
+    }
+
+    private var nearHistory: [GoalAssessor.Point] {
+        [GoalAssessor.Point(date: now.addingTimeInterval(-3 * 86_400), weight: 220, reps: 1)]
+    }
+
+    func testTodaysStepPrefersTodayThenUndatedThenNearestFuture() {
+        let undated = CoachGoalStep(text: "build single")
+        let today = CoachGoalStep(date: "2026-11-03", text: "heavy single")
+        let later = CoachGoalStep(date: "2026-11-10", text: "attempt", attempt: true)
+        let sooner = CoachGoalStep(date: "2026-11-06", text: "volume")
+        let past = CoachGoalStep(date: "2026-10-20", text: "old")
+        XCTAssertEqual(GoalPlanner.todayStep(of: goal(steps: [past, later, today, undated]), now: now)?.step.text, "heavy single")
+        XCTAssertEqual(GoalPlanner.todayStep(of: goal(steps: [past, later, undated]), now: now)?.step.text, "build single")
+        let future = GoalPlanner.todayStep(of: goal(steps: [past, later, sooner]), now: now)
+        XCTAssertEqual(future?.step.text, "volume")
+        XCTAssertEqual(future?.isToday, false)
+        XCTAssertNil(GoalPlanner.todayStep(of: goal(steps: [past]), now: now))
+    }
+
+    func testAllowanceOnlyForAnAttemptStepWhenRealisticNow() {
+        let attempt = CoachGoalStep(text: "attempt 225x1", weight: 225, reps: 1, attempt: true)
+        let near = GoalPlanner.items(goals: [goal(steps: [attempt])], history: { _ in self.nearHistory }, now: now)
+        XCTAssertEqual(GoalPlanner.allowances(near), [GoalAllowance(name: bench, weight: 225, reps: 1)])
+
+        let farHistory = [GoalAssessor.Point(date: now, weight: 185, reps: 3)]
+        let far = GoalPlanner.items(goals: [goal(steps: [attempt])], history: { _ in farHistory }, now: now)
+        XCTAssertTrue(GoalPlanner.allowances(far).isEmpty, "not realistic now")
+
+        let work = CoachGoalStep(text: "top single 215x1", weight: 215, reps: 1)
+        let notAttempt = GoalPlanner.items(goals: [goal(steps: [work])], history: { _ in self.nearHistory }, now: now)
+        XCTAssertTrue(GoalPlanner.allowances(notAttempt).isEmpty)
+
+        let futureAttempt = CoachGoalStep(date: "2026-11-07", text: "attempt", attempt: true)
+        let later = GoalPlanner.items(goals: [goal(steps: [futureAttempt])], history: { _ in self.nearHistory }, now: now)
+        XCTAssertTrue(GoalPlanner.allowances(later).isEmpty, "the attempt is not today")
+    }
+
+    func testRelevantGoalsFollowTheBaselineOrTheMuscle() {
+        let items = GoalPlanner.items(goals: [goal()], history: { _ in self.nearHistory }, now: now)
+        XCTAssertEqual(GoalPlanner.relevant(items, lifts: [CoachLiftRef(name: "Bench Press", muscle: "Chest")]).count, 1)
+        XCTAssertEqual(GoalPlanner.relevant(items, lifts: [CoachLiftRef(name: "Incline Dumbbell Press", muscle: "Chest")]).count, 1)
+        XCTAssertTrue(GoalPlanner.relevant(items, lifts: [CoachLiftRef(name: "Barbell Squat", muscle: "Quads")]).isEmpty)
+        XCTAssertEqual(GoalPlanner.relevant(items, lifts: []).count, 1, "no baseline: nothing to rule out")
+    }
+
+    private func logged(_ name: String, _ sets: [(Double, Int)]) -> (exercise: Exercise, sets: [UUID: [WorkoutSet]]) {
+        let exercise = Exercise.create(workoutId: UUID(), name: name, muscleGroup: "Chest", orderIndex: 0, targetSets: nil,
+                                       targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
+        let rows = sets.enumerated().map { index, entry in
+            WorkoutSet(id: UUID(), exerciseId: exercise.id, localId: nil, setNumber: index + 1, weightLbs: entry.0, reps: entry.1,
+                       rir: 1, userFeedback: nil, isPR: false, syncStatus: .pending, recordedAt: Date())
+        }
+        return (exercise, [exercise.id: rows])
+    }
+
+    func testAchievedNeedsWeightAndRepsOnAMatchingLift() {
+        let g = goal()
+        let hit = logged("Bench Press", [(185, 5), (225, 1)])
+        XCTAssertEqual(GoalPlanner.achieved(goals: [g], exercises: [hit.exercise], sets: hit.sets).map(\.id), [g.id])
+        let over = logged("Bench Press", [(230, 3)])
+        XCTAssertEqual(GoalPlanner.achieved(goals: [g], exercises: [over.exercise], sets: over.sets).count, 1)
+        let light = logged("Bench Press", [(215, 3), (185, 8)])
+        XCTAssertTrue(GoalPlanner.achieved(goals: [g], exercises: [light.exercise], sets: light.sets).isEmpty, "never reached the weight")
+        let other = logged("Barbell Squat", [(315, 5)])
+        XCTAssertTrue(GoalPlanner.achieved(goals: [g], exercises: [other.exercise], sets: other.sets).isEmpty, "different lift")
+        var done = g
+        done.status = .achieved
+        XCTAssertTrue(GoalPlanner.achieved(goals: [done], exercises: [hit.exercise], sets: hit.sets).isEmpty, "only active goals")
+    }
+
+    func testGoalHitIsAppendedToTheReadOnlyWhenTheModelOmittedIt() {
+        let g = goal()
+        let appended = GoalPlanner.read("Solid push day.", withAchieved: [g])
+        XCTAssertEqual(appended, "Solid push day. Goal hit: Barbell Bench Press 225x1.")
+        XCTAssertEqual(GoalPlanner.read("Goal hit! 225x1 done.", withAchieved: [g]), "Goal hit! 225x1 done.")
+        let message = ThreadSeed.reviewMessage(
+            from: SessionReview(exercises: [], overallRead: appended, recurringFlags: []))
+        XCTAssertTrue(message?.contains("Goal hit: Barbell Bench Press 225x1.") ?? false, "the chat thread's review shows it")
+    }
+
+    func testMemoryIndexListsLiftsOfAWorkoutType() {
+        var doc = CoachReviewDocument()
+        let outcome = DecisionOutcome(hit: true, actualTop: "40x12@2", rir: nil, shortBy: 0, result: .hold)
+        doc.decisions = [CoachDecision(
+            name: "Cable Fly", muscle: "Chest",
+            target: PrescribedSet(role: .top, weight: 40, reps: 12, rir: 2, restSeconds: 90),
+            sets: nil, reason: "r", context: "c", source: "coach", outcome: outcome)]
+        var push = Workout.create(userId: UUID(), workoutType: "Push", energyLevel: 6, timeAvailableMinutes: 45, date: now)
+        push.aiProgressionNote = doc.encoded()
+        var pull = push
+        pull.workoutType = "Pull"
+        XCTAssertEqual(CoachMemoryIndex(workouts: [push]).lifts(forWorkoutType: "push").map(\.name), ["Cable Fly"])
+        XCTAssertTrue(CoachMemoryIndex(workouts: [pull]).lifts(forWorkoutType: "Push").isEmpty)
     }
 }

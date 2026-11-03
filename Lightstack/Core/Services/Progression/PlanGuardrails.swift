@@ -302,13 +302,15 @@ enum PlanGuardrails {
         var capBestE1RM: Double?
         /// Heaviest weight on record (PR), used when there is no recent history.
         var prWeight: Double?
-        /// Future hook: a per-lift absolute top weight that may exceed the +10% limit (never the gap rules).
-        /// nil for now.
+        /// A per-lift absolute top weight (an agreed goal attempt) that may exceed the +10% limit and the
+        /// e1RM limit, never the gap rules or the unit-confusion rule. nil when today has no attempt.
         var goalAllowance: Double?
+        /// Reps of that attempt; its estimated one-rep max is the e1RM ceiling the allowance lifts.
+        var goalReps: Int
 
         init(name: String, cls: ExerciseClass, focus: CoachFocus, lastTop: HistorySet? = nil,
              daysSinceLast: Int? = nil, capBestE1RM: Double? = nil, prWeight: Double? = nil,
-             goalAllowance: Double? = nil) {
+             goalAllowance: Double? = nil, goalReps: Int = 1) {
             self.name = name
             self.cls = cls
             self.focus = focus
@@ -317,6 +319,7 @@ enum PlanGuardrails {
             self.capBestE1RM = capBestE1RM
             self.prWeight = prWeight
             self.goalAllowance = goalAllowance
+            self.goalReps = goalReps
         }
     }
 
@@ -365,13 +368,18 @@ enum PlanGuardrails {
         }
         // 2. Estimated one-rep max against the recent best (or the record's weight when nothing recent exists).
         if let best = ctx.capBestE1RM, best > 0 {
+            var e1RMLimit = best * (1 + coachE1RMTolerance)
+            if let allowance = ctx.goalAllowance {
+                e1RMLimit = max(e1RMLimit, HistorySet(allowance, max(1, ctx.goalReps)).e1RM)
+            }
             for t in work {
                 let set = HistorySet(Double(t.prefillWeight) ?? 0, Int(t.prefillReps) ?? 1)
-                if set.e1RM > best * (1 + coachE1RMTolerance) + 0.001 {
+                if set.e1RM > e1RMLimit + 0.001 {
                     return (targets, .rejected(reason: "\(g(set.weight))×\(set.reps) estimates a \(g(set.e1RM.rounded())) one-rep max, more than 5% over your recent best \(g(best.rounded()))"))
                 }
             }
-        } else if let pr = ctx.prWeight, pr > 0, topW > pr * (1 + coachE1RMTolerance) + 0.001 {
+        } else if let pr = ctx.prWeight, pr > 0,
+                  topW > max(pr * (1 + coachE1RMTolerance), ctx.goalAllowance ?? 0) + 0.001 {
             return (targets, .rejected(reason: "top weight \(g(topW)) is more than 5% above your record \(g(pr))"))
         }
         // 3. Unit / per-arm confusion.

@@ -197,6 +197,27 @@ before substitution. No raw user input ever reaches the prompt unfiltered.
 
 ---
 
+## Coach Memory and Active Goals (coach v3 plan message)
+
+**COACH MEMORY** lists, per lift, the coach's past calls with outcomes (oldest to newest) and its last note. Lifts shown, in order
+(at most 8 in all): active-goal lifts, the app baseline's lifts, then other lifts the coach made a call on in earlier sessions of
+today's workout type. Lifts with nothing remembered are left out.
+
+**ACTIVE GOALS** (`CoachPromptService.goalsBlock`, from `CoachGoalStore` + `GoalAssessor`), e.g.:
+`Bench Press 225x1 by 11/07 (e1RM 221 -> need 232). Today's step: top single 215x1 @1, then 2 work sets.`
+Only goals whose lift is in the baseline, or whose muscle is trained today, are shown (all of them when there is no baseline), at most 3.
+Today's step is the step dated today, else the first undated step, else the nearest future dated step (labelled "Next step").
+The v3 rules carry one line: "ACTIVE GOALS: move toward them; follow today's step when given."
+
+**Goal attempt allowance.** When today's step is the attempt and `GoalAssessor` says `realisticNow`, the prompt adds the warm-up
+ladder and `PlanGuardrails.RailContext.goalAllowance` is set to the goal weight for that lift only (with `goalReps`). The attempt
+and its ladder may then pass the top-weight rail and the e1RM rail up to the goal's own e1RM. The gap rules and the
+unit-confusion rail are never relaxed.
+
+**Goal hit.** At finish, a logged set at or above the goal's weight and reps on a matching lift marks the goal achieved. The
+post-workout message gets a `GOAL HIT today: ...` line, and "Goal hit: ..." is appended to `overall_read` if the model omitted it
+(so the chat thread's review shows it).
+
 ## Month Plan Prompt Extension
 
 When building a month plan, the following additional context is appended:

@@ -39,6 +39,7 @@ final class WorkoutSessionService {
     private let localStorage: LocalStorageService
     private let validationService: ValidationService
     private let offlineQueueManager: OfflineQueueManager
+    private let goalStore: CoachGoalStore
 
     private(set) var currentWorkout: Workout?
     private(set) var currentWorkoutId: UUID?
@@ -84,8 +85,10 @@ final class WorkoutSessionService {
         monthPlanRepository: MonthPlanRepository,
         localStorage: LocalStorageService,
         validationService: ValidationService,
-        offlineQueueManager: OfflineQueueManager
+        offlineQueueManager: OfflineQueueManager,
+        goalStore: CoachGoalStore = .shared
     ) {
+        self.goalStore = goalStore
         self.aiServiceManager = aiServiceManager
         self.coachPromptService = coachPromptService
         self.coachContextBuilder = coachContextBuilder
@@ -174,16 +177,34 @@ final class WorkoutSessionService {
                 loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
                 feedbackFor: ExerciseFeedbackStore.reader(workouts: context.recentSessions,
                                                           fallback: { ExerciseFeedbackStore.shared.deviceFeedback(forExercise: $0) }))
+            // Active goals: the app's numbers and today's step; an attempt due today lifts the rails for that lift.
+            let planNow = Date()
+            let goalRepository = workoutRepository
+            let goalItems = GoalPlanner.items(
+                goals: goalStore.activeGoals(for: userId),
+                history: { name in
+                    Self.goalHistory(goalRepository, userId: userId, exercise: name, now: planNow)
+                },
+                now: planNow)
             let coach = PlanCoachContext(
                 focus: resolvedFocus, restPreference: RestPreference.defaultSeconds,
                 nextTargets: CoachReviewStore.nextTargets(from: context.recentReviews),
-                recency: context.muscleRecency, now: Date())
+                recency: context.muscleRecency, now: planNow,
+                goalAllowances: GoalPlanner.allowances(goalItems))
             let lastExercises = context.recentSessions.first.flatMap { context.recentSessionSets[$0.id] } ?? []
             let draft = PlanDraftBuilder.build(
                 lastSessionExercises: lastExercises, history: history, energy: resolvedEnergy,
                 feedback: sessionFeedback, coach: coach, timeMinutes: resolvedTime)
 
             let aiSetsWeights = CoachPreferences.aiSetsWeights
+            // Goals that matter for this workout, and memory for them and for this type's other lifts.
+            let baselineLifts = draft.map { CoachLiftRef(name: $0.name, muscle: $0.muscleGroup) }
+            let relevantGoals = GoalPlanner.relevant(goalItems, lifts: baselineLifts)
+            var memoryLifts = relevantGoals.map { CoachLiftRef(name: $0.goal.exerciseName, muscle: "") }
+            for lift in context.memory.lifts(forWorkoutType: sanitizedType)
+            where !memoryLifts.contains(where: { ExerciseNameResolver.isMatch($0.name, lift.name) }) {
+                memoryLifts.append(lift)
+            }
             let systemPrompt = coachPromptService.buildSystemPrompt(
                 profile: context.profile, task: .plan, restSeconds: RestPreference.defaultSeconds,
                 aiSetsWeights: aiSetsWeights)
@@ -204,7 +225,8 @@ final class WorkoutSessionService {
                     briefBlock: coachPromptService.briefBlock(
                         briefs: context.briefs(matching: draft), muscleLoad: context.muscleLoad,
                         fuel: context.fuel, usualMinutes: context.usualMinutes),
-                    memory: context.memory),
+                    memory: context.memory, memoryLifts: memoryLifts,
+                    goalsBlock: coachPromptService.goalsBlock(relevantGoals, now: planNow)),
                 aiSetsWeights: aiSetsWeights
             )
 
@@ -315,6 +337,10 @@ final class WorkoutSessionService {
         let prescription = document.prescription.map { stored in
             fresh.first { ExerciseNameResolver.isMatch($0.name, stored.name) } ?? stored
         } + fresh.filter { f in !document.prescription.contains { ExerciseNameResolver.isMatch($0.name, f.name) } }
+        // Goals met by a logged set today are marked achieved now and mentioned in the review.
+        let achievedGoals = GoalPlanner.achieved(
+            goals: goalStore.activeGoals(for: userId), exercises: exercises, sets: allSets)
+        for goal in achievedGoals { goalStore.setStatus(.achieved, goalId: goal.id, for: userId) }
         let logged = exercises.filter { $0.trackingType != .cardio }.map { ex in
             LoggedExercise(
                 name: ex.name, muscleGroup: ex.muscleGroup,
@@ -350,7 +376,8 @@ final class WorkoutSessionService {
                 analysis: analysis,
                 previousReviews: context.recentReviews,
                 userNote: workout.userNote,
-                previousNotes: previousNotes
+                previousNotes: previousNotes,
+                achievedGoals: achievedGoals
             )
 
             aiServiceManager.generateChat(
@@ -362,7 +389,10 @@ final class WorkoutSessionService {
                 guard let self = self else { return }
                 var model: ModelReview?
                 if case .success(let responseText) = result { model = Self.modelReview(from: responseText) }
-                let review = SessionAnalyzer.merge(analysis, model: model, workoutType: workoutType, previousNotes: previousNotes)
+                var review = SessionAnalyzer.merge(analysis, model: model, workoutType: workoutType, previousNotes: previousNotes)
+                if !achievedGoals.isEmpty {
+                    review.overallRead = GoalPlanner.read(review.overallRead, withAchieved: achievedGoals)
+                }
                 if !analysis.exercises.isEmpty {
                     self.reviewStore.recordReview(review, prescription: prescription, analysis: analysis, for: workoutId)
                     self.refreshCurrentWorkoutNote()
@@ -378,6 +408,23 @@ final class WorkoutSessionService {
                 self.handleProgressionNoteResponse(review.aiAuthored ? (shown.displayText ?? "") : "")
             }
         }
+    }
+
+    /// The best working set of each of the lift's sessions in the last half year, for goal checks.
+    static func goalHistory(_ repository: WorkoutRepository, userId: UUID, exercise: String,
+                            now: Date = Date()) -> [GoalAssessor.Point] {
+        let cutoff = now.addingTimeInterval(-180 * 86_400)
+        var sessions: [HistorySession] = []
+        for workout in repository.fetchRecentWorkouts(userId: userId, limit: 80) where workout.date >= cutoff {
+            var sets: [HistorySet] = []
+            for item in repository.fetchExercises(workoutId: workout.id)
+            where item.trackingType != .cardio && ExerciseNameResolver.isMatch(item.name, exercise) {
+                let logged = repository.fetchSets(exerciseId: item.id).sorted { $0.setNumber < $1.setNumber }
+                sets += logged.map { HistorySet($0.weightLbs, $0.reps, rir: $0.rir) }
+            }
+            if !sets.isEmpty { sessions.append(HistorySession(date: workout.date, sets: sets)) }
+        }
+        return GoalAssessor.topPoints(from: sessions)
     }
 
     /// The model's review, or its prose reply wrapped as an overall read.
