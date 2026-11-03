@@ -143,7 +143,7 @@ final class CoachPromptServiceTests: XCTestCase {
                        "replaced by the app's rule-based baseline, so stay inside",
                        "+10% over that lift's last top set (small lifts: one increment)",
                        "estimated 1RM above the recent best +5%",
-                       "14+ days since the lift: no increase; 28+ days: start 5-10% lighter",
+                       "More than 14 days since the lift: no increase; more than 28 days: start 5-10% lighter",
                        "RIR 0 on at most one set per exercise; most working sets RIR 1-2",
                        "warm-ups (type \"warmup\") only where you judge the working weight needs them",
                        "2-4 working sets. No back-off unless it serves today's goal. Isolation 2-3 sets. Never pad sets.",
