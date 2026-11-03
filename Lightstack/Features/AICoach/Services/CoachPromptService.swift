@@ -23,14 +23,23 @@ final class CoachPromptService {
     }
 
     /// Build the system prompt for one task with profile data injected.
+    /// - Parameter aiSetsWeights: the plan prompt for coach v3 (the coach writes every number) when true,
+    ///   the v2 review prompt (the app writes the numbers) when false.
     func buildSystemPrompt(profile: UserProfile?, task: PromptTask,
-                           restSeconds: Int = RestPreference.defaultSeconds) -> String {
+                           restSeconds: Int = RestPreference.defaultSeconds,
+                           aiSetsWeights: Bool = CoachPreferences.aiSetsWeights) -> String {
         var sections: [String]
         switch task {
         case .plan:
-            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
-                        Self.reviewRules, Self.planFormat,
-                        "User's preferred rest: \(restSeconds) s (the floor for isolation and back-off rest)."]
+            if aiSetsWeights {
+                sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
+                            Self.writeRules, Self.planFormatV3,
+                            "User's preferred rest: \(restSeconds) s (a default for isolation and back-off sets; you set rest per set)."]
+            } else {
+                sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
+                            Self.reviewRules, Self.planFormat,
+                            "User's preferred rest: \(restSeconds) s (the floor for isolation and back-off rest)."]
+            }
         case .chat:
             sections = [Self.identityShort, profileLine(profile), Self.chatFormat, Self.modificationsRules]
         case .postWorkout:
@@ -60,6 +69,71 @@ final class CoachPromptService {
     - Cardio or non-strength requests (run, HIIT, ...): don't refuse; give a complementary \
     strength or conditioning workout that fits time and energy.
     """
+
+    /// Coach v3: the coach writes every set. The app only enforces wide safety rails.
+    static let writeRules = """
+    YOUR JOB: WRITE TODAY'S PLAN
+    You choose every exercise, set, weight (lb), rep, RIR and rest. The app checks each exercise against wide safety rails; \
+    an exercise outside them is replaced by the app's rule-based baseline, so stay inside:
+    - Top weight at most +10% over that lift's last top set (small lifts: one increment).
+    - Never an estimated 1RM above the recent best +5%.
+    - More than 14 days since the lift: no increase; more than 28 days: start 5-10% lighter.
+    - RIR 0 on at most one set per exercise; most working sets RIR 1-2.
+    Structure: warm-ups (type "warmup") only where you judge the working weight needs them, usually the first heavy compound. \
+    2-4 working sets. No back-off unless it serves today's goal. Isolation 2-3 sets. Never pad sets.
+    Use the BRIEF (rep style, last RIR, e1RM trend, rest actually taken: long rests mean hard sets, muscle load, fuel). \
+    Each exercise gets one "reason" (max 15 words) naming the evidence.
+    Heavy compounds first; at most 10 hard sets per muscle; fit the time; keep the athlete's usual exercise selection \
+    (the APP BASELINE is the rule-based reference, not a limit). Balance movements and muscles; a missing one (e.g. rear delts on a pull day) is worth adding.
+    Respect PREVIOUS REVIEWS: a "retry" or "reduceAndRebuild" decision stands. ROLLING CONTEXT is background only. \
+    Use the athlete's notes (pain, form, equipment) to choose exercises.
+    """
+
+    static let planFormatV3 = """
+    WORKOUT PLAN FORMAT
+    Return ONLY this JSON object, no markdown fences, no other text:
+    {"summary": "str, 1-2 sentences", "exercises": [{"name": "str", "muscle_group": "str", "superset": "str|null (e.g. A)", \
+    "cue": "str|null", "reason": "str", "sets": [{"type": "warmup|work", "weight": number (0 = bodyweight), "reps": int, \
+    "rir": int, "rest": int (seconds)}]}], "coaching_notes": "str"}
+    "exercises" is the final ordered list. "cue" only for a known form issue. Keep coaching_notes to one short sentence. \
+    Supersets: set "superset" only when asked or clearly useful; same label alternates sets, adjacent, max 4.
+    """
+
+    /// Gemini `responseSchema` for the coach v3 plan reply (see `planFormatV3`).
+    static let planResponseSchema: AIResponseSchema = {
+        func field(_ type: String, nullable: Bool = false) -> [String: Any] {
+            var f: [String: Any] = ["type": type]
+            if nullable { f["nullable"] = true }
+            return f
+        }
+        let setType: [String: Any] = ["type": "STRING", "enum": ["warmup", "work"]]
+        let setProperties: [String: Any] = [
+            "type": setType, "weight": field("NUMBER"), "reps": field("INTEGER"),
+            "rir": field("INTEGER"), "rest": field("INTEGER")
+        ]
+        let setItem: [String: Any] = [
+            "type": "OBJECT", "properties": setProperties, "required": ["type", "weight", "reps", "rir", "rest"]
+        ]
+        let exerciseProperties: [String: Any] = [
+            "name": field("STRING"), "muscle_group": field("STRING"),
+            "superset": field("STRING", nullable: true), "cue": field("STRING", nullable: true),
+            "reason": field("STRING"),
+            "sets": ["type": "ARRAY", "items": setItem] as [String: Any]
+        ]
+        let exerciseItem: [String: Any] = [
+            "type": "OBJECT", "properties": exerciseProperties, "required": ["name", "muscle_group", "reason", "sets"]
+        ]
+        let root: [String: Any] = [
+            "type": "OBJECT",
+            "properties": [
+                "summary": field("STRING"),
+                "exercises": ["type": "ARRAY", "items": exerciseItem] as [String: Any],
+                "coaching_notes": field("STRING")
+            ] as [String: Any],
+            "required": ["summary", "exercises"]
+        ]
+        return AIResponseSchema(root)
+    }()
 
     static let reviewRules = """
     YOUR JOB: REVIEW THE DRAFT
@@ -179,7 +253,8 @@ final class CoachPromptService {
         recentSessionExercises: [UUID: [Exercise]] = [:],
         recentLoggedSets: [UUID: [WorkoutSet]] = [:],
         bestSets: [String: (weightLbs: Double, reps: Int)] = [:],
-        coach: PlanPromptExtras? = nil
+        coach: PlanPromptExtras? = nil,
+        aiSetsWeights: Bool = CoachPreferences.aiSetsWeights
     ) -> String {
         let sanitizedType = sanitize(workoutType)
         let sanitizedNotes = notes.map { sanitize($0) } ?? ""
@@ -240,8 +315,14 @@ final class CoachPromptService {
             }
         }
 
-        if let coach { message += planReviewSections(coach, latest: recentSessions.first, logged: recentLoggedSets, exercises: recentSessionExercises) }
+        if let coach {
+            message += planReviewSections(coach, latest: recentSessions.first, logged: recentLoggedSets,
+                                          exercises: recentSessionExercises, aiSetsWeights: aiSetsWeights)
+        }
 
+        if coach != nil, aiSetsWeights {
+            return message + "\n\nWrite today's plan and return the JSON: the final ordered exercise list, each exercise with your sets (type, weight lb, reps, RIR, rest) and a one-line reason naming the evidence. The APP BASELINE is a reference, not a limit; stay inside the safety rails."
+        }
         if coach != nil {
             return message + "\n\nReview the DRAFT PLAN against your checklist and return the JSON: the final ordered exercise list plus your review. Keep every draft exercise you do not change, by its exact name; give set_targets only for new exercises."
         }
@@ -387,7 +468,8 @@ final class CoachPromptService {
     }
 
     private func planReviewSections(
-        _ coach: PlanPromptExtras, latest: Workout?, logged: [UUID: [WorkoutSet]], exercises: [UUID: [Exercise]]
+        _ coach: PlanPromptExtras, latest: Workout?, logged: [UUID: [WorkoutSet]], exercises: [UUID: [Exercise]],
+        aiSetsWeights: Bool
     ) -> String {
         var out = ""
 
@@ -418,9 +500,13 @@ final class CoachPromptService {
         }
 
         // Draft
-        out += "\n\nDRAFT PLAN (computed by the app from the last session and your targets; review it):"
+        out += aiSetsWeights
+            ? "\n\nAPP BASELINE (rule-based; use as a reference):"
+            : "\n\nDRAFT PLAN (computed by the app from the last session and your targets; review it):"
         if coach.draft.isEmpty {
-            out += "\n  none: no same-type history yet, so build the plan from scratch with set_targets for every exercise (3 sets for main lifts, 2 for isolation)."
+            out += aiSetsWeights
+                ? "\n  none: no same-type history yet, so build the plan from scratch (2-4 working sets for main lifts, 2-3 for isolation)."
+                : "\n  none: no same-type history yet, so build the plan from scratch with set_targets for every exercise (3 sets for main lifts, 2 for isolation)."
         }
         for (i, d) in coach.draft.enumerated() {
             let sets = d.result.sets.map { "\($0.role.label.lowercased()) \(String(format: "%g", $0.weight))x\($0.reps)@\($0.rir)" }
@@ -428,7 +514,9 @@ final class CoachPromptService {
             out += "\n  \(i + 1). \(sanitize(d.name)) (\(d.muscleGroup)): " + sets.joined(separator: " · ") + " | rest \(rests) s"
             out += "\n     why: \(d.result.rationale)"
         }
-        if let minutes = coach.estimatedMinutes { out += "\n  Estimated length of the draft: ~\(Int(minutes.rounded())) min." }
+        if let minutes = coach.estimatedMinutes {
+            out += "\n  Estimated length of the \(aiSetsWeights ? "baseline" : "draft"): ~\(Int(minutes.rounded())) min."
+        }
         if let brief = coach.briefBlock, !brief.isEmpty { out += "\n\n" + brief }
         return out
     }

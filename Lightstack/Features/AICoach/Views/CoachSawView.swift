@@ -77,6 +77,24 @@ struct CoachSawView: View {
             }
             .accessibilityIdentifier("coachSaw.adjustments")
 
+            if let reasons = s.reasons, !reasons.isEmpty {
+                section("Coach's reasons") {
+                    ForEach(Array(reasons.enumerated()), id: \.offset) { _, reason in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(reason.exercise) · \(reason.label)")
+                                .font(AppTheme.caveat(12, weight: .bold))
+                                .foregroundStyle(reason.railFallback ? AppTheme.warning : AppTheme.accent)
+                            Text(reason.text)
+                                .font(AppTheme.caveat(13))
+                                .foregroundStyle(AppTheme.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                .accessibilityIdentifier("coachSaw.reasons")
+            }
+
             section("Message sent to the coach") {
                 mono(s.userMessage).accessibilityIdentifier("coachSaw.userMessage")
             }
@@ -117,6 +135,8 @@ struct CoachSawView: View {
 
     /// Who set the numbers, from the adjustment line the plan builder wrote.
     static func kind(of line: String) -> String {
+        if line.contains("safety rail rejected") { return "Safety rail: rule-based" }
+        if line.contains("coach set the targets") { return "Set by the coach" }
         if line.contains("engine set the targets") { return "Calculated from your log" }
         if line.contains("guardrail:") { return "AI estimate, adjusted by guardrails" }
         return "Note"
@@ -131,6 +151,9 @@ struct CoachSawView: View {
             "WHAT THE APP DECIDED"
         ]
         parts += s.adjustments.isEmpty ? ["(no changes)"] : s.adjustments.map { "- [\(kind(of: $0))] \($0)" }
+        if let reasons = s.reasons, !reasons.isEmpty {
+            parts += ["", "COACH'S REASONS"] + reasons.map { "- \($0.exercise) [\($0.label)]: \($0.text)" }
+        }
         parts += ["", "MESSAGE SENT", s.userMessage, "", "RAW REPLY", s.rawResponse ?? "(none)"]
         return parts.joined(separator: "\n")
     }

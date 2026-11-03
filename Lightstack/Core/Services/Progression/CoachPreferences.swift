@@ -22,6 +22,20 @@ enum CoachPreferences {
     /// Session length used when there is no history and no profile default.
     static let fallbackMinutes = 45
 
+    static let aiSetsWeightsKey = "coach.aiSetsWeights"
+
+    /// Rollback switch for coach v3. true (default): the AI coach writes every weight, rep, RIR and rest
+    /// and the app only enforces safety rails. false: the v2 path, where the rule-based engine computes
+    /// the numbers and the AI only reviews the structure.
+    static var aiSetsWeights: Bool {
+        get { aiSetsWeights(in: .standard) }
+        set { UserDefaults.standard.set(newValue, forKey: aiSetsWeightsKey) }
+    }
+
+    static func aiSetsWeights(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: aiSetsWeightsKey) as? Bool ?? true
+    }
+
     /// The explicitly chosen focus, if any.
     static func storedFocus(in defaults: UserDefaults = .standard) -> CoachFocus? {
         defaults.string(forKey: focusKey).flatMap(CoachFocus.init(rawValue:))

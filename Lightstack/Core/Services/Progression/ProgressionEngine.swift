@@ -3,7 +3,8 @@ import Foundation
 /// Deterministic progression engine. Given an exercise's logged history it decides the next
 /// session's sets in the owner's standard structure. No AI, no randomness, no I/O.
 ///
-/// Main lifts:  [warm-up] -> Set 1 (~80% of top) -> ONE top set -> Back-off (~92% of top).
+/// Main lifts:  [warm-up, first heavy compound only] -> Set 1 (~80% of top) -> ONE top set -> a back-off
+///              (~92% of top) for hypertrophy at energy 5+, otherwise a straight set.
 /// Isolation:   2 sets, the last one closest to failure.
 /// Rest is prescribed per set.
 enum ProgressionEngine {
@@ -22,6 +23,8 @@ enum ProgressionEngine {
     /// Set 1 / back-off as a share of the top set's weight.
     static let rampShare = 0.80
     static let backoffShare = 0.925
+    /// Hypertrophy gets a back-off only at this energy or above.
+    static let backoffMinEnergy = 5
 
     private static let ladder = [
         RepRange(lower: 5, upper: 8), RepRange(lower: 6, upper: 10),
@@ -123,7 +126,8 @@ enum ProgressionEngine {
             built = isolationSets(top: chosen, recency: recency, ctx: ctx, restPreference: input.restPreference)
         } else {
             let warm = input.allowWarmups && userWarmsUp(sessions.prefix(3).map(\.warm))
-            built = mainSets(top: chosen, recency: recency, warmup: warm, ctx: ctx, restPreference: input.restPreference)
+            built = mainSets(top: chosen, recency: recency, warmup: warm, energy: input.energy, ctx: ctx,
+                             restPreference: input.restPreference)
         }
 
         var action = chosen.text
@@ -291,7 +295,7 @@ enum ProgressionEngine {
     // MARK: - Structures
 
     private static func mainSets(top: (weight: Double, reps: Int, text: String), recency: Bool, warmup: Bool,
-                                 ctx: Ctx, restPreference: Int) -> [ProgressionSet] {
+                                 energy: Int, ctx: Ctx, restPreference: Int) -> [ProgressionSet] {
         let strength = ctx.focus == .strength
         let steady = recency || ctx.mode != .normal
         let topRir = steady ? 2 : 1
@@ -314,14 +318,17 @@ enum ProgressionEngine {
         guard !recency else { return sets }
 
         if strength {
-            // Strength focus may repeat the top weight once, but a back-off still follows.
+            // Strength focus repeats the top weight once as a straight set (no back-off).
             sets.append(ProgressionSet(weight: top.weight, reps: max(ctx.range.lower, top.reps - 1), rir: 1,
-                                       role: .top, restSeconds: strengthTopRest))
+                                       role: .straight, restSeconds: strengthTopRest))
+            return sets
         }
         var weight = ExerciseTraits.round(top.weight * backoffShare, step: ctx.step)
         if weight >= top.weight { weight = max(ctx.step, top.weight - ctx.step) }
         let reps = max(top.reps, min(ctx.range.upper, top.reps + 1))
-        sets.append(ProgressionSet(weight: weight, reps: reps, rir: 2, role: .backoff,
+        // A back-off only for hypertrophy with energy to spare; otherwise a plain straight set.
+        let role: SetRole = energy >= backoffMinEnergy ? .backoff : .straight
+        sets.append(ProgressionSet(weight: weight, reps: reps, rir: 2, role: role,
                                    restSeconds: max(backoffRest, restPreference)))
         return sets
     }

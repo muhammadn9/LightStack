@@ -60,6 +60,8 @@ final class WorkoutSessionService {
         var energy: Int
         var coach: PlanCoachContext
         var draft: [DraftExercise]
+        /// Coach v3 on (the coach wrote the numbers) or off (v2 rollback), fixed when the plan was requested.
+        var aiSetsWeights: Bool
     }
     private var planContext: PlanState?
 
@@ -181,8 +183,10 @@ final class WorkoutSessionService {
                 lastSessionExercises: lastExercises, history: history, energy: resolvedEnergy,
                 feedback: sessionFeedback, coach: coach, timeMinutes: resolvedTime)
 
+            let aiSetsWeights = CoachPreferences.aiSetsWeights
             let systemPrompt = coachPromptService.buildSystemPrompt(
-                profile: context.profile, task: .plan, restSeconds: RestPreference.defaultSeconds)
+                profile: context.profile, task: .plan, restSeconds: RestPreference.defaultSeconds,
+                aiSetsWeights: aiSetsWeights)
             let userMessage = coachPromptService.buildWorkoutRequestMessage(
                 workoutType: sanitizedType,
                 time: resolvedTime,
@@ -199,10 +203,14 @@ final class WorkoutSessionService {
                     reviews: context.recentReviews, recency: context.muscleRecency, now: coach.now,
                     briefBlock: coachPromptService.briefBlock(
                         briefs: context.briefs(matching: draft), muscleLoad: context.muscleLoad,
-                        fuel: context.fuel, usualMinutes: context.usualMinutes))
+                        fuel: context.fuel, usualMinutes: context.usualMinutes)),
+                aiSetsWeights: aiSetsWeights
             )
 
-            planContext = PlanState(userId: userId, history: history, energy: resolvedEnergy, coach: coach, draft: draft)
+            planContext = PlanState(userId: userId, history: history, energy: resolvedEnergy, coach: coach, draft: draft,
+                                    aiSetsWeights: aiSetsWeights)
+            var planOptions = AIRequestOptions.forTask(.plan)
+            if aiSetsWeights { planOptions.schema = CoachPromptService.planResponseSchema }
             CoachDebugStore.shared.recordRequest(
                 userId: userId, workoutType: sanitizedType, model: aiServiceManager.activeProviderName,
                 systemPromptName: "plan", systemPromptLength: systemPrompt.count, userMessage: userMessage)
@@ -210,7 +218,7 @@ final class WorkoutSessionService {
             aiServiceManager.generateChat(
                 systemPrompt: systemPrompt,
                 messages: [ChatMessage(role: .user, content: userMessage)],
-                options: .forTask(.plan)
+                options: planOptions
             ) { [weak self] result in
                 guard let self = self else { return }
                 // Cancelled or replaced while the AI was thinking: drop the result.
@@ -606,6 +614,13 @@ final class WorkoutSessionService {
         var setTargets: [UUID: [SetTarget]]
         /// Form cues the coach attached to exercises with known form issues, keyed by exercise id.
         var cues: [UUID: String] = [:]
+        /// The coach's one-line reason per exercise (coach v3 reply), keyed by exercise id.
+        var reasons: [UUID: String] = [:]
+        /// Exercises whose `setTargets` are the coach's own numeric sets (coach v3 `sets` array), as opposed
+        /// to `set_targets` for new exercises in the old review format.
+        var coachSetIds: Set<UUID> = []
+        /// The coach's plan summary (coach v3 reply).
+        var summary: String?
     }
 
     /// Pure plan-JSON decoding, kept separate so it can be tested without a session.
@@ -664,10 +679,20 @@ final class WorkoutSessionService {
         var exercises: [Exercise] = []
         var perSetTargets: [UUID: [SetTarget]] = [:]
         var cues: [UUID: String] = [:]
+        var reasons: [UUID: String] = [:]
+        var coachSetIds: Set<UUID> = []
         for (index, aiEx) in usable.enumerated() {
             let name = sanitizeLabel(aiEx.name)
-            let targets = aiEx.setTargets.map { SetTarget(weight: $0.weight, reps: $0.reps, rir: $0.rir) }
-            let topSet = targets.max { (Double($0.prefillWeight) ?? 0) < (Double($1.prefillWeight) ?? 0) }
+            let isCoachSets = !aiEx.coachSets.isEmpty
+            let targets: [SetTarget]
+            if isCoachSets {
+                targets = coachTargets(from: aiEx.coachSets, isolation: ExerciseTraits.classify(name) == .isolation)
+            } else {
+                targets = aiEx.setTargets.map { SetTarget(weight: $0.weight, reps: $0.reps, rir: $0.rir) }
+            }
+            let topSet = targets.filter { $0.isWarmup != true }
+                .max { (Double($0.prefillWeight) ?? 0) < (Double($1.prefillWeight) ?? 0) }
+                ?? targets.max { (Double($0.prefillWeight) ?? 0) < (Double($1.prefillWeight) ?? 0) }
 
             // Preserve "Target: {weight}" prefix convention that
             // ActiveWorkoutViewModel.prefillWeightValue depends on
@@ -697,6 +722,10 @@ final class WorkoutSessionService {
             )
             exercises.append(exercise)
             if !targets.isEmpty { perSetTargets[exercise.id] = targets }
+            if isCoachSets { coachSetIds.insert(exercise.id) }
+            if let reason = aiEx.reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty {
+                reasons[exercise.id] = String(sanitizeLabel(reason).prefix(200))
+            }
             if let cue = aiEx.cue?.trimmingCharacters(in: .whitespacesAndNewlines), !cue.isEmpty {
                 cues[exercise.id] = sanitizeLabel(cue)
             }
@@ -705,8 +734,28 @@ final class WorkoutSessionService {
         exercises = SupersetGroup.normalized(exercises)
         guard !exercises.isEmpty else { return nil }
         let kept = Set(exercises.map(\.id))
+        let summary = decoded.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
         return ParsedPlan(exercises: exercises, setTargets: perSetTargets.filter { kept.contains($0.key) },
-                          cues: cues.filter { kept.contains($0.key) })
+                          cues: cues.filter { kept.contains($0.key) },
+                          reasons: reasons.filter { kept.contains($0.key) },
+                          coachSetIds: coachSetIds.intersection(kept),
+                          summary: summary?.isEmpty == false ? summary.map { String($0.prefix(400)) } : nil)
+    }
+
+    /// The coach's numeric sets as targets. Warm-ups stay warm-ups; the heaviest work set is the top set,
+    /// the rest are straight sets, and the first work set is Set 1 only when it is >10% lighter than the top.
+    /// A weight of 0 means bodyweight.
+    static func coachTargets(from sets: [AISetTarget], isolation: Bool) -> [SetTarget] {
+        let targets = sets.map { set -> SetTarget in
+            let weightValue = set.weight.flatMap { raw in
+                Double(raw) ?? Double(raw.components(separatedBy: " ").first ?? "")
+            } ?? 0
+            let weightText = weightValue > 0 ? String(format: "%g", weightValue) : "BW"
+            let isWarm = (set.type ?? "").lowercased().contains("warm")
+            return SetTarget(weight: weightText, reps: set.reps, rir: set.rir, isWarmup: isWarm ? true : nil,
+                             role: isWarm ? .warmup : nil, restSeconds: set.rest)
+        }
+        return PlanGuardrails.assignCoachRoles(targets, isolation: isolation)
     }
 
     // MARK: - Response Handlers
@@ -749,13 +798,16 @@ final class WorkoutSessionService {
     /// Applies the app's numbers and the coach's review edits, tells the delegate, saves the plan.
     private func completePlan(_ parsed: ParsedPlan, review: CoachPlanReview?, raw: String) {
         let applied = applyProgression(to: parsed, changes: review?.changes ?? [])
+        // Coach v3 replies carry `summary` at the top level; v2 replies carry it inside `review`.
         let final = CoachPlanReview(
-            verdict: review?.verdict ?? .sound, summary: review?.summary ?? "",
+            verdict: review?.verdict ?? .sound,
+            summary: review?.summary ?? parsed.summary ?? "",
             changes: applied.changes.isEmpty ? (review?.changes ?? []) : applied.changes,
             safeguards: applied.safeguards)
         if let userId = planContext?.userId {
             CoachDebugStore.shared.recordResponse(
-                userId: userId, raw: raw, adjustments: applied.adjustments + final.logLines, review: final.isEmpty ? nil : final)
+                userId: userId, raw: raw, adjustments: applied.adjustments + final.logLines,
+                review: final.isEmpty ? nil : final, reasons: applied.reasons.isEmpty ? nil : applied.reasons)
         }
         delegate?.sessionServiceDidBuildEvidence(self, evidence: applied.evidence)
         if !final.isEmpty { delegate?.sessionServiceDidBuildCoachReview(self, review: final) }
@@ -778,7 +830,8 @@ final class WorkoutSessionService {
                 storage.fetchPersonalRecord(userId: userId, exerciseName: name).map { PersonalRecord(from: $0).weightLbs }
             },
             coach: context.coach,
-            changes: changes
+            changes: changes,
+            aiSetsWeights: context.aiSetsWeights
         )
     }
 
@@ -915,18 +968,24 @@ private struct ProgressionNoteEnvelope: Decodable {
 private struct WorkoutPlanResponse: Decodable {
     let exercises: [AIExercise]
     let coachingNotes: String?
+    /// One-sentence plan summary (coach v3 reply).
+    let summary: String?
     enum CodingKeys: String, CodingKey {
-        case exercises
+        case exercises, summary
         case coachingNotes = "coaching_notes"
     }
 }
 
 /// One entry of `set_targets`. Values may arrive as strings or numbers.
-private struct AISetTarget: Decodable {
+struct AISetTarget: Decodable {
     let weight: String?
     let reps: String?
     let rir: String?
-    enum CodingKeys: String, CodingKey { case weight, reps, rir }
+    /// "warmup" or "work" (coach v3 `sets`); nil in the old `set_targets`.
+    let type: String?
+    /// Rest after the set in seconds (coach v3 `sets`).
+    let rest: Int?
+    enum CodingKeys: String, CodingKey { case weight, reps, rir, type, rest }
 
     private static func text(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> String? {
         if let s = try? c.decodeIfPresent(String.self, forKey: key) { return s.isEmpty ? nil : s }
@@ -939,6 +998,8 @@ private struct AISetTarget: Decodable {
         weight = Self.text(c, .weight)
         reps = Self.text(c, .reps)
         rir = Self.text(c, .rir)
+        type = (try? c.decodeIfPresent(String.self, forKey: .type)) ?? nil
+        rest = Self.text(c, .rest).flatMap { Double($0) }.map { Int($0.rounded()) }
     }
 }
 
@@ -948,6 +1009,10 @@ private struct AIExercise: Decodable {
     let sets: Int
     /// Optional per-set targets; empty when absent or malformed. When present, `sets` is their count.
     let setTargets: [AISetTarget]
+    /// The coach's numeric sets (coach v3 `sets` array); empty in the old format.
+    let coachSets: [AISetTarget]
+    /// One-line reason naming the evidence (coach v3).
+    let reason: String?
     let targetWeight: String?
     let reps: String?
     let rir: String?
@@ -958,7 +1023,7 @@ private struct AIExercise: Decodable {
     /// Optional label; exercises sharing one form a superset.
     let superset: String?
     enum CodingKeys: String, CodingKey {
-        case name, sets, reps, rir, superset, cue
+        case name, sets, reps, rir, superset, cue, reason
         case setTargets   = "set_targets"
         case muscleGroup  = "muscle_group"
         case targetWeight = "target_weight"
@@ -975,8 +1040,16 @@ extension AIExercise {
         // A malformed set_targets must not sink the whole plan: fall back to the single fields.
         let targets = (try? c.decodeIfPresent([AISetTarget].self, forKey: .setTargets)) ?? []
         setTargets = targets
+        // Coach v3: "sets" is an array of per-set objects. The older formats use an integer (or omit it).
+        let numeric = ((try? c.decodeIfPresent([AISetTarget].self, forKey: .sets)) ?? nil) ?? []
+        coachSets = numeric
+        reason = (try? c.decodeIfPresent(String.self, forKey: .reason)) ?? nil
         // The review format omits "sets" for kept exercises (the app fills the numbers).
-        sets = targets.isEmpty ? ((try? c.decodeIfPresent(Int.self, forKey: .sets)) ?? 3) : targets.count
+        if !numeric.isEmpty {
+            sets = numeric.count
+        } else {
+            sets = targets.isEmpty ? (((try? c.decodeIfPresent(Int.self, forKey: .sets)) ?? nil) ?? 3) : targets.count
+        }
         targetWeight = try c.decodeIfPresent(String.self, forKey: .targetWeight)
         reps = try c.decodeIfPresent(String.self, forKey: .reps)
         rir = try c.decodeIfPresent(String.self, forKey: .rir)

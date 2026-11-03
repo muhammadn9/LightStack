@@ -540,21 +540,29 @@ final class UITestFakeAIProvider: AIProvider {
     ```
     """
 
+    /// A coach v3 reply: the coach writes every set. Bench has history (rails accept 135, 140 at most);
+    /// the pushdown has none and carries a warm-up at its working weight, which the app removes.
     static let planJSON = """
     {
+      "summary": "Good order and volume for a push day. Heaviest lifts come first.",
       "coaching_notes": "Focus on controlled reps today.",
-      "review": {"verdict": "sound", "summary": "Good order and volume for a push day. Heaviest lifts come first.", "changes": []},
       "exercises": [
-        {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets": 3,
-         "target_weight": "135 lbs", "reps": "8", "rir": "2", "rest_seconds": 90},
-        {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets": 3,
-         "target_weight": "50 lbs", "reps": "10", "rir": "2", "rest_seconds": 90},
-        {"name": "Cable Triceps Pushdown", "muscle_group": "Triceps", "sets": 3,
-         "target_weight": "40 lbs", "reps": "12", "rir": "1", "rest_seconds": 60,
+        {"name": "Barbell Bench Press", "muscle_group": "Chest", "superset": null, "cue": null,
+         "reason": "Last top 135x8 at RIR 2, so repeat it and own the reps.",
+         "sets": [{"type": "warmup", "weight": 95, "reps": 8, "rir": 4, "rest": 60},
+                  {"type": "work", "weight": 135, "reps": 8, "rir": 2, "rest": 120},
+                  {"type": "work", "weight": 135, "reps": 8, "rir": 1, "rest": 90}]},
+        {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "superset": null, "cue": null,
+         "reason": "New to the log: start moderate and leave reps in reserve.",
+         "sets": [{"type": "work", "weight": 50, "reps": 10, "rir": 3, "rest": 90},
+                  {"type": "work", "weight": 50, "reps": 10, "rir": 2, "rest": 90},
+                  {"type": "work", "weight": 45, "reps": 12, "rir": 2, "rest": 90}]},
+        {"name": "Cable Triceps Pushdown", "muscle_group": "Triceps", "superset": null,
          "cue": "Elbows pinned to your sides, no flaring.",
-         "set_targets": [{"weight": "185", "reps": "8", "rir": "4"},
-                         {"weight": "185", "reps": "8", "rir": "3"},
-                         {"weight": "195", "reps": "6", "rir": "2"}]}
+         "reason": "Triceps are fresh after pressing; two hard sets finish the job.",
+         "sets": [{"type": "warmup", "weight": 185, "reps": 8, "rir": 4, "rest": 60},
+                  {"type": "work", "weight": 185, "reps": 8, "rir": 3, "rest": 90},
+                  {"type": "work", "weight": 195, "reps": 6, "rir": 2, "rest": 90}]}
       ]
     }
     """

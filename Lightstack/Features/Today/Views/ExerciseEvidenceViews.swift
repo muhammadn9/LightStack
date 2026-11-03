@@ -27,6 +27,24 @@ enum EvidenceFormat {
         case .engine: return "Calculated from your log"
         case .ai: return "AI estimate"
         case .aiGuarded: return "AI estimate · adjusted"
+        case .coach: return "Set by the coach"
+        case .engineFallback: return "Safety rail: rule-based"
+        }
+    }
+
+    /// True when the source has a one-line explanation worth showing under the details.
+    static func showsRationale(_ source: ExerciseEvidence.Source) -> Bool {
+        switch source {
+        case .engine, .coach, .engineFallback: return true
+        case .ai, .aiGuarded: return false
+        }
+    }
+
+    /// Sources shown in the accent colour (the app's own numbers, or the coach's checked ones).
+    static func isAccented(_ source: ExerciseEvidence.Source) -> Bool {
+        switch source {
+        case .engine, .coach: return true
+        case .ai, .aiGuarded, .engineFallback: return false
         }
     }
 
@@ -62,7 +80,7 @@ struct PlanEvidenceBlock: View {
     @State private var showReasons = false
 
     private var hasDetails: Bool {
-        !evidence.lastSets.isEmpty || evidence.best != nil || evidence.source == .engine
+        !evidence.lastSets.isEmpty || evidence.best != nil || EvidenceFormat.showsRationale(evidence.source)
     }
 
     var body: some View {
@@ -107,7 +125,7 @@ struct PlanEvidenceBlock: View {
                     }
                 }
             }
-            if evidence.source == .engine, !evidence.rationale.isEmpty {
+            if EvidenceFormat.showsRationale(evidence.source), !evidence.rationale.isEmpty {
                 Text(evidence.rationale)
                     .font(AppTheme.caveat(11))
                     .foregroundStyle(AppTheme.textSecondary)
@@ -122,9 +140,9 @@ struct PlanEvidenceBlock: View {
     @ViewBuilder
     private var sourceBadge: some View {
         let title = EvidenceFormat.sourceTitle(evidence.source)
-        let tint: Color = evidence.source == .engine ? AppTheme.accent : AppTheme.textSecondary
+        let tint: Color = EvidenceFormat.isAccented(evidence.source) ? AppTheme.accent : AppTheme.textSecondary
         let label = HStack(spacing: 4) {
-            Image(systemName: evidence.source == .engine ? "checkmark.seal" : "sparkles")
+            Image(systemName: (evidence.source == .engine || evidence.source == .engineFallback) ? "checkmark.seal" : "sparkles")
                 .font(.caption2)
             Text(title)
                 .font(AppTheme.caveat(11, weight: .bold))

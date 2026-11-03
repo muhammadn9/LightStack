@@ -130,7 +130,54 @@ final class CoachPromptServiceTests: XCTestCase {
         let message = service.buildWorkoutRequestMessage(
             workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras)
         XCTAssertTrue(message.contains("BRIEF-MARKER-LINE"))
-        XCTAssertTrue(message.contains("DRAFT PLAN"), "existing sections stay")
+        XCTAssertTrue(message.contains("APP BASELINE"), "existing sections stay")
         XCTAssertTrue(service.buildSystemPrompt(profile: nil, task: .plan).contains("BRIEF"))
+    }
+
+    // MARK: - Coach v3 prompt
+
+    func testPlanPromptAsksTheCoachToWriteTheSets() {
+        let prompt = service.buildSystemPrompt(profile: nil, task: .plan, aiSetsWeights: true)
+        for needle in ["YOUR JOB: WRITE TODAY'S PLAN",
+                       "You choose every exercise, set, weight (lb), rep, RIR and rest",
+                       "replaced by the app's rule-based baseline, so stay inside",
+                       "+10% over that lift's last top set (small lifts: one increment)",
+                       "estimated 1RM above the recent best +5%",
+                       "14+ days since the lift: no increase; 28+ days: start 5-10% lighter",
+                       "RIR 0 on at most one set per exercise; most working sets RIR 1-2",
+                       "warm-ups (type \"warmup\") only where you judge the working weight needs them",
+                       "2-4 working sets. No back-off unless it serves today's goal. Isolation 2-3 sets. Never pad sets.",
+                       "Use the BRIEF", "rest actually taken", "\"reason\" (max 15 words)",
+                       "Heavy compounds first", "at most 10 hard sets per muscle",
+                       "WORKOUT PLAN FORMAT", "\"type\": \"warmup|work\"", "\"weight\": number (0 = bodyweight)",
+                       "\"rir\": int", "\"rest\": int", "\"coaching_notes\""] {
+            XCTAssertTrue(prompt.contains(needle), "missing \(needle)")
+        }
+        XCTAssertFalse(prompt.contains("REVIEW THE DRAFT"))
+        XCTAssertFalse(prompt.contains("set_targets"))
+        XCTAssertLessThan(prompt.count, 6_000)
+    }
+
+    func testRollbackPromptKeepsTheV2ReviewRules() {
+        let prompt = service.buildSystemPrompt(profile: nil, task: .plan, aiSetsWeights: false)
+        XCTAssertTrue(prompt.contains("REVIEW THE DRAFT"))
+        XCTAssertTrue(prompt.contains("set_targets"))
+        XCTAssertFalse(prompt.contains("WRITE TODAY'S PLAN"))
+    }
+
+    func testV3MessageLabelsTheDraftAsABaselineAndKeepsTheBrief() {
+        let extras = CoachPromptService.PlanPromptExtras(briefBlock: "BRIEF-MARKER-LINE")
+        let message = service.buildWorkoutRequestMessage(
+            workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras, aiSetsWeights: true)
+        XCTAssertTrue(message.contains("APP BASELINE (rule-based; use as a reference)"), message)
+        XCTAssertTrue(message.contains("BRIEF-MARKER-LINE"))
+        XCTAssertTrue(message.contains("Write today's plan"))
+        XCTAssertFalse(message.contains("DRAFT PLAN"))
+        XCTAssertFalse(message.contains("Review the DRAFT PLAN"))
+
+        let v2 = service.buildWorkoutRequestMessage(
+            workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras, aiSetsWeights: false)
+        XCTAssertTrue(v2.contains("DRAFT PLAN"))
+        XCTAssertTrue(v2.contains("Review the DRAFT PLAN"))
     }
 }

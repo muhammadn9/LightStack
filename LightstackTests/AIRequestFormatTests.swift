@@ -76,4 +76,30 @@ final class AIRequestFormatTests: XCTestCase {
             options: AIRequestOptions(schema: sampleSchema))
         XCTAssertNil((prose["generationConfig"] as? [String: Any])?["responseSchema"])
     }
+
+    // MARK: - Coach v3 plan schema
+
+    func testPlanSchemaIsSmallAndDescribesTheCoachReply() throws {
+        let schema = CoachPromptService.planResponseSchema
+        let data = try JSONSerialization.data(withJSONObject: schema.definition)
+        XCTAssertLessThan(data.count, 6000)
+        let text = String(decoding: data, as: UTF8.self)
+        for key in ["summary", "exercises", "coaching_notes", "muscle_group", "superset", "cue", "reason", "sets",
+                    "weight", "reps", "rir", "rest", "warmup", "work"] {
+            XCTAssertTrue(text.contains("\"\(key)\""), "schema is missing \(key)")
+        }
+    }
+
+    func testPlanRequestCarriesTheSchemaAsResponseSchema() {
+        var options = AIRequestOptions.forTask(.plan)
+        options.schema = CoachPromptService.planResponseSchema
+        let body = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: true, options: options)
+        let config = body["generationConfig"] as? [String: Any]
+        let sent = config?["responseSchema"] as? [String: Any]
+        XCTAssertEqual(sent?["type"] as? String, "OBJECT")
+        let properties = sent?["properties"] as? [String: Any]
+        XCTAssertNotNil(properties?["exercises"])
+        XCTAssertEqual(config?["maxOutputTokens"] as? Int, 8192)
+    }
 }
