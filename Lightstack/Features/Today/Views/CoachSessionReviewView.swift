@@ -192,6 +192,7 @@ struct CoachSessionReviewView: View {
         case .painOrForm: return "Pain or form"
         case .strengthLoss: return "Strength loss"
         case .unknown: return "Unclear cause"
+        case .afterBreak: return "Rebuilding after a break"
         }
     }
 

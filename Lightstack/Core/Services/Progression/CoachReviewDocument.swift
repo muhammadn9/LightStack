@@ -22,10 +22,12 @@ enum ExerciseOutcome: String, Codable, Equatable, CaseIterable {
 
 enum MissCause: String, Codable, Equatable, CaseIterable {
     case lowEnergy, poorRecovery, painOrForm, strengthLoss, unknown
+    /// Lighter than planned after skipping the lift or a long gap: a rebuild, not lost strength.
+    case afterBreak
 }
 
 enum MissDecision: String, Codable, Equatable, CaseIterable {
-    /// One-off bad day: try the same target again.
+    /// One-off bad day (or a rebuild after a break): try the same target again.
     case retry
     /// Likely lost strength: drop 5-10% and rebuild step by step.
     case reduceAndRebuild

@@ -150,8 +150,9 @@ enum PlanGuardrails {
         var name: String
         var focus: CoachFocus
         var restPreference: Int
-        /// Heaviest recent top-set weight and the best e1RM, from logged history.
-        var bestRecentTop: Double?
+        /// The top-set weight of the lift's most recent session, and the recent best e1RM
+        /// (best top set of the last few sessions; the all-time PR only when there is no recent history).
+        var lastTop: Double?
         var bestE1RM: Double?
         /// The last review's target, honoured above the +5% limit when it is within the e1RM limit.
         var nextTarget: NextTarget?
@@ -159,12 +160,12 @@ enum PlanGuardrails {
         var backoffDropped: Bool = false
     }
 
-    /// The highest top-set weight a plan may carry: +5% (at least one plate step) over the best recent top set,
-    /// or the review's target when that stays within the e1RM-based limit.
+    /// The highest top-set weight a plan may carry: max(+5%, one increment) over the MOST RECENT session's
+    /// top set, or the review's target when that stays within the recent-best e1RM limit.
     static func topWeightLimit(_ ctx: StructureContext) -> Double? {
-        guard let best = ctx.bestRecentTop, best > 0 else { return nil }
-        let step = ExerciseTraits.roundingStep(ctx.name)
-        var limit = max(best * (1 + weightTolerance), best + step)
+        guard let last = ctx.lastTop, last > 0 else { return nil }
+        let step = ExerciseTraits.increment(ctx.name)
+        var limit = max(last * (1 + weightTolerance), last + step)
         if let t = ctx.nextTarget, t.weight > limit, let e1 = ctx.bestE1RM, e1 > 0,
            t.weight * (1 + Double(t.reps) / 30) <= e1 * 1.03 {
             limit = t.weight
@@ -198,7 +199,7 @@ enum PlanGuardrails {
         if let limit = topWeightLimit(ctx), let topW = tops.map(weight).max(), topW > limit {
             let clamp = ExerciseTraits.floorStep(limit, step: step)
             for i in tops.indices where weight(tops[i]) > clamp { tops[i].weight = String(format: "%g", clamp) }
-            reasons.append("Top set limited to \(String(format: "%g", clamp)) (more than +5% over your best recent top set)")
+            reasons.append("Top set limited to \(String(format: "%g", clamp)) (more than +5% over your last top set)")
         }
         let topW = tops.map(weight).max() ?? 0
         let topReps = tops.compactMap { Int($0.prefillReps) }.min() ?? 0

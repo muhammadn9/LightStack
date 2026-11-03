@@ -62,8 +62,9 @@ Lifecycle hooks:
 - `AIServiceManager` (`Core/Services/AIServiceManager.swift`): tries providers in order. Proxy refusals (domain `AIProxy`) surface as-is. Rate-limit/503/unavailable-style errors fall to the next provider, which is the fallback model.
 - `GeminiService` (`Features/AICoach/Services/GeminiService.swift`): POSTs to `<SUPABASE_URL>/functions/v1/ai-proxy` with the user JWT as Bearer plus the anon key. Retries HTTP 503 up to 3 times with 1s/2s/4s backoff. Retries once without `thinkingConfig` if Gemini rejects it.
 - `supabase/functions/ai-proxy/index.ts`: verifies the user (`auth.getUser`), caps the body at 200k chars, allows only two models, clamps the generation config, calls the `check_rate_limit` RPC (10/min, 100/day; fail closed), then forwards to Gemini with a server-side key.
-- `CoachContextBuilder` builds profile, rolling summary and the last 2 sessions of the same type from local data.
+- `CoachContextBuilder` builds profile, rolling summary and the last 5 completed same-type sessions (the last one is sent in full, the rest as compact trend lines), the last 4 coach reviews, PRs, 7-day muscle recency and exercise feedback from local data.
 - `CoachPromptService` builds system and user prompts per task: plan, chat, postWorkout, month plan.
+- Progression (`Core/Services/Progression/`): `ExerciseHistoryIndex` (history regrouped per lift, with the recent best and the newest same-type session date), `ProgressionEngine` (deterministic sets), `PlanDraftBuilder` / `PlanProgressionApplier` (draft, then apply the model's edits), `PlanGuardrails` (clamps and the top-weight limit), `SessionAnalyzer` (prescribed vs actual, miss rules, merge with the model's review). See section 3.3a.
 - `CoachChatViewModel`: chat state; first tries `LocalChatCommandParser` (remove / add sets / swap / rest). Otherwise it calls the AI, then parses with `WorkoutModificationJSONParser` (falling back to the legacy pipe-format `WorkoutModificationParser`).
 - `ModificationConfirmationSheet` lists proposed changes. Apply calls `TodayViewModel.applyModification`.
 - `PostWorkoutReply` parses the single post-workout JSON `{note, summary}`.
@@ -206,8 +207,10 @@ sequenceDiagram
   S->>T: generatePlan (phase = generating)
   T->>W: generatePlan
   W->>R: createWorkout (Core Data + background Supabase insert)
-  W->>AI: plan prompt (context from CoachContextBuilder)
-  AI-->>W: JSON plan (markdown table fallback)
+  W->>W: PlanDraftBuilder: deterministic draft (ProgressionEngine)
+  W->>AI: plan prompt (context from CoachContextBuilder + the draft)
+  AI-->>W: JSON review of the draft (structure edits and prose)
+  W->>W: PlanProgressionApplier + PlanGuardrails re-clamp every number
   W->>R: deleteExercises + saveExercises
   W-->>T: didGeneratePlan (phase = confirmation)
   U->>T: confirmAndStartWorkout (phase = active)
@@ -220,14 +223,34 @@ sequenceDiagram
   end
   U->>T: finishWorkout (phase = postWorkout)
   T->>W: finishSession (duration saved immediately)
-  W->>AI: one call returns {note, summary}
-  AI-->>W: note shown, summary held in memory
+  W->>W: SessionAnalyzer: prescribed vs actual, miss rules
+  W->>AI: one call returns the review JSON (prose, miss reasons)
+  AI-->>W: SessionAnalyzer.merge keeps the rules honest; summary held in memory
   U->>T: saveWorkout
   T->>W: saveCompletedWorkout
   W->>R: updateWorkout, reconcile removed exercises
   W->>W: store rolling summary, upsert remote or enqueue
   W-->>T: didSaveWorkout, resetToSetup
 ```
+
+### 3.3a Coach flow and progression rules
+
+**Context.** The last 5 same-type sessions (the last in full, the rest as trend lines), the last 4 reviews, PRs (all-time best, information only), 7-day muscle recency and feedback.
+
+**Plan.** The app computes a deterministic draft (`ProgressionEngine`): warm-up on the first heavy lifts, Set 1 (~80%), one top set, a back-off; 2 sets for isolation. Gemini reviews the structure (order, balance, volume, recovery) and writes the prose; it does no load arithmetic. `PlanProgressionApplier` and `PlanGuardrails` then re-clamp every number: engine numbers win wherever history exists.
+
+**Caps and limits.**
+- Caps use the *recent best* (best top set of the lift's last 3 sessions). The all-time PR is only a fallback when there is no recent history.
+- The top set may not exceed `max(last session's top x 1.05, last top + 1 increment)`, based on the most recent session's top. A review target is only used inside this limit (`ProgressionEngine.isSane`); `PlanGuardrails.topWeightLimit` enforces it again in the final structure pass.
+- The lift was not done in the most recent same-type session, or was last done more than 14 days ago: hold the load. More than 28 days: about 7.5% lighter. The reason is added to the engine's rationale ("What the coach saw").
+
+**Post-workout.** `SessionAnalyzer` classifies each missed top set once:
+- a single miss -> retry the same target, even with good energy;
+- a repeated miss, "too heavy" or a miss by 3+ reps -> reduce and rebuild (5-10%);
+- pain or form -> hold or swap;
+- lighter than 97% of the plan after a skipped lift or a long gap -> `afterBreak`: retry from today's actual top, not "strength loss".
+
+PRs are judged against the record from before the session: `TodayViewModel.logSet` updates the stored record mid-workout, so the set's `isPR` flag (set at log time) is passed to the analyzer as `LoggedExercise.hitPR`. No schema change.
 
 ### 3.4 Offline to online sync (as it is today)
 ```mermaid

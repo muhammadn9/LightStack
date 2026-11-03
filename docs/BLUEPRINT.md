@@ -372,6 +372,27 @@ Next session of same type:
   Total: ~700-900 tokens per call — always manageable
 ```
 
+### Coach context (plan and post-workout calls)
+The rolling summary stays as background, but the coach calls now send structured, bounded context:
+
+```
+Plan call, per workout type:
+  → Last 5 completed same-type sessions: the last one in full (every set),
+    the earlier ones as one compact trend line per exercise
+  → Last 4 coach reviews (outcomes, miss decisions, next targets, flags)
+  → PRs (all-time best, information only), days since each muscle was trained (7 days), feedback
+  → The app's deterministic DRAFT plan; Gemini reviews the structure and writes the prose
+
+Post-workout call:
+  → Prescribed vs actual per lift (analysed in Swift), last 4 reviews, in-session answers
+```
+
+The app owns every number: `ProgressionEngine` computes the draft, and `PlanGuardrails` re-clamps
+whatever comes back. Caps use the recent best (last 3 sessions of the lift), the top weight is limited to
+`max(last top x 1.05, last top + 1 increment)`, a skipped lift or a gap over 14 days holds the load (over
+28 days: about 7.5% lighter), and a single miss is a retry, not "strength loss". Details:
+`docs/COACH_PROMPT.md` and `docs/SYSTEM_ARCHITECTURE.md` section 3.3a.
+
 ### Month Plan Context
 When a month plan exists, the AI also receives:
 - The plan's `target_goal` and `ai_overview`
