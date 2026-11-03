@@ -86,6 +86,25 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     /// Owners whose dead-lettered operations were already revived in this launch.
     private var revivedOwners = Set<UUID>()
 
+    // MARK: - Coach fuel
+
+    /// Yesterday's intake against target plus the nutrition goal, for the coach's plan brief.
+    /// nil when there is neither a logged day nor a finished goal setup.
+    static func fuelSummary(_ nutrition: NutritionRepository, userId: UUID, now: Date) -> CoachFuelSummary? {
+        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now) else { return nil }
+        let day = nutrition.dailyNutrition(userId: userId, on: yesterday)
+        let settings = nutrition.goalSettings(userId: userId).flatMap { $0.isComplete ? $0 : nil }
+        let logged = !day.entries.isEmpty
+        guard logged || settings != nil else { return nil }
+        return CoachFuelSummary(
+            yesterdayKcal: logged ? day.totals.kcal : nil,
+            targetKcal: day.target?.kcal,
+            proteinG: logged ? day.totals.protein : nil,
+            targetProteinG: day.target?.protein,
+            goal: settings?.goal.rawValue,
+            weeklyRate: settings?.weeklyRateLbs)
+    }
+
     // MARK: - Init
 
     @MainActor
@@ -208,17 +227,19 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             localStorage: localStorageService,
             offlineQueueManager: offlineQueueManager
         )
-        self.nutritionRepository = NutritionRepository(
+        let nutrition = NutritionRepository(
             localStorage: localStorageService,
             offlineQueueManager: offlineQueueManager
         )
+        self.nutritionRepository = nutrition
 
         self.coachPromptService = CoachPromptService(validationService: validationService)
         self.coachContextBuilder = CoachContextBuilder(
             profileRepository: profileRepository,
             workoutRepository: workoutRepository,
             localStorage: localStorageService,
-            validationService: validationService
+            validationService: validationService,
+            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) }
         )
 
         self.workoutSessionService = WorkoutSessionService(

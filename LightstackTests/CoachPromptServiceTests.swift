@@ -89,4 +89,48 @@ final class CoachPromptServiceTests: XCTestCase {
         }
         XCTAssertTrue(service.buildSystemPrompt(profile: nil).contains("TRAINING PRINCIPLES"))
     }
+
+    // MARK: - Brief block
+
+    private func sampleBrief() -> ExerciseBrief {
+        ExerciseBrief(
+            name: "Barbell Bench Press", primaryMuscles: ["mid chest"], secondaryMuscles: ["front delts", "triceps"],
+            style: .heavyLow, repLow: 5, repHigh: 7, lastTop: HistorySet(205, 5, rir: 1), avgRIR: 1.5,
+            e1RMTrend: [232, 236, 239],
+            rest: RestStats(heavyActual: 170, heavyPrescribed: 120, lightActual: 90, lightPrescribed: 90, samples: 6))
+    }
+
+    func testBriefBlockRendersEveryPart() throws {
+        let fuel = CoachFuelSummary(yesterdayKcal: 2450, targetKcal: 2600, proteinG: 150, targetProteinG: 180,
+                                    goal: "lose", weeklyRate: 0.5)
+        let load = ["mid chest": MuscleLoad(thisWeekSets: 6, avgPrior3WeeksSets: 9, daysSince: 2),
+                    "triceps": MuscleLoad(thisWeekSets: 5, avgPrior3WeeksSets: 7, daysSince: 4)]
+        let block = try XCTUnwrap(service.briefBlock(briefs: [sampleBrief()], muscleLoad: load, fuel: fuel, usualMinutes: 58))
+        XCTAssertTrue(block.contains("USUAL SESSION: 58 min"), block)
+        XCTAssertTrue(block.contains("FUEL: yesterday 2450/2600 kcal, protein 150/180 g; goal lose 0.5 lb/wk."), block)
+        XCTAssertTrue(block.contains("mid chest 6/9 2d"), block)
+        XCTAssertTrue(block.contains("triceps 5/7 4d"), block)
+        XCTAssertTrue(block.contains("- Barbell Bench Press: heavy-low (5-7), last 205x5@1, avg RIR 1.5, e1RM 232>236>239, rest 2:50 (rx 2:00) | 1:30 (rx 1:30), mid chest+front delts+triceps"), block)
+    }
+
+    func testBriefBlockOmitsFuelWhenNilAndRestWithoutSamples() throws {
+        var brief = sampleBrief()
+        brief.rest = RestStats()
+        let block = try XCTUnwrap(service.briefBlock(briefs: [brief], muscleLoad: [:], fuel: nil, usualMinutes: nil))
+        XCTAssertFalse(block.contains("FUEL"), block)
+        XCTAssertFalse(block.contains("USUAL SESSION"), block)
+        XCTAssertFalse(block.contains("MUSCLE LOAD"), block)
+        XCTAssertFalse(block.contains("rest 2"), block)
+        XCTAssertTrue(block.contains("BRIEF"), block)
+        XCTAssertNil(service.briefBlock(briefs: [], muscleLoad: [:], fuel: nil, usualMinutes: nil))
+    }
+
+    func testBriefBlockIsAppendedToThePlanMessageAndPromptMentionsIt() {
+        let extras = CoachPromptService.PlanPromptExtras(briefBlock: "BRIEF-MARKER-LINE")
+        let message = service.buildWorkoutRequestMessage(
+            workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras)
+        XCTAssertTrue(message.contains("BRIEF-MARKER-LINE"))
+        XCTAssertTrue(message.contains("DRAFT PLAN"), "existing sections stay")
+        XCTAssertTrue(service.buildSystemPrompt(profile: nil, task: .plan).contains("BRIEF"))
+    }
 }
