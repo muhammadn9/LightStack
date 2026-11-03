@@ -9,7 +9,7 @@ struct AddFoodRoute: Hashable {
 
 private enum JournalSheet: Identifiable {
     case addMenu, water, targets, settings
-    case quickAdd(UUID?), createFood(UUID?), scan(UUID?)
+    case quickAdd(UUID?), createFood(UUID?), scan(UUID?), barcode(UUID?)
     case editEntry(FoodEntry)
 
     var id: String {
@@ -21,6 +21,7 @@ private enum JournalSheet: Identifiable {
         case .quickAdd: return "quickAdd"
         case .createFood: return "createFood"
         case .scan: return "scan"
+        case .barcode: return "barcode"
         case .editEntry(let entry): return "entry-\(entry.id.uuidString)"
         }
     }
@@ -43,7 +44,6 @@ struct JournalView: View {
     @State private var macroPage = 0
     @State private var scrolled = false
     @State private var waterExpanded = true
-    @State private var showBarcodeSoon = false
     @State private var renaming: MealSlot?
     @State private var renameText = ""
     @State private var creatingMeal = false
@@ -107,11 +107,6 @@ struct JournalView: View {
         }) { item in
             sheetContent(item)
         }
-        .alert("Barcode scanning", isPresented: $showBarcodeSoon) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Coming soon.")
-        }
         .alert("Rename meal", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Meal name", text: $renameText)
             Button("Save") {
@@ -144,7 +139,8 @@ struct JournalView: View {
                 },
                 onWater: { present(.water) },
                 onQuickTrack: { present(.quickAdd(viewModel.defaultSlotId)) },
-                onCreateFood: { present(.createFood(nil)) }
+                onCreateFood: { present(.createFood(nil)) },
+                onBarcode: { present(.barcode(viewModel.defaultSlotId)) }
             )
             .presentationDetents([.medium, .large])
         case .water:
@@ -159,6 +155,8 @@ struct JournalView: View {
             CreateFoodView(viewModel: viewModel, mealSlotId: slotId, logByDefault: false)
         case .scan(let slotId):
             ScanFlowView(viewModel: viewModel, mealSlotId: slotId)
+        case .barcode(let slotId):
+            BarcodeFlowView(viewModel: viewModel, mealSlotId: slotId, onPlate: nil, onLogged: nil)
         case .editEntry(let entry):
             EntryEditView(viewModel: viewModel, entry: entry)
         }
@@ -547,7 +545,7 @@ struct JournalView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("journal.search")
-                Button { showBarcodeSoon = true } label: {
+                Button { sheet = .barcode(viewModel.defaultSlotId) } label: {
                     Image(systemName: "barcode.viewfinder").font(.title3).foregroundStyle(AppTheme.textPrimary)
                         .frame(width: 44, height: 44)
                 }

@@ -152,10 +152,13 @@ enum OpenFoodFactsParser {
         return product
     }
 
-    /// `/cgi/search.pl?...&json=1`. Products without a name or usable nutrition are skipped.
+    /// search-a-licious `GET /search?q=...` (`{"hits":[...]}`). Products without a name or usable nutrition
+    /// are skipped. A body that is not JSON (e.g. an HTML bot-check page) means the service is unavailable.
     static func parseSearchResponse(_ data: Data) throws -> [OpenFoodFactsProduct] {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let products = root["products"] as? [[String: Any]] else {
+        guard let json = try? JSONSerialization.jsonObject(with: data), let root = json as? [String: Any] else {
+            throw OpenFoodFactsError.unavailable
+        }
+        guard let products = (root["hits"] ?? root["products"]) as? [[String: Any]] else {
             throw OpenFoodFactsError.badData
         }
         var seen = Set<String>()
@@ -260,7 +263,7 @@ enum OpenFoodFactsParser {
             warnings.append(.per100Only)
         }
 
-        let brand = clean(p["brands"]).flatMap { first(of: $0) }
+        let brand = brand(p["brands"])
         let nutrients = NutrientValues(kcal: (kcalValue ?? 0).rounded(), protein: round1(value(protein) ?? 0),
                                        carbs: round1(value(carbs) ?? 0), fat: round1(value(fat) ?? 0), micros: micros)
         return OpenFoodFactsProduct(
@@ -313,6 +316,14 @@ enum OpenFoodFactsParser {
         guard let digits = raw?.trimmingCharacters(in: .whitespaces), (6...14).contains(digits.count),
               digits.allSatisfy(\.isNumber) else { return nil }
         return digits
+    }
+
+    /// Brands arrive as an array (search-a-licious) or a comma-separated string (product endpoint).
+    private static func brand(_ any: Any?) -> String? {
+        if let list = any as? [Any] {
+            return list.compactMap { clean($0) }.first
+        }
+        return clean(any).flatMap { first(of: $0) }
     }
 
     /// "Brand A, Brand B" -> "Brand A".

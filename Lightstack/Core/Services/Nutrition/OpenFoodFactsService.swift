@@ -183,15 +183,15 @@ final class OpenFoodFactsCache: @unchecked Sendable {
 ///
 /// Endpoint choices:
 ///  - Barcode: `GET /api/v2/product/{barcode}.json?fields=...` (documented, stable, ~100 req/min).
-///  - Search: classic `GET /cgi/search.pl?search_terms=...&search_simple=1&action=process&json=1` (~10 req/min).
-///    The newer search-a-licious service is faster but still beta with a different response shape, so the
-///    documented v1 endpoint is used; swapping it later only touches `searchRequest` and the parser.
+///  - Search: search-a-licious `GET https://search.openfoodfacts.org/search?q=...` (the old
+///    `/cgi/search.pl` now answers with an HTML bot-check page and HTTP 503).
 /// Requests carry a descriptive User-Agent (required by OFF) and no account or personal data.
 final class OpenFoodFactsService: OpenFoodFactsServicing, @unchecked Sendable {
 
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
     static let host = "world.openfoodfacts.org"
+    static let searchHost = "search.openfoodfacts.org"
 
     private let transport: Transport
     private let cache: OpenFoodFactsCache
@@ -248,14 +248,10 @@ final class OpenFoodFactsService: OpenFoodFactsServicing, @unchecked Sendable {
 
     func searchRequest(query: String) -> URLRequest? {
         var c = URLComponents()
-        c.scheme = "https"; c.host = Self.host; c.path = "/cgi/search.pl"
+        c.scheme = "https"; c.host = Self.searchHost; c.path = "/search"
         c.queryItems = [
-            URLQueryItem(name: "search_terms", value: query),
-            URLQueryItem(name: "search_simple", value: "1"),
-            URLQueryItem(name: "action", value: "process"),
-            URLQueryItem(name: "json", value: "1"),
+            URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "page_size", value: "20"),
-            URLQueryItem(name: "sort_by", value: "unique_scans_n"),
             URLQueryItem(name: "fields", value: OpenFoodFactsParser.fields)
         ]
         return c.url.map(request(for:))

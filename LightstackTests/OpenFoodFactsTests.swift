@@ -150,7 +150,7 @@ final class OpenFoodFactsTests: XCTestCase {
 
     func testSearchResponseSkipsBadAndDuplicateProducts() throws {
         let json = """
-        {"count":4,"products":[
+        {"count":4,"hits":[
           {"code":"4000000000017","product_name":"A","nutriments":{"energy-kcal_100g":10,"proteins_100g":1,"carbohydrates_100g":1,"fat_100g":1}},
           {"code":"4000000000017","product_name":"A again","nutriments":{"energy-kcal_100g":10}},
           {"code":"4000000000024","product_name":"","nutriments":{"energy-kcal_100g":10}},
@@ -159,6 +159,43 @@ final class OpenFoodFactsTests: XCTestCase {
         """
         XCTAssertEqual(try OpenFoodFactsParser.parseSearchResponse(Data(json.utf8)).map(\.name), ["A"])
         XCTAssertThrowsError(try OpenFoodFactsParser.parseSearchResponse(Data(#"{"nope":1}"#.utf8)))
+    }
+
+    func testSearchALiciousHitsParse() throws {
+        let json = """
+        {"hits":[
+          {"code":"9300650450271","brands":["Oreo"],"nutriments":{"carbohydrates_100g":70.1754,"energy-kcal_100g":483.8596,"fat_100g":20,"proteins_100g":4.2105,"salt_100g":1.28947375,"sugars_100g":38.5965},"product_name":"Oreo strawberry"},
+          {"code":"3017620422003","brands":["Nutella","Ferrero"],"nutriments":{"carbohydrates_100g":57.5,"energy-kj_100g":2252,"fat_100g":30.9,"proteins_100g":6.3},"product_name":"Spread"}
+        ],"page":1,"page_size":20,"page_count":2}
+        """
+        let items = try OpenFoodFactsParser.parseSearchResponse(Data(json.utf8))
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items[0].brand, "Oreo")
+        XCTAssertEqual(items[0].nutrients.kcal, 484)
+        XCTAssertTrue(items[0].warnings.contains(.per100Only))
+        XCTAssertEqual(items[1].brand, "Nutella")
+        XCTAssertEqual(items[1].nutrients.kcal, 538)
+        XCTAssertTrue(items[1].warnings.contains(.kcalFromKilojoules))
+    }
+
+    func testSearchHtmlBodyAndServerErrorsAreUnavailable() async {
+        XCTAssertThrowsError(try OpenFoodFactsParser.parseSearchResponse(Data("<html>bot check</html>".utf8))) {
+            XCTAssertEqual($0 as? OpenFoodFactsError, .unavailable)
+        }
+        let t = FakeTransport()
+        let service = makeService(t)
+        t.handler = { _ in (Data("<html>".utf8), 503, [:]) }
+        await assertThrows(OpenFoodFactsError.unavailable) { _ = try await service.search(query: "html") }
+        t.handler = { _ in (Data("<html>".utf8), 200, [:]) }
+        await assertThrows(OpenFoodFactsError.unavailable) { _ = try await service.search(query: "html200") }
+    }
+
+    func testBrandsAcceptStringOrArray() throws {
+        let nut = #""nutriments":{"energy-kcal_100g":10,"proteins_100g":1,"carbohydrates_100g":1,"fat_100g":1}"#
+        let a = try XCTUnwrap(OpenFoodFactsParser.parseProduct(try XCTUnwrap(JSONSerialization.jsonObject(with: Data("{\"code\":\"4000000000017\",\"product_name\":\"A\",\"brands\":\"X, Y\",\(nut)}".utf8)) as? [String: Any])))
+        XCTAssertEqual(a.brand, "X")
+        let b = try XCTUnwrap(OpenFoodFactsParser.parseProduct(try XCTUnwrap(JSONSerialization.jsonObject(with: Data("{\"code\":\"4000000000017\",\"product_name\":\"A\",\"brands\":[\"Z\"],\(nut)}".utf8)) as? [String: Any])))
+        XCTAssertEqual(b.brand, "Z")
     }
 
     func testProductCodableRoundTrip() throws {
@@ -285,7 +322,7 @@ final class OpenFoodFactsTests: XCTestCase {
     }
 
     private let productJSON = #"{"code":"0123456789012","status":1,"product":{"product_name":"Yogurt","nutriments":{"energy-kcal_100g":50,"proteins_100g":5,"carbohydrates_100g":5,"fat_100g":1}}}"#
-    private let searchJSON = #"{"products":[{"code":"4000000000017","product_name":"A","nutriments":{"energy-kcal_100g":10,"proteins_100g":1,"carbohydrates_100g":1,"fat_100g":1}}]}"#
+    private let searchJSON = #"{"hits":[{"code":"4000000000017","product_name":"A","nutriments":{"energy-kcal_100g":10,"proteins_100g":1,"carbohydrates_100g":1,"fat_100g":1}}]}"#
 
     func testRequestsCarryUserAgentAndNoPersonalData() async throws {
         let t = FakeTransport()
@@ -309,9 +346,9 @@ final class OpenFoodFactsTests: XCTestCase {
         XCTAssertEqual(results.count, 1)
         let url = try XCTUnwrap(t.requests.first?.url)
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        XCTAssertEqual(url.path, "/cgi/search.pl")
-        XCTAssertEqual(items.first { $0.name == "search_terms" }?.value, "greek yogurt")
-        XCTAssertEqual(items.first { $0.name == "json" }?.value, "1")
+        XCTAssertEqual(url.host, "search.openfoodfacts.org")
+        XCTAssertEqual(url.path, "/search")
+        XCTAssertEqual(items.first { $0.name == "q" }?.value, "greek yogurt")
         XCTAssertEqual(items.first { $0.name == "page_size" }?.value, "20")
     }
 

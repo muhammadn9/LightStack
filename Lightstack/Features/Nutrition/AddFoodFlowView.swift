@@ -1,7 +1,8 @@
 import SwiftUI
 
 private enum FlowSheet: Identifiable {
-    case servings(NutritionFood), plate, quickAdd, create, scan
+    case servings(NutritionFood), plate, quickAdd, create, scan, barcode
+    case branded(OpenFoodFactsProduct)
 
     var id: String {
         switch self {
@@ -10,6 +11,8 @@ private enum FlowSheet: Identifiable {
         case .quickAdd: return "quickAdd"
         case .create: return "create"
         case .scan: return "scan"
+        case .barcode: return "barcode"
+        case .branded(let p): return "branded-\(p.barcode)"
         }
     }
 }
@@ -30,7 +33,6 @@ struct AddFoodFlowView: View {
     @State private var results: [NutritionFood] = []
     @State private var sheet: FlowSheet?
     @State private var popAfterSheet = false
-    @State private var showBarcodeSoon = false
     @FocusState private var searchFocused: Bool
 
     private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -56,6 +58,13 @@ struct AddFoodFlowView: View {
                             Text("No saved foods match.").font(.subheadline).foregroundStyle(AppTheme.textSecondary)
                                 .padding(.horizontal, 16)
                                 .accessibilityIdentifier("addfood.empty")
+                        }
+                        if filter == .all || filter == .foods {
+                            BrandedResultsSection(
+                                state: viewModel.brandedState,
+                                onSelect: { sheet = .branded($0) },
+                                onRetry: { viewModel.searchBranded(query) }
+                            )
                         }
                     } else {
                         if !recent.isEmpty {
@@ -86,15 +95,11 @@ struct AddFoodFlowView: View {
         }) { item in
             sheetContent(item)
         }
-        .alert("Barcode scanning", isPresented: $showBarcodeSoon) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Coming soon.")
-        }
         .onAppear {
             if slotId == nil { slotId = route.slotId ?? viewModel.defaultSlotId }
             if query.isEmpty { query = route.query }
             reloadFoods()
+            updateBranded()
             if route.focusSearch {
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(450))
@@ -102,7 +107,8 @@ struct AddFoodFlowView: View {
                 }
             }
         }
-        .onChange(of: query) { _, _ in reloadFoods() }
+        .onChange(of: query) { _, _ in reloadFoods(); updateBranded() }
+        .onDisappear { viewModel.cancelBrandedSearch() }
         .onChange(of: viewModel.foodsVersion) { _, _ in reloadFoods() }
     }
 
@@ -256,6 +262,11 @@ struct AddFoodFlowView: View {
         }
     }
 
+    private func addToPlate(_ food: NutritionFood, _ servings: Double) {
+        if let index = plate.firstIndex(where: { $0.food.id == food.id }) { plate[index].servings = servings }
+        else { plate.append(PlateItem(food: food, servings: servings)) }
+    }
+
     private func togglePlate(_ food: NutritionFood) {
         if let index = plate.firstIndex(where: { $0.food.id == food.id }) {
             plate.remove(at: index)
@@ -269,7 +280,7 @@ struct AddFoodFlowView: View {
     private var bottomBar: some View {
         HStack(spacing: 10) {
             PillSearchField(text: $query, prompt: "Search food", id: "addfood.search", focus: $searchFocused)
-            Button { showBarcodeSoon = true } label: {
+            Button { sheet = .barcode } label: {
                 Image(systemName: "barcode.viewfinder").font(.title3).foregroundStyle(AppTheme.textPrimary)
                     .frame(width: 48, height: 48)
                     .background(AppTheme.surface, in: Circle())
@@ -306,6 +317,10 @@ struct AddFoodFlowView: View {
         dismiss()
     }
 
+    private func updateBranded() {
+        if isSearching { viewModel.searchBranded(query) } else { viewModel.cancelBrandedSearch() }
+    }
+
     private func reloadFoods() {
         if isSearching {
             results = viewModel.searchFoods(query)
@@ -339,6 +354,26 @@ struct AddFoodFlowView: View {
             CreateFoodView(viewModel: viewModel, mealSlotId: slotId, logByDefault: true, onLogged: { popAfterSheet = true })
         case .scan:
             ScanFlowView(viewModel: viewModel, mealSlotId: slotId, onLogged: { popAfterSheet = true })
+        case .barcode:
+            BarcodeFlowView(viewModel: viewModel, mealSlotId: slotId,
+                            onPlate: { food, servings in addToPlate(food, servings) },
+                            onLogged: { popAfterSheet = true })
+        case .branded(let product):
+            NavigationStack {
+                BrandedServingView(
+                    target: ServingTarget(product: product), mealName: slotName,
+                    onAdd: { servings in
+                        viewModel.saveBrandedFood(product, logServings: servings, mealSlotId: slotId)
+                        popAfterSheet = true
+                        sheet = nil
+                    },
+                    onPlate: { servings in
+                        if let food = viewModel.saveBrandedFood(product) { addToPlate(food, servings) }
+                        sheet = nil
+                    }
+                )
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { sheet = nil } } }
+            }
         }
     }
 }
