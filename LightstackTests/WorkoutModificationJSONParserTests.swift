@@ -499,60 +499,6 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         XCTAssertEqual(sets, 5)
         XCTAssertNil(weight)
     }
-}
-
-// MARK: - Coach note composition
-
-final class CoachNoteCompositionTests: XCTestCase {
-
-    /// A second weight change used to append, leaving "Target: 135 lbs Target:
-    /// 145 lbs" on the card. The new target must replace the old one.
-    func testNewWeightReplacesExistingTarget() {
-        let first = TodayViewModel.coachNote(nil, weight: "135 lbs", note: nil)
-        XCTAssertEqual(first, "Target: 135 lbs")
-
-        let second = TodayViewModel.coachNote(first, weight: "145 lbs", note: nil)
-        XCTAssertEqual(second, "Target: 145 lbs")
-    }
-
-    func testWeightAndNoteCoexist() {
-        let note = TodayViewModel.coachNote("Target: 135 lbs", weight: "145 lbs", note: "Slow eccentric")
-        XCTAssertEqual(note, "Target: 145 lbs · Slow eccentric")
-    }
-
-    func testSameNoteIsNotDuplicated() {
-        let once = TodayViewModel.coachNote(nil, weight: nil, note: "Slow eccentric")
-        let twice = TodayViewModel.coachNote(once, weight: nil, note: "Slow eccentric")
-        XCTAssertEqual(twice, "Slow eccentric")
-    }
-
-    func testEmptyInputsProduceNil() {
-        XCTAssertNil(TodayViewModel.coachNote(nil, weight: nil, note: nil))
-    }
-}
-
-// MARK: - Markdown table backstop
-
-final class MarkdownTableDetectionTests: XCTestCase {
-
-    /// The coach answering with a table changes nothing in the app. Detecting it
-    /// lets us say so rather than leaving the athlete waiting for a confirm sheet.
-    func testDetectsMarkdownTable() {
-        let reply = """
-        Here's the updated plan:
-
-        | Exercise | Sets | Weight |
-        |---|---|---|
-        | Bench Press | 4 | 145 lbs |
-        """
-        XCTAssertTrue(CoachChatViewModel.containsMarkdownTable(reply))
-    }
-
-    /// Prose with dashes or pipes must not trip the detector.
-    func testProseIsNotAMarkdownTable() {
-        XCTAssertFalse(CoachChatViewModel.containsMarkdownTable("Go up to 145 lbs — that's a solid jump."))
-        XCTAssertFalse(CoachChatViewModel.containsMarkdownTable("Bench Press | 4 sets"))
-    }
 
     // MARK: - Goal block
 
@@ -618,4 +564,59 @@ final class MarkdownTableDetectionTests: XCTestCase {
     func testModificationReplyIsNotAGoal() {
         XCTAssertNil(parser.parseGoal(json(#"{"action": "remove", "name": "Bench Press"}"#)))
     }
+}
+
+// MARK: - Coach note composition
+
+final class CoachNoteCompositionTests: XCTestCase {
+
+    /// A second weight change used to append, leaving "Target: 135 lbs Target:
+    /// 145 lbs" on the card. The new target must replace the old one.
+    func testNewWeightReplacesExistingTarget() {
+        let first = TodayViewModel.coachNote(nil, weight: "135 lbs", note: nil)
+        XCTAssertEqual(first, "Target: 135 lbs")
+
+        let second = TodayViewModel.coachNote(first, weight: "145 lbs", note: nil)
+        XCTAssertEqual(second, "Target: 145 lbs")
+    }
+
+    func testWeightAndNoteCoexist() {
+        let note = TodayViewModel.coachNote("Target: 135 lbs", weight: "145 lbs", note: "Slow eccentric")
+        XCTAssertEqual(note, "Target: 145 lbs · Slow eccentric")
+    }
+
+    func testSameNoteIsNotDuplicated() {
+        let once = TodayViewModel.coachNote(nil, weight: nil, note: "Slow eccentric")
+        let twice = TodayViewModel.coachNote(once, weight: nil, note: "Slow eccentric")
+        XCTAssertEqual(twice, "Slow eccentric")
+    }
+
+    func testEmptyInputsProduceNil() {
+        XCTAssertNil(TodayViewModel.coachNote(nil, weight: nil, note: nil))
+    }
+}
+
+// MARK: - Markdown table backstop
+
+final class MarkdownTableDetectionTests: XCTestCase {
+
+    /// The coach answering with a table changes nothing in the app. Detecting it
+    /// lets us say so rather than leaving the athlete waiting for a confirm sheet.
+    func testDetectsMarkdownTable() {
+        let reply = """
+        Here's the updated plan:
+
+        | Exercise | Sets | Weight |
+        |---|---|---|
+        | Bench Press | 4 | 145 lbs |
+        """
+        XCTAssertTrue(CoachChatViewModel.containsMarkdownTable(reply))
+    }
+
+    /// Prose with dashes or pipes must not trip the detector.
+    func testProseIsNotAMarkdownTable() {
+        XCTAssertFalse(CoachChatViewModel.containsMarkdownTable("Go up to 145 lbs — that's a solid jump."))
+        XCTAssertFalse(CoachChatViewModel.containsMarkdownTable("Bench Press | 4 sets"))
+    }
+
 }
