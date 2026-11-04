@@ -198,6 +198,8 @@ private func encodeDay(_ date: Date, _ name: String, forCloud: Bool, into c: ino
 /// How a saved food was created.
 enum FoodSource: String, Codable {
     case quick, scan
+    /// Saved from an Open Food Facts search or barcode lookup (wire value "off").
+    case openFoodFacts = "off"
 }
 
 /// How a diary entry was created.
@@ -315,20 +317,23 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
     var lastUsedAt: Date?
     var createdAt: Date
     var updatedAt: Date
+    /// Product barcode (EAN/UPC digits) for foods that came from a barcode or branded search; nil otherwise.
+    var barcode: String? = nil
 
     static func make(userId: UUID, name: String, brand: String? = nil, servingLabel: String = "1 serving",
                      servingUnit: String = "serving", servingAmount: Double = 1, servingGrams: Double? = nil,
-                     nutrients: NutrientValues, source: FoodSource = .quick, now: Date = Date()) -> NutritionFood {
+                     nutrients: NutrientValues, source: FoodSource = .quick, barcode: String? = nil,
+                     now: Date = Date()) -> NutritionFood {
         NutritionFood(id: UUID(), userId: userId, name: name, brand: brand, servingLabel: servingLabel,
                       servingUnit: servingUnit, servingAmount: servingAmount, servingGrams: servingGrams,
                       nutrients: nutrients, source: source, isFavorite: false, lastUsedAt: nil,
-                      createdAt: now, updatedAt: now)
+                      createdAt: now, updatedAt: now, barcode: barcode)
     }
 
     init(id: UUID, userId: UUID, name: String, brand: String?, servingLabel: String, servingUnit: String,
          servingAmount: Double, servingGrams: Double?, nutrients: NutrientValues, source: FoodSource,
-         isFavorite: Bool, lastUsedAt: Date?, createdAt: Date, updatedAt: Date) {
-        self.id = id; self.userId = userId; self.name = name; self.brand = brand
+         isFavorite: Bool, lastUsedAt: Date?, createdAt: Date, updatedAt: Date, barcode: String? = nil) {
+        self.id = id; self.userId = userId; self.name = name; self.brand = brand; self.barcode = barcode
         self.servingLabel = servingLabel; self.servingUnit = servingUnit; self.servingAmount = servingAmount
         self.servingGrams = servingGrams; self.nutrients = nutrients; self.source = source
         self.isFavorite = isFavorite; self.lastUsedAt = lastUsedAt; self.createdAt = createdAt; self.updatedAt = updatedAt
@@ -339,6 +344,7 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
         userId = entity.userId ?? UUID()
         name = entity.name ?? ""
         brand = entity.brand
+        barcode = entity.barcode
         servingLabel = entity.servingLabel ?? "serving"
         servingUnit = entity.servingUnit ?? "serving"
         servingAmount = entity.servingAmount
@@ -353,7 +359,7 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
     }
 
     func apply(to entity: CDFood) {
-        entity.id = id; entity.userId = userId; entity.name = name; entity.brand = brand
+        entity.id = id; entity.userId = userId; entity.name = name; entity.brand = brand; entity.barcode = barcode
         entity.servingLabel = servingLabel; entity.servingUnit = servingUnit; entity.servingAmount = servingAmount
         entity.servingGrams = servingGrams.map { NSNumber(value: $0) }
         entity.kcal = nutrients.kcal; entity.protein = nutrients.protein
@@ -369,6 +375,7 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
         userId = try c.decode(UUID.self, forKey: NutritionWireKey("user_id"))
         name = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("name")) ?? ""
         brand = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("brand"))
+        barcode = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("barcode"))
         servingLabel = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("serving_label")) ?? "serving"
         servingUnit = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("serving_unit")) ?? "serving"
         servingAmount = try c.decodeIfPresent(Double.self, forKey: NutritionWireKey("serving_amount")) ?? 1
@@ -396,6 +403,7 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
         try c.encode(userId, forKey: NutritionWireKey("user_id"))
         try c.encode(name, forKey: NutritionWireKey("name"))
         if let brand { try c.encode(brand, forKey: NutritionWireKey("brand")) } else { try c.encodeNil(forKey: NutritionWireKey("brand")) }
+        if let barcode { try c.encode(barcode, forKey: NutritionWireKey("barcode")) } else { try c.encodeNil(forKey: NutritionWireKey("barcode")) }
         try c.encode(servingLabel, forKey: NutritionWireKey("serving_label"))
         try c.encode(servingUnit, forKey: NutritionWireKey("serving_unit"))
         try c.encode(servingAmount, forKey: NutritionWireKey("serving_amount"))

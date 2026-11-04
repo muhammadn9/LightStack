@@ -76,6 +76,8 @@ struct FoodReviewView: View {
     let parsed: ParsedLabel
     /// True when the user types the food in by hand: no scan happened, so no scan warnings or "missing" highlights.
     var isManualEntry = false
+    /// Barcode to store on the new food, so scanning it again finds this food.
+    var barcode: String?
     let onSaved: () -> Void
 
     @State private var name = ""
@@ -265,7 +267,7 @@ struct FoodReviewView: View {
         let food = NutritionFood.make(userId: userId, name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                                       brand: trimmedBrand.isEmpty ? nil : trimmedBrand, servingLabel: label,
                                       servingUnit: servingUnit.rawValue, servingAmount: amount, servingGrams: grams,
-                                      nutrients: nutrients, source: .scan)
+                                      nutrients: nutrients, source: .scan, barcode: barcode)
         let toLog = logNow ? (NutritionFormat.parse(servingsToLog) ?? 1) : nil
         viewModel.saveFood(food, logServings: toLog, mealSlotId: mealSlotId)
         onSaved()
