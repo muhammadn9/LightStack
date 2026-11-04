@@ -20,18 +20,26 @@ final class NutritionViewModel: ObservableObject {
     /// Branded (Open Food Facts) search state for the UI.
     @Published private(set) var brandedState: BrandedSearchState = .idle
 
+    /// AI meal estimate state for the UI.
+    @Published private(set) var aiState: AIEstimateState = .idle
+
     private let repository: NutritionRepository
     private let userIdProvider: () -> UUID?
     private let foodDatabase: OpenFoodFactsServicing?
+    private let nutritionAI: NutritionAIServicing?
+    private var aiTask: Task<Void, Never>?
+    private var aiRequestId = UUID()
     private let brandedDebounce: TimeInterval
     private var brandedTask: Task<Void, Never>?
 
     /// `foodDatabase` nil = no branded lookups (searches report an error state).
     init(repository: NutritionRepository, userIdProvider: @escaping () -> UUID?,
-         foodDatabase: OpenFoodFactsServicing? = nil, brandedDebounce: TimeInterval = 0.4) {
+         foodDatabase: OpenFoodFactsServicing? = nil, nutritionAI: NutritionAIServicing? = nil,
+         brandedDebounce: TimeInterval = 0.4) {
         self.repository = repository
         self.userIdProvider = userIdProvider
         self.foodDatabase = foodDatabase
+        self.nutritionAI = nutritionAI
         self.brandedDebounce = brandedDebounce
     }
 
@@ -432,6 +440,75 @@ extension NutritionViewModel {
         foodsVersion += 1
         reload()
         return saved
+    }
+}
+
+// MARK: - AI meal logging
+
+/// What the AI meal screen shows.
+enum AIEstimateState: Equatable {
+    case idle
+    case working
+    case result(AIMealEstimate)
+    case error(String)
+}
+
+extension NutritionViewModel {
+
+    /// Starts an estimate from a description and/or a photo. A newer call (or `cancelAIEstimate`) supersedes
+    /// the one in flight. `mealSlotId` only tells the model which meal this is.
+    func estimateMeal(text: String, image: Data? = nil, mealSlotId: UUID? = nil) {
+        aiTask?.cancel()
+        let requestId = UUID()
+        aiRequestId = requestId
+        guard let nutritionAI else { aiState = .error(NutritionAIError.failed("AI meal logging isn't available right now.").message); return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty || image != nil else { aiState = .error(NutritionAIError.empty.message); return }
+        aiState = .working
+        let context = AIMealContext(mealName: slot(id: mealSlotId)?.name)
+        aiTask = Task { [weak self] in
+            let outcome: AIEstimateState
+            do {
+                outcome = .result(try await nutritionAI.estimate(text: trimmed, image: image, mealContext: context))
+            } catch is CancellationError {
+                return
+            } catch {
+                outcome = .error(NutritionAIError.from(error).message)
+            }
+            guard !Task.isCancelled, let self, self.aiRequestId == requestId else { return }
+            self.aiState = outcome
+        }
+    }
+
+    /// Stops the estimate in flight and returns to idle.
+    func cancelAIEstimate() {
+        aiTask?.cancel()
+        aiTask = nil
+        aiRequestId = UUID()
+        aiState = .idle
+    }
+
+    /// Clears a finished result or error (e.g. when the sheet closes).
+    func resetAIEstimate() { cancelAIEstimate() }
+
+    /// Saves each (possibly user-edited) item as an AI-estimate food and logs it on the selected day with the
+    /// item's servings. Returns the new entries.
+    @discardableResult
+    func logAIItems(_ items: [AIMealItem], mealSlotId: UUID?) -> [FoodEntry] {
+        guard let userId, !items.isEmpty else { return [] }
+        let entries = repository.logAIItems(items, userId: userId, mealSlotId: mealSlotId, on: date)
+        foodsVersion += 1
+        reload()
+        return entries
+    }
+
+    /// Saves the items as AI-estimate foods and returns them as plate items (for flows that build a plate
+    /// before logging). The foods are saved now; nothing is logged.
+    func addAIItemsToPlate(_ items: [AIMealItem]) -> [PlateItem] {
+        guard let userId else { return [] }
+        let plate = repository.plateItems(for: items.filter { $0.servings > 0 }, userId: userId)
+        foodsVersion += 1
+        return plate
     }
 }
 

@@ -51,6 +51,18 @@ final class GeminiService {
         options: AIRequestOptions = .default,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        generateReplyAsync(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON,
+                           options: options) { completion($0.map(\.text)) }
+    }
+
+    /// Same call, but the result also carries the grounding sources (when `options.googleSearch` is on).
+    func generateReplyAsync(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool = true,
+        options: AIRequestOptions = .default,
+        completion: @escaping (Result<AIReply, Error>) -> Void
+    ) {
         logger.debug("🔵 API CALL INITIATED - This counts against quota!")
         logger.debug("System prompt: \(systemPrompt.count) chars")
         logger.debug("Messages: \(messages.count) messages, \(messages.reduce(0) { $0 + $1.content.count }) total chars")
@@ -123,7 +135,7 @@ final class GeminiService {
         task: AITask,
         thinkingFallbackBody: Data?,
         expectsJSON: Bool,
-        completion: @escaping (Result<String, Error>) -> Void
+        completion: @escaping (Result<AIReply, Error>) -> Void
     ) {
         let task = session.dataTask(with: request) { [weak self] data, response, error in
             guard let self else { return }
@@ -172,8 +184,8 @@ final class GeminiService {
             }
 
             do {
-                let text = try self.parseResponse(data, task: task, expectsJSON: expectsJSON)
-                DispatchQueue.main.async { completion(.success(text)) }
+                let reply = try self.parseReply(data, task: task, expectsJSON: expectsJSON)
+                DispatchQueue.main.async { completion(.success(reply)) }
             } catch {
                 DispatchQueue.main.async { completion(.failure(error)) }
             }
@@ -223,9 +235,13 @@ final class GeminiService {
 
         for message in messages {
             let role = message.role == .user ? "user" : "model"
+            var parts: [[String: Any]] = [["text": message.content]]
+            if let image = message.imageJPEG {
+                parts.append(["inline_data": ["mime_type": "image/jpeg", "data": image.base64EncodedString()]])
+            }
             contents.append([
                 "role": role,
-                "parts": [["text": message.content]]
+                "parts": parts
             ])
         }
 
@@ -240,17 +256,55 @@ final class GeminiService {
         // Only constrain the response for callers that decode JSON. Setting this
         // unconditionally forces JSON on prose replies too, which no prompt can
         // override — that is how raw JSON ended up in Coach Chat.
-        if expectsJSON {
+        // Not with the search tool: Gemini can reject the combination and the ai-proxy drops it, so the
+        // prompt asks for JSON and the caller parses leniently.
+        if expectsJSON, !options.googleSearch {
             generationConfig["responseMimeType"] = "application/json"
         }
 
-        return [
+        var body: [String: Any] = [
             "system_instruction": [
                 "parts": [["text": systemPrompt]]
             ],
             "contents": contents,
             "generationConfig": generationConfig
         ]
+        if options.googleSearch {
+            body["tools"] = [["google_search": [String: Any]()]]
+        }
+        return body
+    }
+
+    /// `parseResponse` plus the grounding sources. Text parts are joined (search replies can split across parts).
+    func parseReply(_ data: Data, task: AITask = .other, expectsJSON: Bool = false) throws -> AIReply {
+        let first = try parseResponse(data, task: task, expectsJSON: expectsJSON)
+        var text = first
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let candidate = (json["candidates"] as? [[String: Any]])?.first,
+           let parts = (candidate["content"] as? [String: Any])?["parts"] as? [[String: Any]], parts.count > 1 {
+            let joined = parts.filter { ($0["thought"] as? Bool) != true }.compactMap { $0["text"] as? String }.joined()
+            if !joined.isEmpty { text = joined }
+        }
+        return AIReply(text: text, sources: Self.groundingSources(from: data))
+    }
+
+    /// Web pages from `candidates[0].groundingMetadata.groundingChunks[].web`, de-duplicated by URL.
+    /// Only what Gemini reports; a model-written URL in the text is never used.
+    static func groundingSources(from data: Data) -> [AIFoodSource] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let candidate = (json["candidates"] as? [[String: Any]])?.first,
+              let meta = candidate["groundingMetadata"] as? [String: Any],
+              let chunks = meta["groundingChunks"] as? [[String: Any]] else { return [] }
+        var seen = Set<String>()
+        var result: [AIFoodSource] = []
+        for chunk in chunks {
+            guard let web = chunk["web"] as? [String: Any],
+                  let uri = (web["uri"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !uri.isEmpty, seen.insert(uri).inserted else { continue }
+            let title = (web["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            result.append(AIFoodSource(title: title.isEmpty ? (URL(string: uri)?.host ?? uri) : title, url: uri))
+        }
+        return result
     }
 
     func parseResponse(_ data: Data, task: AITask = .other, expectsJSON: Bool = false) throws -> String {
@@ -341,5 +395,16 @@ extension GeminiService: AIProvider {
             options: options,
             completion: completion
         )
+    }
+
+    func generateReply(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool,
+        options: AIRequestOptions,
+        completion: @escaping (Result<AIReply, Error>) -> Void
+    ) {
+        generateReplyAsync(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON,
+                           options: options, completion: completion)
     }
 }

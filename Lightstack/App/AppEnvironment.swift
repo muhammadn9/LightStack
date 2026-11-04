@@ -76,6 +76,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     let nutritionRepository: NutritionRepository
     /// Open Food Facts (branded search and barcode lookup). A deterministic fake under `-uiTesting`.
     let foodDatabase: OpenFoodFactsServicing
+    /// AI meal estimates (describe or photograph a meal). A deterministic fake under `-uiTesting`.
+    let nutritionAI: NutritionAIServicing
 
     // MARK: - AI + Session Services
 
@@ -219,6 +221,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         if UITestMode.isActive { foodDatabase = FakeOpenFoodFactsService.uiTesting() }
         #endif
         self.foodDatabase = foodDatabase
+        var nutritionAI: NutritionAIServicing = NutritionAIService(manager: aiServiceManager)
+        #if DEBUG
+        if UITestMode.isActive { nutritionAI = FakeNutritionAIService() }
+        #endif
+        self.nutritionAI = nutritionAI
 
         self.coachPromptService = CoachPromptService(validationService: validationService)
         self.coachContextBuilder = CoachContextBuilder(
@@ -367,7 +374,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     @MainActor func makeNutritionViewModel() -> NutritionViewModel {
         NutritionViewModel(repository: nutritionRepository, userIdProvider: { [authService] in authService.currentUser()?.userId },
-                           foodDatabase: foodDatabase)
+                           foodDatabase: foodDatabase, nutritionAI: nutritionAI)
     }
 
     func makeMonthPlanViewModel() -> MonthPlanViewModel {

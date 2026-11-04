@@ -7,11 +7,14 @@ struct ChatMessage: Identifiable {
     let role: ChatRole
     let content: String
     let timestamp: Date
+    /// Optional JPEG attached to the message (meal photos). Sent as an inline_data part.
+    let imageJPEG: Data?
 
-    init(role: ChatRole, content: String) {
+    init(role: ChatRole, content: String, imageJPEG: Data? = nil) {
         self.id = UUID()
         self.role = role
         self.content = content
+        self.imageJPEG = imageJPEG
         self.timestamp = Date()
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 
 /// Which feature an AI call belongs to. Drives output caps and the DEBUG usage counter.
 enum AITask: String, CaseIterable {
-    case plan, chat, postWorkout, monthPlan, formFeedback, other
+    case plan, chat, postWorkout, monthPlan, formFeedback, nutrition, other
 
     var label: String {
         switch self {
@@ -11,6 +11,7 @@ enum AITask: String, CaseIterable {
         case .postWorkout: return "Post-workout"
         case .monthPlan: return "Month plan"
         case .formFeedback: return "Form feedback"
+        case .nutrition: return "Nutrition"
         case .other: return "Other"
         }
     }
@@ -24,6 +25,9 @@ struct AIRequestOptions: Equatable {
     var temperature: Double = 0.7
     /// How much the model may think before answering. `.modelDefault` sends no thinking field.
     var thinking: ThinkingEffort = .modelDefault
+    /// Turns on Gemini's Google Search tool (`tools: [{"google_search":{}}]`). The ai-proxy accepts only that
+    /// exact tool, and drops JSON mode when it is on, so callers ask for JSON in the prompt and parse leniently.
+    var googleSearch: Bool = false
 
     /// The ai-proxy only accepts thinkingBudget 0...1024 or thinkingLevel minimal/low.
     enum ThinkingEffort: Equatable {
@@ -47,6 +51,7 @@ struct AIRequestOptions: Equatable {
         case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, thinking: .minimal)
         case .monthPlan: return AIRequestOptions(task: task, maxOutputTokens: 4000, thinking: .minimal)
         case .formFeedback: return AIRequestOptions(task: task, maxOutputTokens: 600, thinking: .minimal)
+        case .nutrition: return AIRequestOptions(task: task, maxOutputTokens: 3000, temperature: 0.2, thinking: .low)
         case .other: return .default
         }
     }
