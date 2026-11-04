@@ -17,12 +17,22 @@ final class NutritionViewModel: ObservableObject {
     @Published private(set) var isSetupComplete = false
     @Published private(set) var plans: [NutritionPlan] = []
 
+    /// Branded (Open Food Facts) search state for the UI.
+    @Published private(set) var brandedState: BrandedSearchState = .idle
+
     private let repository: NutritionRepository
     private let userIdProvider: () -> UUID?
+    private let foodDatabase: OpenFoodFactsServicing?
+    private let brandedDebounce: TimeInterval
+    private var brandedTask: Task<Void, Never>?
 
-    init(repository: NutritionRepository, userIdProvider: @escaping () -> UUID?) {
+    /// `foodDatabase` nil = no branded lookups (searches report an error state).
+    init(repository: NutritionRepository, userIdProvider: @escaping () -> UUID?,
+         foodDatabase: OpenFoodFactsServicing? = nil, brandedDebounce: TimeInterval = 0.4) {
         self.repository = repository
         self.userIdProvider = userIdProvider
+        self.foodDatabase = foodDatabase
+        self.brandedDebounce = brandedDebounce
     }
 
     var userId: UUID? { userIdProvider() }
@@ -327,6 +337,97 @@ final class NutritionViewModel: ObservableObject {
     @discardableResult
     func saveFood(_ food: NutritionFood, logServings servings: Double?, mealSlotId: UUID? = nil) -> NutritionFood {
         let saved = repository.saveFood(food)
+        if let servings, servings > 0 { repository.logFood(saved, servings: servings, on: date, mealSlotId: mealSlotId) }
+        foodsVersion += 1
+        reload()
+        return saved
+    }
+}
+
+// MARK: - Branded foods (Open Food Facts)
+
+/// What the branded search screen shows.
+enum BrandedSearchState: Equatable {
+    case idle
+    case loading
+    case results([OpenFoodFactsProduct])
+    case empty
+    case error(String)
+}
+
+/// Outcome of a barcode scan.
+enum BarcodeLookupResult: Equatable {
+    /// Already in the user's saved foods (found without any network request).
+    case local(NutritionFood)
+    /// Found in Open Food Facts; not saved yet.
+    case remote(OpenFoodFactsProduct)
+    case notFound
+    /// Offline, rate limited or the database is down.
+    case failed(String)
+}
+
+extension NutritionViewModel {
+
+    /// Debounced search. Call on every keystroke: a newer call cancels the one in flight, and a blank or
+    /// one-letter query resets to idle.
+    func searchBranded(_ query: String) {
+        brandedTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { brandedTask = nil; brandedState = .idle; return }
+        guard let foodDatabase else { brandedState = .error(OpenFoodFactsError.unavailable.message); return }
+        brandedState = .loading
+        let delay = brandedDebounce
+        brandedTask = Task { [weak self] in
+            if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            guard !Task.isCancelled else { return }
+            let outcome: BrandedSearchState
+            do {
+                let found = try await foodDatabase.search(query: trimmed)
+                outcome = found.isEmpty ? .empty : .results(found)
+            } catch is CancellationError {
+                return
+            } catch let error as OpenFoodFactsError {
+                outcome = .error(error.message)
+            } catch {
+                outcome = .error(OpenFoodFactsError.unavailable.message)
+            }
+            guard !Task.isCancelled else { return }
+            self?.brandedState = outcome
+        }
+    }
+
+    func cancelBrandedSearch() {
+        brandedTask?.cancel()
+        brandedTask = nil
+        brandedState = .idle
+    }
+
+    /// Local food first (by barcode), then Open Food Facts.
+    func lookupBarcode(_ code: String) async -> BarcodeLookupResult {
+        guard let normalized = Barcode.normalized(code) else { return .notFound }
+        if let userId, let local = repository.food(barcode: normalized, userId: userId) { return .local(local) }
+        guard let foodDatabase else { return .failed(OpenFoodFactsError.unavailable.message) }
+        do {
+            return .remote(try await foodDatabase.product(barcode: normalized))
+        } catch OpenFoodFactsError.notFound {
+            return .notFound
+        } catch OpenFoodFactsError.badData {
+            // Listed but unusable (no nutrition): the user can still enter it by hand.
+            return .notFound
+        } catch let error as OpenFoodFactsError {
+            return .failed(error.message)
+        } catch {
+            return .failed(OpenFoodFactsError.unavailable.message)
+        }
+    }
+
+    /// Saves a branded product as a saved food (source Open Food Facts, barcode kept), reusing the food
+    /// already saved for that barcode. With `servings` it also logs that many servings on the selected day.
+    @discardableResult
+    func saveBrandedFood(_ product: OpenFoodFactsProduct, logServings servings: Double? = nil,
+                         mealSlotId: UUID? = nil) -> NutritionFood? {
+        guard let userId else { return nil }
+        let saved = repository.saveBrandedFood(product, userId: userId)
         if let servings, servings > 0 { repository.logFood(saved, servings: servings, on: date, mealSlotId: mealSlotId) }
         foodsVersion += 1
         reload()
