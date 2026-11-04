@@ -6,6 +6,7 @@ struct AddMenuSheet: View {
     let onWater: () -> Void
     let onQuickTrack: () -> Void
     let onCreateFood: () -> Void
+    let onBarcode: () -> Void
 
     @State private var query = ""
 
@@ -27,7 +28,14 @@ struct AddMenuSheet: View {
                     .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AppTheme.border, lineWidth: 0.5))
                     roundDisabled("sparkles", id: "addmenu.ai", label: "AI search, coming soon")
-                    roundDisabled("barcode.viewfinder", id: "addmenu.barcode", label: "Barcode, coming soon")
+                    Button(action: onBarcode) {
+                        Image(systemName: "barcode.viewfinder").font(.title3).foregroundStyle(AppTheme.textPrimary)
+                            .frame(width: 48, height: 48)
+                            .background(AppTheme.surface, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Scan barcode")
+                    .accessibilityIdentifier("addmenu.barcode")
                 }
 
                 HStack(spacing: 12) {
@@ -169,13 +177,14 @@ struct CreateFoodView: View {
     @ObservedObject var viewModel: NutritionViewModel
     var mealSlotId: UUID?
     var logByDefault = true
+    var barcode: String?
     var onLogged: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             FoodReviewView(viewModel: viewModel, mealSlotId: mealSlotId, logByDefault: logByDefault,
-                           parsed: NutritionLabelParser.parse(text: ""), isManualEntry: true) {
+                           parsed: NutritionLabelParser.parse(text: ""), isManualEntry: true, barcode: barcode) {
                 onLogged?()
                 dismiss()
             }
