@@ -6,6 +6,7 @@ import VisionKit
 struct ScanFlowView: View {
     @ObservedObject var viewModel: NutritionViewModel
     var mealSlotId: UUID?
+    var barcode: String?
     var onLogged: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var parsed: ParsedLabel?
@@ -24,7 +25,7 @@ struct ScanFlowView: View {
             }
             .navigationDestination(isPresented: Binding(get: { parsed != nil }, set: { if !$0 { parsed = nil } })) {
                 if let parsed {
-                    FoodReviewView(viewModel: viewModel, mealSlotId: mealSlotId, parsed: parsed, isManualEntry: enteredManually) {
+                    FoodReviewView(viewModel: viewModel, mealSlotId: mealSlotId, parsed: parsed, isManualEntry: enteredManually, barcode: barcode) {
                         onLogged?()
                         dismiss()
                     }

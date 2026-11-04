@@ -54,6 +54,14 @@ extension LocalStorageService {
         return ((try? context.fetch(request)) ?? []).map { NutritionFood(from: $0) }
     }
 
+    /// A saved food with this barcode (either UPC-A or EAN-13 spelling). Most recently used first.
+    func fetchFood(barcode: String, userId: UUID) -> NutritionFood? {
+        let request: NSFetchRequest<CDFood> = CDFood.fetchRequest()
+        request.predicate = NSPredicate(format: "userId == %@ AND barcode IN %@", userId as CVarArg, Barcode.variants(barcode))
+        let foods = ((try? context.fetch(request)) ?? []).map { NutritionFood(from: $0) }
+        return foods.max { ($0.lastUsedAt ?? $0.createdAt) < ($1.lastUsedAt ?? $1.createdAt) }
+    }
+
     private func foodEntity(id: UUID) -> CDFood? {
         let request: NSFetchRequest<CDFood> = CDFood.fetchRequest()
         request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
