@@ -255,7 +255,8 @@ CREATE TABLE IF NOT EXISTS public.foods (
   iron_mg        numeric,
   vitamin_d_mcg  numeric,
   other_micros   jsonb NOT NULL DEFAULT '{}'::jsonb,
-  source         text NOT NULL DEFAULT 'quick' CHECK (source IN ('quick','scan')),
+  source         text NOT NULL DEFAULT 'quick' CHECK (source IN ('quick','scan','off')),
+  barcode        text,
   is_favorite    boolean NOT NULL DEFAULT false,
   last_used_at   timestamptz,
   created_at     timestamptz NOT NULL DEFAULT now(),
@@ -263,6 +264,8 @@ CREATE TABLE IF NOT EXISTS public.foods (
 );
 CREATE INDEX IF NOT EXISTS idx_foods_user_last_used
   ON public.foods(user_id, last_used_at);
+CREATE INDEX IF NOT EXISTS idx_foods_user_barcode
+  ON public.foods(user_id, barcode) WHERE barcode IS NOT NULL;
 
 -- b2. meal_slots: user-configurable daily meals (soft-deleted via is_archived)
 CREATE TABLE IF NOT EXISTS public.meal_slots (
