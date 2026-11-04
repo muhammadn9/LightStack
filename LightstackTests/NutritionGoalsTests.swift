@@ -437,7 +437,7 @@ final class NutritionGoalsTests: XCTestCase {
         XCTAssertEqual(SyncErrorClassifier.classify(PostgrestError(code: "PGRST205", message: "x"), opType: .upsertNutritionPlan), .dependency)
         XCTAssertEqual(SyncErrorClassifier.classify(PostgrestError(code: "42P01", message: "x"), opType: .upsertGoalSettings), .dependency)
         // Other PostgREST/permission errors are unchanged.
-        XCTAssertEqual(SyncErrorClassifier.classify(PostgrestError(code: "PGRST204", message: "x"), opType: .upsertNutritionPlan), .permanent)
+        XCTAssertEqual(SyncErrorClassifier.classify(PostgrestError(code: "PGRST100", message: "x"), opType: .upsertNutritionPlan), .permanent)
     }
 
     func testMissingTablesKeepTheOperationAndLetOtherWritesThrough() async {
