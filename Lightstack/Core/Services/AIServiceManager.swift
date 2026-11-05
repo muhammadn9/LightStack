@@ -33,6 +33,11 @@ final class AIServiceManager {
         options: AIRequestOptions = .default,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        // Nothing is sent to the third-party AI provider without the athlete's consent.
+        guard AIConsent.isGranted else {
+            completion(.failure(AIConsent.deniedError))
+            return
+        }
         logger.debug("Starting chat generation with \(self.providers.count) providers available")
         tryNextProvider(
             systemPrompt: systemPrompt,

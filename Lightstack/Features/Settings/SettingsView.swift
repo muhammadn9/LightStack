@@ -255,7 +255,14 @@ enum AIConsent {
     static let promptedKey = "ai.thirdPartyConsent.v1.prompted"
 
     /// Convenience for call sites: `guard AIConsent.isGranted else { ... }`.
-    static var isGranted: Bool { granted() }
+    /// Unit tests (DEBUG, XCTest host) are treated as granted so the AI pipeline can be exercised;
+    /// the consent logic itself is tested through `granted(in:)` with isolated defaults.
+    static var isGranted: Bool {
+        #if DEBUG
+        if NSClassFromString("XCTestCase") != nil { return true }
+        #endif
+        return granted()
+    }
 
     /// UI-test mode (DEBUG) auto-grants so existing tests keep working.
     static func granted(in defaults: UserDefaults = .standard) -> Bool {
