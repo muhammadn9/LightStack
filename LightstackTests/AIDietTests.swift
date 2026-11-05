@@ -221,3 +221,44 @@ final class AIDietTests: XCTestCase {
         }
     }
 }
+
+/// Failures must reach the athlete as friendly sentences, never raw error text.
+final class AIErrorPresentationTests: XCTestCase {
+
+    private func assertFriendly(_ text: String, file: StaticString = #filePath, line: UInt = #line) {
+        for banned in ["API error", "NSURLErrorDomain", "Error Domain", "code=", "GeminiService", "503", "429"] {
+            XCTAssertFalse(text.contains(banned), "\"\(text)\" leaks \(banned)", file: file, line: line)
+        }
+    }
+
+    func testOfflineAndTimeout() {
+        XCTAssertEqual(AIErrorPresentation.message(for: URLError(.notConnectedToInternet)), AIErrorPresentation.offlineMessage)
+        XCTAssertEqual(AIErrorPresentation.message(for: URLError(.timedOut)), AIErrorPresentation.timeoutMessage)
+        let ns = NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)
+        XCTAssertEqual(AIErrorPresentation.message(for: ns), AIErrorPresentation.offlineMessage)
+    }
+
+    func testProviderErrors() {
+        XCTAssertEqual(AIErrorPresentation.message(for: AIProviderError.allProvidersUnavailable), AIErrorPresentation.unavailableMessage)
+        XCTAssertEqual(AIErrorPresentation.message(for: AIProviderError.rateLimitExceeded(retryAfter: 30)), AIErrorPresentation.rateLimitMessage)
+        XCTAssertEqual(AIErrorPresentation.message(for: AIProviderError.invalidResponse), AIErrorPresentation.malformedMessage)
+    }
+
+    func testRawGeminiTextIsClassifiedAndHidden() {
+        let cases: [(String, String)] = [
+            ("Gemini API error: Daily AI limit reached. Try again tomorrow.", AIErrorPresentation.dailyLimitMessage),
+            ("Gemini API error: HTTP 429 Too many AI requests", AIErrorPresentation.rateLimitMessage),
+            ("Gemini API error: HTTP 503 model overloaded", AIErrorPresentation.unavailableMessage),
+            ("Gemini API error: upstream timeout 504", AIErrorPresentation.timeoutMessage),
+            ("Failed to parse Gemini response - bad JSON", AIErrorPresentation.malformedMessage),
+            ("Could not parse workout plan from AI response", AIErrorPresentation.malformedMessage),
+            ("something unexpected", AIErrorPresentation.genericMessage)
+        ]
+        for (raw, expected) in cases {
+            let error = NSError(domain: "GeminiService", code: -4, userInfo: [NSLocalizedDescriptionKey: raw])
+            let text = AIErrorPresentation.message(for: error)
+            XCTAssertEqual(text, expected, raw)
+            assertFriendly(text)
+        }
+    }
+}
