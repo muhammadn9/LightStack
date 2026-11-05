@@ -1,0 +1,43 @@
+# Sync audit (workstream E)
+
+Scope: `OfflineQueueManager`, `SyncService`, `SyncRestoreService`, `RemoteReading`, `SupabaseService`.
+Status: FIXED (code + test in this change), RECOMMENDED (needs a change in a file this workstream does not own), OK (checked, no change).
+Line numbers refer to `Lightstack/Core/Utilities/OfflineQueueManager.swift` (OQM) after this change unless noted.
+No test was executed (Linux, no Xcode).
+
+## Findings
+
+| # | Area | Status | Evidence |
+|---|------|--------|----------|
+| 1 | Ops tagged with owner; foreign ops skipped | OK | `QueuedOperation.ownerUserId` (OQM:212), `belongs` (:1445), flush filter `op.ownerUserId == owner` (:1241), owner re-checked before every op (:1258). Existing test `testAccountSwitchingAndSignOutKeepOperations`. |
+| 1b | Write made while signed out was stamped `nil` and ADOPTED by the next user (any user) | FIXED | `resolveOwnerForEnqueue` (:508) stamps the last signed-in user (persisted in defaults). Legacy `nil` ops on disk are still adopted (`adoptLegacyOperations`, :1423) because they predate tagging. Test `testWriteMadeWhileSignedOutStaysWithLastUserAndIsNotAdoptedByNextUser`. |
+| 1c | No way to erase the queue for account deletion / persisted purge | FIXED | `purgeAll(reason:)` (:542) clears queue + dead letters + `*.corrupt-*.json` backups, persists, cancels timers. Test `testPurgeAllEmptiesQueueAndDeadLettersAndPersists`. `clearQueue()` also persists but is tests/debug only and does not block enqueue. |
+| 2 | Queued upsert recreating data after account deletion | FIXED | `purgeAll` sets `enqueueBlocked`; every enqueue path calls `dropIfBlocked` (:519, used in :652, :703, :751, :783); lifted when a different user signs in or `resumeEnqueue()`. A running pass stops via `purgeGeneration` (:1263) and `purgeAll` waits (max ~10 s) for it. Tests `testEnqueueIsBlockedAfterPurgeUntilDifferentUserSignsIn`, `testResumeEnqueueLiftsThePurgeBlock`. Residual: an HTTP request already on the wire cannot be recalled; C must delete the server account AFTER awaiting `purgeAll`. |
+| 3 | Persist before network; recovery after termination | OK | `enqueueEncoded` -> `saveQueue()` before `flushSoon()` (:652-). Ops stay in `queue.json` until the server accepted them (`removeFromQueue`, :1385); outcomes are saved every 25 ops and at pass end (`saveEvery`, :405). A kill mid-pass replays at most 24 already-uploaded ops, all idempotent (see 4). Launch flush: `AppEnvironment.checkExistingSession` (AppEnvironment.swift:511) + `flushReviving` (:533). Test `testInterruptedFlushResumesWithoutLoss`. |
+| 4 | Idempotent by client UUID, safe retries | OK | All inserts are `upsert(... onConflict: "id")` (SupabaseService.swift:40,96,139,179,212,356); nutrition upserts use PK; profile `user_id`; rest day `user_id,date`; summaries `user_id,workout_type`; tombstones `ignoreDuplicates` (:347). Deletes are naturally idempotent. 23505 on an insert type counts as applied (SyncErrorClassifier.swift:97). `update*` (workouts, planned sessions, exercise names) are 0-row no-ops if the row is missing, never creates. |
+| 4b | Delete/upsert ordering: `fkOrdered` runs ALL upserts before ALL deletes regardless of sequence, so "remove rest day, then re-add it" uploaded the add and then the delete -> cloud lost the day, local kept it | FIXED (rest days) | `removePendingRestDayOps` (:671): a newer add cancels an older queued removal for that day, a newer removal cancels an older queued add. Tests `testReAddingARestDayCancelsAQueuedRemovalSoItIsNotDeletedAfterTheUpsert`, `testRemovingARestDayCancelsAQueuedAdd`. The same shape exists for `deleteFood`/`upsertFood`, `deleteNutritionTarget`/`upsertNutritionTarget`, `deleteWaterEntry`/`upsertWaterEntry`, `deleteFoodEntry`/`upsertFoodEntry` but those reuse the id, so a re-add after delete cannot happen for the same id (no fix needed today). RECOMMENDED: if a feature ever re-uses an id after delete, add the same cancellation. |
+| 5 | Backoff / poison messages | OK | Transient/dependency: exponential 10 s..1 h (`backoff`, :1440), pass stops after 3 consecutive transient failures (`transientStreakLimit`). Permanent: dead-letter with revival 1 min / 1 h / 24 h and never dropped (`deadLetter`, :1409; `reviveDueFailedOperations`). Undecodable payload -> `.permanent` -> dead letter, one bad op never blocks the rest. Tests `testPermanentlyFailingOperationStaysVisibleWithGrowingWaitsAndIsNeverLost`, `testTransientFailuresBackOffAndNeverDrop`. |
+| 5b | Backed-off ops were retried only on the next app event (foreground, network flip, next write) | FIXED | `scheduleWake` (:1207) re-runs `flush()` when the earliest `nextAttemptAt` falls due (only when `autoFlush`, so tests/UI tests stay offline). Not unit-tested (timer, autoFlush off in the test stack). |
+| 5c | 401 / expired session | OK | `.auth` stops the pass, leaves every op untouched, sets `authBlocked` and notifies (:1290, `authFailureObserver`). Nothing dropped; resume on next flush trigger (launch, foreground `LightstackApp.swift:31`, reconnect `SyncService.swift:56`, sign-in). `SessionExpiryTracker.handleSignIn` distinguishes same/different user. Test `testAuthErrorStopsPassWithoutTouchingOperations`. RECOMMENDED (C): call `triggerFlush()` right after a successful sign-in / token refresh instead of waiting for the next event. |
+| 6a | Conflict policy | OK (documented) | Last-write-wins per record id with local-pending priority. Restore: tombstone beats everything; a record with an unuploaded local op is skipped (`pendingChangeIndex`); otherwise the cloud copy overwrites local (`SyncRestoreService.swift:52-59, 449-455`). Upload: later local write overwrites cloud row (upsert), no version/updated_at compare, so two devices editing the same record offline: whichever uploads last wins. First install with existing local data: local is authoritative for one reconciliation run (:220). |
+| 6b | Fresh-install restore | OK | Profile lookup gate, `assumeFreshInstall`, paged history with stable ordering (`date desc, id asc`, RemoteReading.swift:50-51), user checked after every await (`ensureUser`, SyncRestoreService.swift:313), repair upload only after all fetches succeeded (:285). No bug found. |
+| 6c | Pagination assumes the server returns a full page | RECOMMENDED | `readPageSize = 1000` and `page.count < readPageSize` ends the loop (RemoteReading.swift:42,79). If the Supabase project's `max-rows` is set below 1000 the restore would silently stop early. Confirm `max-rows >= 1000` in project settings (default 1000). |
+| 6d | Offset paging while another device writes | RECOMMENDED | A row inserted at the top during a restore shifts later pages by one (a row could be seen twice, none missed because of `date desc, id asc`; a delete could make a row be skipped). Next restore (6 h) heals it. Keyset paging would remove it; low priority. |
+| 7 | Old queued payloads after a model change | OK with caveat | `QueuedOperation` decodes legacy entries with defaults for new fields (`init(from:)`, :244; test `testCreatedOperationsDecodeLegacyJSONWithoutNewFields`); `is_per_arm` normalised on replay (SyncWedgeTests). A payload that no longer decodes -> dead letter (never deleted, visible in backup status). Whole-file corruption is moved aside and salvaged per element (`readOperations`, `decodeLossy`). Caveat: adding a REQUIRED key to a model `Codable` breaks old payloads; new keys must use `decodeIfPresent`. |
+| 8 | Sign-out keeps unsynced ops (by design) | OK | `clearQueue` doc; ops of user A stay stored and upload only when A signs in again. They are never visible/uploaded to B. |
+
+## API for workstream C
+
+```swift
+// OfflineQueueManager (actor)
+func purgeAll(reason: String) async      // account deletion
+func resumeEnqueue()                     // optional; auto-lifted when a different user signs in
+```
+
+Call order for account deletion: `await offlineQueueManager.purgeAll(reason: "account deleted")` BEFORE the server delete call, then sign out and wipe local data. Do not call it for plain sign-out.
+
+## Recommended changes in files not owned here
+
+- `AuthService.swift` (C): account deletion -> `await queue.purgeAll(reason:)` before the delete request; after a successful sign-in call `syncService.triggerFlush()`.
+- `AppEnvironment.swift:144`: `ownerProvider` hops to the main actor per call; fine, but pass the same closure to anything that needs the owner so the stamp rules stay in one place.
+- `LocalStorageService.swift` / `RestDayRepository.swift:21,28` (D): `addRestDay` creates a new `RestDay.id` on each toggle; harmless now that the queue cancels the opposing op, but reusing the id for the same date would make the cloud row and tombstone consistent.
