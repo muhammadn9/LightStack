@@ -148,18 +148,17 @@ final class CoachPromptService {
     /// One-line athlete profile; unknown fields are left out.
     private func profileLine(_ profile: UserProfile?) -> String {
         var parts: [String] = []
-        let name = sanitize(profile?.displayName ?? "")
-        if !name.isEmpty { parts.append(name) }
+        // Data minimisation: no display name, email or ids are ever sent.
         if let age = profile?.age { parts.append("age \(age)") }
         if let w = profile?.weightLbs { parts.append(String(format: "%.0f lb", w)) }
         if let h = profile?.heightInches { parts.append(String(format: "%.0f in", h)) }
         if let t = profile?.trainingAgeMonths { parts.append("\(t) mo training") }
-        let goals = sanitize((profile?.primaryGoals ?? []).joined(separator: ", "))
+        let goals = clipped((profile?.primaryGoals ?? []).joined(separator: ", "), 200) ?? ""
         if !goals.isEmpty { parts.append("goals: \(goals)") }
-        let avoid = sanitize((profile?.avoidExercises ?? []).joined(separator: ", "))
+        let avoid = clipped((profile?.avoidExercises ?? []).joined(separator: ", "), 300) ?? ""
         if !avoid.isEmpty { parts.append("avoid: \(avoid)") }
         parts.append("equipment: \(formatEquipment(profile?.equipment ?? [:]))")
-        let notes = sanitize(profile?.notesToCoach ?? "")
+        let notes = clipped(profile?.notesToCoach, 500) ?? ""
         if !notes.isEmpty, notes != "None" { parts.append("notes: \(notes)") }
         return "ATHLETE: " + parts.joined(separator: " | ")
     }
@@ -345,7 +344,7 @@ final class CoachPromptService {
         startDate: Date,
         endDate: Date
     ) -> String {
-        let sanitizedGoal = sanitize(targetGoal)
+        let sanitizedGoal = clipped(targetGoal, 200) ?? ""
         let clampedDays = validationService.sanitizeInteger(daysPerWeek, min: 1, max: 7)
         let startStr = DateFormatter.dateOnly.string(from: startDate)
         let endStr = DateFormatter.dateOnly.string(from: endDate)
