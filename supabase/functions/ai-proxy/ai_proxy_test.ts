@@ -12,6 +12,7 @@ Deno.test("unknown task becomes other, missing becomes other, bad type is invali
   eq(resolveTask("hack"), { ok: true, name: "other" });
   eq(resolveTask("toString"), { ok: true, name: "other" });
   eq(resolveTask(undefined), { ok: true, name: "other" });
+  eq(resolveTask("legacy", true), { ok: true, name: "other" });
   eq(resolveTask(5), { ok: false });
   eq(resolveTask("x".repeat(65)), { ok: false });
 });
@@ -83,4 +84,18 @@ Deno.test("request ids are validated", () => {
   eq(cleanRequestId("short", () => "gen"), "gen");
   eq(cleanRequestId("bad id with spaces!", () => "gen"), "gen");
   eq(cleanRequestId(undefined, () => "gen"), "gen");
+});
+
+Deno.test("legacy: only for a missing task, only when allowed; keeps old limits and plan reserve", () => {
+  eq(resolveTask(undefined, true), { ok: true, name: "legacy" });
+  eq(resolveTask(null, true), { ok: true, name: "legacy" });
+  eq(resolveTask("nope", true), { ok: true, name: "other" });
+  eq(resolveTask(5, true), { ok: false });
+  eq(TASKS.legacy.maxOutputTokens, 8192);
+  eq(TASKS.legacy.maxInputChars, 200_000);
+  eq(TASKS.legacy.reserveUsd, TASKS.plan.reserveUsd);
+  eq(chooseModel("legacy", "gemini-2.5-flash", false), "gemini-2.5-flash");
+  eq(chooseModel("legacy", "gemini-3.5-flash", false), "gemini-3.5-flash");
+  eq(clampOutputTokens("legacy", 8192), 8192);
+  eq(clampThinking("legacy", "gemini-2.5-flash", { thinkingBudget: 1024 }), { thinkingBudget: 1024 });
 });

@@ -66,7 +66,13 @@ The app currently sends `gemini-3.5-flash` first and `gemini-2.5-flash` as fallb
 1. Apply the migration `20261105130000_ai_usage_ledger_budgets.sql`. Review the seeded limits and prices.
 2. Run `supabase/tests/ai_budget.sql` (rolls back) and check it prints `AI BUDGET OK`.
 3. Deploy the function: `supabase functions deploy ai-proxy`. It needs `SUPABASE_SERVICE_ROLE_KEY` (provided automatically). It fails closed with `budget_unavailable` if the migration is missing, so do not deploy it first.
-4. Release the app. Older app builds keep working: they send no task, so they run as `other` (cheap model only, 1024 output tokens, 20k chars). This can break their plan generation. If many users are on old builds, raise the `other` limits in `tasks.ts` temporarily or ship the app first.
+4. Release the app. Older builds keep working (see below).
+
+## Legacy clients (old app builds)
+
+Builds from before this change send no `task`. While the function secret `AI_ALLOW_LEGACY_CLIENTS` is `1` (the default when unset), a request with **no** task field runs as the server-only `legacy` task: both models, 8192 output tokens, 200k input, thinking up to 1024 tokens / `low`, reserved like a plan ($0.03). Budgets, the kill switch, the ledger and rate limits all still apply, and the ledger shows these rows with `task = 'legacy'`. A non-string task is `invalid_task`; an unknown string (including the word "legacy") is `other`.
+
+Turn it off (`supabase secrets set AI_ALLOW_LEGACY_CLIENTS=0`) once old builds have aged out: when `select count(*) from ai_usage_ledger where task = 'legacy' and created_at > now() - interval '7 days'` is near zero, or after you force a minimum app version. Task-less requests then run as `other` (cheap model only, 1024 output, 20k chars).
 
 ## Manual concurrency test
 

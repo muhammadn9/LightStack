@@ -2,7 +2,7 @@
 // below is decided here. Unknown task names fall back to `other` (the smallest limits).
 // Pure module (no Deno / network APIs) so it can be unit-tested.
 
-export type TaskName = "plan" | "chat" | "postWorkout" | "monthPlan" | "formFeedback" | "other";
+export type TaskName = "plan" | "chat" | "postWorkout" | "monthPlan" | "formFeedback" | "other" | "legacy";
 
 export const CHEAP_MODEL = "gemini-2.5-flash";
 export const CURRENT_MODEL = "gemini-3.5-flash";
@@ -50,18 +50,25 @@ export const TASKS: Record<TaskName, TaskSpec> = {
     models: [CHEAP_MODEL], defaultModel: CHEAP_MODEL,
     maxInputChars: 20_000, maxOutputTokens: 1024, maxThinking: "minimal", reserveUsd: 0.003,
   },
+  // Old app builds that send no `task`. Only reachable when AI_ALLOW_LEGACY_CLIENTS is on; a client can
+  // never ask for it by name. Old behaviour (both models, 8192 out, 200k body cap, thinking up to 1024
+  // tokens / "low"), reserved like a plan. Budgets, kill switch, ledger and rate limits still apply.
+  legacy: {
+    models: ALL_MODELS, defaultModel: CURRENT_MODEL,
+    maxInputChars: 200_000, maxOutputTokens: 8192, maxThinking: "low", reserveUsd: 0.03,
+  },
 };
 
 export type TaskResolution = { ok: true; name: TaskName } | { ok: false };
 
 /**
- * Missing task (older app builds) or an unknown string -> `other`.
+ * Missing task -> `legacy` when allowLegacy (AI_ALLOW_LEGACY_CLIENTS), else `other`. Unknown string -> `other`.
  * A non-string, or an absurdly long value, is `invalid_task`.
  */
-export function resolveTask(raw: unknown): TaskResolution {
-  if (raw === undefined || raw === null) return { ok: true, name: "other" };
+export function resolveTask(raw: unknown, allowLegacy = false): TaskResolution {
+  if (raw === undefined || raw === null) return { ok: true, name: allowLegacy ? "legacy" : "other" };
   if (typeof raw !== "string" || raw.length > 64) return { ok: false };
-  return { ok: true, name: Object.hasOwn(TASKS, raw) ? (raw as TaskName) : "other" };
+  return { ok: true, name: raw !== "legacy" && Object.hasOwn(TASKS, raw) ? (raw as TaskName) : "other" };
 }
 
 /** Picks the model. With routing on, cheap tasks always use their defaultModel. */

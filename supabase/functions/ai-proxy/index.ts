@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
     return error("Invalid JSON", 400);
   }
 
-  const resolved = resolveTask(body.task);
+  const resolved = resolveTask(body.task, (Deno.env.get("AI_ALLOW_LEGACY_CLIENTS") ?? "1") === "1");
   if (!resolved.ok) return error("Invalid task", 400, "invalid_task");
   const taskName = resolved.name;
   const spec = TASKS[taskName];
