@@ -112,8 +112,36 @@ final class GeminiService {
 
     /// A refusal from ai-proxy itself. The manager shows these as-is instead of
     /// falling back to another model, which would be refused the same way.
-    static func proxyError(_ status: Int, _ message: String) -> NSError {
-        NSError(domain: proxyErrorDomain, code: status, userInfo: [NSLocalizedDescriptionKey: message])
+    static func proxyError(_ status: Int, _ message: String, code: String? = nil) -> NSError {
+        var info: [String: Any] = [NSLocalizedDescriptionKey: message]
+        if let code { info[proxyErrorCodeKey] = code }
+        return NSError(domain: proxyErrorDomain, code: status, userInfo: info)
+    }
+
+    /// userInfo key holding ai-proxy's `x-ai-proxy-error` code (e.g. "budget_user_daily").
+    static let proxyErrorCodeKey = "AIProxyErrorCode"
+
+    /// User-facing text for an ai-proxy refusal code. Unknown codes (including the legacy "1")
+    /// keep the server's own message.
+    static func userMessage(forProxyCode code: String?, serverMessage: String?) -> String {
+        switch code {
+        case "budget_user_daily": return "Daily AI limit reached, resets tomorrow."
+        case "budget_user_monthly": return "Monthly AI limit reached, resets next month."
+        case "ai_disabled", "budget_global", "budget_unavailable":
+            return "Coach temporarily unavailable. Please try again later."
+        case "too_many_in_flight": return "Please wait for your current coach request to finish."
+        default: return serverMessage ?? "The AI coach is unavailable right now."
+        }
+    }
+
+    /// True for refusals about spending or availability. Never retried, never sent to the second model.
+    static func isBudgetCode(_ code: String?) -> Bool {
+        switch code {
+        case "budget_user_daily", "budget_user_monthly", "budget_global", "budget_unavailable",
+             "ai_disabled", "too_many_in_flight":
+            return true
+        default: return false
+        }
     }
 
     /// Executes the request, retrying on 503 with exponential backoff: 1s, 2s, 4s.
@@ -138,8 +166,9 @@ final class GeminiService {
 
             // ai-proxy's own refusals (rate limit, signed out, …): surface the message.
             if http?.value(forHTTPHeaderField: "x-ai-proxy-error") != nil {
-                let message = data.flatMap(Self.proxyMessage(from:)) ?? "The AI coach is unavailable right now."
-                DispatchQueue.main.async { completion(.failure(Self.proxyError(httpStatus, message))) }
+                let code = http?.value(forHTTPHeaderField: "x-ai-proxy-error")
+                let message = Self.userMessage(forProxyCode: code, serverMessage: data.flatMap(Self.proxyMessage(from:)))
+                DispatchQueue.main.async { completion(.failure(Self.proxyError(httpStatus, message, code: code))) }
                 return
             }
 
@@ -244,7 +273,11 @@ final class GeminiService {
             generationConfig["responseMimeType"] = "application/json"
         }
 
+        // The server owns the limits for each task; the app only names the task.
+        // request_id is one UUID per logical request (reused on retries and the fallback model).
         return [
+            "task": options.task.rawValue,
+            "request_id": options.requestID,
             "system_instruction": [
                 "parts": [["text": systemPrompt]]
             ],
@@ -254,9 +287,11 @@ final class GeminiService {
     }
 
     func parseResponse(_ data: Data, task: AITask = .other, expectsJSON: Bool = false) throws -> String {
+        #if DEBUG
         if let responseString = String(data: data, encoding: .utf8) {
-            logger.debug("Raw API response: \(responseString)")
+            logger.debug("Raw API response: \(responseString, privacy: .private)")
         }
+        #endif
 
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             logger.error("Failed to parse JSON from response")
@@ -265,7 +300,7 @@ final class GeminiService {
 
         if let errorObj = json["error"] as? [String: Any],
            let message = errorObj["message"] as? String {
-            logger.error("API error: \(message)")
+            logger.error("API error: \(message, privacy: .private)")
             throw apiResponseError(message)
         }
 

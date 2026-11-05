@@ -1,0 +1,119 @@
+// Server-owned task table for ai-proxy. The client only NAMES a task; every limit
+// below is decided here. Unknown task names fall back to `other` (the smallest limits).
+// Pure module (no Deno / network APIs) so it can be unit-tested.
+
+export type TaskName = "plan" | "chat" | "postWorkout" | "monthPlan" | "formFeedback" | "other";
+
+export const CHEAP_MODEL = "gemini-2.5-flash";
+export const CURRENT_MODEL = "gemini-3.5-flash";
+export const ALL_MODELS = [CURRENT_MODEL, CHEAP_MODEL];
+
+export type ThinkingEffort = "minimal" | "low";
+
+export interface TaskSpec {
+  /** Models this task may use. Anything else is rejected (400 invalid_model). */
+  models: string[];
+  /** Model used when routing is enabled (AI_MODEL_ROUTING=1) or the client sends none. */
+  defaultModel: string;
+  /** Max characters of contents + system_instruction (JSON-serialised). */
+  maxInputChars: number;
+  /** Hard cap on generationConfig.maxOutputTokens. */
+  maxOutputTokens: number;
+  /** Most thinking the task may use; also the value applied when the client sends none. */
+  maxThinking: ThinkingEffort;
+  /** Estimated worst-case cost (USD) reserved before the call. Replaced by the actual cost on settle. */
+  reserveUsd: number;
+}
+
+export const TASKS: Record<TaskName, TaskSpec> = {
+  plan: {
+    models: ALL_MODELS, defaultModel: CURRENT_MODEL,
+    maxInputChars: 150_000, maxOutputTokens: 6144, maxThinking: "low", reserveUsd: 0.03,
+  },
+  chat: {
+    models: ALL_MODELS, defaultModel: CHEAP_MODEL,
+    maxInputChars: 60_000, maxOutputTokens: 1000, maxThinking: "minimal", reserveUsd: 0.006,
+  },
+  postWorkout: {
+    models: ALL_MODELS, defaultModel: CHEAP_MODEL,
+    maxInputChars: 40_000, maxOutputTokens: 800, maxThinking: "minimal", reserveUsd: 0.005,
+  },
+  monthPlan: {
+    models: ALL_MODELS, defaultModel: CURRENT_MODEL,
+    maxInputChars: 100_000, maxOutputTokens: 4000, maxThinking: "minimal", reserveUsd: 0.02,
+  },
+  formFeedback: {
+    models: ALL_MODELS, defaultModel: CHEAP_MODEL,
+    maxInputChars: 30_000, maxOutputTokens: 600, maxThinking: "minimal", reserveUsd: 0.004,
+  },
+  other: {
+    models: [CHEAP_MODEL], defaultModel: CHEAP_MODEL,
+    maxInputChars: 20_000, maxOutputTokens: 1024, maxThinking: "minimal", reserveUsd: 0.003,
+  },
+};
+
+export type TaskResolution = { ok: true; name: TaskName } | { ok: false };
+
+/**
+ * Missing task (older app builds) or an unknown string -> `other`.
+ * A non-string, or an absurdly long value, is `invalid_task`.
+ */
+export function resolveTask(raw: unknown): TaskResolution {
+  if (raw === undefined || raw === null) return { ok: true, name: "other" };
+  if (typeof raw !== "string" || raw.length > 64) return { ok: false };
+  return { ok: true, name: Object.hasOwn(TASKS, raw) ? (raw as TaskName) : "other" };
+}
+
+/** Picks the model. With routing on, cheap tasks always use their defaultModel. */
+export function chooseModel(task: TaskName, requested: string, routingEnabled: boolean): string | null {
+  const spec = TASKS[task];
+  if (!requested) return spec.defaultModel;
+  if (!spec.models.includes(requested)) return null;
+  if (routingEnabled && spec.models.includes(spec.defaultModel)) return spec.defaultModel;
+  return requested;
+}
+
+/** Gemini 3.x takes a level, 2.5 takes a token budget. */
+export function thinkingFor(model: string, effort: ThinkingEffort): Record<string, unknown> {
+  if (model.startsWith("gemini-2.5")) return { thinkingBudget: effort === "low" ? 1024 : 0 };
+  return { thinkingLevel: effort };
+}
+
+/**
+ * Clamps validated client thinking (see index.ts validateThinkingConfig) to the task.
+ * Absent -> the task's maxThinking (so a missing field can never mean "unbounded dynamic thinking").
+ */
+export function clampThinking(
+  task: TaskName,
+  model: string,
+  requested: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const max = TASKS[task].maxThinking;
+  if (!requested) return thinkingFor(model, max);
+  let effort: ThinkingEffort;
+  if (typeof requested.thinkingBudget === "number") {
+    effort = requested.thinkingBudget > 0 ? "low" : "minimal";
+  } else {
+    effort = requested.thinkingLevel === "low" ? "low" : "minimal";
+  }
+  if (effort === "low" && max === "minimal") effort = "minimal";
+  return thinkingFor(model, effort);
+}
+
+/** Characters the task counts as input. */
+export function inputChars(body: { contents?: unknown; system_instruction?: unknown }): number {
+  let n = 0;
+  try {
+    n += JSON.stringify(body.contents ?? "").length;
+    if (body.system_instruction) n += JSON.stringify(body.system_instruction).length;
+  } catch {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  return n;
+}
+
+export function clampOutputTokens(task: TaskName, requested: unknown): number {
+  const cap = TASKS[task].maxOutputTokens;
+  const r = typeof requested === "number" && Number.isFinite(requested) ? Math.floor(requested) : cap;
+  return Math.min(Math.max(r, 1), cap);
+}
