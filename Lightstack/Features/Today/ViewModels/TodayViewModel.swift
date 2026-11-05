@@ -20,8 +20,14 @@ enum AIErrorPresentation {
            !text.isEmpty {
             return text
         }
-        if let urlError = error as? URLError { return message(forURLCode: urlError.code.rawValue) }
         let ns = error as NSError
+        // Consent refusals and ai-proxy budget / kill-switch refusals already carry athlete-facing text.
+        if ns.domain == AIConsent.deniedError.domain { return ns.localizedDescription }
+        if ns.domain == GeminiService.proxyErrorDomain,
+           GeminiService.isBudgetCode(ns.userInfo[GeminiService.proxyErrorCodeKey] as? String) {
+            return ns.localizedDescription
+        }
+        if let urlError = error as? URLError { return message(forURLCode: urlError.code.rawValue) }
         if ns.domain == NSURLErrorDomain { return message(forURLCode: ns.code) }
 
         if let provider = error as? AIProviderError {
