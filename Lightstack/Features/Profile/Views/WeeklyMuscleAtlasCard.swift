@@ -177,7 +177,8 @@ private struct FlowGroupSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(groups, id: \.name) { group in
+            ForEach(groups.indices, id: \.self) { index in
+                let group = groups[index]
                 HStack {
                     Text(group.name)
                         .font(.caption)
