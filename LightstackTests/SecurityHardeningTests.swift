@@ -149,7 +149,8 @@ final class LocalDataProtectionTests: XCTestCase {
         XCTAssertNotNil(storage.fetchProfile(userId: me))
         XCTAssertTrue(storage.wipeAllUserData())
         XCTAssertNil(storage.fetchProfile(userId: me))
-
+    }
+}
 
 // MARK: - Account deletion, AI consent, privacy URL
 
