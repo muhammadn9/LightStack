@@ -69,6 +69,7 @@ final class AppSideController: ObservableObject {
 /// Hosts both sides. The gym side is always mounted; the nutrition side mounts on first visit and then stays.
 struct AppShellView: View {
     @StateObject private var controller = AppSideController()
+    @State private var showAIConsent = false
 
     var body: some View {
         ZStack {
@@ -91,6 +92,14 @@ struct AppShellView: View {
             }
         }
         .environmentObject(controller)
+        .onAppear { showAIConsent = AIConsent.shouldPrompt() }
+        .sheet(isPresented: $showAIConsent) {
+            AIConsentSheet { allowed in
+                AIConsent.set(allowed)
+                showAIConsent = false
+            }
+            .interactiveDismissDisabled()
+        }
     }
 }
 
