@@ -124,3 +124,42 @@ export function clampOutputTokens(task: TaskName, requested: unknown): number {
   const r = typeof requested === "number" && Number.isFinite(requested) ? Math.floor(requested) : cap;
   return Math.min(Math.max(r, 1), cap);
 }
+
+export type TextContent = { role: "user" | "model"; parts: { text: string }[] };
+
+function textParts(raw: unknown): { text: string }[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const out: { text: string }[] = [];
+  for (const p of raw) {
+    if (typeof p !== "object" || p === null || typeof (p as Record<string, unknown>).text !== "string") return null;
+    out.push({ text: (p as Record<string, unknown>).text as string });
+  }
+  return out;
+}
+
+/**
+ * Rebuilds `contents` as text-only turns (all the app sends). Anything else (inline_data, fileData /
+ * fileUri, functionCall, unknown keys) returns null: media and URLs are billed by tokens far beyond
+ * their JSON size, so they would bypass maxInputChars and the reservation.
+ */
+export function textOnlyContents(raw: unknown): TextContent[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const out: TextContent[] = [];
+  for (const c of raw) {
+    if (typeof c !== "object" || c === null) return null;
+    const role = (c as Record<string, unknown>).role;
+    if (role !== "user" && role !== "model") return null;
+    const parts = textParts((c as Record<string, unknown>).parts);
+    if (!parts) return null;
+    out.push({ role, parts });
+  }
+  return out;
+}
+
+/** system_instruction: absent -> undefined; {parts:[{text}]} -> rebuilt; anything else -> null. */
+export function textOnlySystemInstruction(raw: unknown): { parts: { text: string }[] } | null | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+  const parts = textParts((raw as Record<string, unknown>).parts);
+  return parts ? { parts } : null;
+}

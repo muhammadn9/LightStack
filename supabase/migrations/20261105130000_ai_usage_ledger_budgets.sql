@@ -125,6 +125,9 @@ BEGIN
   IF FOUND THEN
     IF ex.status = 'reserved'  THEN RETURN jsonb_build_object('ok', false, 'reason', 'duplicate_in_flight'); END IF;
     IF ex.status = 'succeeded' THEN RETURN jsonb_build_object('ok', false, 'reason', 'duplicate_completed'); END IF;
+    -- A failed row that was charged (timeout / expired: Gemini may have billed it) is final.
+    -- Re-reserving it would reset actual_usd to 0 and erase that charge.
+    IF ex.actual_usd > 0 THEN RETURN jsonb_build_object('ok', false, 'reason', 'duplicate_completed'); END IF;
     v_exclude := ex.id;   -- failed / refunded: being re-reserved, do not count it twice
   END IF;
 
@@ -177,7 +180,7 @@ $$;
 -- ai_settle: close a reservation with the real token counts.
 -- succeeded -> actual cost from the price table (tokens / 1e6 * price). If the response had no
 --   usage numbers, or the model has no price, the reserved amount is charged (conservative).
--- failed / refunded -> actual cost 0.
+-- failed / refunded -> actual cost 0, except failed with error_code 'upstream_timeout' (reserved amount).
 -- Only a row still in 'reserved' can be settled, so a repeated call is a harmless no-op.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.ai_settle(
@@ -221,6 +224,9 @@ BEGIN
         + COALESCE(p_thinking_tokens, 0) * COALESCE((v_price ->> 'thinking')::numeric, (v_price ->> 'output')::numeric, 0)
       ) / 1000000.0;
     END IF;
+  ELSIF p_status = 'failed' AND p_error_code = 'upstream_timeout' THEN
+    -- The proxy gave up, but Gemini may still finish and bill the call: charge the reservation.
+    v_actual := r.reserved_usd;
   END IF;
 
   UPDATE public.ai_usage_ledger

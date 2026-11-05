@@ -7,7 +7,8 @@
 // - The request is forwarded with the key in a header, not the URL.
 // - thinkingConfig is validated (budget 0..1024 or level minimal/low); anything else is a 400.
 // - The upstream call times out after 45s (504). Requests that fail upstream with a
-//   5xx or time out are refunded (refund_rate_limit); a missing RPC is tolerated.
+//   5xx or never reach it are refunded (refund_rate_limit); a missing RPC is tolerated.
+//   A timeout is NOT refunded and is charged its reservation (Gemini may still bill it).
 //
 // - Spending controls: the app names a `task` and a `request_id`; limits come from the
 //   server task table (tasks.ts). ai_reserve (SECURITY DEFINER, service role only) checks the
@@ -21,7 +22,16 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { cleanRequestId, mapReserveReason, parseUsage } from "./budget.ts";
-import { chooseModel, clampOutputTokens, clampThinking, inputChars, resolveTask, TASKS } from "./tasks.ts";
+import {
+  chooseModel,
+  clampOutputTokens,
+  clampThinking,
+  inputChars,
+  resolveTask,
+  TASKS,
+  textOnlyContents,
+  textOnlySystemInstruction,
+} from "./tasks.ts";
 
 const MAX_BODY_CHARS = 200_000;
 const UPSTREAM_TIMEOUT_MS = 45_000;
@@ -114,7 +124,13 @@ Deno.serve(async (req: Request) => {
   if (!Array.isArray(body.contents) || body.contents.length === 0) {
     return error("Missing contents", 400, "invalid_request");
   }
-  if (inputChars(body) > spec.maxInputChars) {
+  // Text only: media / file URIs are billed far beyond their JSON size (see textOnlyContents).
+  const contents = textOnlyContents(body.contents);
+  const systemInstruction = textOnlySystemInstruction(body.system_instruction);
+  if (!contents || systemInstruction === null) {
+    return error("Only text content is supported", 400, "invalid_request");
+  }
+  if (inputChars({ contents, system_instruction: systemInstruction }) > spec.maxInputChars) {
     return error("Request too large for this feature", 413, "input_too_large");
   }
 
@@ -149,10 +165,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const payload: Record<string, unknown> = {
-    contents: body.contents,
+    contents,
     generationConfig: sanitizeConfig(body.generationConfig, thinking, maxOutputTokens),
   };
-  if (body.system_instruction) payload.system_instruction = body.system_instruction;
+  if (systemInstruction) payload.system_instruction = systemInstruction;
 
   // Gives back the slot this request consumed. Uses the service role (the RPC is
   // not callable by signed-in clients) and the user id verified by auth.getUser,
@@ -242,8 +258,10 @@ Deno.serve(async (req: Request) => {
     upstreamStatus = upstream.status;
     upstreamText = await upstream.text();
   } catch (e) {
-    await refund();
     const timedOut = controller.signal.aborted;
+    // A timed-out call may still be billed by Gemini, so it keeps its rate-limit slot and is charged
+    // its reservation (ai_settle). Only a call that never reached Gemini is refunded.
+    if (!timedOut) await refund();
     await settle("failed", noUsage, startedAt, timedOut ? "upstream_timeout" : "upstream_unreachable");
     if (timedOut) {
       return error("The AI service took too long to respond. Please try again.", 504, "upstream_timeout");

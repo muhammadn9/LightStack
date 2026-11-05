@@ -1,6 +1,15 @@
 // Run: deno test supabase/functions/ai-proxy/ai_proxy_test.ts   (no network, no external imports)
 import { cleanRequestId, mapReserveReason, parseUsage } from "./budget.ts";
-import { chooseModel, clampOutputTokens, clampThinking, inputChars, resolveTask, TASKS } from "./tasks.ts";
+import {
+  chooseModel,
+  clampOutputTokens,
+  clampThinking,
+  inputChars,
+  resolveTask,
+  TASKS,
+  textOnlyContents,
+  textOnlySystemInstruction,
+} from "./tasks.ts";
 
 function eq(actual: unknown, expected: unknown, msg = "") {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
@@ -98,4 +107,17 @@ Deno.test("legacy: only for a missing task, only when allowed; keeps old limits 
   eq(chooseModel("legacy", "gemini-3.5-flash", false), "gemini-3.5-flash");
   eq(clampOutputTokens("legacy", 8192), 8192);
   eq(clampThinking("legacy", "gemini-2.5-flash", { thinkingBudget: 1024 }), { thinkingBudget: 1024 });
+});
+
+Deno.test("contents are text only; media, file URIs and extra keys are refused", () => {
+  eq(textOnlyContents([{ role: "user", parts: [{ text: "hi", extra: 1 }] }]), [{ role: "user", parts: [{ text: "hi" }] }]);
+  eq(textOnlyContents([{ role: "user", parts: [{ inline_data: { mime_type: "video/mp4", data: "AA" } }] }]), null);
+  eq(textOnlyContents([{ role: "user", parts: [{ fileData: { fileUri: "https://youtu.be/x" } }] }]), null);
+  eq(textOnlyContents([{ role: "user", parts: [{ text: "a" }, { fileData: {} }] }]), null);
+  eq(textOnlyContents([{ role: "system", parts: [{ text: "a" }] }]), null);
+  eq(textOnlyContents([]), null);
+  eq(textOnlySystemInstruction(undefined), undefined);
+  eq(textOnlySystemInstruction({ parts: [{ text: "s" }] }), { parts: [{ text: "s" }] });
+  eq(textOnlySystemInstruction({ parts: [{ inline_data: {} }] }), null);
+  eq(textOnlySystemInstruction("s"), null);
 });
