@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import CoreData
 @testable import Lightstack
 
 final class SecurityHardeningTests: XCTestCase {
@@ -76,5 +77,77 @@ private final class StubProvider: AIProvider {
                       completion: @escaping (Result<String, Error>) -> Void) {
         calls += 1
         completion(result)
+    }
+}
+
+// MARK: - Local data protection
+
+final class LocalDataProtectionTests: XCTestCase {
+
+    func testStoreDescriptionCarriesFileProtection() {
+        let description = NSPersistentStoreDescription()
+        LocalStorageService.applyFileProtection(to: description)
+        let value = description.options[NSPersistentStoreFileProtectionKey] as? FileProtectionType
+        XCTAssertEqual(value, .completeUntilFirstUserAuthentication)
+    }
+
+    func testReleaseModeDebugStoreKeepsSizesNotText() throws {
+        let suite = "coach-redact-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = CoachDebugStore(defaults: defaults, redactContent: true)
+        let me = UUID()
+        store.recordRequest(userId: me, workoutType: "Push", model: "m", systemPromptName: "plan",
+                            systemPromptLength: 10, userMessage: "my secret goals")
+        store.recordResponse(userId: me, raw: "private reply", adjustments: ["detail"])
+        let snapshot = try XCTUnwrap(store.lastPlan(forUser: me))
+        XCTAssertEqual(snapshot.userMessage, "[redacted, 15 chars]")
+        XCTAssertEqual(snapshot.rawResponse, "[redacted, 13 chars]")
+        XCTAssertTrue(snapshot.adjustments.isEmpty)
+        let stored = try XCTUnwrap(defaults.data(forKey: CoachDebugStore.defaultsKey))
+        XCTAssertFalse(String(decoding: stored, as: UTF8.self).contains("secret"))
+    }
+
+    func testDebugSnapshotExpires() throws {
+        let suite = "coach-expiry-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = CoachDebugStore(defaults: defaults, redactContent: false)
+        let me = UUID()
+        store.recordRequest(userId: me, workoutType: "Push", model: "m", systemPromptName: "plan",
+                            systemPromptLength: 1, userMessage: "x",
+                            now: Date().addingTimeInterval(-CoachDebugStore.maxAge - 60))
+        XCTAssertNil(store.lastPlan(forUser: me))
+        XCTAssertNil(defaults.data(forKey: CoachDebugStore.defaultsKey))
+    }
+
+    func testClearAllRemovesSharedSnapshot() {
+        let me = UUID()
+        CoachDebugStore.shared.recordRequest(userId: me, workoutType: "Push", model: "m",
+                                             systemPromptName: "plan", systemPromptLength: 1, userMessage: "x")
+        CoachDebugStore.clearAll()
+        XCTAssertNil(CoachDebugStore.shared.lastPlan(forUser: me))
+    }
+
+    func testDiagnosticsClearRemovesFile() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("diag-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = DiagnosticsStore(directory: dir)
+        store.append([DiagnosticEntry(id: "1", date: Date(), kind: .crash, summary: "s")])
+        XCTAssertEqual(store.load().count, 1)
+        store.clear()
+        XCTAssertTrue(store.load().isEmpty)
+    }
+
+    func testWipeAllUserDataRemovesEverything() {
+        let storage = LocalStorageService(inMemory: true)
+        let me = UUID()
+        storage.saveProfile(UserProfile(
+            id: me, userId: me, displayName: nil, age: nil, heightInches: nil, weightLbs: nil,
+            trainingAgeMonths: nil, primaryGoals: [], splitDays: [], avoidExercises: [], equipment: [:],
+            customEquipment: nil, notesToCoach: nil, createdAt: Date(), updatedAt: Date()))
+        XCTAssertNotNil(storage.fetchProfile(userId: me))
+        XCTAssertTrue(storage.wipeAllUserData())
+        XCTAssertNil(storage.fetchProfile(userId: me))
     }
 }
