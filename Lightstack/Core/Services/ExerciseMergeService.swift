@@ -7,12 +7,15 @@ final class ExerciseMergeService {
     private let localStorage: LocalStorageService
     private let offlineQueueManager: OfflineQueueManager
     private let prRepository: PRRepository
+    private let defaults: UserDefaults
 
     init(
         localStorage: LocalStorageService,
         offlineQueueManager: OfflineQueueManager,
-        prRepository: PRRepository
+        prRepository: PRRepository,
+        defaults: UserDefaults = .standard
     ) {
+        self.defaults = defaults
         self.localStorage = localStorage
         self.offlineQueueManager = offlineQueueManager
         self.prRepository = prRepository
@@ -23,7 +26,7 @@ final class ExerciseMergeService {
     @discardableResult
     func merge(userId: UUID, names: [String], keep: String) -> Int {
         let sources = names.filter { $0 != keep }
-        defer { ExerciseMergeAliases.remember(sources, mergedInto: keep) }
+        defer { ExerciseMergeAliases.remember(sources, mergedInto: keep, defaults: defaults) }
         let ids = localStorage.renameExercises(userId: userId, from: sources, to: keep)
         guard !ids.isEmpty else { return 0 }
 

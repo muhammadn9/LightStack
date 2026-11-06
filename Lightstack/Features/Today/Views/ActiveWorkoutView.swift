@@ -21,6 +21,9 @@ struct ActiveWorkoutView: View {
     @State private var missDecisions: [String: MissDecisionState] = [:]
     @State private var missReasons: [String: MissReason] = [:]
     @State private var missDismissed: Set<String> = []
+    /// Lowered-weight question: the logged-set index asked per exercise (once per exercise per session).
+    @State private var dropAskedIndex: [UUID: Int] = [:]
+    @State private var dropReasons: [UUID: MissReason] = [:]
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
@@ -599,7 +602,30 @@ struct ActiveWorkoutView: View {
     private func coachHints(members: [Exercise]) -> some View {
         ForEach(members) { member in
             let logged = todayViewModel.loggedSetsForExercise(member.id)
+            if let drop = loweredWeightToShow(member, logged: logged) {
+                LoweredWeightBanner(
+                    drop: drop,
+                    chosenReason: dropReasons[member.id],
+                    onReason: { reason in
+                        dropReasons[member.id] = reason
+                        dropAskedIndex[member.id] = drop.loggedIndex
+                        todayViewModel.recordInSessionReason(exercise: member.name, reason: reason)
+                    },
+                    onDismiss: {
+                        if dropReasons[member.id] != nil {
+                            // X on a chosen reason backs out of it so a different one can be picked.
+                            dropReasons[member.id] = nil
+                            dropAskedIndex[member.id] = nil
+                            todayViewModel.recordInSessionReason(exercise: member.name, reason: "")
+                        } else {
+                            dropAskedIndex[member.id] = drop.loggedIndex
+                        }
+                    }
+                )
+                .transition(.opacity)
+            }
             if member.trackingType != .cardio,
+               !hasDropOnLatestSet(member, logged: logged),
                let suggestion = todayViewModel.inSessionSuggestion(for: member),
                suggestion.triggerLoggedIndex == logged.count - 1,
                !missDismissed.contains(missKey(member, suggestion)) {
@@ -624,6 +650,21 @@ struct ActiveWorkoutView: View {
             RirNudgeHint()
                 .id(nudge.id)
         }
+    }
+
+    /// The lowered-weight question for the latest set: not asked yet, or already answered for this very set.
+    private func loweredWeightToShow(_ exercise: Exercise, logged: [WorkoutSet]) -> InSessionAdjuster.LoweredWeight? {
+        guard exercise.trackingType != .cardio,
+              let drop = todayViewModel.inSessionDrop(for: exercise),
+              drop.loggedIndex == logged.count - 1 else { return nil }
+        guard let asked = dropAskedIndex[exercise.id] else { return drop }
+        return asked == drop.loggedIndex && dropReasons[exercise.id] != nil ? drop : nil
+    }
+
+    /// A drop applies to the latest set, so the miss banner stays out of the way.
+    private func hasDropOnLatestSet(_ exercise: Exercise, logged: [WorkoutSet]) -> Bool {
+        guard exercise.trackingType != .cardio, let drop = todayViewModel.inSessionDrop(for: exercise) else { return false }
+        return drop.loggedIndex == logged.count - 1
     }
 
     /// True when the exercise's latest logged set is a working set without an RIR.

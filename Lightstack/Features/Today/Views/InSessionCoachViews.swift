@@ -161,6 +161,68 @@ struct InSessionMissBanner: View {
     }
 }
 
+/// Asks why the athlete lowered the weight. Same look as the miss banner, no load suggestion.
+struct LoweredWeightBanner: View {
+    let drop: InSessionAdjuster.LoweredWeight
+    let chosenReason: MissReason?
+    let onReason: (MissReason) -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .foregroundStyle(AppTheme.warning)
+                    .padding(.top, 2)
+                Text(drop.message)
+                    .font(AppTheme.caveat(14, weight: .bold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("coach.dropReason.message")
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+                .accessibilityIdentifier("coach.dropReason.dismiss")
+            }
+            if let chosenReason {
+                Text("Noted: \(chosenReason.title)")
+                    .font(AppTheme.caveat(12))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .accessibilityIdentifier("coach.dropReason.status")
+            } else {
+                FlowLayout(spacing: 6) {
+                    ForEach(drop.reasons, id: \.self) { reason in
+                        Button { onReason(reason) } label: {
+                            Text(reason.title)
+                                .font(AppTheme.caveat(13, weight: .bold))
+                                .foregroundStyle(AppTheme.textPrimary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(AppTheme.surfaceElevated, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("coach.dropReason.\(reason.rawValue)")
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.warning.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AppTheme.warning.opacity(0.35), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("coach.dropReason")
+    }
+}
+
 /// Subtle nudge after a working set was logged without RIR. Never blocks logging.
 struct RirNudgeHint: View {
     var body: some View {

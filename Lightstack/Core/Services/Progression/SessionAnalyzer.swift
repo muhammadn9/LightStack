@@ -123,7 +123,8 @@ enum SessionAnalyzer {
         // Repeat misses and signals.
         let lastReview = previous.lazy.compactMap { $0.document.review?.review(for: ex.name) }.first
         let repeated = lastReview?.outcome == .missed
-        let missReason = reason.flatMap(MissReason.from)
+        // A planned drop / back-off is not a problem: treat it as no reason.
+        let missReason = reason.flatMap(MissReason.from).flatMap { $0 == .plannedDrop ? nil : $0 }
         let pain = painSignal(reason: missReason, note: userNote, exerciseName: ex.name, muscle: ex.muscleGroup)
 
         // Outcome.
