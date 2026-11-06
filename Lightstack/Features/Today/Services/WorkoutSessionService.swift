@@ -193,6 +193,7 @@ final class WorkoutSessionService {
                 recentSessionExercises: context.recentSessionSets,
                 recentLoggedSets: context.recentLoggedSets,
                 bestSets: context.bestSets,
+                exerciseLibrary: localStorage.fetchExerciseNameStats(userId: userId).map(\.name),
                 coach: CoachPromptService.PlanPromptExtras(
                     focus: resolvedFocus, constraints: sanitizedConstraints, draft: draft,
                     estimatedMinutes: draft.isEmpty ? nil : PlanDraftBuilder.estimatedMinutes(draft),
@@ -588,7 +589,14 @@ final class WorkoutSessionService {
         return Self.plan(
             fromPlanJSON: text,
             workoutId: workoutId,
-            sanitizeLabel: { self.validationService.sanitizeLabel($0) }
+            sanitizeLabel: { self.validationService.sanitizeLabel($0) },
+            canonicalName: { name in
+                guard let userId = self.planContext?.userId else {
+                    return ExerciseNameResolver.canonicalName(for: name, existing: [])
+                }
+                let stats = self.localStorage.fetchExerciseNameStats(userId: userId)
+                return ExerciseNameResolver.canonicalName(for: name, existing: stats.map { ($0.name, $0.setCount) })
+            }
         )
     }
 
@@ -625,7 +633,8 @@ final class WorkoutSessionService {
     static func plan(
         fromPlanJSON text: String,
         workoutId: UUID,
-        sanitizeLabel: (String) -> String
+        sanitizeLabel: (String) -> String,
+        canonicalName: ((String) -> ExerciseNameResolver.Canonical)? = nil
     ) -> ParsedPlan? {
         let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionService")
 
@@ -658,7 +667,10 @@ final class WorkoutSessionService {
         var perSetTargets: [UUID: [SetTarget]] = [:]
         var cues: [UUID: String] = [:]
         for (index, aiEx) in usable.enumerated() {
-            let name = sanitizeLabel(aiEx.name)
+            let cleanedName = sanitizeLabel(aiEx.name)
+            let canonical = canonicalName?(cleanedName)
+                ?? ExerciseNameResolver.canonicalName(for: cleanedName, existing: [])
+            let name = canonical.name
             let targets = aiEx.setTargets.map { SetTarget(weight: $0.weight, reps: $0.reps, rir: $0.rir) }
             let topSet = targets.max { (Double($0.prefillWeight) ?? 0) < (Double($1.prefillWeight) ?? 0) }
 
@@ -686,7 +698,8 @@ final class WorkoutSessionService {
                 targetRir: aiEx.rir ?? topSet?.rir,
                 restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup, existing: aiEx.restSeconds),
                 coachNote: mergedNote,
-                supersetGroupId: groupIds[index]
+                supersetGroupId: groupIds[index],
+                isPerArm: canonical.isPerArm ? true : nil
             )
             exercises.append(exercise)
             if !targets.isEmpty { perSetTargets[exercise.id] = targets }
