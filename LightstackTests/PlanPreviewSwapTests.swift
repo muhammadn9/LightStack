@@ -25,6 +25,7 @@ final class PlanPreviewSwapTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        UserDefaults.standard.removeObject(forKey: ExerciseMergeAliases.key)
         stack = OutboxTestStack()
     }
 

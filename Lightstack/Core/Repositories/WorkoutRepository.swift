@@ -43,6 +43,11 @@ final class WorkoutRepository {
         HistoryExercise.distinct(localStorage.fetchExerciseHistory(userId: userId))
     }
 
+    /// Every exercise name in the athlete's history with its set count, most-logged first.
+    func fetchExerciseNameStats(userId: UUID) -> [LocalStorageService.ExerciseNameStat] {
+        localStorage.fetchExerciseNameStats(userId: userId)
+    }
+
     // MARK: - Create / Save
 
     // Every write is: save locally, then hand the cloud write to the offline queue
