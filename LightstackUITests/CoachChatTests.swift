@@ -36,9 +36,10 @@ final class CoachChatTests: LightstackUITestCase {
         launchApp()
         generateAndStartPushWorkout()
         waitFor(app.staticTexts["Barbell Bench Press"])
+        // Coach v3: bench opens with a 95 lb warm-up, so the first working set is row 1.
         let weight = app.textFields["setRow.0.0.weight"]
         waitFor(weight)
-        XCTAssertEqual(weight.value as? String, "135")
+        XCTAssertEqual(weight.value as? String, "95")
 
         let field = chatInput
         tap(app.buttons["Chat with coach"], until: field)
@@ -50,7 +51,11 @@ final class CoachChatTests: LightstackUITestCase {
         shot("coach-change-applied")
         tap(app.buttons["Done"])
 
+        // "Heavier bench" is about the working sets: the warm-up must stay at 95.
         waitFor(weight)
+        XCTAssertEqual(weight.value as? String, "95", "The coach's change must not touch the warm-up")
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.0.weight"], "Warm-up was not logged")
         let updated = NSPredicate(format: "value == '155'")
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: updated, object: weight)], timeout: 5),
                        .completed, "Bench weight is still \(weight.value ?? "nil") after applying the coach's change")

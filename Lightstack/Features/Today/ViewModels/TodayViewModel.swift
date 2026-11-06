@@ -516,8 +516,23 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 if !perSet.isEmpty {
                     storeSetTargets(perSet, for: exercise.id)
                 } else if newTargetReps != nil || newTargetRir != nil || newTargetWeight != nil {
-                    // A new single target supersedes any earlier per-set plan.
-                    setTargets[exercise.id] = nil
+                    // A new single target supersedes the working sets of any earlier per-set plan.
+                    // The coach's warm-ups are kept as they were: "go heavier" is about the work.
+                    let existing = setTargets[exercise.id] ?? []
+                    let warmups = existing.filter { $0.isWarmup == true }
+                    if warmups.isEmpty {
+                        setTargets[exercise.id] = nil
+                    } else {
+                        let template = existing.last { $0.isWarmup != true } ?? SetTarget()
+                        var work = template
+                        if let newTargetWeight { work.weight = newTargetWeight }
+                        if let newTargetReps { work.reps = newTargetReps }
+                        if let newTargetRir { work.rir = newTargetRir }
+                        let total = newTargetSets ?? exercise.targetSets ?? existing.count
+                        let workCount = max(1, total - warmups.count)
+                        setTargets[exercise.id] = warmups + Array(repeating: work, count: workCount)
+                        exercise.targetSets = warmups.count + workCount
+                    }
                 }
                 if let reps = newTargetReps {
                     exercise.targetReps = reps
