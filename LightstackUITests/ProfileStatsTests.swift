@@ -54,4 +54,16 @@ final class ProfileStatsTests: LightstackUITestCase {
         waitFor(app.staticTexts["prList.row.Overhead Press"])
         XCTAssertFalse(app.staticTexts["prList.row.Bench Press"].exists)
     }
+
+    /// The header name must not be squeezed into a sliver by the action buttons
+    /// (it used to break mid-word on long names).
+    func testProfileHeaderNameNotSqueezed() throws {
+        launchApp()
+        openTab("Profile")
+        let name = waitFor(app.staticTexts["profile.name"], "Profile name missing")
+        shot("profile-header")
+        // "UI Tester" fits on one line once the name has room; the old cramped
+        // header (~60pt wide) wrapped it onto two.
+        XCTAssertLessThan(name.frame.height, 32, "Profile name wrapped: the name column is squeezed")
+    }
 }

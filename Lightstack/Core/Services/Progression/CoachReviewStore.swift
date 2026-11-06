@@ -11,6 +11,13 @@ struct CoachReviewEntry: Equatable {
 /// The user-facing reasons offered when a prescribed number is missed in-session.
 enum MissReason: String, Codable, CaseIterable, Equatable {
     case lowEnergy, poorSleep, underFueled, tooHeavy, painOrForm, other
+    /// Only offered when the athlete lowered the weight: an intentional drop set / back-off, not a problem.
+    case plannedDrop
+
+    /// Reasons offered when a set falls short (no planned drop).
+    static var missCases: [MissReason] { allCases.filter { $0 != .plannedDrop } }
+    /// Reasons offered when the athlete lowered the weight.
+    static var dropCases: [MissReason] { [.plannedDrop] + missCases }
 
     var title: String {
         switch self {
@@ -20,6 +27,7 @@ enum MissReason: String, Codable, CaseIterable, Equatable {
         case .tooHeavy: return "Just too heavy"
         case .painOrForm: return "Pain or form"
         case .other: return "Something else"
+        case .plannedDrop: return "Planned drop / back-off"
         }
     }
 
