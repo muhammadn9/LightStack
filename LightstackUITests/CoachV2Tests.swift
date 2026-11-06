@@ -131,6 +131,51 @@ final class CoachV2Tests: LightstackUITestCase {
         XCTAssertTrue(status.label.contains("Planned"), "Reason not recorded: \(status.label)")
     }
 
+    private func logDroppedSet() {
+        replaceText(in: weightField(), with: "50")
+        replaceText(in: repsField(), with: "15")
+        dismissKeyboardIfNeeded()
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.0.weight"], "Set 1 was not logged")
+
+        replaceText(in: weightField(), with: "47.5")
+        replaceText(in: repsField(), with: "11")
+        dismissKeyboardIfNeeded()
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.1.weight"], "Set 2 was not logged")
+        waitFor(anyElement("coach.dropReason"), "Lowered-weight question did not appear")
+    }
+
+    func testDismissingLoweredWeightAfterReasonLetsYouPickAgain() throws {
+        launchApp(extraArguments: engineHistory)
+        generateAndStartPushWorkout()
+        logDroppedSet()
+
+        tap(app.buttons["coach.dropReason.plannedDrop"])
+        let status = waitFor(anyElement("coach.dropReason.status"))
+        XCTAssertTrue(status.label.contains("Planned"), "Reason not recorded: \(status.label)")
+
+        tap(app.buttons["coach.dropReason.dismiss"])
+        waitFor(app.buttons["coach.dropReason.plannedDrop"], "Reason chips did not come back after X")
+        XCTAssertFalse(anyElement("coach.dropReason.status").exists, "Noted label should be gone after X")
+
+        tap(app.buttons["coach.dropReason.lowEnergy"])
+        let again = waitFor(anyElement("coach.dropReason.status"))
+        XCTAssertTrue(again.label.contains("Low energy"), "New reason not recorded: \(again.label)")
+        shot("43-drop-reason-rechosen")
+    }
+
+    func testDismissingLoweredWeightWithoutReasonHidesBanner() throws {
+        launchApp(extraArguments: engineHistory)
+        generateAndStartPushWorkout()
+        logDroppedSet()
+
+        tap(app.buttons["coach.dropReason.dismiss"])
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: anyElement("coach.dropReason"))
+        waitForExpectations(timeout: 5)
+    }
+
     // MARK: - Post-workout review
 
     func testPostWorkoutReviewShowsNextTargetsAndPersistsInHistory() throws {
