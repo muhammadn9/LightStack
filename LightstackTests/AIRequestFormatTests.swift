@@ -35,4 +35,45 @@ final class AIRequestFormatTests: XCTestCase {
             XCTAssertEqual(config["maxOutputTokens"] as? Int, 8192)
         }
     }
+
+    // MARK: - Thinking and schema
+
+    func testMediumThinkingMapsPerModel() {
+        XCTAssertEqual(GeminiService.thinkingConfig(forModel: "gemini-3.5-flash", effort: .medium) as? [String: String],
+                       ["thinkingLevel": "medium"])
+        XCTAssertEqual(GeminiService.thinkingConfig(forModel: "gemini-2.5-flash", effort: .medium) as? [String: Int],
+                       ["thinkingBudget": 4096])
+    }
+
+    func testPlanTaskUsesMediumThinkingAndFullTokenCap() {
+        let options = AIRequestOptions.forTask(.plan)
+        XCTAssertEqual(options.thinking, .medium)
+        XCTAssertEqual(options.maxOutputTokens, 8192)
+        XCTAssertNil(options.schema)
+    }
+
+    private let sampleSchema = AIResponseSchema([
+        "type": "OBJECT",
+        "properties": ["title": ["type": "STRING"]]
+    ])
+
+    func testSchemaIsSentWhenSetAndJSONExpected() {
+        let body = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: true,
+            options: AIRequestOptions(schema: sampleSchema))
+        let config = body["generationConfig"] as? [String: Any]
+        let sent = config?["responseSchema"] as? [String: Any]
+        XCTAssertEqual(sent?["type"] as? String, "OBJECT")
+    }
+
+    func testNoSchemaWhenNotSetOrNotJSON() {
+        let plain = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: true)
+        XCTAssertNil((plain["generationConfig"] as? [String: Any])?["responseSchema"])
+
+        let prose = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: false,
+            options: AIRequestOptions(schema: sampleSchema))
+        XCTAssertNil((prose["generationConfig"] as? [String: Any])?["responseSchema"])
+    }
 }
