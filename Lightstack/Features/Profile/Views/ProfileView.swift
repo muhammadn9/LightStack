@@ -62,66 +62,84 @@ struct ProfileView: View {
     private var profileCard: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // Header: avatar + name + streak
-            HStack(spacing: 12) {
-                // Circle avatar
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.accent)
-                        .frame(width: 48, height: 48)
-                    Circle()
-                        .stroke(AppTheme.warning, lineWidth: 2)
-                        .frame(width: 48, height: 48)
-                    Text(initials)
-                        .font(AppTheme.playfair(20, weight: .bold))
-                        .foregroundStyle(AppTheme.onAccent)
+            // Header: avatar + name + streak, with actions in a trailing row below
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 12) {
+                    // Circle avatar
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.accent)
+                            .frame(width: 48, height: 48)
+                        Circle()
+                            .stroke(AppTheme.warning, lineWidth: 2)
+                            .frame(width: 48, height: 48)
+                        Text(initials)
+                            .font(AppTheme.playfair(20, weight: .bold))
+                            .foregroundStyle(AppTheme.onAccent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(displayName)
+                            .font(AppTheme.playfair(16, weight: .bold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .layoutPriority(1)
+                            .accessibilityIdentifier("profile.name")
+                        Text(experienceLabel)
+                            .font(AppTheme.caveat(12))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+
+                    Spacer()
+
+                    // Streak badge
+                    VStack(alignment: .center, spacing: 1) {
+                        Text("\(streak)")
+                            .font(AppTheme.playfair(22, weight: .bold))
+                            .foregroundStyle(AppTheme.accent)
+                            .accessibilityIdentifier("profile.streak")
+                        Text("day streak")
+                            .font(AppTheme.caveat(9))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(displayName)
-                        .font(AppTheme.playfair(16, weight: .bold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Text(experienceLabel)
-                        .font(AppTheme.caveat(12))
-                        .foregroundStyle(AppTheme.textSecondary)
+                // Actions row
+                HStack(spacing: 4) {
+                    Spacer()
+
+                    // Edit button
+                    Button(action: {
+                        viewModel?.startEditing()
+                        showEditSheet = true
+                    }) {
+                        Image(systemName: "pencil.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityIdentifier("profile.edit")
+
+                    // Settings button
+                    Button(action: { showSettings = true }) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Settings")
+                    .accessibilityIdentifier("profile.settings")
+
+                    SideSwitchButton()
                 }
-
-                Spacer()
-
-                // Streak badge
-                VStack(alignment: .center, spacing: 1) {
-                    Text("\(streak)")
-                        .font(AppTheme.playfair(22, weight: .bold))
-                        .foregroundStyle(AppTheme.accent)
-                        .accessibilityIdentifier("profile.streak")
-                    Text("day streak")
-                        .font(AppTheme.caveat(9))
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-
-                // Edit button
-                Button(action: {
-                    viewModel?.startEditing()
-                    showEditSheet = true
-                }) {
-                    Image(systemName: "pencil.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(AppTheme.accent)
-                }
-                .accessibilityIdentifier("profile.edit")
-
-                // Settings button
-                Button(action: { showSettings = true }) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.title3)
-                        .foregroundStyle(AppTheme.accent)
-                }
-                .accessibilityLabel("Settings")
-                .accessibilityIdentifier("profile.settings")
-
-                SideSwitchButton()
             }
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
 
             InkDivider()
                 .padding(.bottom, 10)

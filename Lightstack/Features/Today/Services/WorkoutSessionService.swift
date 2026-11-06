@@ -193,6 +193,7 @@ final class WorkoutSessionService {
                 recentSessionExercises: context.recentSessionSets,
                 recentLoggedSets: context.recentLoggedSets,
                 bestSets: context.bestSets,
+                exerciseLibrary: localStorage.fetchExerciseNameStats(userId: userId).map(\.name),
                 coach: CoachPromptService.PlanPromptExtras(
                     focus: resolvedFocus, constraints: sanitizedConstraints, draft: draft,
                     estimatedMinutes: draft.isEmpty ? nil : PlanDraftBuilder.estimatedMinutes(draft),
@@ -306,7 +307,10 @@ final class WorkoutSessionService {
         let logged = exercises.filter { $0.trackingType != .cardio }.map { ex in
             LoggedExercise(
                 name: ex.name, muscleGroup: ex.muscleGroup,
-                sets: (allSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }.map { HistorySet($0) })
+                sets: (allSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }.map { HistorySet($0) },
+                // Flagged when logged, i.e. against the PR as it stood before today (the stored PR is
+                // overwritten mid-workout, so the analyzer cannot compare against it at the end).
+                hitPR: (allSets[ex.id] ?? []).contains { $0.isPR && $0.reps > 0 })
         }
 
         Task { @MainActor in
@@ -320,7 +324,8 @@ final class WorkoutSessionService {
             let focus = CoachPreferences.resolvedFocus()
             let analysis = SessionAnalyzer.analyze(
                 logged: logged, prescription: prescription, energy: energy, userNote: workout.userNote,
-                reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus)
+                reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus,
+                now: Date())
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .postWorkout)
             let userMessage = coachPromptService.buildPostWorkoutMessage(
                 workoutType: workoutType,
@@ -588,7 +593,14 @@ final class WorkoutSessionService {
         return Self.plan(
             fromPlanJSON: text,
             workoutId: workoutId,
-            sanitizeLabel: { self.validationService.sanitizeLabel($0) }
+            sanitizeLabel: { self.validationService.sanitizeLabel($0) },
+            canonicalName: { name in
+                guard let userId = self.planContext?.userId else {
+                    return ExerciseNameResolver.canonicalName(for: name, existing: [])
+                }
+                let stats = self.localStorage.fetchExerciseNameStats(userId: userId)
+                return ExerciseNameResolver.canonicalName(for: name, existing: stats.map { ($0.name, $0.setCount) })
+            }
         )
     }
 
@@ -625,7 +637,8 @@ final class WorkoutSessionService {
     static func plan(
         fromPlanJSON text: String,
         workoutId: UUID,
-        sanitizeLabel: (String) -> String
+        sanitizeLabel: (String) -> String,
+        canonicalName: ((String) -> ExerciseNameResolver.Canonical)? = nil
     ) -> ParsedPlan? {
         let logger = Logger(subsystem: "org.lightstack.app", category: "WorkoutSessionService")
 
@@ -658,7 +671,10 @@ final class WorkoutSessionService {
         var perSetTargets: [UUID: [SetTarget]] = [:]
         var cues: [UUID: String] = [:]
         for (index, aiEx) in usable.enumerated() {
-            let name = sanitizeLabel(aiEx.name)
+            let cleanedName = sanitizeLabel(aiEx.name)
+            let canonical = canonicalName?(cleanedName)
+                ?? ExerciseNameResolver.canonicalName(for: cleanedName, existing: [])
+            let name = canonical.name
             let targets = aiEx.setTargets.map { SetTarget(weight: $0.weight, reps: $0.reps, rir: $0.rir) }
             let topSet = targets.max { (Double($0.prefillWeight) ?? 0) < (Double($1.prefillWeight) ?? 0) }
 
@@ -686,7 +702,8 @@ final class WorkoutSessionService {
                 targetRir: aiEx.rir ?? topSet?.rir,
                 restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup, existing: aiEx.restSeconds),
                 coachNote: mergedNote,
-                supersetGroupId: groupIds[index]
+                supersetGroupId: groupIds[index],
+                isPerArm: canonical.isPerArm ? true : nil
             )
             exercises.append(exercise)
             if !targets.isEmpty { perSetTargets[exercise.id] = targets }

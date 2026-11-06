@@ -105,7 +105,7 @@ struct ProgressionInput {
     var name: String
     /// Newest first: the last session plus up to 4 earlier same-type sessions.
     var sessions: [HistorySession]
-    /// Best set on record (heaviest e1RM), when known.
+    /// The recent best top set (`ExerciseHistoryGroup.capBest`), when known. Caps measure against it.
     var best: HistorySet?
     var feedback: SessionFeedback?
     /// 1...10
@@ -119,11 +119,16 @@ struct ProgressionInput {
     var nextTarget: NextTarget?
     /// The primary muscles were trained hard within 48 hours: hold the load, aim RIR 2, no back-off.
     var recentlyTrained: Bool
+    /// Today, for the time-gap rule. nil switches the gap rule off.
+    var now: Date?
+    /// Date of the newest same-type session, whether or not it contained this lift. nil switches the skip rule off.
+    var lastSameTypeSessionDate: Date?
 
     init(name: String, sessions: [HistorySession], best: HistorySet? = nil,
          feedback: SessionFeedback? = nil, energy: Int = CoachPreferences.neutralEnergy, allowWarmups: Bool = false,
          focus: CoachFocus = .hypertrophy, restPreference: Int = RestPreference.fallbackSeconds,
-         nextTarget: NextTarget? = nil, recentlyTrained: Bool = false) {
+         nextTarget: NextTarget? = nil, recentlyTrained: Bool = false,
+         now: Date? = nil, lastSameTypeSessionDate: Date? = nil) {
         self.name = name
         self.sessions = sessions
         self.best = best
@@ -134,6 +139,8 @@ struct ProgressionInput {
         self.restPreference = restPreference
         self.nextTarget = nextTarget
         self.recentlyTrained = recentlyTrained
+        self.now = now
+        self.lastSameTypeSessionDate = lastSameTypeSessionDate
     }
 }
 

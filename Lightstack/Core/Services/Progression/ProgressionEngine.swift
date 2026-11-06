@@ -28,7 +28,15 @@ enum ProgressionEngine {
         RepRange(lower: 8, upper: 12), RepRange(lower: 10, upper: 15)
     ]
 
-    private enum Mode { case reduce, holdRepeat, normal }
+    /// Days since the lift was last done after which the load is held (no increase).
+    static let holdAfterDays = 14
+    /// Days after which the load is reduced by `layoffReductionPercent`.
+    static let layoffAfterDays = 28
+    static let layoffReductionPercent = 7.5
+    /// A top set may rise at most this much over the most recent session's top (or one increment).
+    static let topWeightTolerance = 0.05
+
+    private enum Mode { case reduce, holdRepeat, layoffReduce, normal }
 
     private struct Ctx {
         var name: String
@@ -64,10 +72,25 @@ enum ProgressionEngine {
         let trend = self.trend(full)
 
         let regressed = full.count >= 2 && strength(full[0]) < 0.95 * strength(full[1])
-        let mode: Mode
+        var mode: Mode
         if input.feedback == .tooHard || input.energy <= 2 { mode = .reduce }
         else if regressed || input.energy == 3 { mode = .holdRepeat }
         else { mode = .normal }
+
+        // Skipped last time or a long gap: hold, or after a long layoff come back lighter.
+        let daysSince = input.now.map { max(0, Int($0.timeIntervalSince(last.session.date) / 86_400)) }
+        let skippedLast = input.lastSameTypeSessionDate.map { $0 > last.session.date.addingTimeInterval(3600) } ?? false
+        var pauseNote: String?
+        if let days = daysSince, days > layoffAfterDays {
+            mode = .layoffReduce
+            pauseNote = "last done \(days) days ago, down about \(g(layoffReductionPercent))% to rebuild"
+        } else if mode != .reduce, let days = daysSince, days > holdAfterDays {
+            mode = .holdRepeat
+            pauseNote = "last done \(days) days ago, no load increase"
+        } else if mode != .reduce, skippedLast {
+            mode = .holdRepeat
+            pauseNote = "skipped in the last session, no load increase"
+        }
         let ctx = Ctx(name: input.name, cls: cls, step: step, inc: ExerciseTraits.increment(input.name),
                       range: range, mode: mode, tooEasy: input.feedback == .tooEasy, best: input.best,
                       focus: input.focus)
@@ -106,7 +129,8 @@ enum ProgressionEngine {
         var action = chosen.text
         switch mode {
         case .reduce: action += input.feedback == .tooHard ? " (felt too hard)" : " (low energy)"
-        case .holdRepeat: action += regressed ? " (down vs previous session)" : " (low energy)"
+        case .holdRepeat: action += pauseNote.map { " (\($0))" } ?? (regressed ? " (down vs previous session)" : " (low energy)")
+        case .layoffReduce: action += " (\(pauseNote ?? "long layoff"))"
         case .normal: break
         }
         if usedTarget { action += " (from last review)" }
@@ -191,7 +215,7 @@ enum ProgressionEngine {
 
     private static func isSane(_ t: NextTarget, lastTop: HistorySet, ctx: Ctx) -> Bool {
         guard t.weight > 0, (1...30).contains(t.reps), lastTop.weight > 0 else { return false }
-        let ceiling = max(lastTop.weight * 1.10, lastTop.weight + ctx.inc)
+        let ceiling = max(lastTop.weight * (1 + topWeightTolerance), lastTop.weight + ctx.inc)
         guard t.weight >= lastTop.weight * 0.80, t.weight <= ceiling else { return false }
         if let b = ctx.best, t.weight > b.weight + 2 * ctx.inc { return false }
         if t.weight >= lastTop.weight * 0.99, t.reps > lastTop.reps + 3 { return false }
@@ -204,6 +228,9 @@ enum ProgressionEngine {
         case .reduce:
             let w = ExerciseTraits.floorStep(t.weight * 0.95, step: ctx.step)
             return (w, t.reps, "review target \(g(t.weight))×\(t.reps), down about 5% to \(g(w))")
+        case .layoffReduce:
+            let w = layoffWeight(min(t.weight, lastTop.weight), ctx: ctx)
+            return (w, t.reps, "review target \(g(t.weight))×\(t.reps), down about \(g(layoffReductionPercent))% to \(g(w))")
         case .holdRepeat:
             if t.weight > lastTop.weight {
                 return (lastTop.weight, lastTop.reps, "hold top set \(g(lastTop.weight))×\(lastTop.reps)")
@@ -214,6 +241,13 @@ enum ProgressionEngine {
         }
     }
 
+    /// The weight after a long layoff: about 7.5% lighter, rounded down to the plate step.
+    private static func layoffWeight(_ weight: Double, ctx: Ctx) -> Double {
+        var w = ExerciseTraits.floorStep(weight * (1 - layoffReductionPercent / 100), step: ctx.step)
+        if w >= weight { w = max(ctx.step, weight - ctx.step) }
+        return w
+    }
+
     /// Double progression for the top set.
     private static func progressTop(_ top: HistorySet, ctx: Ctx) -> (weight: Double, reps: Int, text: String) {
         switch ctx.mode {
@@ -221,6 +255,9 @@ enum ProgressionEngine {
             var w = ExerciseTraits.floorStep(top.weight * 0.95, step: ctx.step)
             if w >= top.weight { w = max(ctx.step, top.weight - ctx.step) }
             return (w, top.reps, "top set down about 5% to \(g(w))")
+        case .layoffReduce:
+            let w = layoffWeight(top.weight, ctx: ctx)
+            return (w, top.reps, "top set down about \(g(layoffReductionPercent))% to \(g(w))")
         case .holdRepeat:
             return (top.weight, top.reps, "hold top set \(g(top.weight))×\(top.reps)")
         case .normal:

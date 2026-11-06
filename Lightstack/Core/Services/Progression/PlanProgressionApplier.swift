@@ -48,7 +48,9 @@ enum PlanProgressionApplier {
         for i in exercises.indices {
             var ex = exercises[i]
             let group = history.group(for: ex.name)
-            let best = group?.best
+            // Caps use the recent best; the all-time record is shown but only caps when nothing recent exists.
+            let best = group?.capBest
+            let allTimeBest = group?.best
             let allowWarmups = warmupIndexes.contains(i)
             let aiNote = ex.coachNoteParts.message
             let muscle = MuscleGroups.canonical(forExercise: ex.name, muscleGroup: ex.muscleGroup)
@@ -60,13 +62,13 @@ enum PlanProgressionApplier {
                     feedback: group?.sessions.first?.feedback ?? feedback, energy: energy, allowWarmups: allowWarmups,
                     focus: coach.focus, restPreference: coach.restPreference,
                     nextTarget: coach.nextTarget(for: ex.name, lastSessionDate: $0.sessions.first?.date),
-                    recentlyTrained: fresh))
+                    recentlyTrained: fresh, now: coach.now, lastSameTypeSessionDate: $0.latestSessionDate))
             }
 
             let lastSession = group?.sessions.first
             let lastSets = lastSession.map { $0.sets.map(\.text) } ?? []
             let trend = group.map { ProgressionEngine.trend($0.sessions) } ?? .flat
-            let bestText = best.map { "\(String(format: "%g", $0.weight))×\($0.reps)" }
+            let bestText = allTimeBest.map { "\(String(format: "%g", $0.weight))×\($0.reps)" }
 
             if let engine {
                 let setTargets = engine.sets.map(\.setTarget)
@@ -149,12 +151,12 @@ enum PlanProgressionApplier {
             let ex = exercises[i]
             guard ex.trackingType != .cardio, let list = targets[ex.id], !list.isEmpty else { continue }
             let group = history.group(for: ex.name)
-            let recentTops = (group?.sessions.prefix(3) ?? []).compactMap { session -> HistorySet? in
-                ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups(session.sets).working)
+            let lastTop = group?.sessions.first.flatMap {
+                ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups($0.sets).working)
             }
             let ctx = PlanGuardrails.StructureContext(
                 name: ex.name, focus: coach.focus, restPreference: coach.restPreference,
-                bestRecentTop: recentTops.map(\.weight).max(), bestE1RM: group?.best?.e1RM,
+                lastTop: lastTop?.weight, bestE1RM: group?.capBest?.e1RM,
                 nextTarget: coach.nextTarget(for: ex.name, lastSessionDate: group?.sessions.first?.date),
                 backoffDropped: recencyHeld.contains(ex.id))
             let fixed = PlanGuardrails.enforceMainLiftStructure(list, ctx: ctx)
@@ -449,11 +451,12 @@ enum PlanDraftBuilder {
             guard let group = history.group(for: ex.name) else { continue }
             let muscle = MuscleGroups.canonical(forExercise: ex.name, muscleGroup: ex.muscleGroup)
             let input = ProgressionInput(
-                name: ex.name, sessions: group.sessions, best: group.best,
+                name: ex.name, sessions: group.sessions, best: group.capBest,
                 feedback: group.sessions.first?.feedback ?? feedback, energy: energy,
                 allowWarmups: warmupIndexes.contains(i), focus: coach.focus, restPreference: coach.restPreference,
                 nextTarget: coach.nextTarget(for: ex.name, lastSessionDate: group.sessions.first?.date),
-                recentlyTrained: coach.isFresh(muscle: muscle))
+                recentlyTrained: coach.isFresh(muscle: muscle),
+                now: coach.now, lastSameTypeSessionDate: group.latestSessionDate)
             if let result = ProgressionEngine.plan(input) {
                 draft.append(DraftExercise(name: ex.name, muscleGroup: ex.muscleGroup, result: result))
             }

@@ -43,6 +43,23 @@ final class ProgressionContextTests: XCTestCase {
         return w
     }
 
+    func testHistoryIndexKnowsALiftWasSkippedInTheNewestSession() {
+        seed(daysAgo: 8, sets: [(135, 10, 3)])   // Bench
+        var newer = Workout.create(userId: stack.userId, workoutType: "Push", energyLevel: 5, timeAvailableMinutes: 45)
+        newer.date = Date(timeIntervalSinceNow: -86_400)
+        workouts.createWorkout(newer)
+        let fly = Exercise.create(workoutId: newer.id, name: "Cable Fly", muscleGroup: "Chest", orderIndex: 0,
+                                  targetSets: 1, targetReps: "10", targetRir: "2", restSeconds: 60, coachNote: nil)
+        workouts.saveExercises([fly], workoutId: newer.id)
+        workouts.saveSet(WorkoutSet.create(exerciseId: fly.id, setNumber: 1, weightLbs: 40, reps: 10, rir: 2), exerciseId: fly.id)
+
+        let ctx = builder.buildContext(userId: stack.userId, workoutType: "Push")
+        let index = ExerciseHistoryIndex(sessions: ctx.recentSessions, exercises: ctx.recentSessionSets,
+                                         loggedSets: ctx.recentLoggedSets, bestSets: ctx.bestSets)
+        XCTAssertEqual(index.group(for: "Bench Press")?.skippedLastSession, true)
+        XCTAssertEqual(index.group(for: "Cable Fly")?.skippedLastSession, false)
+    }
+
     func testContextSkipsEmptyWorkoutsAndKeepsLastFiveCompleted() {
         seed(daysAgo: 0, sets: [])   // pending / abandoned: no logged sets
         for d in 1...6 { seed(daysAgo: d, sets: [(135, 10, 3)]) }

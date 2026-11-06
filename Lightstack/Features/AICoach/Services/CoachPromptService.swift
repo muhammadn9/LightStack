@@ -91,6 +91,8 @@ final class CoachPromptService {
     for kept exercises the app fills the numbers.
     Change types: reorder (reflect it in the list order), swap ("exercise" is replaced by the lift named in detail), \
     drop, add, setCount ("sets" = working sets; never add heavy sets), loadAdjust ("percent" -15 to 5).
+    Names: for every exercise (kept, swapped or added), use the athlete's existing name from ATHLETE'S EXERCISE NAMES verbatim \
+    when it is the same movement; only invent a new name for a genuinely new movement. Never put "(per arm)" in a name.
     "cue" only for a known form issue. Keep coach_note and coaching_notes to one short sentence. \
     Supersets: set "superset" only when asked or clearly useful; same label alternates sets, adjacent, max 4.
     """
@@ -134,12 +136,14 @@ final class CoachPromptService {
     Reply with ONLY a JSON object:
     {"exercises": [{"name": "str (as given)", "notes": "1-3 sentences", "outcome": "pr|hold|regression|missed|new", \
     "next_target": {"weight": number, "reps": int, "note": "short goal"}, \
-    "miss": {"cause": "lowEnergy|poorRecovery|painOrForm|strengthLoss|unknown", "decision": "retry|reduceAndRebuild|holdOrSwap", "reason": "str"}}], \
+    "miss": {"cause": "lowEnergy|poorRecovery|painOrForm|strengthLoss|afterBreak|unknown", "decision": "retry|reduceAndRebuild|holdOrSwap", "reason": "str"}}], \
     "overall_read": "2-3 sentences", "recurring_flags": ["str"]}
     - Use the app's PRESCRIBED vs ACTUAL analysis; do not recompute it. notes: what happened, PR/hold/regression, form flags.
-    - "miss" only for exercises marked MISSED. A miss is a learning moment: a one-off on a bad day (low energy, \
-    poor sleep or fuel) -> retry; good energy or a second miss in a row -> likely lost strength -> reduceAndRebuild \
-    (drop 5-10%); pain or form -> holdOrSwap. Check PREVIOUS REVIEWS for repeats.
+    - "miss" only for exercises marked MISSED. A miss is a learning moment: a single miss (a bad day, or a close \
+    miss even with good energy) -> retry the same target; a second miss in a row, "too heavy" or a miss by 3+ reps \
+    -> likely lost strength -> reduceAndRebuild (drop 5-10%); lighter than planned after the lift was skipped or \
+    not done for 2+ weeks -> afterBreak (a rebuild, not lost strength) -> retry from today's weight; pain or form \
+    -> holdOrSwap. Never call one miss "strength loss". Check PREVIOUS REVIEWS for repeats.
     - next_target: one specific goal per exercise, near what was lifted (within -15% to +5%).
     - overall_read: session quality, energy, patterns. recurring_flags: issues seen across sessions \
     (skipped exercises, form, repeated misses).
@@ -176,6 +180,7 @@ final class CoachPromptService {
         recentSessionExercises: [UUID: [Exercise]] = [:],
         recentLoggedSets: [UUID: [WorkoutSet]] = [:],
         bestSets: [String: (weightLbs: Double, reps: Int)] = [:],
+        exerciseLibrary: [String] = [],
         coach: PlanPromptExtras? = nil
     ) -> String {
         let sanitizedType = sanitize(workoutType)
@@ -202,6 +207,13 @@ final class CoachPromptService {
             message += "\n\nROLLING CONTEXT (recent history summary):\n\(summary)"
         }
 
+        // Most-used first (the caller sorts by set count); capped to keep the prompt small.
+        let libraryNames = exerciseLibrary.map { sanitize($0) }.filter { !$0.isEmpty }.prefix(80)
+        if !libraryNames.isEmpty {
+            message += "\n\nATHLETE'S EXERCISE NAMES (most used first; reuse verbatim for the same movement):\n"
+                + libraryNames.joined(separator: "; ")
+        }
+
         if let latest = recentSessions.first {
             let index = ExerciseHistoryIndex(
                 sessions: recentSessions, exercises: recentSessionExercises,
@@ -219,7 +231,7 @@ final class CoachPromptService {
                     : logged.map { formatLoggedSet($0) }
                 var line = "\n  - \(ex.name)\(Self.perArmTag(ex)): " + formatted.joined(separator: ", ")
                 if ex.trackingType != .cardio, let best = index.group(for: ex.name)?.best {
-                    line += " | best \(String(format: "%g", best.weight))x\(best.reps)"
+                    line += " | all-time best \(String(format: "%g", best.weight))x\(best.reps)"
                 }
                 if let cue = clipped(ex.coachNoteParts.message, 100) { line += " | note: \(cue)" }
                 message += line
