@@ -138,3 +138,58 @@ final class ExerciseRenameTests: XCTestCase {
         XCTAssertTrue(storage.renameExercises(userId: userId, from: ["Leg Extension"], to: "Leg Extension").isEmpty)
     }
 }
+
+final class CanonicalExerciseNameTests: XCTestCase {
+
+    private var defaults: UserDefaults!
+    private let suite = "CanonicalExerciseNameTests"
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
+        defaults = nil
+        super.tearDown()
+    }
+
+    private func canonical(_ name: String, _ existing: [(name: String, count: Int)]) -> ExerciseNameResolver.Canonical {
+        ExerciseNameResolver.canonicalName(for: name, existing: existing, defaults: defaults)
+    }
+
+    func testCaseAndWhitespaceMatchReturnsExistingSpelling() {
+        let result = canonical("  barbell   BENCH press ", [("Barbell Bench Press", 30)])
+        XCTAssertEqual(result.name, "Barbell Bench Press")
+        XCTAssertFalse(result.isPerArm)
+    }
+
+    func testPerArmWordingIsStrippedAndFlagged() {
+        let match = canonical("Dumbbell Curl (per arm)", [("Dumbbell Curl", 12)])
+        XCTAssertEqual(match.name, "Dumbbell Curl")
+        XCTAssertTrue(match.isPerArm)
+
+        let brandNew = canonical("Zottman Curl per arm", [("Dumbbell Curl", 12)])
+        XCTAssertEqual(brandNew.name, "Zottman Curl")
+        XCTAssertTrue(brandNew.isPerArm)
+    }
+
+    func testFuzzyMatchPicksMostUsedSpelling() {
+        let existing: [(name: String, count: Int)] = [("Leg curl machine", 4), ("Seated Hamstring Curl", 40)]
+        XCTAssertEqual(canonical("Hamstring curl machine", existing).name, "Seated Hamstring Curl")
+    }
+
+    func testMergeAliasMapsToKeptName() {
+        ExerciseMergeAliases.remember(["Leg extension machine"], mergedInto: "Leg Extension", defaults: defaults)
+        let result = canonical("leg  extension MACHINE", [("Leg Extension", 20)])
+        XCTAssertEqual(result.name, "Leg Extension")
+    }
+
+    func testGenuinelyNewNameStaysNew() {
+        let result = canonical("Cable Face Pull", [("Barbell Bench Press", 30), ("Leg Extension", 20)])
+        XCTAssertEqual(result.name, "Cable Face Pull")
+        XCTAssertFalse(result.isPerArm)
+    }
+}
