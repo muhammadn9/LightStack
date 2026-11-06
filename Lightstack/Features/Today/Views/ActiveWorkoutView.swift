@@ -611,7 +611,16 @@ struct ActiveWorkoutView: View {
                         dropAskedIndex[member.id] = drop.loggedIndex
                         todayViewModel.recordInSessionReason(exercise: member.name, reason: reason)
                     },
-                    onDismiss: { dropAskedIndex[member.id] = drop.loggedIndex }
+                    onDismiss: {
+                        if dropReasons[member.id] != nil {
+                            // X on a chosen reason backs out of it so a different one can be picked.
+                            dropReasons[member.id] = nil
+                            dropAskedIndex[member.id] = nil
+                            todayViewModel.recordInSessionReason(exercise: member.name, reason: "")
+                        } else {
+                            dropAskedIndex[member.id] = drop.loggedIndex
+                        }
+                    }
                 )
                 .transition(.opacity)
             }
