@@ -884,4 +884,31 @@ final class ProgressionEngineTests: XCTestCase {
         XCTAssertNil(store.lastPlan(forUser: me))
         XCTAssertNil(defaults.data(forKey: CoachDebugStore.defaultsKey))
     }
+
+    // MARK: - Exercise muscle map
+
+    func testMuscleMapKnowsSubMuscles() {
+        func muscles(_ name: String, _ group: String = "Other") -> [String] {
+            let m = ExerciseTraits.muscles(forExercise: name, muscleGroup: group)
+            return m.primary + m.secondary
+        }
+        XCTAssertEqual(muscles("Incline Dumbbell Press"), ["upper chest", "front delts", "triceps"])
+        XCTAssertEqual(muscles("Barbell Bench Press"), ["mid chest", "front delts", "triceps"])
+        XCTAssertEqual(muscles("Chest Dip"), ["lower chest", "triceps"])
+        XCTAssertEqual(muscles("Cable Fly"), ["chest"])
+        XCTAssertEqual(muscles("Overhead Press"), ["front delts", "triceps"])
+        XCTAssertEqual(muscles("Dumbbell Lateral Raise"), ["side delts", "traps"])
+        XCTAssertEqual(muscles("Face Pull").first, "rear delts")
+        XCTAssertEqual(muscles("Seated Cable Row"), ["mid back", "lats", "rear delts", "biceps"])
+        XCTAssertEqual(muscles("Lat Pulldown"), ["lats", "biceps"])
+        XCTAssertEqual(muscles("Narrow Grip Pulldown").first, "lats", "narrow is not a row")
+        XCTAssertEqual(muscles("Incline Dumbbell Curl").first, "biceps")
+        XCTAssertEqual(muscles("Rope Tricep Pushdown"), ["triceps"])
+        XCTAssertEqual(muscles("Back Squat"), ["quads", "glutes"])
+        XCTAssertEqual(muscles("Leg Extension"), ["quads"])
+        XCTAssertEqual(muscles("Romanian Deadlift"), ["hamstrings", "glutes", "lower back"])
+        XCTAssertEqual(muscles("Seated Leg Curl"), ["hamstrings"])
+        XCTAssertEqual(muscles("Standing Calf Raise"), ["calves"])
+        XCTAssertEqual(muscles("Mystery Move", "Biceps"), ["biceps"], "falls back to the canonical group")
+    }
 }

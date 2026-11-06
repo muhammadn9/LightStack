@@ -197,7 +197,10 @@ final class WorkoutSessionService {
                 coach: CoachPromptService.PlanPromptExtras(
                     focus: resolvedFocus, constraints: sanitizedConstraints, draft: draft,
                     estimatedMinutes: draft.isEmpty ? nil : PlanDraftBuilder.estimatedMinutes(draft),
-                    reviews: context.recentReviews, recency: context.muscleRecency, now: coach.now)
+                    reviews: context.recentReviews, recency: context.muscleRecency, now: coach.now,
+                    briefBlock: coachPromptService.briefBlock(
+                        briefs: context.briefs(matching: draft), muscleLoad: context.muscleLoad,
+                        fuel: context.fuel, usualMinutes: context.usualMinutes))
             )
 
             planContext = PlanState(userId: userId, history: history, energy: resolvedEnergy, coach: coach, draft: draft)

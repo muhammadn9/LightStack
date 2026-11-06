@@ -73,6 +73,7 @@ final class CoachPromptService {
     4. Recovery: days since each muscle was trained (given); recently trained muscles get less.
     5. Energy, sleep and fuel, time available, constraints.
     6. Would a coach recommend this structure for the athlete's focus?
+    Use the BRIEF (lift style, effort, rest actually taken, muscle load, fuel) when judging the plan.
     Return concrete edits, each with a reason; if the draft is sound say so with no changes. \
     Respect PREVIOUS REVIEWS: a "retry" or "reduceAndRebuild" decision stands, and recurring flags should be addressed.
     ROLLING CONTEXT is background only; never restate its numbers as the plan. Use the athlete's notes (pain, form, equipment) to choose exercises.
@@ -383,6 +384,8 @@ final class CoachPromptService {
         var reviews: [CoachReviewEntry] = []
         var recency: [String: MuscleRecency] = [:]
         var now: Date = Date()
+        /// Compact per-exercise brief from `briefBlock`, appended after the draft.
+        var briefBlock: String?
     }
 
     static func focusText(_ focus: CoachFocus) -> String {
@@ -436,7 +439,99 @@ final class CoachPromptService {
             out += "\n     why: \(d.result.rationale)"
         }
         if let minutes = coach.estimatedMinutes { out += "\n  Estimated length of the draft: ~\(Int(minutes.rounded())) min." }
+        if let brief = coach.briefBlock, !brief.isEmpty { out += "\n\n" + brief }
         return out
+    }
+
+    // MARK: - Brief
+
+    /// The compact BRIEF block (about 60 tokens per exercise): usual session length, fuel, muscle load
+    /// and one line per planned exercise. Parts without data are left out; nil when nothing is left.
+    func briefBlock(briefs: [ExerciseBrief], muscleLoad: [String: MuscleLoad],
+                    fuel: CoachFuelSummary?, usualMinutes: Int?) -> String? {
+        var lines: [String] = []
+
+        var header: [String] = []
+        if let usualMinutes { header.append("USUAL SESSION: \(usualMinutes) min (recent median).") }
+        if let fuel, let text = Self.fuelText(fuel) { header.append("FUEL: \(text)") }
+        if !header.isEmpty { lines.append(header.joined(separator: " ")) }
+
+        var muscles: [String] = []
+        for brief in briefs {
+            for muscle in brief.muscles where !muscles.contains(muscle) { muscles.append(muscle) }
+        }
+        let loadParts = muscles.prefix(8).compactMap { muscle -> String? in
+            guard let load = muscleLoad[muscle] else { return nil }
+            let days = load.daysSince.map { "\($0)d" } ?? "28d+"
+            return "\(sanitize(muscle)) \(Self.setCount(load.thisWeekSets))/\(Self.setCount(load.avgPrior3WeeksSets)) \(days)"
+        }
+        if !loadParts.isEmpty {
+            lines.append("MUSCLE LOAD (hard sets this wk / weekly avg prior 3 wks, days since): " + loadParts.joined(separator: " · "))
+        }
+
+        if !briefs.isEmpty {
+            lines.append("BRIEF (style, last top, e1RM trend, set-to-set rest actual vs prescribed heavy | light, muscles):")
+            for brief in briefs { lines.append("- " + briefLine(brief)) }
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    private func briefLine(_ brief: ExerciseBrief) -> String {
+        let reps = brief.repLow == brief.repHigh ? "\(brief.repLow)" : "\(brief.repLow)-\(brief.repHigh)"
+        var parts = ["\(brief.style.label) (\(reps))"]
+        parts.append("last " + Self.setText(brief.lastTop))
+        if let avg = brief.avgRIR { parts.append("avg RIR \(String(format: "%g", (avg * 10).rounded() / 10))") }
+        if !brief.e1RMTrend.isEmpty { parts.append("e1RM " + brief.e1RMTrend.map(String.init).joined(separator: ">")) }
+        if let rest = Self.restText(brief.rest) { parts.append(rest) }
+        if let base = brief.baselineTop {
+            parts.append("draft top \(String(format: "%g", base.weight))x\(base.reps)@\(base.rir)")
+        }
+        let muscleText = brief.muscles.map { sanitize($0) }.joined(separator: "+")
+        if !muscleText.isEmpty { parts.append(muscleText) }
+        return "\(sanitize(brief.name)): " + parts.joined(separator: ", ")
+    }
+
+    private static func setText(_ set: HistorySet) -> String {
+        "\(String(format: "%g", set.weight))x\(set.reps)" + (set.rir.map { "@\($0)" } ?? "")
+    }
+
+    private static func setCount(_ value: Double) -> String {
+        String(format: "%g", (value * 2).rounded() / 2)
+    }
+
+    private static func clock(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private static func restSide(_ actual: Int?, _ prescribed: Int?) -> String {
+        guard let actual else { return "-" }
+        return clock(actual) + (prescribed.map { " (rx \(clock($0)))" } ?? "")
+    }
+
+    /// "rest 2:50 (rx 2:00) | 1:30 (rx 1:30)": heavy then light; nil with no samples.
+    private static func restText(_ rest: RestStats) -> String? {
+        guard !rest.isEmpty, rest.heavyActual != nil || rest.lightActual != nil else { return nil }
+        if rest.lightActual == nil { return "rest " + restSide(rest.heavyActual, rest.heavyPrescribed) }
+        return "rest " + restSide(rest.heavyActual, rest.heavyPrescribed) + " | " + restSide(rest.lightActual, rest.lightPrescribed)
+    }
+
+    /// "yesterday 2450/2600 kcal, protein 150/180 g; goal lose 0.5 lb/wk." or nil with nothing to say.
+    static func fuelText(_ fuel: CoachFuelSummary) -> String? {
+        func amount(_ value: Double?, _ target: Double?) -> String? {
+            guard let value else { return nil }
+            let v = String(format: "%.0f", value)
+            return target.map { "\(v)/\(String(format: "%.0f", $0))" } ?? v
+        }
+        var intake: [String] = []
+        if let kcal = amount(fuel.yesterdayKcal, fuel.targetKcal) { intake.append("yesterday \(kcal) kcal") }
+        if let protein = amount(fuel.proteinG, fuel.targetProteinG) { intake.append("protein \(protein) g") }
+        var text = intake.joined(separator: ", ")
+        if let goal = fuel.goal, !goal.isEmpty {
+            var goalText = "goal \(goal)"
+            if let rate = fuel.weeklyRate, rate > 0, goal != "maintain" { goalText += " \(String(format: "%g", rate)) lb/wk" }
+            text += text.isEmpty ? goalText : "; " + goalText
+        }
+        return text.isEmpty ? nil : text + "."
     }
 
     /// One block per past review: overall read, per-exercise outcome/decision/target, flags.
