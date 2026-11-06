@@ -307,7 +307,10 @@ final class WorkoutSessionService {
         let logged = exercises.filter { $0.trackingType != .cardio }.map { ex in
             LoggedExercise(
                 name: ex.name, muscleGroup: ex.muscleGroup,
-                sets: (allSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }.map { HistorySet($0) })
+                sets: (allSets[ex.id] ?? []).sorted { $0.setNumber < $1.setNumber }.map { HistorySet($0) },
+                // Flagged when logged, i.e. against the PR as it stood before today (the stored PR is
+                // overwritten mid-workout, so the analyzer cannot compare against it at the end).
+                hitPR: (allSets[ex.id] ?? []).contains { $0.isPR && $0.reps > 0 })
         }
 
         Task { @MainActor in
@@ -321,7 +324,8 @@ final class WorkoutSessionService {
             let focus = CoachPreferences.resolvedFocus()
             let analysis = SessionAnalyzer.analyze(
                 logged: logged, prescription: prescription, energy: energy, userNote: workout.userNote,
-                reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus)
+                reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus,
+                now: Date())
             let systemPrompt = coachPromptService.buildSystemPrompt(profile: context.profile, task: .postWorkout)
             let userMessage = coachPromptService.buildPostWorkoutMessage(
                 workoutType: workoutType,

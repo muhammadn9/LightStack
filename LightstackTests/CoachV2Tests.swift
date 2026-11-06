@@ -56,12 +56,12 @@ private enum V2 {
     static func analyze(
         _ logged: String, energy: Int = 6, note: String? = nil, reasons: [String: String] = [:],
         previous: [CoachReviewEntry] = [], history: ExerciseHistoryIndex = V2.history,
-        prescription: [ExercisePrescription]? = nil
+        prescription: [ExercisePrescription]? = nil, now: Date? = nil, hitPR: Bool = false
     ) -> SessionAnalysis {
         SessionAnalyzer.analyze(
-            logged: [LoggedExercise(name: bench, muscleGroup: "Chest", sets: sets(logged))],
+            logged: [LoggedExercise(name: bench, muscleGroup: "Chest", sets: sets(logged), hitPR: hitPR)],
             prescription: prescription ?? [benchPrescription], energy: energy, userNote: note, reasons: reasons,
-            previous: previous, history: history, focus: .hypertrophy)
+            previous: previous, history: history, focus: .hypertrophy, now: now)
     }
 }
 
@@ -187,12 +187,17 @@ final class SessionAnalyzerTests: XCTestCase {
         XCTAssertEqual(fasted.miss?.decision, .retry)
     }
 
-    func testMissWithGoodEnergyDropsAndRebuilds() throws {
+    func testSingleMissWithGoodEnergyRetriesInsteadOfCallingItStrengthLoss() throws {
         let a = try bench(V2.analyze(missedByOne, energy: 8))
-        XCTAssertEqual(a.miss?.cause, .strengthLoss)
-        XCTAssertEqual(a.miss?.decision, .reduceAndRebuild)
-        XCTAssertEqual(a.target?.weight, 175, "185 -5%, rounded down to the plate step")
+        XCTAssertEqual(a.miss?.decision, .retry)
+        XCTAssertNotEqual(a.miss?.cause, .strengthLoss)
+        XCTAssertEqual(a.target?.weight, 185)
         XCTAssertEqual(a.target?.reps, 7)
+        // Repeated misses still drop: 185 -7.5%, rounded down to the plate step.
+        let repeated = try bench(V2.analyze(missedByOne, energy: 8, previous: [V2.review(V2.bench, outcome: .missed)]))
+        XCTAssertEqual(repeated.miss?.cause, .strengthLoss)
+        XCTAssertEqual(repeated.miss?.decision, .reduceAndRebuild)
+        XCTAssertEqual(repeated.target?.weight, 170)
         let big = try bench(V2.analyze("95x10@5, 150x10@2, 185x4@0, 170x8@2", energy: 8))
         XCTAssertEqual(big.shortBy, 3)
         XCTAssertEqual(big.target?.weight, 165, "a big miss drops 10%")
@@ -250,6 +255,72 @@ final class SessionAnalyzerTests: XCTestCase {
                                            sets: [PrescribedSet(role: .top, weight: 150, reps: 7, rir: 1, restSeconds: 120)])
         let a = try bench(V2.analyze("150x7@1", prescription: [lighter]))
         XCTAssertEqual(a.outcome, .regression)
+    }
+
+    // MARK: Strength-loss rule, rebuild after a break, PR snapshot
+
+    private let lighter = "95x10@5, 150x10@2, 170x8@1"
+
+    private var skippedHistory: ExerciseHistoryIndex {
+        var g = ExerciseHistoryGroup(names: [V2.bench], sessions: V2.benchHistory, best: HistorySet(230, 1))
+        g.latestSessionDate = V2.day(10, 24)   // a newer Push session without the bench
+        return ExerciseHistoryIndex(groups: [g])
+    }
+
+    func testClassifyMissSingleMissIsRetryRepeatedOrTooHeavyIsReduce() {
+        func classify(shortBy: Int = 1, energy: Int, reason: MissReason? = nil, repeated: Bool = false) -> MissAnalysis {
+            SessionAnalyzer.classifyMiss(shortBy: shortBy, energy: energy, reason: reason, note: nil,
+                                         repeated: repeated, pain: false)
+        }
+        XCTAssertEqual(classify(energy: 8).decision, .retry)
+        XCTAssertEqual(classify(energy: 10).decision, .retry)
+        XCTAssertNotEqual(classify(energy: 8).cause, .strengthLoss)
+        XCTAssertEqual(classify(energy: 8, repeated: true).decision, .reduceAndRebuild)
+        XCTAssertEqual(classify(energy: 8, reason: .tooHeavy).decision, .reduceAndRebuild)
+        XCTAssertEqual(classify(shortBy: 3, energy: 8).decision, .reduceAndRebuild)
+    }
+
+    func testLighterLoadAfterASkippedSessionIsARebuildNotStrengthLoss() throws {
+        let a = try bench(V2.analyze(lighter, energy: 8, history: skippedHistory))
+        XCTAssertTrue(a.loadDropped)
+        XCTAssertEqual(a.miss?.cause, .afterBreak)
+        XCTAssertEqual(a.miss?.decision, .retry)
+        XCTAssertEqual(a.target?.weight, a.actualTop?.weight, "retry from today's actual top")
+        XCTAssertLessThan(a.target?.weight ?? 999, 185)
+        XCTAssertEqual(a.target?.note, "Rebuild from today's weight")
+        // Same session without the break is a real shortfall.
+        let control = try bench(V2.analyze(lighter, energy: 8))
+        XCTAssertEqual(control.miss?.cause, .strengthLoss)
+        XCTAssertEqual(control.miss?.decision, .reduceAndRebuild)
+    }
+
+    func testLighterLoadAfterALongGapIsARebuild() throws {
+        let gap = try bench(V2.analyze(lighter, energy: 8, now: V2.day(11, 10)))   // last bench 10/20
+        XCTAssertEqual(gap.miss?.cause, .afterBreak)
+        XCTAssertEqual(gap.target?.weight, gap.actualTop?.weight)
+        let recent = try bench(V2.analyze(lighter, energy: 8, now: V2.day(10, 25)))
+        XCTAssertEqual(recent.miss?.cause, .strengthLoss)
+    }
+
+    func testModelCannotTurnARebuildIntoStrengthLoss() throws {
+        let analysis = V2.analyze(lighter, energy: 8, history: skippedHistory)
+        let m = try XCTUnwrap(ModelReview.parse("""
+        {"exercises":[{"name":"\(V2.bench)","miss":{"cause":"strengthLoss","decision":"reduceAndRebuild","reason":"lost it"}}]}
+        """))
+        let ex = try XCTUnwrap(SessionAnalyzer.merge(analysis, model: m, workoutType: "Push").exercises.first)
+        XCTAssertEqual(ex.missAnalysis?.cause, .afterBreak)
+        XCTAssertEqual(ex.missAnalysis?.decision, .retry)
+        XCTAssertEqual(ex.nextTarget?.weight, analysis.exercises.first?.actualTop?.weight)
+    }
+
+    func testPRIsJudgedAgainstTheRecordFromBeforeToday() throws {
+        // The stored record was already overwritten mid-workout by today's 190x7.
+        let overwritten = ExerciseHistoryIndex(groups: [
+            ExerciseHistoryGroup(names: [V2.bench], sessions: V2.benchHistory, best: HistorySet(190, 7))])
+        let session = "95x10@5, 150x10@2, 190x7@1, 170x8@2"
+        XCTAssertEqual(try bench(V2.analyze(session, history: overwritten, hitPR: true)).outcome, .pr)
+        XCTAssertNotEqual(try bench(V2.analyze(session, history: overwritten, hitPR: false)).outcome, .pr,
+                          "no PR flag and a record equal to today's set: nothing new")
     }
 
     func testSkippedExercisesAreFlaggedAndDeterministic() {
@@ -384,7 +455,8 @@ final class CoachPlanReviewTests: XCTestCase {
         let e = Exercise.create(workoutId: wid, name: V2.bench, muscleGroup: "Chest", orderIndex: 0, targetSets: 3,
                                 targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: "Target: 230 lbs — Drive your feet")
         let parsed = WorkoutSessionService.ParsedPlan(exercises: [e], setTargets: [:], cues: [e.id: "Elbows at 45 degrees"])
-        let applied = PlanProgressionApplier.apply(plan: parsed, history: V2.history, energy: 6, feedback: nil)
+        let applied = PlanProgressionApplier.apply(plan: parsed, history: V2.history, energy: 6, feedback: nil,
+                                                   coach: PlanCoachContext(now: V2.day(10, 21)))
         XCTAssertEqual(applied.exercises[0].coachNoteParts.message, "Drive your feet Cue: Elbows at 45 degrees")
         XCTAssertEqual(applied.exercises[0].coachNoteParts.weight, "185 lbs")
     }
@@ -397,9 +469,11 @@ final class CoachPlanReviewTests: XCTestCase {
             XCTAssertTrue(system.contains(needle), "missing \(needle)")
         }
         let post = service.buildSystemPrompt(profile: nil, task: .postWorkout)
-        for needle in ["next_target", "retry", "reduceAndRebuild", "holdOrSwap", "recurring_flags"] {
+        for needle in ["next_target", "retry", "reduceAndRebuild", "holdOrSwap", "recurring_flags", "afterBreak"] {
             XCTAssertTrue(post.contains(needle), "missing \(needle)")
         }
+        XCTAssertFalse(post.contains("good energy or a second miss"), "one miss with good energy is no longer strength loss")
+        XCTAssertTrue(post.contains("single miss"))
     }
 
     func testPlanMessageSendsDraftReviewsRecencyFocusAndConstraints() throws {
@@ -606,9 +680,9 @@ final class PlanDraftTests: XCTestCase {
             ExerciseHistoryGroup(names: ["Lat Pulldown"], sessions: [V2.session(10, 20, "120x10@1, 130x8@1")], best: nil)])
         let many = last + [ex("Cable Row Machine", "Back", 2), ex("Lat Pulldown", "Back", 3)]
         let full = PlanDraftBuilder.build(lastSessionExercises: many, history: groups, energy: 6, feedback: nil,
-                                          coach: PlanCoachContext(), timeMinutes: nil)
+                                          coach: PlanCoachContext(now: V2.day(10, 21)), timeMinutes: nil)
         let short = PlanDraftBuilder.build(lastSessionExercises: many, history: groups, energy: 6, feedback: nil,
-                                           coach: PlanCoachContext(), timeMinutes: 20)
+                                           coach: PlanCoachContext(now: V2.day(10, 21)), timeMinutes: 20)
         XCTAssertEqual(full.count, 4)
         XCTAssertLessThan(short.count, full.count)
         XCTAssertGreaterThanOrEqual(short.count, 2)
