@@ -23,6 +23,7 @@
 		096F2829000A33814E72522A /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492CBCCB2744643A11E2CD2A /* RootView.swift */; };
 		0B86A1D7B7CCAFA148D9AB43 /* us_standard.txt in Resources */ = {isa = PBXBuildFile; fileRef = 20761C092BBD98C6DD51DBE9 /* us_standard.txt */; };
 		0C5D87C8D4C07B35F4ED6BE8 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5DBF98B887DA0578EDB784F /* Motion.swift */; };
+		0C6C94B356A4319B93FE5758 /* AIMealLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 246D7E86B27F5DC425CCA6DD /* AIMealLogView.swift */; };
 		0E48038910ADB6D3DFD52554 /* LightstackWorkoutAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54DD5DD75219936F1B7104DD /* LightstackWorkoutAttributes.swift */; };
 		0EF63ED706BC100661384102 /* ExerciseEvidenceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEDA6D0D28BACEC369ECB4B6 /* ExerciseEvidenceViews.swift */; };
 		0FFCF3AECD793808673BECB4 /* ExerciseGuideLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D1A01F95E573C9E748BA21 /* ExerciseGuideLibrary.swift */; };
@@ -470,6 +471,7 @@
 		234696FEEBB3988DCEC407D9 /* IdealFormData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdealFormData.swift; sourceTree = "<group>"; };
 		23BC3EC52D64C159FB993891 /* Lightstack.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = Lightstack.xcdatamodel; sourceTree = "<group>"; };
 		246C661744A8F0F458CF4900 /* ValidationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationService.swift; sourceTree = "<group>"; };
+		246D7E86B27F5DC425CCA6DD /* AIMealLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIMealLogView.swift; sourceTree = "<group>"; };
 		27CC0DA7483E01270A4B9595 /* ProgressionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressionEngine.swift; sourceTree = "<group>"; };
 		27EB971C416640B0C0853C1F /* NutritionJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionJournal.swift; sourceTree = "<group>"; };
 		28675330F1C0CA3590572372 /* NutritionLabelParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionLabelParserTests.swift; sourceTree = "<group>"; };
@@ -1490,6 +1492,7 @@
 			children = (
 				A221000B8FF2E19819F0EF3D /* AddFoodFlowView.swift */,
 				0188A53253980511FDCD2320 /* AddMenuSheet.swift */,
+				246D7E86B27F5DC425CCA6DD /* AIMealLogView.swift */,
 				5D6F3F05C5ACCB21CEE322DF /* BarcodeFlowView.swift */,
 				2300BB1916AD6C53A167FC20 /* BrandedFoodViews.swift */,
 				8CEAC56F2AA453E748751B34 /* EntryEditView.swift */,
@@ -1797,6 +1800,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				20C725716380C5C10FB6145B /* AIContextSummary.swift in Sources */,
+				0C6C94B356A4319B93FE5758 /* AIMealLogView.swift in Sources */,
 				86E9C70C45DFEA1985FEC59C /* AIMealModels.swift in Sources */,
 				22907187AB69661362A5FE7E /* AIProvider.swift in Sources */,
 				82254DE9F2ED8873122792AF /* AIRequestOptions.swift in Sources */,

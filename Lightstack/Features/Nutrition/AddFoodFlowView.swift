@@ -1,7 +1,7 @@
 import SwiftUI
 
 private enum FlowSheet: Identifiable {
-    case servings(NutritionFood), plate, quickAdd, create, scan, barcode
+    case servings(NutritionFood), plate, quickAdd, create, scan, barcode, ai
     case branded(OpenFoodFactsProduct)
 
     var id: String {
@@ -12,6 +12,7 @@ private enum FlowSheet: Identifiable {
         case .create: return "create"
         case .scan: return "scan"
         case .barcode: return "barcode"
+        case .ai: return "ai"
         case .branded(let p): return "branded-\(p.barcode)"
         }
     }
@@ -289,6 +290,8 @@ struct AddFoodFlowView: View {
             .accessibilityLabel("Scan barcode")
             .accessibilityIdentifier("addfood.barcode")
             Menu {
+                Button { sheet = .ai } label: { Label("Ask AI", systemImage: "sparkles") }
+                    .accessibilityIdentifier("addfood.ai")
                 Button { sheet = .create } label: { Label("Create food", systemImage: "carrot") }
                     .accessibilityIdentifier("addfood.create")
                 Button { sheet = .quickAdd } label: { Label("Quick add", systemImage: "bolt") }
@@ -358,6 +361,8 @@ struct AddFoodFlowView: View {
             BarcodeFlowView(viewModel: viewModel, mealSlotId: slotId,
                             onPlate: { food, servings in addToPlate(food, servings) },
                             onLogged: { popAfterSheet = true })
+        case .ai:
+            AIMealLogView(viewModel: viewModel, initialText: query, initialSlotId: slotId)
         case .branded(let product):
             NavigationStack {
                 BrandedServingView(
