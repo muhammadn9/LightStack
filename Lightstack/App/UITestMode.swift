@@ -27,6 +27,12 @@ enum UITestMode {
         guard let i = args.firstIndex(of: "-uiTestingPendingSyncOps"), i + 1 < args.count else { return 0 }
         return Int(args[i + 1]) ?? 0
     }
+    /// `-uiTestAIDelay N` makes the fake meal estimator wait N seconds (cancel tests).
+    static var aiDelay: TimeInterval {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uiTestAIDelay"), i + 1 < args.count else { return 0 }
+        return TimeInterval(args[i + 1]) ?? 0
+    }
     /// `-uiTestingFakeRemote offline|online` replaces Supabase as the queue's remote and allows flushing.
     static var fakeRemoteMode: String? {
         let args = ProcessInfo.processInfo.arguments

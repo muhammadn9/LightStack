@@ -10,6 +10,7 @@ struct AddFoodRoute: Hashable {
 private enum JournalSheet: Identifiable {
     case addMenu, water, targets, settings
     case quickAdd(UUID?), createFood(UUID?), scan(UUID?), barcode(UUID?)
+    case ai(UUID?, String)
     case editEntry(FoodEntry)
 
     var id: String {
@@ -22,6 +23,7 @@ private enum JournalSheet: Identifiable {
         case .createFood: return "createFood"
         case .scan: return "scan"
         case .barcode: return "barcode"
+        case .ai: return "ai"
         case .editEntry(let entry): return "entry-\(entry.id.uuidString)"
         }
     }
@@ -140,7 +142,8 @@ struct JournalView: View {
                 onWater: { present(.water) },
                 onQuickTrack: { present(.quickAdd(viewModel.defaultSlotId)) },
                 onCreateFood: { present(.createFood(nil)) },
-                onBarcode: { present(.barcode(viewModel.defaultSlotId)) }
+                onBarcode: { present(.barcode(viewModel.defaultSlotId)) },
+                onAI: { query in present(.ai(viewModel.defaultSlotId, query)) }
             )
             .presentationDetents([.medium, .large])
         case .water:
@@ -157,6 +160,8 @@ struct JournalView: View {
             ScanFlowView(viewModel: viewModel, mealSlotId: slotId)
         case .barcode(let slotId):
             BarcodeFlowView(viewModel: viewModel, mealSlotId: slotId, onPlate: nil, onLogged: nil)
+        case .ai(let slotId, let text):
+            AIMealLogView(viewModel: viewModel, initialText: text, initialSlotId: slotId)
         case .editEntry(let entry):
             EntryEditView(viewModel: viewModel, entry: entry)
         }

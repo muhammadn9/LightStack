@@ -120,6 +120,16 @@ struct FoodEditView: View {
                         .accessibilityIdentifier("kitchen.edit.favourite")
                 }
                 .listRowBackground(AppTheme.surface)
+                if food.isAIEstimate {
+                    Section {
+                        AIEstimateBadge()
+                        if let confidence = food.aiConfidence {
+                            Text("Confidence: \(confidence.rawValue)").font(.footnote).foregroundStyle(AppTheme.textSecondary)
+                        }
+                        AISourceLinks(sources: food.aiSources, idPrefix: "kitchen.edit.source")
+                    } header: { Text("Estimated by AI") }
+                    .listRowBackground(AppTheme.surface)
+                }
                 Section {
                     NutritionField(title: "Calories", unit: "kcal", text: $kcal, id: "kitchen.edit.kcal")
                     NutritionField(title: "Protein", unit: "g", text: $protein, id: "kitchen.edit.protein")

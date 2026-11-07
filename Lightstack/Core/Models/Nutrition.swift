@@ -200,6 +200,19 @@ enum FoodSource: String, Codable {
     case quick, scan
     /// Saved from an Open Food Facts search or barcode lookup (wire value "off").
     case openFoodFacts = "off"
+    /// Estimated by the AI from a description or photo (wire value "ai"). Shown with an "AI estimate" marker.
+    case ai
+}
+
+/// A web page the AI's search grounded an estimate on. Taken from Gemini's grounding metadata, never invented.
+struct AIFoodSource: Codable, Equatable, Hashable {
+    var title: String
+    var url: String
+}
+
+/// How sure the AI was about an estimate.
+enum AIConfidence: String, Codable, CaseIterable {
+    case low, medium, high
 }
 
 /// How a diary entry was created.
@@ -319,20 +332,31 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
     var updatedAt: Date
     /// Product barcode (EAN/UPC digits) for foods that came from a barcode or branded search; nil otherwise.
     var barcode: String? = nil
+    /// Web sources the AI estimate was grounded on (empty for everything else).
+    var aiSources: [AIFoodSource] = []
+    /// The AI's confidence for `.ai` foods; nil otherwise.
+    var aiConfidence: AIConfidence? = nil
+
+    /// True for foods whose values are an AI estimate.
+    var isAIEstimate: Bool { source == .ai }
 
     static func make(userId: UUID, name: String, brand: String? = nil, servingLabel: String = "1 serving",
                      servingUnit: String = "serving", servingAmount: Double = 1, servingGrams: Double? = nil,
                      nutrients: NutrientValues, source: FoodSource = .quick, barcode: String? = nil,
+                     aiSources: [AIFoodSource] = [], aiConfidence: AIConfidence? = nil,
                      now: Date = Date()) -> NutritionFood {
         NutritionFood(id: UUID(), userId: userId, name: name, brand: brand, servingLabel: servingLabel,
                       servingUnit: servingUnit, servingAmount: servingAmount, servingGrams: servingGrams,
                       nutrients: nutrients, source: source, isFavorite: false, lastUsedAt: nil,
-                      createdAt: now, updatedAt: now, barcode: barcode)
+                      createdAt: now, updatedAt: now, barcode: barcode,
+                      aiSources: aiSources, aiConfidence: aiConfidence)
     }
 
     init(id: UUID, userId: UUID, name: String, brand: String?, servingLabel: String, servingUnit: String,
          servingAmount: Double, servingGrams: Double?, nutrients: NutrientValues, source: FoodSource,
-         isFavorite: Bool, lastUsedAt: Date?, createdAt: Date, updatedAt: Date, barcode: String? = nil) {
+         isFavorite: Bool, lastUsedAt: Date?, createdAt: Date, updatedAt: Date, barcode: String? = nil,
+         aiSources: [AIFoodSource] = [], aiConfidence: AIConfidence? = nil) {
+        self.aiSources = aiSources; self.aiConfidence = aiConfidence
         self.id = id; self.userId = userId; self.name = name; self.brand = brand; self.barcode = barcode
         self.servingLabel = servingLabel; self.servingUnit = servingUnit; self.servingAmount = servingAmount
         self.servingGrams = servingGrams; self.nutrients = nutrients; self.source = source
@@ -345,6 +369,9 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
         name = entity.name ?? ""
         brand = entity.brand
         barcode = entity.barcode
+        aiSources = entity.aiSources.flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode([AIFoodSource].self, from: $0) } ?? []
+        aiConfidence = entity.aiConfidence.flatMap { AIConfidence(rawValue: $0) }
         servingLabel = entity.servingLabel ?? "serving"
         servingUnit = entity.servingUnit ?? "serving"
         servingAmount = entity.servingAmount
@@ -360,6 +387,8 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
 
     func apply(to entity: CDFood) {
         entity.id = id; entity.userId = userId; entity.name = name; entity.brand = brand; entity.barcode = barcode
+        entity.aiSources = Self.encodeSources(aiSources)
+        entity.aiConfidence = aiConfidence?.rawValue
         entity.servingLabel = servingLabel; entity.servingUnit = servingUnit; entity.servingAmount = servingAmount
         entity.servingGrams = servingGrams.map { NSNumber(value: $0) }
         entity.kcal = nutrients.kcal; entity.protein = nutrients.protein
@@ -369,6 +398,14 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
         entity.createdAt = createdAt; entity.updatedAt = updatedAt
     }
 
+    /// JSON text for the Core Data attribute (nil when there are no sources).
+    private static func encodeSources(_ sources: [AIFoodSource]) -> String? {
+        guard !sources.isEmpty else { return nil }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return (try? encoder.encode(sources)).flatMap { String(data: $0, encoding: .utf8) }
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: NutritionWireKey.self)
         id = try c.decode(UUID.self, forKey: NutritionWireKey("id"))
@@ -376,6 +413,10 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
         name = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("name")) ?? ""
         brand = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("brand"))
         barcode = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("barcode"))
+        // Older server rows (before the AI migration) have neither column; a malformed value is dropped, not fatal.
+        aiSources = (try? c.decodeIfPresent([AIFoodSource].self, forKey: NutritionWireKey("ai_sources"))) ?? []
+        aiConfidence = (try? c.decodeIfPresent(String.self, forKey: NutritionWireKey("ai_confidence")))
+            .flatMap { $0 }.flatMap { AIConfidence(rawValue: $0) }
         servingLabel = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("serving_label")) ?? "serving"
         servingUnit = try c.decodeIfPresent(String.self, forKey: NutritionWireKey("serving_unit")) ?? "serving"
         servingAmount = try c.decodeIfPresent(Double.self, forKey: NutritionWireKey("serving_amount")) ?? 1
@@ -404,6 +445,10 @@ struct NutritionFood: NutritionRow, Identifiable, Equatable {
         try c.encode(name, forKey: NutritionWireKey("name"))
         if let brand { try c.encode(brand, forKey: NutritionWireKey("brand")) } else { try c.encodeNil(forKey: NutritionWireKey("brand")) }
         if let barcode { try c.encode(barcode, forKey: NutritionWireKey("barcode")) } else { try c.encodeNil(forKey: NutritionWireKey("barcode")) }
+        if aiSources.isEmpty { try c.encodeNil(forKey: NutritionWireKey("ai_sources")) }
+        else { try c.encode(aiSources, forKey: NutritionWireKey("ai_sources")) }
+        if let aiConfidence { try c.encode(aiConfidence.rawValue, forKey: NutritionWireKey("ai_confidence")) }
+        else { try c.encodeNil(forKey: NutritionWireKey("ai_confidence")) }
         try c.encode(servingLabel, forKey: NutritionWireKey("serving_label"))
         try c.encode(servingUnit, forKey: NutritionWireKey("serving_unit"))
         try c.encode(servingAmount, forKey: NutritionWireKey("serving_amount"))
