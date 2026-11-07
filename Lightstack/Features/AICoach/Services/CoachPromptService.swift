@@ -23,14 +23,23 @@ final class CoachPromptService {
     }
 
     /// Build the system prompt for one task with profile data injected.
+    /// - Parameter aiSetsWeights: the plan prompt for coach v3 (the coach writes every number) when true,
+    ///   the v2 review prompt (the app writes the numbers) when false.
     func buildSystemPrompt(profile: UserProfile?, task: PromptTask,
-                           restSeconds: Int = RestPreference.defaultSeconds) -> String {
+                           restSeconds: Int = RestPreference.defaultSeconds,
+                           aiSetsWeights: Bool = CoachPreferences.aiSetsWeights) -> String {
         var sections: [String]
         switch task {
         case .plan:
-            sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
-                        Self.reviewRules, Self.planFormat,
-                        "User's preferred rest: \(restSeconds) s (the floor for isolation and back-off rest)."]
+            if aiSetsWeights {
+                sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
+                            Self.writeRules, Self.planFormatV3,
+                            "User's preferred rest: \(restSeconds) s (a default for isolation and back-off sets; you set rest per set)."]
+            } else {
+                sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
+                            Self.reviewRules, Self.planFormat,
+                            "User's preferred rest: \(restSeconds) s (the floor for isolation and back-off rest)."]
+            }
         case .chat:
             sections = [Self.identityShort, profileLine(profile), Self.chatFormat, Self.modificationsRules]
         case .postWorkout:
@@ -61,6 +70,75 @@ final class CoachPromptService {
     strength or conditioning workout that fits time and energy.
     """
 
+    /// Coach v3: the coach writes every set. The app only enforces wide safety rails.
+    static let writeRules = """
+    YOUR JOB: WRITE TODAY'S PLAN
+    You choose every exercise, set, weight (lb), rep, RIR and rest. The app checks each exercise against wide safety rails; \
+    an exercise outside them is replaced by the app's rule-based baseline, so stay inside:
+    - Top weight at most +10% over that lift's last top set (small lifts: one increment).
+    - Never an estimated 1RM above the recent best +5%.
+    - More than 14 days since the lift: no increase; more than 28 days: start 5-10% lighter.
+    - RIR 0 on at most one set per exercise; most working sets RIR 1-2.
+    Structure: warm-ups (type "warmup") only where you judge the working weight needs them, usually the first heavy compound. \
+    2-4 working sets. No back-off unless it serves today's goal. Isolation 2-3 sets. Never pad sets.
+    Use the BRIEF (rep style, last RIR, e1RM trend, rest actually taken: long rests mean hard sets, muscle load, fuel). \
+    Each exercise gets one "reason" (max 15 words) naming the evidence.
+    Heavy compounds first; at most 10 hard sets per muscle; fit the time; keep the athlete's usual exercise selection \
+    (the APP BASELINE is the rule-based reference, not a limit). Balance movements and muscles; a missing one (e.g. rear delts on a pull day) is worth adding.
+    Respect PREVIOUS REVIEWS: a "retry" or "reduceAndRebuild" decision stands. ROLLING CONTEXT is background only. \
+    Use the athlete's notes (pain, form, equipment) to choose exercises.
+    Use COACH MEMORY: repeat what worked, change what missed, and say so in the reason.
+    ACTIVE GOALS: move toward them; follow today's step when given.
+    """
+
+    static let planFormatV3 = """
+    WORKOUT PLAN FORMAT
+    Return ONLY this JSON object, no markdown fences, no other text:
+    {"summary": "str, 1-2 sentences", "exercises": [{"name": "str", "muscle_group": "str", "superset": "str|null (e.g. A)", \
+    "cue": "str|null", "reason": "str", "sets": [{"type": "warmup|work", "weight": number (0 = bodyweight), "reps": int, \
+    "rir": int, "rest": int (seconds)}]}], "coaching_notes": "str"}
+    "exercises" is the final ordered list. "cue" only for a known form issue. Keep coaching_notes to one short sentence. \
+    Names: use the athlete's existing name from ATHLETE'S EXERCISE NAMES verbatim when it is the same movement; \
+    only invent a new name for a genuinely new movement. Never put "(per arm)" in a name.
+    Supersets: set "superset" only when asked or clearly useful; same label alternates sets, adjacent, max 4.
+    """
+
+    /// Gemini `responseSchema` for the coach v3 plan reply (see `planFormatV3`).
+    static let planResponseSchema: AIResponseSchema = {
+        func field(_ type: String, nullable: Bool = false) -> [String: Any] {
+            var f: [String: Any] = ["type": type]
+            if nullable { f["nullable"] = true }
+            return f
+        }
+        let setType: [String: Any] = ["type": "STRING", "enum": ["warmup", "work"]]
+        let setProperties: [String: Any] = [
+            "type": setType, "weight": field("NUMBER"), "reps": field("INTEGER"),
+            "rir": field("INTEGER"), "rest": field("INTEGER")
+        ]
+        let setItem: [String: Any] = [
+            "type": "OBJECT", "properties": setProperties, "required": ["type", "weight", "reps", "rir", "rest"]
+        ]
+        let exerciseProperties: [String: Any] = [
+            "name": field("STRING"), "muscle_group": field("STRING"),
+            "superset": field("STRING", nullable: true), "cue": field("STRING", nullable: true),
+            "reason": field("STRING"),
+            "sets": ["type": "ARRAY", "items": setItem] as [String: Any]
+        ]
+        let exerciseItem: [String: Any] = [
+            "type": "OBJECT", "properties": exerciseProperties, "required": ["name", "muscle_group", "reason", "sets"]
+        ]
+        let root: [String: Any] = [
+            "type": "OBJECT",
+            "properties": [
+                "summary": field("STRING"),
+                "exercises": ["type": "ARRAY", "items": exerciseItem] as [String: Any],
+                "coaching_notes": field("STRING")
+            ] as [String: Any],
+            "required": ["summary", "exercises"]
+        ]
+        return AIResponseSchema(root)
+    }()
+
     static let reviewRules = """
     YOUR JOB: REVIEW THE DRAFT
     The app already wrote a DRAFT plan from the athlete's last session and your own earlier reviews: \
@@ -73,6 +151,7 @@ final class CoachPromptService {
     4. Recovery: days since each muscle was trained (given); recently trained muscles get less.
     5. Energy, sleep and fuel, time available, constraints.
     6. Would a coach recommend this structure for the athlete's focus?
+    Use the BRIEF (lift style, effort, rest actually taken, muscle load, fuel) when judging the plan.
     Return concrete edits, each with a reason; if the draft is sound say so with no changes. \
     Respect PREVIOUS REVIEWS: a "retry" or "reduceAndRebuild" decision stands, and recurring flags should be addressed.
     ROLLING CONTEXT is background only; never restate its numbers as the plan. Use the athlete's notes (pain, form, equipment) to choose exercises.
@@ -91,6 +170,8 @@ final class CoachPromptService {
     for kept exercises the app fills the numbers.
     Change types: reorder (reflect it in the list order), swap ("exercise" is replaced by the lift named in detail), \
     drop, add, setCount ("sets" = working sets; never add heavy sets), loadAdjust ("percent" -15 to 5).
+    Names: for every exercise (kept, swapped or added), use the athlete's existing name from ATHLETE'S EXERCISE NAMES verbatim \
+    when it is the same movement; only invent a new name for a genuinely new movement. Never put "(per arm)" in a name.
     "cue" only for a known form issue. Keep coach_note and coaching_notes to one short sentence. \
     Supersets: set "superset" only when asked or clearly useful; same label alternates sets, adjacent, max 4.
     """
@@ -134,13 +215,19 @@ final class CoachPromptService {
     Reply with ONLY a JSON object:
     {"exercises": [{"name": "str (as given)", "notes": "1-3 sentences", "outcome": "pr|hold|regression|missed|new", \
     "next_target": {"weight": number, "reps": int, "note": "short goal"}, \
-    "miss": {"cause": "lowEnergy|poorRecovery|painOrForm|strengthLoss|unknown", "decision": "retry|reduceAndRebuild|holdOrSwap", "reason": "str"}}], \
+    "miss": {"cause": "lowEnergy|poorRecovery|painOrForm|strengthLoss|afterBreak|unknown", "decision": "retry|reduceAndRebuild|holdOrSwap", "reason": "str"}, \
+    "memory_note": "max 100 chars: what to remember about this lift; rewrite the previous note"}], \
     "overall_read": "2-3 sentences", "recurring_flags": ["str"]}
     - Use the app's PRESCRIBED vs ACTUAL analysis; do not recompute it. notes: what happened, PR/hold/regression, form flags.
-    - "miss" only for exercises marked MISSED. A miss is a learning moment: a one-off on a bad day (low energy, \
-    poor sleep or fuel) -> retry; good energy or a second miss in a row -> likely lost strength -> reduceAndRebuild \
-    (drop 5-10%); pain or form -> holdOrSwap. Check PREVIOUS REVIEWS for repeats.
+    - "miss" only for exercises marked MISSED. A miss is a learning moment: a single miss (a bad day, or a close \
+    miss even with good energy) -> retry the same target; a second miss in a row, "too heavy" or a miss by 3+ reps \
+    -> likely lost strength -> reduceAndRebuild (drop 5-10%); lighter than planned after the lift was skipped or \
+    not done for 2+ weeks -> afterBreak (a rebuild, not lost strength) -> retry from today's weight; pain or form \
+    -> holdOrSwap. Never call one miss "strength loss". Check PREVIOUS REVIEWS for repeats.
     - next_target: one specific goal per exercise, near what was lifted (within -15% to +5%).
+    - memory_note: one short line per exercise, kept for future plans (what works, what misses, rest, cues). \
+    Rewrite the PREVIOUS COACH NOTE with today's evidence instead of piling on; no quotes or line breaks.
+    - GOAL HIT: when the message says an athlete goal was reached, congratulate them in overall_read.
     - overall_read: session quality, energy, patterns. recurring_flags: issues seen across sessions \
     (skipped exercises, form, repeated misses).
     """
@@ -175,7 +262,9 @@ final class CoachPromptService {
         recentSessionExercises: [UUID: [Exercise]] = [:],
         recentLoggedSets: [UUID: [WorkoutSet]] = [:],
         bestSets: [String: (weightLbs: Double, reps: Int)] = [:],
-        coach: PlanPromptExtras? = nil
+        exerciseLibrary: [String] = [],
+        coach: PlanPromptExtras? = nil,
+        aiSetsWeights: Bool = CoachPreferences.aiSetsWeights
     ) -> String {
         let sanitizedType = sanitize(workoutType)
         let sanitizedNotes = notes.map { sanitize($0) } ?? ""
@@ -201,6 +290,13 @@ final class CoachPromptService {
             message += "\n\nROLLING CONTEXT (recent history summary):\n\(summary)"
         }
 
+        // Most-used first (the caller sorts by set count); capped to keep the prompt small.
+        let libraryNames = exerciseLibrary.map { sanitize($0) }.filter { !$0.isEmpty }.prefix(80)
+        if !libraryNames.isEmpty {
+            message += "\n\nATHLETE'S EXERCISE NAMES (most used first; reuse verbatim for the same movement):\n"
+                + libraryNames.joined(separator: "; ")
+        }
+
         if let latest = recentSessions.first {
             let index = ExerciseHistoryIndex(
                 sessions: recentSessions, exercises: recentSessionExercises,
@@ -218,7 +314,7 @@ final class CoachPromptService {
                     : logged.map { formatLoggedSet($0) }
                 var line = "\n  - \(ex.name)\(Self.perArmTag(ex)): " + formatted.joined(separator: ", ")
                 if ex.trackingType != .cardio, let best = index.group(for: ex.name)?.best {
-                    line += " | best \(String(format: "%g", best.weight))x\(best.reps)"
+                    line += " | all-time best \(String(format: "%g", best.weight))x\(best.reps)"
                 }
                 if let cue = clipped(ex.coachNoteParts.message, 100) { line += " | note: \(cue)" }
                 message += line
@@ -236,8 +332,14 @@ final class CoachPromptService {
             }
         }
 
-        if let coach { message += planReviewSections(coach, latest: recentSessions.first, logged: recentLoggedSets, exercises: recentSessionExercises) }
+        if let coach {
+            message += planReviewSections(coach, latest: recentSessions.first, logged: recentLoggedSets,
+                                          exercises: recentSessionExercises, aiSetsWeights: aiSetsWeights)
+        }
 
+        if coach != nil, aiSetsWeights {
+            return message + "\n\nWrite today's plan and return the JSON: the final ordered exercise list, each exercise with your sets (type, weight lb, reps, RIR, rest) and a one-line reason naming the evidence. The APP BASELINE is a reference, not a limit; stay inside the safety rails."
+        }
         if coach != nil {
             return message + "\n\nReview the DRAFT PLAN against your checklist and return the JSON: the final ordered exercise list plus your review. Keep every draft exercise you do not change, by its exact name; give set_targets only for new exercises."
         }
@@ -257,7 +359,9 @@ final class CoachPromptService {
         previousSummary: String? = nil,
         analysis: SessionAnalysis? = nil,
         previousReviews: [CoachReviewEntry] = [],
-        userNote: String? = nil
+        userNote: String? = nil,
+        previousNotes: [String: String] = [:],
+        achievedGoals: [CoachGoal] = []
     ) -> String {
         var lines: [String] = []
         if let previous = previousSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !previous.isEmpty {
@@ -292,6 +396,17 @@ final class CoachPromptService {
         if !previousReviews.isEmpty {
             lines.append("\nPREVIOUS REVIEWS (newest first, same workout type):")
             lines.append(contentsOf: previousReviews.map { reviewLine($0) })
+        }
+        let noteLines = previousNotes.sorted { $0.key < $1.key }.compactMap { entry -> String? in
+            clipped(entry.value, SessionAnalyzer.memoryNoteLimit).map { "- \(sanitize(entry.key)): \($0)" }
+        }
+        if !noteLines.isEmpty {
+            lines.append("\nPREVIOUS COACH NOTE (your own, per exercise; rewrite as memory_note):")
+            lines.append(contentsOf: noteLines)
+        }
+        if !achievedGoals.isEmpty {
+            lines.append("\nGOAL HIT today: " + achievedGoals.map { "\(sanitize($0.exerciseName)) \($0.targetText)" }.joined(separator: "; ")
+                + ". Congratulate the athlete in overall_read.")
         }
         lines.append("\nReturn the review JSON.")
         return lines.joined(separator: "\n")
@@ -370,6 +485,14 @@ final class CoachPromptService {
         var reviews: [CoachReviewEntry] = []
         var recency: [String: MuscleRecency] = [:]
         var now: Date = Date()
+        /// Compact per-exercise brief from `briefBlock`, appended after the draft.
+        var briefBlock: String?
+        /// The coach's past calls and notes; rendered as COACH MEMORY for the draft's exercises.
+        var memory: CoachMemoryIndex = CoachMemoryIndex()
+        /// Lifts outside the baseline whose memory is still worth showing (goal lifts, lifts of this workout type).
+        var memoryLifts: [CoachLiftRef] = []
+        /// ACTIVE GOALS block from `goalsBlock`, appended after COACH MEMORY (coach v3 only).
+        var goalsBlock: String?
     }
 
     static func focusText(_ focus: CoachFocus) -> String {
@@ -381,7 +504,8 @@ final class CoachPromptService {
     }
 
     private func planReviewSections(
-        _ coach: PlanPromptExtras, latest: Workout?, logged: [UUID: [WorkoutSet]], exercises: [UUID: [Exercise]]
+        _ coach: PlanPromptExtras, latest: Workout?, logged: [UUID: [WorkoutSet]], exercises: [UUID: [Exercise]],
+        aiSetsWeights: Bool
     ) -> String {
         var out = ""
 
@@ -412,9 +536,13 @@ final class CoachPromptService {
         }
 
         // Draft
-        out += "\n\nDRAFT PLAN (computed by the app from the last session and your targets; review it):"
+        out += aiSetsWeights
+            ? "\n\nAPP BASELINE (rule-based; use as a reference):"
+            : "\n\nDRAFT PLAN (computed by the app from the last session and your targets; review it):"
         if coach.draft.isEmpty {
-            out += "\n  none: no same-type history yet, so build the plan from scratch with set_targets for every exercise (3 sets for main lifts, 2 for isolation)."
+            out += aiSetsWeights
+                ? "\n  none: no same-type history yet, so build the plan from scratch (2-4 working sets for main lifts, 2-3 for isolation)."
+                : "\n  none: no same-type history yet, so build the plan from scratch with set_targets for every exercise (3 sets for main lifts, 2 for isolation)."
         }
         for (i, d) in coach.draft.enumerated() {
             let sets = d.result.sets.map { "\($0.role.label.lowercased()) \(String(format: "%g", $0.weight))x\($0.reps)@\($0.rir)" }
@@ -422,8 +550,194 @@ final class CoachPromptService {
             out += "\n  \(i + 1). \(sanitize(d.name)) (\(d.muscleGroup)): " + sets.joined(separator: " · ") + " | rest \(rests) s"
             out += "\n     why: \(d.result.rationale)"
         }
-        if let minutes = coach.estimatedMinutes { out += "\n  Estimated length of the draft: ~\(Int(minutes.rounded())) min." }
+        if let minutes = coach.estimatedMinutes {
+            out += "\n  Estimated length of the \(aiSetsWeights ? "baseline" : "draft"): ~\(Int(minutes.rounded())) min."
+        }
+        if let brief = coach.briefBlock, !brief.isEmpty { out += "\n\n" + brief }
+        if aiSetsWeights, let memory = memoryBlock(coach.memory, draft: coach.draft, extra: coach.memoryLifts) {
+            out += "\n\n" + memory
+        }
+        if aiSetsWeights, let goals = coach.goalsBlock, !goals.isEmpty { out += "\n\n" + goals }
         return out
+    }
+
+    // MARK: - Goals
+
+    /// ACTIVE GOALS: one line per goal with the app's e1RM numbers and today's step; nil with no goals.
+    func goalsBlock(_ items: [GoalPlanItem], now: Date = Date()) -> String? {
+        let shown = items.prefix(GoalPlanner.maxGoalsInPrompt)
+        guard !shown.isEmpty else { return nil }
+        var lines: [String] = []
+        for item in shown {
+            let goal = item.goal
+            var line = "\(sanitize(goal.exerciseName)) \(goal.targetText)"
+            if let deadline = goal.deadline { line += " by \(Self.goalDate.string(from: deadline))" }
+            if let a = item.assessment {
+                line += " (e1RM \(String(format: "%.0f", a.currentE1RM)) -> need \(String(format: "%.0f", a.targetE1RM)))"
+            } else {
+                line += " (no logged history)"
+            }
+            line += "."
+            if let step = item.step {
+                var text = clipped(step.text, 140) ?? ""
+                if text.isEmpty, let w = step.weight, let r = step.reps { text = "\(String(format: "%g", w))x\(r)" }
+                if !text.isEmpty {
+                    let label = item.stepIsToday ? "Today's step" : "Next step"
+                    let when = item.stepIsToday ? "" : (CoachGoal.parseDay(step.date).map { " (\(Self.goalDate.string(from: $0)))" } ?? "")
+                    line += " \(label)\(when): \(text)"
+                    if !text.hasSuffix(".") { line += "." }
+                }
+            }
+            if item.attemptToday, let a = item.assessment {
+                line += " Attempt day: warm-up ladder " + a.ladder.map(\.text).joined(separator: ", ")
+                    + " (the last is the attempt; the rails allow up to \(String(format: "%g", goal.targetWeight)))."
+            }
+            lines.append("- " + line)
+        }
+        return "ACTIVE GOALS:\n" + lines.joined(separator: "\n") + "\nBuild toward them within the rails."
+    }
+
+    private static let goalDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MM/dd"
+        return f
+    }()
+
+    // MARK: - Memory
+
+    /// COACH MEMORY: per draft exercise, the coach's past calls (oldest to newest) with what happened,
+    /// then its note. Exercises with nothing remembered are left out; nil when nothing is left.
+    /// `extra` lifts (goal lifts, lifts of this workout type) come first and are not in the baseline; at most
+    /// `maxLifts` lifts are shown in all.
+    func memoryBlock(_ memory: CoachMemoryIndex, draft: [DraftExercise], extra: [CoachLiftRef] = [],
+                     limit: Int = 3, maxLifts: Int = 8) -> String? {
+        guard !memory.isEmpty else { return nil }
+        var lifts: [CoachLiftRef] = []
+        for lift in extra + draft.map({ CoachLiftRef(name: $0.name, muscle: $0.muscleGroup) })
+        where !lifts.contains(where: { ExerciseNameResolver.isMatch($0.name, lift.name) }) {
+            lifts.append(lift)
+        }
+        var lines: [String] = []
+        var shownLifts = 0
+        for d in lifts {
+            if shownLifts >= maxLifts { break }
+            let m = memory.memory(for: d.name, muscle: d.muscle, limit: limit)
+            guard !m.isEmpty else { continue }
+            if !m.lines.isEmpty || m.note != nil { shownLifts += 1 }
+            let name = sanitize(d.name)
+            if !m.lines.isEmpty {
+                lines.append("- \(name): " + m.lines.reversed().map { memoryEntry($0) }.joined(separator: " | "))
+            } else if m.note != nil {
+                lines.append("- \(name):")
+            }
+            if let note = clipped(m.note, SessionAnalyzer.memoryNoteLimit) { lines.append("  note: \(note)") }
+            for related in m.related {
+                lines.append("- \(sanitize(related.decision.name)) (same muscle, other lift): " + memoryEntry(related))
+            }
+        }
+        guard !lines.isEmpty else { return nil }
+        return "COACH MEMORY (your past calls -> what happened; learn from misses):\n" + lines.joined(separator: "\n")
+    }
+
+    /// `10/28 210x5@1 "e1RM up, +5" -> 210x4@0 MISS`
+    private func memoryEntry(_ line: CoachMemoryLine) -> String {
+        let d = line.decision
+        var text = "\(Self.trendDate.string(from: line.date)) \(d.target.text)"
+        if let reason = clipped(d.reason, 80) { text += " \"\(reason)\"" }
+        if let outcome = d.outcome { text += " -> \(outcome.actualTop) \(outcome.hit ? "HIT" : "MISS")" }
+        return text
+    }
+
+    // MARK: - Brief
+
+    /// The compact BRIEF block (about 60 tokens per exercise): usual session length, fuel, muscle load
+    /// and one line per planned exercise. Parts without data are left out; nil when nothing is left.
+    func briefBlock(briefs: [ExerciseBrief], muscleLoad: [String: MuscleLoad],
+                    fuel: CoachFuelSummary?, usualMinutes: Int?) -> String? {
+        var lines: [String] = []
+
+        var header: [String] = []
+        if let usualMinutes { header.append("USUAL SESSION: \(usualMinutes) min (recent median).") }
+        if let fuel, let text = Self.fuelText(fuel) { header.append("FUEL: \(text)") }
+        if !header.isEmpty { lines.append(header.joined(separator: " ")) }
+
+        var muscles: [String] = []
+        for brief in briefs {
+            for muscle in brief.muscles where !muscles.contains(muscle) { muscles.append(muscle) }
+        }
+        let loadParts = muscles.prefix(8).compactMap { muscle -> String? in
+            guard let load = muscleLoad[muscle] else { return nil }
+            let days = load.daysSince.map { "\($0)d" } ?? "28d+"
+            return "\(sanitize(muscle)) \(Self.setCount(load.thisWeekSets))/\(Self.setCount(load.avgPrior3WeeksSets)) \(days)"
+        }
+        if !loadParts.isEmpty {
+            lines.append("MUSCLE LOAD (hard sets this wk / weekly avg prior 3 wks, days since): " + loadParts.joined(separator: " · "))
+        }
+
+        if !briefs.isEmpty {
+            lines.append("BRIEF (style, last top, e1RM trend, set-to-set rest actual vs prescribed heavy | light, muscles):")
+            for brief in briefs { lines.append("- " + briefLine(brief)) }
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    private func briefLine(_ brief: ExerciseBrief) -> String {
+        let reps = brief.repLow == brief.repHigh ? "\(brief.repLow)" : "\(brief.repLow)-\(brief.repHigh)"
+        var parts = ["\(brief.style.label) (\(reps))"]
+        parts.append("last " + Self.setText(brief.lastTop))
+        if let avg = brief.avgRIR { parts.append("avg RIR \(String(format: "%g", (avg * 10).rounded() / 10))") }
+        if !brief.e1RMTrend.isEmpty { parts.append("e1RM " + brief.e1RMTrend.map(String.init).joined(separator: ">")) }
+        if let rest = Self.restText(brief.rest) { parts.append(rest) }
+        if let base = brief.baselineTop {
+            parts.append("draft top \(String(format: "%g", base.weight))x\(base.reps)@\(base.rir)")
+        }
+        let muscleText = brief.muscles.map { sanitize($0) }.joined(separator: "+")
+        if !muscleText.isEmpty { parts.append(muscleText) }
+        return "\(sanitize(brief.name)): " + parts.joined(separator: ", ")
+    }
+
+    private static func setText(_ set: HistorySet) -> String {
+        "\(String(format: "%g", set.weight))x\(set.reps)" + (set.rir.map { "@\($0)" } ?? "")
+    }
+
+    private static func setCount(_ value: Double) -> String {
+        String(format: "%g", (value * 2).rounded() / 2)
+    }
+
+    private static func clock(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private static func restSide(_ actual: Int?, _ prescribed: Int?) -> String {
+        guard let actual else { return "-" }
+        return clock(actual) + (prescribed.map { " (rx \(clock($0)))" } ?? "")
+    }
+
+    /// "rest 2:50 (rx 2:00) | 1:30 (rx 1:30)": heavy then light; nil with no samples.
+    private static func restText(_ rest: RestStats) -> String? {
+        guard !rest.isEmpty, rest.heavyActual != nil || rest.lightActual != nil else { return nil }
+        if rest.lightActual == nil { return "rest " + restSide(rest.heavyActual, rest.heavyPrescribed) }
+        return "rest " + restSide(rest.heavyActual, rest.heavyPrescribed) + " | " + restSide(rest.lightActual, rest.lightPrescribed)
+    }
+
+    /// "yesterday 2450/2600 kcal, protein 150/180 g; goal lose 0.5 lb/wk." or nil with nothing to say.
+    static func fuelText(_ fuel: CoachFuelSummary) -> String? {
+        func amount(_ value: Double?, _ target: Double?) -> String? {
+            guard let value else { return nil }
+            let v = String(format: "%.0f", value)
+            return target.map { "\(v)/\(String(format: "%.0f", $0))" } ?? v
+        }
+        var intake: [String] = []
+        if let kcal = amount(fuel.yesterdayKcal, fuel.targetKcal) { intake.append("yesterday \(kcal) kcal") }
+        if let protein = amount(fuel.proteinG, fuel.targetProteinG) { intake.append("protein \(protein) g") }
+        var text = intake.joined(separator: ", ")
+        if let goal = fuel.goal, !goal.isEmpty {
+            var goalText = "goal \(goal)"
+            if let rate = fuel.weeklyRate, rate > 0, goal != "maintain" { goalText += " \(String(format: "%g", rate)) lb/wk" }
+            text += text.isEmpty ? goalText : "; " + goalText
+        }
+        return text.isEmpty ? nil : text + "."
     }
 
     /// One block per past review: overall read, per-exercise outcome/decision/target, flags.

@@ -14,6 +14,14 @@ struct ChatMessage: Identifiable {
         self.content = content
         self.timestamp = Date()
     }
+
+    /// Restores a saved message with its original id and time.
+    init(id: UUID, role: ChatRole, content: String, timestamp: Date) {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.timestamp = timestamp
+    }
 }
 
 enum ChatRole {

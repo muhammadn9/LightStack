@@ -6,10 +6,33 @@ struct ExerciseHistoryGroup {
     var names: [String]
     /// Newest first.
     var sessions: [HistorySession]
-    /// Best set on record, when known.
+    /// All-time best set on record, when known. Information only: caps use `recentBest`.
     var best: HistorySet?
+    /// Date of the newest same-type session in the history window, whether or not it contained
+    /// this lift. A later date than `sessions.first` means the lift was not done last time.
+    var latestSessionDate: Date? = nil
 
     var displayName: String { names.first ?? "" }
+
+    /// How many of the newest sessions of this lift count as "recent".
+    static let recentWindow = 3
+
+    /// Best top set (by e1RM) among the top sets of the last `recentWindow` sessions of this lift.
+    var recentBest: HistorySet? {
+        sessions.prefix(Self.recentWindow).compactMap { session in
+            ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups(session.sets).working.filter { $0.weight > 0 })
+        }.max { $0.e1RM < $1.e1RM }
+    }
+
+    /// What caps and limits measure against: the recent best, with the all-time record only as a
+    /// fallback when there is no recent history.
+    var capBest: HistorySet? { recentBest ?? best }
+
+    /// True when a newer same-type session exists in which this lift was not performed.
+    var skippedLastSession: Bool {
+        guard let latest = latestSessionDate, let last = sessions.first?.date else { return false }
+        return latest > last.addingTimeInterval(3600)
+    }
 }
 
 /// Recent same-type sessions regrouped per exercise. Built from `CoachContext` data.
@@ -52,7 +75,8 @@ struct ExerciseHistoryIndex {
                     built.append(ExerciseHistoryGroup(
                         names: [ex.name],
                         sessions: [HistorySession(date: workout.date, sets: sets, feedback: feedback)],
-                        best: nil
+                        best: nil,
+                        latestSessionDate: sessions.first?.date
                     ))
                 }
             }
@@ -62,6 +86,7 @@ struct ExerciseHistoryIndex {
                 .map { HistorySet($0.weightLbs, $0.reps) }
                 .max { $0.e1RM < $1.e1RM }
             built[i].best = recorded ?? Self.bestLogged(in: built[i].sessions)
+            built[i].latestSessionDate = sessions.first?.date
         }
         groups = built
     }

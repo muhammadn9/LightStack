@@ -38,7 +38,7 @@ Deno.test("output tokens are clamped to the task", () => {
   eq(clampOutputTokens("chat", 8192), 1000);
   eq(clampOutputTokens("chat", 10), 10);
   eq(clampOutputTokens("chat", -5), 1);
-  eq(clampOutputTokens("plan", undefined), 6144);
+  eq(clampOutputTokens("plan", undefined), 8192);
   eq(clampOutputTokens("other", 99999), 1024);
 });
 
@@ -47,7 +47,13 @@ Deno.test("thinking is clamped and defaulted by the server", () => {
   eq(clampThinking("chat", "gemini-3.5-flash", { thinkingLevel: "low" }), { thinkingLevel: "minimal" });
   eq(clampThinking("plan", "gemini-2.5-flash", { thinkingBudget: 1024 }), { thinkingBudget: 1024 });
   eq(clampThinking("plan", "gemini-3.5-flash", { thinkingLevel: "low" }), { thinkingLevel: "low" });
-  eq(clampThinking("plan", "gemini-3.5-flash", null), { thinkingLevel: "low" });
+  eq(clampThinking("plan", "gemini-3.5-flash", null), { thinkingLevel: "medium" });
+  // Coach v3: plan may use medium / budget 4096; other tasks are clamped down.
+  eq(clampThinking("plan", "gemini-3.5-flash", { thinkingLevel: "medium" }), { thinkingLevel: "medium" });
+  eq(clampThinking("plan", "gemini-2.5-flash", { thinkingBudget: 4096 }), { thinkingBudget: 4096 });
+  eq(clampThinking("chat", "gemini-3.5-flash", { thinkingLevel: "medium" }), { thinkingLevel: "minimal" });
+  eq(clampThinking("monthPlan", "gemini-2.5-flash", { thinkingBudget: 4096 }), { thinkingBudget: 0 });
+  eq(clampOutputTokens("plan", 8192), 8192);
   eq(clampThinking("chat", "gemini-2.5-flash", null), { thinkingBudget: 0 });
 });
 
@@ -107,6 +113,7 @@ Deno.test("legacy: only for a missing task, only when allowed; keeps old limits 
   eq(chooseModel("legacy", "gemini-3.5-flash", false), "gemini-3.5-flash");
   eq(clampOutputTokens("legacy", 8192), 8192);
   eq(clampThinking("legacy", "gemini-2.5-flash", { thinkingBudget: 1024 }), { thinkingBudget: 1024 });
+  eq(clampThinking("legacy", "gemini-2.5-flash", { thinkingBudget: 4096 }), { thinkingBudget: 4096 });
 });
 
 Deno.test("contents are text only; media, file URIs and extra keys are refused", () => {

@@ -5,8 +5,11 @@
 // - Every call passes the per-user rate limit (check_rate_limit); if that check
 //   fails for any reason the request is refused (fail closed).
 // - The request is forwarded with the key in a header, not the URL.
-// - thinkingConfig is validated (budget 0..1024 or level minimal/low); anything else is a 400.
-// - The upstream call times out after 45s (504). Requests that fail upstream with a
+// - thinkingConfig is validated (budget 0..4096 or level minimal/low/medium); anything else is a 400.
+//   The task table then clamps it (tasks.ts maxThinking).
+// - responseSchema is passed through only with responseMimeType application/json, as a plain
+//   object of at most 6000 JSON characters; otherwise it is dropped.
+// - The upstream call times out after 55s (504). Requests that fail upstream with a
 //   5xx or never reach it are refunded (refund_rate_limit); a missing RPC is tolerated.
 //   A timeout is NOT refunded and is charged its reservation (Gemini may still bill it).
 //
@@ -34,9 +37,10 @@ import {
 } from "./tasks.ts";
 
 const MAX_BODY_CHARS = 200_000;
-const UPSTREAM_TIMEOUT_MS = 45_000;
-const MAX_THINKING_BUDGET = 1024;
-const ALLOWED_THINKING_LEVELS = new Set(["minimal", "low"]);
+const UPSTREAM_TIMEOUT_MS = 55_000;
+const MAX_THINKING_BUDGET = 4096;
+const MAX_SCHEMA_CHARS = 6000;
+const ALLOWED_THINKING_LEVELS = new Set(["minimal", "low", "medium"]);
 
 /** A refusal from this function (not from Gemini). The app shows the message as-is. */
 function error(message: string, status: number, code = "proxy_error"): Response {
@@ -47,7 +51,7 @@ function error(message: string, status: number, code = "proxy_error"): Response 
 }
 
 /**
- * Accepts only {thinkingBudget: integer 0...1024} or {thinkingLevel: "minimal" | "low"}
+ * Accepts only {thinkingBudget: integer 0...4096} or {thinkingLevel: "minimal" | "low" | "medium"}
  * (what the app sends). Returns the cleaned config, or null if it is anything else.
  */
 function validateThinkingConfig(raw: unknown): Record<string, unknown> | null {
@@ -82,7 +86,14 @@ function sanitizeConfig(
   if (typeof r.temperature === "number") {
     config.temperature = Math.min(Math.max(r.temperature, 0), 2);
   }
-  if (r.responseMimeType === "application/json") config.responseMimeType = "application/json";
+  if (r.responseMimeType === "application/json") {
+    config.responseMimeType = "application/json";
+    const schema = r.responseSchema;
+    if (typeof schema === "object" && schema !== null && !Array.isArray(schema) &&
+        JSON.stringify(schema).length <= MAX_SCHEMA_CHARS) {
+      config.responseSchema = schema;
+    }
+  }
   return config;
 }
 
@@ -142,7 +153,7 @@ Deno.serve(async (req: Request) => {
       (rawConfig as Record<string, unknown>).thinkingConfig !== undefined) {
     requestedThinking = validateThinkingConfig((rawConfig as Record<string, unknown>).thinkingConfig);
     if (!requestedThinking) {
-      return error("Invalid thinkingConfig: use thinkingBudget 0-1024 or thinkingLevel minimal/low", 400, "invalid_request");
+      return error("Invalid thinkingConfig: use thinkingBudget 0-4096 or thinkingLevel minimal/low/medium", 400, "invalid_request");
     }
   }
   const thinking = clampThinking(taskName, model, requestedThinking);

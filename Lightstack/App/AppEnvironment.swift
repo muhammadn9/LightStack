@@ -88,6 +88,25 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     /// Owners whose dead-lettered operations were already revived in this launch.
     private var revivedOwners = Set<UUID>()
 
+    // MARK: - Coach fuel
+
+    /// Yesterday's intake against target plus the nutrition goal, for the coach's plan brief.
+    /// nil when there is neither a logged day nor a finished goal setup.
+    static func fuelSummary(_ nutrition: NutritionRepository, userId: UUID, now: Date) -> CoachFuelSummary? {
+        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now) else { return nil }
+        let day = nutrition.dailyNutrition(userId: userId, on: yesterday)
+        let settings = nutrition.goalSettings(userId: userId).flatMap { $0.isComplete ? $0 : nil }
+        let logged = !day.entries.isEmpty
+        guard logged || settings != nil else { return nil }
+        return CoachFuelSummary(
+            yesterdayKcal: logged ? day.totals.kcal : nil,
+            targetKcal: day.target?.kcal,
+            proteinG: logged ? day.totals.protein : nil,
+            targetProteinG: day.target?.protein,
+            goal: settings?.goal.rawValue,
+            weeklyRate: settings?.weeklyRateLbs)
+    }
+
     // MARK: - Init
 
     @MainActor
@@ -210,10 +229,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             localStorage: localStorageService,
             offlineQueueManager: offlineQueueManager
         )
-        self.nutritionRepository = NutritionRepository(
+        let nutrition = NutritionRepository(
             localStorage: localStorageService,
             offlineQueueManager: offlineQueueManager
         )
+        self.nutritionRepository = nutrition
         var foodDatabase: OpenFoodFactsServicing = OpenFoodFactsService()
         #if DEBUG
         if UITestMode.isActive { foodDatabase = FakeOpenFoodFactsService.uiTesting() }
@@ -225,7 +245,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             profileRepository: profileRepository,
             workoutRepository: workoutRepository,
             localStorage: localStorageService,
-            validationService: validationService
+            validationService: validationService,
+            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) }
         )
 
         self.workoutSessionService = WorkoutSessionService(
@@ -357,12 +378,36 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     }
 
     func makeCoachChatViewModel() -> CoachChatViewModel {
-        CoachChatViewModel(
+        let repository = workoutRepository
+        return CoachChatViewModel(
             aiServiceManager: aiServiceManager,
             coachPromptService: coachPromptService,
             coachContextBuilder: coachContextBuilder,
-            validationService: validationService
+            validationService: validationService,
+            liftHistory: { userId, exercise in
+                AppEnvironment.goalHistory(repository, userId: userId, exercise: exercise)
+            },
+            loggedLiftNames: { userId in
+                repository.fetchDistinctExerciseNames(userId: userId).map(\.name)
+            }
         )
+    }
+
+    /// The best working set of each of the lift's sessions in the last half year, for goal checks.
+    private static func goalHistory(_ repository: WorkoutRepository, userId: UUID, exercise: String) -> [GoalAssessor.Point] {
+        let cutoff = Date().addingTimeInterval(-180 * 86_400)
+        var sessions: [HistorySession] = []
+        for workout in repository.fetchRecentWorkouts(userId: userId, limit: 80) where workout.date >= cutoff {
+            var sets: [HistorySet] = []
+            for item in repository.fetchExercises(workoutId: workout.id)
+            where item.trackingType != .cardio
+                && (item.name.lowercased() == exercise.lowercased() || ExerciseNameResolver.isMatch(item.name, exercise)) {
+                let logged = repository.fetchSets(exerciseId: item.id).sorted { $0.setNumber < $1.setNumber }
+                sets += logged.map { HistorySet($0.weightLbs, $0.reps, rir: $0.rir) }
+            }
+            if !sets.isEmpty { sessions.append(HistorySession(date: workout.date, sets: sets)) }
+        }
+        return GoalAssessor.topPoints(from: sessions)
     }
 
     @MainActor func makeNutritionViewModel() -> NutritionViewModel {

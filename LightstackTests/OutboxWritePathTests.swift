@@ -625,7 +625,11 @@ final class OutboxWritePathTests: XCTestCase {
         workoutRepo.createWorkout(w)
         let e = makeExercise(w.id, name: "Leg extension machine")
         workoutRepo.saveExercises([e], workoutId: w.id)
-        let merge = ExerciseMergeService(localStorage: stack.storage, offlineQueueManager: stack.queue, prRepository: prRepo)
+        let suiteName = "test-\(UUID())"
+        guard let isolated = UserDefaults(suiteName: suiteName) else { return XCTFail("no isolated defaults") }
+        defer { isolated.removePersistentDomain(forName: suiteName) }
+        let merge = ExerciseMergeService(localStorage: stack.storage, offlineQueueManager: stack.queue,
+                                         prRepository: prRepo, defaults: isolated)
         XCTAssertEqual(merge.merge(userId: userId, names: ["Leg extension machine", "Leg Extension"], keep: "Leg Extension"), 1)
         let types = await queuedTypes()
         XCTAssertTrue(types.contains(.renameExercises))

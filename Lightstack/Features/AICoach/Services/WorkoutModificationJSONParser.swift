@@ -401,3 +401,53 @@ struct WorkoutModificationJSONParser {
         }
     }
 }
+
+// MARK: - Goal block
+
+extension WorkoutModificationJSONParser {
+
+    /// Reads the `{"goal": {...}}` block the coach writes once the athlete agrees to a goal.
+    /// nil when there is no block, or it has no usable lift and weight. The goal comes back
+    /// active, created `now`, with no assessment (the caller attaches that).
+    func parseGoal(_ text: String, now: Date = Date()) -> CoachGoal? {
+        var candidates: [String] = []
+        if let fenced = extractJSONBlock(from: text) { candidates.append(fenced) }
+        // An unfenced object: the one that holds the "goal" key.
+        if let keyRange = text.range(of: "\"goal\""),
+           let open = text[..<keyRange.lowerBound].lastIndex(of: "{"),
+           let close = matchingBrace(in: text[open...], from: open) {
+            candidates.append(String(text[open...close]))
+        }
+        for candidate in candidates {
+            if let goal = Self.goal(fromJSON: candidate, now: now) { return goal }
+        }
+        return nil
+    }
+
+    private static func goal(fromJSON json: String, now: Date) -> CoachGoal? {
+        guard let object = JSONReply.object(from: json),
+              let raw = object["goal"] as? [String: Any],
+              let exercise = JSONReply.string(raw["exercise"]),
+              let weight = JSONReply.double(raw["weight"]), weight > 0 else { return nil }
+        let reps = max(1, JSONReply.int(raw["reps"]) ?? 1)
+
+        var steps: [CoachGoalStep] = []
+        for item in (raw["steps"] as? [[String: Any]]) ?? [] {
+            let stepWeight = JSONReply.double(item["weight"])
+            let stepReps = JSONReply.int(item["reps"])
+            var stepText = JSONReply.string(item["text"]) ?? ""
+            if stepText.isEmpty, let stepWeight {
+                stepText = "\(String(format: "%g", stepWeight))x\(stepReps ?? 1)"
+            }
+            guard !stepText.isEmpty else { continue }
+            let attempt = (item["attempt"] as? Bool) ?? (item["attempt"] as? NSNumber)?.boolValue ?? false
+            steps.append(CoachGoalStep(date: JSONReply.string(item["date"]), text: stepText,
+                                       weight: stepWeight, reps: stepReps, attempt: attempt))
+            if steps.count >= 12 { break }
+        }
+
+        return CoachGoal(exerciseName: exercise, targetWeight: weight, targetReps: reps,
+                         deadline: CoachGoal.parseDay(JSONReply.string(raw["deadline"])),
+                         createdAt: now, status: .active, steps: steps, assessment: nil)
+    }
+}

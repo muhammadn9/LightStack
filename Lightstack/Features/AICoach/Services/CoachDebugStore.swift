@@ -16,6 +16,20 @@ struct CoachPlanSnapshot: Codable, Equatable {
     var adjustments: [String]
     /// The coach's structure review (verdict, proposed changes and what the app did with them).
     var review: CoachPlanReview? = nil
+    /// Per exercise: who set the numbers and why (the coach's reason, or the safety rail that replaced it).
+    /// nil on snapshots saved before coach v3.
+    var reasons: [CoachExerciseReason]? = nil
+}
+
+/// One line of "Coach's reasons": an exercise, whether the coach or a safety rail set it, and the text.
+struct CoachExerciseReason: Codable, Equatable {
+    var exercise: String
+    /// True when the rule-based baseline replaced the coach's sets (a safety rail fired).
+    var railFallback: Bool
+    var text: String
+
+    /// The label shown next to the reason.
+    var label: String { railFallback ? "Safety rail: rule-based" : "Set by the coach" }
 }
 
 /// Keeps the last plan request for a "What the coach saw" screen. In memory plus
@@ -87,12 +101,14 @@ final class CoachDebugStore {
             userMessage: redactContent ? Self.redacted(userMessage) : userMessage, rawResponse: nil, adjustments: [], review: nil))
     }
 
-    func recordResponse(userId: UUID, raw: String, adjustments: [String], review: CoachPlanReview? = nil) {
+    func recordResponse(userId: UUID, raw: String, adjustments: [String], review: CoachPlanReview? = nil,
+                        reasons: [CoachExerciseReason]? = nil) {
         lock.lock(); defer { lock.unlock() }
         guard var snapshot = current(), snapshot.userId == userId.uuidString else { return }
         snapshot.rawResponse = redactContent ? Self.redacted(raw) : raw
         snapshot.adjustments = redactContent ? [] : adjustments
         snapshot.review = redactContent ? nil : review
+        snapshot.reasons = reasons
         store(snapshot)
     }
 

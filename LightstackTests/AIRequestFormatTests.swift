@@ -114,6 +114,73 @@ final class AIRequestFormatTests: XCTestCase {
         let error = GeminiService.proxyError(429, "m", code: "budget_user_daily")
         XCTAssertEqual(error.userInfo[GeminiService.proxyErrorCodeKey] as? String, "budget_user_daily")
     }
+
+    // MARK: - Thinking and schema
+
+    func testMediumThinkingMapsPerModel() {
+        XCTAssertEqual(GeminiService.thinkingConfig(forModel: "gemini-3.5-flash", effort: .medium) as? [String: String],
+                       ["thinkingLevel": "medium"])
+        XCTAssertEqual(GeminiService.thinkingConfig(forModel: "gemini-2.5-flash", effort: .medium) as? [String: Int],
+                       ["thinkingBudget": 4096])
+    }
+
+    func testPlanTaskUsesMediumThinkingAndFullTokenCap() {
+        let options = AIRequestOptions.forTask(.plan)
+        XCTAssertEqual(options.thinking, .medium)
+        XCTAssertEqual(options.maxOutputTokens, 8192)
+        XCTAssertNil(options.schema)
+    }
+
+    private let sampleSchema = AIResponseSchema([
+        "type": "OBJECT",
+        "properties": ["title": ["type": "STRING"]]
+    ])
+
+    func testSchemaIsSentWhenSetAndJSONExpected() {
+        let body = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: true,
+            options: AIRequestOptions(schema: sampleSchema))
+        let config = body["generationConfig"] as? [String: Any]
+        let sent = config?["responseSchema"] as? [String: Any]
+        XCTAssertEqual(sent?["type"] as? String, "OBJECT")
+    }
+
+    func testNoSchemaWhenNotSetOrNotJSON() {
+        let plain = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: true)
+        XCTAssertNil((plain["generationConfig"] as? [String: Any])?["responseSchema"])
+
+        let prose = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: false,
+            options: AIRequestOptions(schema: sampleSchema))
+        XCTAssertNil((prose["generationConfig"] as? [String: Any])?["responseSchema"])
+    }
+
+    // MARK: - Coach v3 plan schema
+
+    func testPlanSchemaIsSmallAndDescribesTheCoachReply() throws {
+        let schema = CoachPromptService.planResponseSchema
+        let data = try JSONSerialization.data(withJSONObject: schema.definition)
+        XCTAssertLessThan(data.count, 6000)
+        let text = String(decoding: data, as: UTF8.self)
+        for key in ["summary", "exercises", "coaching_notes", "muscle_group", "superset", "cue", "reason", "sets",
+                    "weight", "reps", "rir", "rest", "warmup", "work"] {
+            XCTAssertTrue(text.contains("\"\(key)\""), "schema is missing \(key)")
+        }
+    }
+
+    func testPlanRequestCarriesTheSchemaAsResponseSchema() {
+        var options = AIRequestOptions.forTask(.plan)
+        options.schema = CoachPromptService.planResponseSchema
+        let body = GeminiService().buildChatRequestBody(
+            systemPrompt: "system", messages: messages, expectsJSON: true, options: options)
+        let config = body["generationConfig"] as? [String: Any]
+        let sent = config?["responseSchema"] as? [String: Any]
+        XCTAssertEqual(sent?["type"] as? String, "OBJECT")
+        let properties = sent?["properties"] as? [String: Any]
+        XCTAssertNotNil(properties?["exercises"])
+        XCTAssertEqual(config?["maxOutputTokens"] as? Int, 8192)
+    }
 }
 
 /// Records the request id each call carried. Own type and defaults key so it never clashes with other test stubs.

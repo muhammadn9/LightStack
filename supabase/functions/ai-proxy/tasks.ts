@@ -8,7 +8,9 @@ export const CHEAP_MODEL = "gemini-2.5-flash";
 export const CURRENT_MODEL = "gemini-3.5-flash";
 export const ALL_MODELS = [CURRENT_MODEL, CHEAP_MODEL];
 
-export type ThinkingEffort = "minimal" | "low";
+export type ThinkingEffort = "minimal" | "low" | "medium";
+
+const RANK: Record<ThinkingEffort, number> = { minimal: 0, low: 1, medium: 2 };
 
 export interface TaskSpec {
   /** Models this task may use. Anything else is rejected (400 invalid_model). */
@@ -28,7 +30,8 @@ export interface TaskSpec {
 export const TASKS: Record<TaskName, TaskSpec> = {
   plan: {
     models: ALL_MODELS, defaultModel: CURRENT_MODEL,
-    maxInputChars: 150_000, maxOutputTokens: 6144, maxThinking: "low", reserveUsd: 0.03,
+    // Coach v3: 8192 output tokens (thinking counts toward them) and "medium" thinking, with a responseSchema.
+    maxInputChars: 150_000, maxOutputTokens: 8192, maxThinking: "medium", reserveUsd: 0.04,
   },
   chat: {
     models: ALL_MODELS, defaultModel: CHEAP_MODEL,
@@ -52,10 +55,10 @@ export const TASKS: Record<TaskName, TaskSpec> = {
   },
   // Old app builds that send no `task`. Only reachable when AI_ALLOW_LEGACY_CLIENTS is on; a client can
   // never ask for it by name. Old behaviour (both models, 8192 out, 200k body cap, thinking up to 1024
-  // tokens / "low"), reserved like a plan. Budgets, kill switch, ledger and rate limits still apply.
+  // tokens / "low" / coach v3 "medium" up to 4096), reserved like a plan. Budgets, kill switch, ledger and rate limits still apply.
   legacy: {
     models: ALL_MODELS, defaultModel: CURRENT_MODEL,
-    maxInputChars: 200_000, maxOutputTokens: 8192, maxThinking: "low", reserveUsd: 0.03,
+    maxInputChars: 200_000, maxOutputTokens: 8192, maxThinking: "medium", reserveUsd: 0.04,
   },
 };
 
@@ -82,7 +85,9 @@ export function chooseModel(task: TaskName, requested: string, routingEnabled: b
 
 /** Gemini 3.x takes a level, 2.5 takes a token budget. */
 export function thinkingFor(model: string, effort: ThinkingEffort): Record<string, unknown> {
-  if (model.startsWith("gemini-2.5")) return { thinkingBudget: effort === "low" ? 1024 : 0 };
+  if (model.startsWith("gemini-2.5")) {
+    return { thinkingBudget: effort === "medium" ? 4096 : effort === "low" ? 1024 : 0 };
+  }
   return { thinkingLevel: effort };
 }
 
@@ -99,11 +104,12 @@ export function clampThinking(
   if (!requested) return thinkingFor(model, max);
   let effort: ThinkingEffort;
   if (typeof requested.thinkingBudget === "number") {
-    effort = requested.thinkingBudget > 0 ? "low" : "minimal";
+    const b = requested.thinkingBudget;
+    effort = b > 1024 ? "medium" : b > 0 ? "low" : "minimal";
   } else {
-    effort = requested.thinkingLevel === "low" ? "low" : "minimal";
+    effort = requested.thinkingLevel === "medium" ? "medium" : requested.thinkingLevel === "low" ? "low" : "minimal";
   }
-  if (effort === "low" && max === "minimal") effort = "minimal";
+  if (RANK[effort] > RANK[max]) effort = max;
   return thinkingFor(model, effort);
 }
 

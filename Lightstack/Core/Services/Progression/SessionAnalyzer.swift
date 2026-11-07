@@ -6,6 +6,10 @@ struct LoggedExercise: Equatable {
     var muscleGroup: String
     /// In the order they were done (warm-ups included).
     var sets: [HistorySet]
+    /// The app flagged a set of this lift as a new personal record while it was logged, i.e. it beat
+    /// the PR as it stood BEFORE today (the stored record is updated mid-workout, so comparing against
+    /// it at the end of the session would compare today's set with itself).
+    var hitPR: Bool = false
 }
 
 /// Prescribed against actual for one exercise, worked out in Swift so the model does not have to.
@@ -79,14 +83,15 @@ enum SessionAnalyzer {
         reasons: [String: String],
         previous: [CoachReviewEntry],
         history: ExerciseHistoryIndex,
-        focus: CoachFocus
+        focus: CoachFocus,
+        now: Date? = nil
     ) -> SessionAnalysis {
         var analyses: [ExerciseAnalysis] = []
         for ex in logged where !ex.sets.isEmpty {
             let pres = prescription.first { ExerciseNameResolver.isMatch($0.name, ex.name) }
             let reason = reasons[ex.name] ?? reasons.first { ExerciseNameResolver.isMatch($0.key, ex.name) }?.value
             analyses.append(analyzeExercise(ex, prescription: pres, energy: energy, userNote: userNote,
-                                            reason: reason, previous: previous, history: history, focus: focus))
+                                            reason: reason, previous: previous, history: history, focus: focus, now: now))
         }
         let loggedNames = logged.filter { !$0.sets.isEmpty }.map(\.name)
         let skipped = prescription.filter { p in !loggedNames.contains { ExerciseNameResolver.isMatch($0, p.name) } }.map(\.name)
@@ -95,12 +100,21 @@ enum SessionAnalyzer {
 
     private static func analyzeExercise(
         _ ex: LoggedExercise, prescription: ExercisePrescription?, energy: Int, userNote: String?,
-        reason: String?, previous: [CoachReviewEntry], history: ExerciseHistoryIndex, focus: CoachFocus
+        reason: String?, previous: [CoachReviewEntry], history: ExerciseHistoryIndex, focus: CoachFocus,
+        now: Date?
     ) -> ExerciseAnalysis {
         let working = SetStyleDetector.splitWarmups(ex.sets).working
         let group = history.group(for: ex.name)
         let prev = group?.sessions.first
+        // All-time record: only for the PR check. Targets use the recent best.
         let best = group?.best
+        let recentBest = group?.capBest
+        // The lift was skipped last time, or its last performance is old: today is a rebuild.
+        let brokeBefore: Bool = {
+            if group?.skippedLastSession == true { return true }
+            guard let now = now, let p = prev else { return false }
+            return now.timeIntervalSince(p.date) > Double(ProgressionEngine.holdAfterDays) * 86_400
+        }()
         let step = ExerciseTraits.roundingStep(ex.name)
         let actualTop = matchTop(working: working, prescribed: prescription)
         let pTop = prescription?.topSet
@@ -123,14 +137,17 @@ enum SessionAnalyzer {
         // Repeat misses and signals.
         let lastReview = previous.lazy.compactMap { $0.document.review?.review(for: ex.name) }.first
         let repeated = lastReview?.outcome == .missed
-        let missReason = reason.flatMap(MissReason.from)
+        // A planned drop / back-off is not a problem: treat it as no reason.
+        let missReason = reason.flatMap(MissReason.from).flatMap { $0 == .plannedDrop ? nil : $0 }
         let pain = painSignal(reason: missReason, note: userNote, exerciseName: ex.name, muscle: ex.muscleGroup)
 
         // Outcome.
         let outcome: ExerciseOutcome
         if pTop != nil, actualTop != nil, shortBy > 0 { outcome = .missed }
         else if let top = actualTop {
-            if let b = best, top.e1RM > b.e1RM * 1.001 { outcome = .pr }
+            // `hitPR`: the PR record was beaten when the set was logged (before it was overwritten).
+            if prev != nil, ex.hitPR { outcome = .pr }
+            else if let b = best, top.e1RM > b.e1RM * 1.001 { outcome = .pr }
             else if prev == nil { outcome = .new }
             else if let p = prev, ProgressionEngine.strength(HistorySession(date: Date(), sets: ex.sets)) < 0.95 * ProgressionEngine.strength(p) { outcome = .regression }
             else { outcome = .hold }
@@ -141,15 +158,15 @@ enum SessionAnalyzer {
         var target: NextTarget?
         if outcome == .missed, let pTop, let top = actualTop {
             let m = classifyMiss(shortBy: shortBy, energy: energy, reason: missReason, note: userNote,
-                                 repeated: repeated, pain: pain)
+                                 repeated: repeated, pain: pain, loadDropped: loadDropped, afterBreak: brokeBefore)
             miss = m
             target = missTarget(decision: m.decision, prescribed: pTop, actual: top, shortBy: shortBy,
-                                repeated: repeated, step: step)
+                                repeated: repeated, step: step, cause: m.cause)
         } else if let top = actualTop, top.weight > 0 {
             if (rirDelta ?? 0) <= -1, outcome != .pr {
                 target = NextTarget(weight: top.weight, reps: top.reps, note: "Hit it but harder than planned: repeat before adding")
             } else {
-                let next = ProgressionEngine.nextTopTarget(name: ex.name, after: top, focus: focus, best: best,
+                let next = ProgressionEngine.nextTopTarget(name: ex.name, after: top, focus: focus, best: recentBest,
                                                            history: group?.sessions ?? [])
                 let note = next.weight > top.weight ? "Make the jump" : "Add a rep"
                 target = NextTarget(weight: next.weight, reps: next.reps, note: note)
@@ -194,13 +211,19 @@ enum SessionAnalyzer {
         return tokens.contains { text.contains($0) } || text.contains(MuscleGroups.canonical(muscle))
     }
 
-    /// The rules: one-off miss on a bad day -> retry; good energy or a repeat -> likely lost strength,
-    /// reduce; pain/form -> hold or swap.
+    /// The rules: a single miss -> retry (a bad day, or a close miss even on a good day); a repeat miss,
+    /// "too heavy" or a big miss -> reduce and rebuild; lighter than planned after skipping the lift or a
+    /// long gap -> a rebuild from today's weight, not lost strength; pain/form -> hold or swap.
     static func classifyMiss(shortBy: Int, energy: Int, reason: MissReason?, note: String?,
-                             repeated: Bool, pain: Bool) -> MissAnalysis {
+                             repeated: Bool, pain: Bool, loadDropped: Bool = false,
+                             afterBreak: Bool = false) -> MissAnalysis {
         if pain {
             return MissAnalysis(cause: .painOrForm, decision: .holdOrSwap,
                                 reason: "Pain or form flagged: hold the load or swap the movement, and cue the form.")
+        }
+        if loadDropped, afterBreak {
+            return MissAnalysis(cause: .afterBreak, decision: .retry,
+                                reason: "Lighter than planned after skipping this lift or a long gap: a rebuild, not lost strength. Retry from today's weight.")
         }
         if repeated {
             return MissAnalysis(cause: .strengthLoss, decision: .reduceAndRebuild,
@@ -219,13 +242,13 @@ enum SessionAnalyzer {
             return MissAnalysis(cause: .lowEnergy, decision: .retry,
                                 reason: "Low energy: a one-off miss, so retry the same target.")
         }
-        if energy >= 7 {
-            return MissAnalysis(cause: .strengthLoss, decision: .reduceAndRebuild,
-                                reason: "Missed with good energy: likely lost strength, drop and rebuild.")
-        }
         if shortBy >= 3 {
             return MissAnalysis(cause: .strengthLoss, decision: .reduceAndRebuild,
                                 reason: "Missed by \(shortBy) reps: too heavy right now, drop and rebuild.")
+        }
+        if energy >= 7 {
+            return MissAnalysis(cause: .unknown, decision: .retry,
+                                reason: "Missed once with good energy: one miss is not a trend, so retry the same target. A second miss in a row means drop and rebuild.")
         }
         return MissAnalysis(cause: .unknown, decision: .retry,
                             reason: "Close miss with nothing else to blame: try the same target once more.")
@@ -233,9 +256,15 @@ enum SessionAnalyzer {
 
     /// The target that follows from a decision.
     static func missTarget(decision: MissDecision, prescribed: PrescribedSet, actual: HistorySet,
-                           shortBy: Int, repeated: Bool, step: Double) -> NextTarget {
+                           shortBy: Int, repeated: Bool, step: Double, cause: MissCause? = nil) -> NextTarget {
         switch decision {
         case .retry:
+            if cause == .afterBreak, actual.weight > 0 {
+                // Rebuild from what was actually lifted today, one rep more, never above the old rep goal.
+                let reps = max(1, min(prescribed.reps, actual.reps + 1))
+                return NextTarget(weight: ExerciseTraits.round(actual.weight, step: step), reps: reps,
+                                  note: "Rebuild from today's weight")
+            }
             return NextTarget(weight: prescribed.weight, reps: prescribed.reps, note: "Retry the same target")
         case .reduceAndRebuild:
             let pct = shortBy >= 3 ? 10.0 : (repeated ? 7.5 : 5.0)
@@ -270,10 +299,13 @@ enum SessionAnalyzer {
 
     // MARK: - Deterministic review (no model)
 
-    static func fallbackReview(_ analysis: SessionAnalysis, workoutType: String, now: Date = Date()) -> SessionReview {
+    /// `previousNotes`: exercise name -> the last memory note, kept when no model reply rewrites it.
+    static func fallbackReview(_ analysis: SessionAnalysis, workoutType: String, now: Date = Date(),
+                               previousNotes: [String: String] = [:]) -> SessionReview {
         SessionReview(
             exercises: analysis.exercises.map { a in
-                ExerciseReview(name: a.name, notes: a.note, outcome: a.outcome, nextTarget: a.target, missAnalysis: a.miss)
+                ExerciseReview(name: a.name, notes: a.note, outcome: a.outcome, nextTarget: a.target, missAnalysis: a.miss,
+                               memoryNote: previousNote(for: a.name, in: previousNotes))
             },
             overallRead: deterministicOverallRead(analysis, workoutType: workoutType),
             recurringFlags: mandatoryFlags(analysis),
@@ -310,8 +342,10 @@ enum SessionAnalyzer {
     /// Combines the model's JSON with the rules. The model writes the words; the rules keep
     /// misses, pain flags and target sanity honest.
     static func merge(_ analysis: SessionAnalysis, model: ModelReview?, workoutType: String,
-                      now: Date = Date()) -> SessionReview {
-        guard let model else { return fallbackReview(analysis, workoutType: workoutType, now: now) }
+                      now: Date = Date(), previousNotes: [String: String] = [:]) -> SessionReview {
+        guard let model else {
+            return fallbackReview(analysis, workoutType: workoutType, now: now, previousNotes: previousNotes)
+        }
         var exercises: [ExerciseReview] = []
         for a in analysis.exercises {
             let m = model.exercises.first { ExerciseNameResolver.isMatch($0.name, a.name) }
@@ -324,10 +358,11 @@ enum SessionAnalyzer {
             // Miss decision: the model's, unless it breaks a hard rule.
             var miss = a.miss
             if var rules = a.miss, let cause = m?.cause, let decision = m?.decision {
-                let forced = a.painOrFormSignal || a.repeatedMiss
+                let forced = a.painOrFormSignal || a.repeatedMiss || rules.cause == .afterBreak
                 let acceptable = !(forced && decision != rules.decision) && !(a.repeatedMiss && decision == .retry)
                 if acceptable {
-                    rules.cause = cause
+                    // A rebuild after a break keeps its cause: it drives the target.
+                    if rules.cause != .afterBreak { rules.cause = cause }
                     rules.decision = decision
                     if let r = m?.reason { rules.reason = r }
                     miss = rules
@@ -342,7 +377,7 @@ enum SessionAnalyzer {
             if let miss, let pTop = a.prescribedTop, let top = a.actualTop {
                 let step = ExerciseTraits.roundingStep(a.name)
                 var t = missTarget(decision: miss.decision, prescribed: pTop, actual: top, shortBy: a.shortBy,
-                                   repeated: a.repeatedMiss, step: step)
+                                   repeated: a.repeatedMiss, step: step, cause: miss.cause)
                 if let note = m?.nextTarget?.note, !note.isEmpty { t.note = note }
                 target = t
             } else if let mt = m?.nextTarget, let top = a.actualTop, top.weight > 0,
@@ -351,8 +386,10 @@ enum SessionAnalyzer {
                 target = NextTarget(weight: ExerciseTraits.round(mt.weight, step: ExerciseTraits.roundingStep(a.name)),
                                     reps: mt.reps, note: mt.note ?? a.target?.note)
             }
+            // The model rewrites the memory note; without one, the previous note stays.
+            let memory = m?.memoryNote.flatMap(cleanMemoryNote) ?? previousNote(for: a.name, in: previousNotes)
             exercises.append(ExerciseReview(name: a.name, notes: notes, outcome: outcome,
-                                            nextTarget: target, missAnalysis: miss))
+                                            nextTarget: target, missAnalysis: miss, memoryNote: memory))
         }
         var flags = model.recurringFlags
         for mandatory in mandatoryFlags(analysis) where !flags.contains(where: { $0.lowercased() == mandatory.lowercased() }) {
@@ -366,6 +403,37 @@ enum SessionAnalyzer {
         }
         return SessionReview(exercises: exercises, overallRead: String(read.prefix(600)),
                              recurringFlags: Array(flags.prefix(6)), createdAt: now, aiAuthored: true)
+    }
+
+    // MARK: - Memory notes
+
+    static let memoryNoteLimit = 100
+
+    /// A memory note goes back into prompts, so it is flattened to one plain line, stripped of
+    /// quotes, braces and markup characters, and clipped. nil when nothing is left.
+    static func cleanMemoryNote(_ raw: String) -> String? {
+        cleanLine(raw, limit: memoryNoteLimit)
+    }
+
+    /// One plain line for prompt re-use: no newlines, quotes, braces or markup; clipped to `limit`.
+    static func cleanLine(_ raw: String, limit: Int) -> String? {
+        let banned = CharacterSet(charactersIn: "\"{}[]<>`\\#|")
+        let cleaned = raw.unicodeScalars
+            .map { scalar -> String in
+                if CharacterSet.controlCharacters.contains(scalar) || CharacterSet.newlines.contains(scalar) { return " " }
+                if banned.contains(scalar) { return "" }
+                return String(scalar)
+            }
+            .joined()
+        let collapsed = cleaned.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+        let clipped = String(collapsed.prefix(limit)).trimmingCharacters(in: .whitespaces)
+        return clipped.isEmpty ? nil : clipped
+    }
+
+    private static func previousNote(for name: String, in notes: [String: String]) -> String? {
+        if let exact = notes[name] { return exact }
+        return notes.first { ExerciseNameResolver.isMatch($0.key, name) }?.value
     }
 
     // MARK: - Rolling summary
@@ -393,6 +461,8 @@ struct ModelReview: Equatable {
         var cause: MissCause?
         var decision: MissDecision?
         var reason: String?
+        /// The coach's rewritten note about this lift, already cleaned and clipped.
+        var memoryNote: String?
     }
     var exercises: [Exercise]
     var overallRead: String?
@@ -419,7 +489,8 @@ struct ModelReview: Equatable {
                 nextTarget: target,
                 cause: JSONReply.string(miss?["cause"]).flatMap(MissCause.init(rawValue:)),
                 decision: JSONReply.string(miss?["decision"]).flatMap(MissDecision.init(rawValue:)),
-                reason: JSONReply.string(miss?["reason"]).map { String($0.prefix(300)) })
+                reason: JSONReply.string(miss?["reason"]).map { String($0.prefix(300)) },
+                memoryNote: JSONReply.string(raw["memory_note"]).flatMap(SessionAnalyzer.cleanMemoryNote))
         }
         let flags = ((object["recurring_flags"] as? [Any]) ?? []).compactMap { JSONReply.string($0) }.map { String($0.prefix(120)) }
         return ModelReview(exercises: exercises, overallRead: read.map { String($0.prefix(600)) }, recurringFlags: Array(flags.prefix(6)))

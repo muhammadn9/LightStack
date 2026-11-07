@@ -77,6 +77,52 @@ enum InSessionAdjuster {
         return nil
     }
 
+    /// The athlete lowered the weight on their latest working set.
+    struct LoweredWeight: Equatable {
+        /// Index into `logged` of that set. Show the question only while it is the latest logged set.
+        var loggedIndex: Int
+        var previousWeight: Double
+        var weight: Double
+        /// True when compared with the plan's target, false when compared with the previous logged set.
+        var fromPlan: Bool
+        var reasons: [MissReason]
+        var message: String
+    }
+
+    /// Fires when the latest logged non-warm-up set is under 97% of its planned target weight
+    /// (if the plan has a numeric one) or else of the previous logged working set. Works with no plan.
+    static func evaluateDrop(prescribed: [SetTarget], logged: [LoggedSet]) -> LoweredWeight? {
+        guard let set = logged.last, set.weight > 0 else { return nil }
+        let last = logged.count - 1
+        let offset = prescribed.isEmpty ? 0 : warmupOffset(prescribed: prescribed, logged: logged)
+        func isWarmup(_ i: Int) -> Bool {
+            let p = i + offset
+            return prescribed.indices.contains(p) && prescribed[p].resolvedRole == .warmup
+        }
+        guard !isWarmup(last) else { return nil }
+        var reference: Double?
+        var fromPlan = false
+        let planned = last + offset
+        if prescribed.indices.contains(planned), let w = Double(prescribed[planned].prefillWeight), w > 0 {
+            reference = w
+            fromPlan = true
+        } else if let prev = (0..<last).reversed().first(where: { !isWarmup($0) && logged[$0].weight > 0 }) {
+            reference = logged[prev].weight
+        }
+        guard let ref = reference, set.weight < ref * 0.97 else { return nil }
+        let now = String(format: "%g", set.weight)
+        let before = String(format: "%g", ref)
+        return LoweredWeight(
+            loggedIndex: last, previousWeight: ref, weight: set.weight, fromPlan: fromPlan,
+            reasons: MissReason.dropCases,
+            message: "You dropped to \(now) lb from \(before) lb. What's the reason?")
+    }
+
+    /// Convenience for UI call sites that hold `WorkoutSet`s.
+    static func evaluateDrop(prescribed: [SetTarget], logged: [WorkoutSet]) -> LoweredWeight? {
+        evaluateDrop(prescribed: prescribed, logged: logged.sorted { $0.setNumber < $1.setNumber }.map { LoggedSet($0) })
+    }
+
     /// Convenience for UI call sites that hold `WorkoutSet`s.
     static func evaluate(exerciseName: String, prescribed: [SetTarget], logged: [WorkoutSet]) -> Suggestion? {
         evaluate(prescribed: prescribed, logged: logged.sorted { $0.setNumber < $1.setNumber }.map { LoggedSet($0) },
@@ -120,6 +166,6 @@ enum InSessionAdjuster {
         }
         return Suggestion(
             triggerIndex: index, triggerLoggedIndex: loggedIndex, role: role, shortBy: shortBy, rirZero: rirZero,
-            question: "What got in the way?", reasons: MissReason.allCases, changes: changes, message: message)
+            question: "What got in the way?", reasons: MissReason.missCases, changes: changes, message: message)
     }
 }
