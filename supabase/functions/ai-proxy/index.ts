@@ -5,8 +5,10 @@
 // - Every call passes the per-user rate limit (check_rate_limit); if that check
 //   fails for any reason the request is refused (fail closed).
 // - The request is forwarded with the key in a header, not the URL.
-// - thinkingConfig is validated (budget 0..1024 or level minimal/low); anything else is a 400.
-// - The upstream call times out after 45s (504). Requests that fail upstream with a
+// - thinkingConfig is validated (budget 0..4096 or level minimal/low/medium); anything else is a 400.
+// - responseSchema is passed through only with responseMimeType application/json, as a plain
+//   object of at most 6000 JSON characters; otherwise it is dropped.
+// - The upstream call times out after 55s (504). Requests that fail upstream with a
 //   5xx or time out are refunded (refund_rate_limit); a missing RPC is tolerated.
 //
 // Request body (from the app): { model, system_instruction, contents, generationConfig }
@@ -18,9 +20,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const ALLOWED_MODELS = new Set(["gemini-3.5-flash", "gemini-2.5-flash"]);
 const MAX_BODY_CHARS = 200_000;
 const MAX_OUTPUT_TOKENS = 8192;
-const UPSTREAM_TIMEOUT_MS = 45_000;
-const MAX_THINKING_BUDGET = 1024;
-const ALLOWED_THINKING_LEVELS = new Set(["minimal", "low"]);
+const UPSTREAM_TIMEOUT_MS = 55_000;
+const MAX_THINKING_BUDGET = 4096;
+const MAX_SCHEMA_CHARS = 6000;
+const ALLOWED_THINKING_LEVELS = new Set(["minimal", "low", "medium"]);
 
 /** A refusal from this function (not from Gemini). The app shows the message as-is. */
 function error(message: string, status: number): Response {
@@ -31,7 +34,7 @@ function error(message: string, status: number): Response {
 }
 
 /**
- * Accepts only {thinkingBudget: integer 0...1024} or {thinkingLevel: "minimal" | "low"}
+ * Accepts only {thinkingBudget: integer 0...4096} or {thinkingLevel: "minimal" | "low" | "medium"}
  * (what the app sends). Returns the cleaned config, or null if it is anything else.
  */
 function validateThinkingConfig(raw: unknown): Record<string, unknown> | null {
@@ -65,7 +68,14 @@ function sanitizeConfig(raw: unknown, thinking: Record<string, unknown> | null):
   }
   const requested = typeof r.maxOutputTokens === "number" ? r.maxOutputTokens : MAX_OUTPUT_TOKENS;
   config.maxOutputTokens = Math.min(Math.max(Math.floor(requested), 1), MAX_OUTPUT_TOKENS);
-  if (r.responseMimeType === "application/json") config.responseMimeType = "application/json";
+  if (r.responseMimeType === "application/json") {
+    config.responseMimeType = "application/json";
+    const schema = r.responseSchema;
+    if (typeof schema === "object" && schema !== null && !Array.isArray(schema) &&
+        JSON.stringify(schema).length <= MAX_SCHEMA_CHARS) {
+      config.responseSchema = schema;
+    }
+  }
   return config;
 }
 
@@ -109,7 +119,7 @@ Deno.serve(async (req: Request) => {
       (rawConfig as Record<string, unknown>).thinkingConfig !== undefined) {
     thinking = validateThinkingConfig((rawConfig as Record<string, unknown>).thinkingConfig);
     if (!thinking) {
-      return error("Invalid thinkingConfig: use thinkingBudget 0-1024 or thinkingLevel minimal/low", 400);
+      return error("Invalid thinkingConfig: use thinkingBudget 0-4096 or thinkingLevel minimal/low/medium", 400);
     }
   }
 

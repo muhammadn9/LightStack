@@ -71,6 +71,34 @@ struct ExerciseReview: Codable, Equatable {
     var outcome: ExerciseOutcome
     var nextTarget: NextTarget?
     var missAnalysis: MissAnalysis?
+    /// The coach's short note about this lift (max 100 chars), rewritten after every session
+    /// and fed back into the next plan and review. Added in version 3.
+    var memoryNote: String?
+}
+
+/// How a coach decision turned out once the session was finished.
+struct DecisionOutcome: Codable, Equatable {
+    var hit: Bool
+    /// The top set actually done, e.g. "205x4@0".
+    var actualTop: String
+    var rir: Int?
+    var shortBy: Int
+    var result: ExerciseOutcome
+}
+
+/// One call the coach made for the plan (top set, why, what it saw), and later how it went.
+struct CoachDecision: Codable, Equatable {
+    var name: String
+    var muscle: String
+    /// The top set.
+    var target: PrescribedSet
+    var sets: [PrescribedSet]?
+    var reason: String
+    /// What the coach saw (max 120 chars), e.g. "last 205x5@1, trend up, energy 6".
+    var context: String
+    /// "coach", "engine" or "fallback".
+    var source: String
+    var outcome: DecisionOutcome?
 }
 
 /// Written after the workout is finished.
@@ -100,7 +128,7 @@ struct SessionReview: Codable, Equatable {
 /// `Workout.aiProgressionNote` (a TEXT column locally and in Supabase, so no schema change).
 /// Old plain-text notes load as `legacyNote`.
 struct CoachReviewDocument: Codable, Equatable {
-    static let currentVersion = 2
+    static let currentVersion = 3
     /// Marker key that tells a document apart from a plain-text note.
     private static let marker = "coachReview"
 
@@ -116,6 +144,9 @@ struct CoachReviewDocument: Codable, Equatable {
     /// Exercise id (UUID string) -> the athlete's "too easy / about right / too hard" answer
     /// (`SessionFeedback` raw value). Added in version 2; older documents simply have none.
     var feedback: [String: String] = [:]
+    /// The coach's calls for this workout's plan, each filled with its outcome after finish.
+    /// Added in version 3; older documents simply have none.
+    var decisions: [CoachDecision] = []
     /// A pre-v2 plain-text progression note.
     var legacyNote: String?
 
@@ -125,7 +156,7 @@ struct CoachReviewDocument: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case marker = "coachReview"
-        case prescription, planReview, review, inSessionReasons, feedback, legacyNote
+        case prescription, planReview, review, inSessionReasons, feedback, decisions, legacyNote
     }
 
     init(from decoder: Decoder) throws {
@@ -137,6 +168,7 @@ struct CoachReviewDocument: Codable, Equatable {
         review = try? c.decodeIfPresent(SessionReview.self, forKey: .review)
         inSessionReasons = try c.decodeIfPresent([String: String].self, forKey: .inSessionReasons) ?? [:]
         feedback = (try? c.decodeIfPresent([String: String].self, forKey: .feedback)) ?? [:]
+        decisions = (try? c.decodeIfPresent([CoachDecision].self, forKey: .decisions)) ?? []
         legacyNote = try c.decodeIfPresent(String.self, forKey: .legacyNote)
     }
 
@@ -148,6 +180,7 @@ struct CoachReviewDocument: Codable, Equatable {
         try c.encodeIfPresent(review, forKey: .review)
         if !inSessionReasons.isEmpty { try c.encode(inSessionReasons, forKey: .inSessionReasons) }
         if !feedback.isEmpty { try c.encode(feedback, forKey: .feedback) }
+        if !decisions.isEmpty { try c.encode(decisions, forKey: .decisions) }
         try c.encodeIfPresent(legacyNote, forKey: .legacyNote)
     }
 
@@ -217,6 +250,10 @@ struct CoachReviewDocument: Codable, Equatable {
 
     func prescription(for name: String) -> ExercisePrescription? {
         prescription.first { ExerciseNameResolver.isMatch($0.name, name) }
+    }
+
+    func decision(for name: String) -> CoachDecision? {
+        decisions.first { ExerciseNameResolver.isMatch($0.name, name) }
     }
 
     /// The saved answer for one exercise of this workout.

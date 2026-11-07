@@ -11,7 +11,34 @@ coaching logic all flow from this prompt.
 > further down is the older, historical reference. The coach now works in two calls, and the app,
 > not the model, owns every weight, rep and RIR.
 >
-> ### Plan call (before the workout)
+> ### Coach v3 (default): the coach sets the weights
+> `CoachPreferences.aiSetsWeights` (UserDefaults `coach.aiSetsWeights`, default on). For the `.plan` task
+> `writeRules` + `planFormatV3` replace `reviewRules` + `planFormat` ("YOUR JOB: WRITE TODAY'S PLAN"):
+> - The model chooses every exercise, set, weight (lb), rep, RIR and rest per set, warm-ups (type
+>   `warmup`) where it judges they are needed, and one `reason` (max 15 words) per exercise naming the
+>   evidence. Reply shape: `{"summary", "exercises": [{"name", "muscle_group", "superset", "cue",
+>   "reason", "sets": [{"type": "warmup|work", "weight", "reps", "rir", "rest"}]}], "coaching_notes"}`,
+>   enforced by a Gemini `responseSchema` (`CoachPromptService.planResponseSchema`).
+> - The rule-based plan is sent as the **APP BASELINE** (reference only), together with the BRIEF.
+> - Roles are derived by the app: warm-ups stay warm-ups, the heaviest work set is `top`, the rest are
+>   `straight`, and `ramp` (Set 1) only when the first work set is >10% lighter than the top. No back-off
+>   is forced.
+> - **Safety rails** (`PlanGuardrails.validateCoachSets`) check each exercise with history. Rejected
+>   when: the top weight exceeds `max(last top x 1.10, last top + 1 increment)` (more than 14 days since the lift:
+>   no increase; more than 28 days: at most 95% of the last top); any work set's e1RM is above the recent best
+>   +5%; or a work weight is under half the last top at RIR <= 2. A rejected exercise gets the engine's
+>   plan and the evidence says "Safety rail: rule-based". Small things are clamped, not rejected: reps
+>   1-30, RIR 0-5 with one RIR 0, at most 5 work sets and 3 warm-ups (none at or above the first work
+>   weight), rest 30-300 s (360 for strength). Exercises with no history run the older guardrails (and
+>   the record + 5% clamp). Muscle-volume and heavy-set caps still run last. `RailContext.goalAllowance`
+>   is a placeholder for a future per-lift allowance.
+> - The rule-based baseline itself now makes a back-off only for hypertrophy at energy >= 5 (otherwise Set
+>   1 + top + a straight set) and warms up only the first heavy compound.
+> - Old reply shapes (`review.changes`, `set_targets`) still parse; an unparseable reply still falls back
+>   to the full baseline. "What the coach saw" shows a "Coach's reasons" section.
+> - Rollback: set `aiSetsWeights` to false to get the v2 flow described below (engine numbers + review).
+>
+> ### Plan call, v2 (rollback path)
 > 1. **Context** (`CoachContextBuilder`): the last **5** completed same-type sessions (at least one
 >    logged set), the last one in full (every set as `weight x reps @RIR`, plus athlete note and coach
 >    note) and the earlier ones as compact per-exercise trend lines (oldest to newest, same-lift
@@ -169,6 +196,27 @@ All user-provided text fields pass through `ValidationService.sanitize()`
 before substitution. No raw user input ever reaches the prompt unfiltered.
 
 ---
+
+## Coach Memory and Active Goals (coach v3 plan message)
+
+**COACH MEMORY** lists, per lift, the coach's past calls with outcomes (oldest to newest) and its last note. Lifts shown, in order
+(at most 8 in all): active-goal lifts, the app baseline's lifts, then other lifts the coach made a call on in earlier sessions of
+today's workout type. Lifts with nothing remembered are left out.
+
+**ACTIVE GOALS** (`CoachPromptService.goalsBlock`, from `CoachGoalStore` + `GoalAssessor`), e.g.:
+`Bench Press 225x1 by 11/07 (e1RM 221 -> need 232). Today's step: top single 215x1 @1, then 2 work sets.`
+Only goals whose lift is in the baseline, or whose muscle is trained today, are shown (all of them when there is no baseline), at most 3.
+Today's step is the step dated today, else the first undated step, else the nearest future dated step (labelled "Next step").
+The v3 rules carry one line: "ACTIVE GOALS: move toward them; follow today's step when given."
+
+**Goal attempt allowance.** When today's step is the attempt and `GoalAssessor` says `realisticNow`, the prompt adds the warm-up
+ladder and `PlanGuardrails.RailContext.goalAllowance` is set to the goal weight for that lift only (with `goalReps`). The attempt
+and its ladder may then pass the top-weight rail and the e1RM rail up to the goal's own e1RM. The gap rules and the
+unit-confusion rail are never relaxed.
+
+**Goal hit.** At finish, a logged set at or above the goal's weight and reps on a matching lift marks the goal achieved. The
+post-workout message gets a `GOAL HIT today: ...` line, and "Goal hit: ..." is appended to `overall_read` if the model omitted it
+(so the chat thread's review shows it).
 
 ## Month Plan Prompt Extension
 

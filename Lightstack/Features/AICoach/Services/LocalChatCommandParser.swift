@@ -7,6 +7,13 @@ struct LocalChatCommand {
     let reply: String
 }
 
+/// A lift target found in chat, e.g. 225 x 1 on the bench press.
+struct GoalIntent: Equatable {
+    let exerciseName: String
+    let weight: Double
+    let reps: Int
+}
+
 /// Recognises a few unambiguous chat commands ("remove X", "add a set to X",
 /// "swap X with Y", "rest 90 sec on X") and turns them into the same
 /// `WorkoutModification`s the AI path produces, so they reuse the confirmation sheet.
@@ -82,6 +89,99 @@ enum LocalChatCommandParser {
         }
         return LocalChatCommand(modifications: exercises.map { rest($0.name, seconds) },
                                 reply: "Setting rest to \(label) for every exercise.")
+    }
+
+    // MARK: - Lift goals
+
+    /// A lift target the athlete asked about: "225x1 bench", "hit 225 on bench", "how do I get to 225 bench".
+    /// Reps default to 1. The lift is matched against `knownNames` (history names win over the catalog).
+    /// nil when no lift can be resolved, so ordinary chat is never mistaken for a goal.
+    static func parseGoal(_ rawText: String, knownNames: [String], preferredNames: [String] = []) -> GoalIntent? {
+        var text = normalize(rawText).trimmingCharacters(in: CharacterSet(charactersIn: "?.! "))
+        for prefix in ["i want to ", "i wanna ", "my goal is to ", "my goal is ", "new goal: ", "goal: ",
+                       "set a goal to ", "i need to ", "can i ", "could i "] {
+            while text.hasPrefix(prefix) { text = String(text.dropFirst(prefix.count)) }
+        }
+        guard !text.isEmpty else { return nil }
+
+        let num: String = #"(\d+(?:\.\d+)?)"#
+        let lbs: String = #"(?:\s*(?:lbs?|pounds?))?"#
+        let repsPart: String = #"(?:\s*(?:x|×)\s*(\d+))?"#
+        let on: String = #"(?:(?:on|for|in|at)\s+)?(?:my\s+|the\s+)?"#
+        let verbs: String = #"^(?:hit|get to|get|reach|lift|do|pr|go to|max out at)\s+"#
+        let howTo: String = #"^how\s+(?:do|can|should|would)\s+i\s+(?:get|go|work|build|train)\s+(?:up\s+)?to\s+"#
+        let howMy: String = #"^how\s+(?:do|can|should)\s+i\s+(?:get|take|bring|raise|increase)\s+my\s+(.+?)\s+(?:up\s+)?to\s+"#
+        let sets: String = #"\s*(?:x|×|by)\s*(\d+)\s+"#
+        let gap: String = #"\s+"#
+        let tail: String = "(.+)$"
+
+        let patternX: String = ["^", num, sets, on, tail].joined()
+        let patternVerb: String = [verbs, num, lbs, repsPart, gap, on, tail].joined()
+        let patternHow: String = [howTo, num, lbs, repsPart, gap, on, tail].joined()
+        let patternMy: String = [howMy, num, lbs, repsPart, "$"].joined()
+
+        var weight: String?
+        var reps = ""
+        var phrase: String?
+        if let g = match(patternX, text) {
+            weight = g[1]; reps = g[2]; phrase = g[3]
+        } else if let g = match(patternVerb, text) {
+            weight = g[1]; reps = g[2]; phrase = g[3]
+        } else if let g = match(patternHow, text) {
+            weight = g[1]; reps = g[2]; phrase = g[3]
+        } else if let g = match(patternMy, text) {
+            phrase = g[1]; weight = g[2]; reps = g[3]
+        }
+        guard let weightText = weight, let value = Double(weightText), (10...1500).contains(value),
+              let rawPhrase = phrase else { return nil }
+        let repCount = Int(reps) ?? 1
+        guard (1...20).contains(repCount) else { return nil }
+
+        // "bench press by december" / "bench this week": drop the timing words.
+        var lift = rawPhrase
+        if let range = lift.range(of: #"\s+(?:by|before|this|next|within|in|today|tomorrow|soon)\b.*$"#, options: .regularExpression) {
+            lift.removeSubrange(range)
+        }
+        lift = stripArticle(lift)
+        guard isPlainName(lift),
+              let name = resolveGoalLift(lift, known: knownNames, preferred: preferredNames) else { return nil }
+        return GoalIntent(exerciseName: name, weight: value, reps: repCount)
+    }
+
+    /// The known lift the phrase most plausibly names: exact name, else names holding every word
+    /// (logged lifts first, then barbell, then the shortest), else `ExerciseNameResolver`'s suggestion.
+    private static func resolveGoalLift(_ phrase: String, known: [String], preferred: [String]) -> String? {
+        let wanted = phrase.lowercased().trimmingCharacters(in: .whitespaces)
+        var seen = Set<String>()
+        let pool = (preferred + known).filter { seen.insert($0.lowercased()).inserted }
+        if let exact = pool.first(where: { $0.lowercased() == wanted }) { return exact }
+
+        func words(_ text: String) -> [String] {
+            text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        }
+        func singular(_ word: String) -> String {
+            word.count > 3 && word.hasSuffix("s") ? String(word.dropLast()) : word
+        }
+        let wantedWords = words(wanted)
+        guard !wantedWords.isEmpty else { return nil }
+        let preferredKeys = Set(preferred.map { $0.lowercased() })
+
+        for attempt in [wantedWords, wantedWords.map(singular)] {
+            let holding = pool.filter { name in
+                let have = Set(words(name).flatMap { [$0, singular($0)] })
+                return attempt.allSatisfy { have.contains($0) }
+            }
+            let ranked = holding.sorted { a, b in
+                let ap = preferredKeys.contains(a.lowercased()), bp = preferredKeys.contains(b.lowercased())
+                if ap != bp { return ap }
+                let ab = a.lowercased().contains("barbell"), bb = b.lowercased().contains("barbell")
+                if ab != bb { return ab }
+                if a.count != b.count { return a.count < b.count }
+                return a < b
+            }
+            if let best = ranked.first { return best }
+        }
+        return ExerciseNameResolver.suggestions(for: phrase, among: pool).first
     }
 
     // MARK: - Helpers

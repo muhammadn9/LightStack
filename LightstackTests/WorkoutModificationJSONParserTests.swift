@@ -499,6 +499,71 @@ final class WorkoutModificationJSONParserTests: XCTestCase {
         XCTAssertEqual(sets, 5)
         XCTAssertNil(weight)
     }
+
+    // MARK: - Goal block
+
+    private let goalReply = """
+    Locked in. Heavy single each week, attempt on the last one.
+
+    ```json
+    {"goal": {"exercise": "Barbell Bench Press", "weight": 225, "reps": 1, "deadline": "2026-12-15",
+      "steps": [{"date": "2026-12-01", "text": "Heavy single at 205", "weight": 205, "reps": 1, "attempt": false},
+                {"date": "2026-12-15", "text": "Attempt 225x1", "weight": 225, "reps": 1, "attempt": true}]}}
+    ```
+    """
+
+    func testGoalBlockIsParsedWithItsSteps() throws {
+        let goal = try XCTUnwrap(parser.parseGoal(goalReply))
+        XCTAssertEqual(goal.exerciseName, "Barbell Bench Press")
+        XCTAssertEqual(goal.targetWeight, 225)
+        XCTAssertEqual(goal.targetReps, 1)
+        XCTAssertEqual(goal.status, .active)
+        XCTAssertNotNil(goal.deadline)
+        XCTAssertEqual(goal.steps.count, 2)
+        XCTAssertEqual(goal.steps[0].date, "2026-12-01")
+        XCTAssertEqual(goal.steps[0].weight, 205)
+        XCTAssertFalse(goal.steps[0].attempt)
+        XCTAssertTrue(goal.steps[1].attempt)
+        XCTAssertEqual(goal.steps[1].text, "Attempt 225x1")
+    }
+
+    func testGoalBlockIsNotAModificationAndIsStrippedFromTheText() throws {
+        XCTAssertNotNil(parser.parseGoal(goalReply))
+        let shown = parser.strippingJSONBlock(from: goalReply)
+        XCTAssertEqual(shown, "Locked in. Heavy single each week, attempt on the last one.")
+        XCTAssertNil(parser.parseGoal("Sounds good. Does 205 next week work for you?"), "no block until they agree")
+    }
+
+    func testGoalWithNullDeadlineStringNumbersAndNoSteps() throws {
+        let reply = """
+        ```json
+        {"goal": {"exercise": "Back Squat", "weight": "315 lbs", "reps": "3", "deadline": null}}
+        ```
+        """
+        let goal = try XCTUnwrap(parser.parseGoal(reply))
+        XCTAssertEqual(goal.targetWeight, 315)
+        XCTAssertEqual(goal.targetReps, 3)
+        XCTAssertNil(goal.deadline)
+        XCTAssertTrue(goal.steps.isEmpty)
+    }
+
+    func testGoalWithoutALiftOrWeightIsRejected() {
+        XCTAssertNil(parser.parseGoal("```json\n{\"goal\": {\"weight\": 225, \"reps\": 1}}\n```"))
+        XCTAssertNil(parser.parseGoal("```json\n{\"goal\": {\"exercise\": \"Bench\", \"reps\": 1}}\n```"))
+        XCTAssertNil(parser.parseGoal("```json\n{\"goal\": {\"exercise\": \"Bench\", \"weight\": 0}}\n```"))
+        XCTAssertNil(parser.parseGoal("```json\n{\"goal\": not json}\n```"))
+    }
+
+    func testUnfencedGoalObjectInProseIsStillFound() throws {
+        let reply = #"Done. {"goal": {"exercise": "Deadlift", "weight": 405, "reps": 1, "steps": []}} See you Friday."#
+        let goal = try XCTUnwrap(parser.parseGoal(reply))
+        XCTAssertEqual(goal.exerciseName, "Deadlift")
+        XCTAssertEqual(goal.targetWeight, 405)
+    }
+
+    func testModificationReplyIsNotAGoal() {
+        XCTAssertNil(parser.parseGoal(json(#"{"action": "remove", "name": "Bench Press"}"#)))
+    }
 }
 
 // MARK: - Coach note composition
@@ -553,4 +618,5 @@ final class MarkdownTableDetectionTests: XCTestCase {
         XCTAssertFalse(CoachChatViewModel.containsMarkdownTable("Go up to 145 lbs — that's a solid jump."))
         XCTAssertFalse(CoachChatViewModel.containsMarkdownTable("Bench Press | 4 sets"))
     }
+
 }

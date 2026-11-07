@@ -171,6 +171,10 @@ struct ExerciseEvidence: Equatable {
         case ai
         /// No usable history: the AI's numbers after `PlanGuardrails` changed something.
         case aiGuarded
+        /// The coach wrote the sets and they passed the safety rails (possibly after small clamps).
+        case coach
+        /// The coach's sets broke a safety rail, so the rule-based baseline for this exercise was used.
+        case engineFallback
     }
 
     var source: Source

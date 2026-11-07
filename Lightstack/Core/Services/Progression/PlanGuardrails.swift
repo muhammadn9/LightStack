@@ -173,9 +173,10 @@ enum PlanGuardrails {
         return limit
     }
 
-    /// Runs after every other edit (engine, AI review changes, caps). Enforces, for main lifts with a top set:
-    /// exactly one back-off, at most one top set (two for strength), Set 1 reps at least the top reps,
-    /// and a top weight within `topWeightLimit`. Isolation work and plans without a top set pass through.
+    /// Runs after every other edit (engine, AI review changes, caps) on rule-based plans. Enforces, for main
+    /// lifts with a top set: at most one back-off (none is added), at most one top set (two for strength),
+    /// Set 1 reps at least the top reps, and a top weight within `topWeightLimit`. Isolation work and plans
+    /// without a top set pass through. Coach-written plans skip it: `validateCoachSets` is their rail.
     static func enforceMainLiftStructure(_ targets: [SetTarget], ctx: StructureContext) -> (targets: [SetTarget], reasons: [String]) {
         guard ExerciseTraits.classify(ctx.name) != .isolation,
               targets.contains(where: { $0.resolvedRole == .top }) else { return (targets, []) }
@@ -191,7 +192,7 @@ enum PlanGuardrails {
         let maxTops = ctx.focus == .strength ? 2 : 1
         if tops.count > maxTops {
             tops = Array(tops.prefix(maxTops))
-            reasons.append("Kept \(maxTops) top set\(maxTops == 1 ? "" : "s") (a back-off follows instead)")
+            reasons.append("Kept \(maxTops) top set\(maxTops == 1 ? "" : "s")")
         }
 
         // Top weight limit.
@@ -212,17 +213,10 @@ enum PlanGuardrails {
             if let r = Int(ramps[i].prefillReps), r < topReps { ramps[i].reps = String(topReps) }
         }
 
-        // Exactly one back-off (unless dropped on purpose for recovery).
+        // At most one back-off; one is never added (the coach or the engine decides whether there is one).
         if backs.count > 1 {
             backs = Array(backs.prefix(1))
             reasons.append("Kept one back-off")
-        }
-        if backs.isEmpty, !ctx.backoffDropped, topW > 0 {
-            var w = ExerciseTraits.round(topW * ProgressionEngine.backoffShare, step: step)
-            if w >= topW * 0.95 { w = max(step, ExerciseTraits.floorStep(topW * 0.95 - 0.001, step: step)) }
-            backs = [SetTarget(weight: String(format: "%g", w), reps: String(max(topReps, 1)), rir: "2", role: .backoff,
-                               restSeconds: max(ProgressionEngine.backoffRest, ctx.restPreference))]
-            reasons.append("Added the missing back-off")
         }
         for i in backs.indices {
             if topW > 0, weight(backs[i]) >= topW * 0.95 {
@@ -273,6 +267,254 @@ enum PlanGuardrails {
             } else {
                 out[i].role = .backoff
                 out[i].restSeconds = max(ProgressionEngine.backoffRest, restPreference)
+            }
+        }
+        return out
+    }
+
+    // MARK: - Coach-written sets (v3)
+
+    /// Longest rest the coach may set, seconds (strength focus gets more).
+    static let maxCoachRest = 300
+    static let maxCoachRestStrength = 360
+    static let minCoachRest = 30
+    static let maxCoachWorkingSets = 5
+    static let maxCoachWarmups = 3
+    /// The coach's top weight may rise at most this much over the lift's last top set.
+    static let coachTopIncrease = 0.10
+    /// No work set may estimate above the recent best e1RM by more than this.
+    static let coachE1RMTolerance = 0.05
+    /// After a long layoff the top weight must be at most this share of the last top.
+    static let layoffTopShare = 0.95
+    /// A work weight under this share of the last top at RIR 2 or less looks like a unit mix-up.
+    static let unitConfusionShare = 0.5
+
+    /// What the rails need to know about one lift.
+    struct RailContext {
+        var name: String
+        var cls: ExerciseClass
+        var focus: CoachFocus
+        /// The top work set of the lift's most recent session (nil with no usable history).
+        var lastTop: HistorySet?
+        /// Whole days since that session (nil when unknown).
+        var daysSinceLast: Int?
+        /// Recent best e1RM (`ExerciseHistoryGroup.capBest`), nil when unknown.
+        var capBestE1RM: Double?
+        /// Heaviest weight on record (PR), used when there is no recent history.
+        var prWeight: Double?
+        /// A per-lift absolute top weight (an agreed goal attempt) that may exceed the +10% limit and the
+        /// e1RM limit, never the gap rules or the unit-confusion rule. nil when today has no attempt.
+        var goalAllowance: Double?
+        /// Reps of that attempt; its estimated one-rep max is the e1RM ceiling the allowance lifts.
+        var goalReps: Int
+
+        init(name: String, cls: ExerciseClass, focus: CoachFocus, lastTop: HistorySet? = nil,
+             daysSinceLast: Int? = nil, capBestE1RM: Double? = nil, prWeight: Double? = nil,
+             goalAllowance: Double? = nil, goalReps: Int = 1) {
+            self.name = name
+            self.cls = cls
+            self.focus = focus
+            self.lastTop = lastTop
+            self.daysSinceLast = daysSinceLast
+            self.capBestE1RM = capBestE1RM
+            self.prWeight = prWeight
+            self.goalAllowance = goalAllowance
+            self.goalReps = goalReps
+        }
+    }
+
+    enum RailVerdict: Equatable {
+        /// The sets stand (possibly after clamping); the strings say what was clamped.
+        case accepted(softFixes: [String])
+        /// The exercise's sets are outside the safety rails; the string says which rail.
+        case rejected(reason: String)
+    }
+
+    /// The highest top-set weight the rails allow, with the rule that set it.
+    static func coachTopLimit(_ ctx: RailContext) -> (limit: Double, rule: String)? {
+        guard let last = ctx.lastTop, last.weight >= 0 else { return nil }
+        let inc = ExerciseTraits.increment(ctx.name)
+        let w = last.weight
+        let wText = String(format: "%g", w)
+        if let days = ctx.daysSinceLast, days > ProgressionEngine.layoffAfterDays {
+            return (w * layoffTopShare, "\(days) days since the last session, so at most 95% of \(wText)")
+        }
+        if let days = ctx.daysSinceLast, days > ProgressionEngine.holdAfterDays {
+            return (w, "\(days) days since the last session, so no increase over \(wText)")
+        }
+        var limit = max(w * (1 + coachTopIncrease), w + inc)
+        if let allowance = ctx.goalAllowance { limit = max(limit, allowance) }
+        return (limit, "more than 10% (or one increment) over the last top set \(wText)")
+    }
+
+    /// Checks AI-written sets against the wide safety rails and clamps the small stuff.
+    /// Rejected: top weight too far above the last top set (tighter after a gap), any work set above the
+    /// recent best e1RM + 5%, or a work weight under half the last top at RIR 2 or less.
+    /// Everything else is clamped (reps 1-30, RIR 0-5 with one RIR 0, at most 5 work sets and 3 warm-ups,
+    /// no warm-up at or above the first work weight, rest 30-300 s) and reported in `softFixes`.
+    static func validateCoachSets(
+        name: String, targets: [SetTarget], ctx: RailContext
+    ) -> (targets: [SetTarget], verdict: RailVerdict) {
+        func g(_ v: Double) -> String { String(format: "%g", v) }
+        let fixed = softFixCoachSets(targets, focus: ctx.focus)
+        let work = fixed.targets.filter { $0.isWarmup != true }
+        guard !work.isEmpty else { return (targets, .rejected(reason: "the plan has no working sets")) }
+        let weights = work.map { Double($0.prefillWeight) ?? 0 }
+        let topW = weights.max() ?? 0
+
+        // 1. Top weight against the last top set and the gap rules.
+        if let rail = coachTopLimit(ctx), topW > rail.limit + 0.001 {
+            return (targets, .rejected(reason: "top weight \(g(topW)) is above the limit of \(g(rail.limit)) (\(rail.rule))"))
+        }
+        // 2. Estimated one-rep max against the recent best (or the record's weight when nothing recent exists).
+        if let best = ctx.capBestE1RM, best > 0 {
+            var e1RMLimit = best * (1 + coachE1RMTolerance)
+            if let allowance = ctx.goalAllowance {
+                e1RMLimit = max(e1RMLimit, HistorySet(allowance, max(1, ctx.goalReps)).e1RM)
+            }
+            for t in work {
+                let set = HistorySet(Double(t.prefillWeight) ?? 0, Int(t.prefillReps) ?? 1)
+                if set.e1RM > e1RMLimit + 0.001 {
+                    return (targets, .rejected(reason: "\(g(set.weight))×\(set.reps) estimates a \(g(set.e1RM.rounded())) one-rep max, more than 5% over your recent best \(g(best.rounded()))"))
+                }
+            }
+        } else if let pr = ctx.prWeight, pr > 0,
+                  topW > max(pr * (1 + coachE1RMTolerance), ctx.goalAllowance ?? 0) + 0.001 {
+            return (targets, .rejected(reason: "top weight \(g(topW)) is more than 5% above your record \(g(pr))"))
+        }
+        // 3. Unit / per-arm confusion.
+        if let last = ctx.lastTop, last.weight > 0 {
+            for (t, w) in zip(work, weights) where w < last.weight * unitConfusionShare && (Int(t.prefillRir) ?? 3) <= 2 {
+                return (targets, .rejected(reason: "work weight \(g(w)) is under half the last top set \(g(last.weight)) at hard effort (a unit or per-arm mix-up?)"))
+            }
+        }
+        let roled = assignCoachRoles(fixed.targets, isolation: ctx.cls == .isolation)
+        return (roled, .accepted(softFixes: fixed.fixes))
+    }
+
+    /// Clamps the small stuff in AI-written sets. Returns the sets (warm-ups first) and what changed.
+    static func softFixCoachSets(_ targets: [SetTarget], focus: CoachFocus) -> (targets: [SetTarget], fixes: [String]) {
+        var fixes: [String] = []
+        var rows = targets
+        func isWarm(_ t: SetTarget) -> Bool { t.isWarmup == true || t.role == .warmup }
+
+        // Warm-ups first, in order.
+        let warmFirst = rows.filter { isWarm($0) } + rows.filter { !isWarm($0) }
+        if warmFirst != rows {
+            rows = warmFirst
+            fixes.append("Moved warm-ups ahead of the working sets")
+        }
+
+        // Reps 1...30.
+        var repsFixed = false
+        for i in rows.indices {
+            let reps = Int(rows[i].prefillReps)
+            let clamped = min(30, max(1, reps ?? 8))
+            if reps != clamped { rows[i].reps = String(clamped); repsFixed = true }
+        }
+        if repsFixed { fixes.append("Reps kept between 1 and 30") }
+
+        // RIR 0...5, and at most one RIR 0 among the working sets (the last one keeps it).
+        var rirFixed = false
+        for i in rows.indices where !isWarm(rows[i]) {
+            let rir = Int(rows[i].prefillRir)
+            let clamped = min(5, max(0, rir ?? 2))
+            if rir != clamped { rows[i].rir = String(clamped); rirFixed = true }
+        }
+        let zeroIdx = rows.indices.filter { !isWarm(rows[$0]) && rows[$0].prefillRir == "0" }
+        for i in zeroIdx.dropLast() { rows[i].rir = "1"; rirFixed = true }
+        if rirFixed { fixes.append("RIR kept between 0 and 5, with RIR 0 on one set at most") }
+
+        // At most 5 working sets: drop from the end, never the heaviest.
+        var workIdx = rows.indices.filter { !isWarm(rows[$0]) }
+        if workIdx.count > maxCoachWorkingSets {
+            let weights = workIdx.map { Double(rows[$0].prefillWeight) ?? 0 }
+            let heaviest = workIdx[weights.firstIndex(of: weights.max() ?? 0) ?? 0]
+            var drop = workIdx.count - maxCoachWorkingSets
+            var remove: [Int] = []
+            for i in workIdx.reversed() where drop > 0 && i != heaviest {
+                remove.append(i)
+                drop -= 1
+            }
+            for i in remove.sorted(by: >) { rows.remove(at: i) }
+            fixes.append("Capped at \(maxCoachWorkingSets) working sets")
+            workIdx = rows.indices.filter { !isWarm(rows[$0]) }
+        }
+
+        // Warm-ups: none at or above the first work weight, at most 3 (the heaviest ones stay).
+        if let firstWork = workIdx.first {
+            let firstWeight = Double(rows[firstWork].prefillWeight) ?? 0
+            let before = rows.filter { isWarm($0) }.count
+            rows.removeAll { isWarm($0) && (Double($0.prefillWeight) ?? 0) >= firstWeight }
+            let removed = before - rows.filter { isWarm($0) }.count
+            if removed > 0 {
+                fixes.append("Removed \(removed) warm-up\(removed == 1 ? "" : "s") at or above the first working weight")
+            }
+        }
+        let warmCount = rows.filter { isWarm($0) }.count
+        if warmCount > maxCoachWarmups {
+            var drop = warmCount - maxCoachWarmups
+            rows.removeAll { row in
+                guard isWarm(row), drop > 0 else { return false }
+                drop -= 1
+                return true
+            }
+            fixes.append("Capped warm-ups at \(maxCoachWarmups)")
+        }
+
+        // Rest 30...300 s (360 for strength).
+        let maxRest = focus == .strength ? maxCoachRestStrength : maxCoachRest
+        var restFixed = false
+        for i in rows.indices {
+            guard let rest = rows[i].restSeconds else { continue }
+            let clamped = min(maxRest, max(minCoachRest, rest))
+            if clamped != rest { rows[i].restSeconds = clamped; restFixed = true }
+        }
+        if restFixed { fixes.append("Rest kept between \(minCoachRest) and \(maxRest) s") }
+        return (rows, fixes)
+    }
+
+    /// Roles for coach-written sets: warm-ups stay warm-ups, the heaviest work set is the top set,
+    /// the rest are straight sets, and the first work set is Set 1 (`ramp`) only when it is more than
+    /// 10% lighter than the top. Isolation work is all straight sets.
+    static func assignCoachRoles(_ targets: [SetTarget], isolation: Bool = false) -> [SetTarget] {
+        var out = targets
+        let workIdx = out.indices.filter { out[$0].isWarmup != true && out[$0].role != .warmup }
+        let weights = workIdx.map { Double(out[$0].prefillWeight) ?? 0 }
+        let topWeight = weights.max() ?? 0
+        let topPos = weights.firstIndex(of: topWeight) ?? 0
+        for i in out.indices {
+            if out[i].isWarmup == true || out[i].role == .warmup {
+                out[i].role = .warmup
+                continue
+            }
+            let pos = workIdx.firstIndex(of: i) ?? 0
+            if isolation || topWeight <= 0 {
+                out[i].role = .straight
+            } else if pos == topPos {
+                out[i].role = .top
+            } else if pos == 0, topPos > 0, weights[0] < topWeight * 0.9 {
+                out[i].role = .ramp
+            } else {
+                out[i].role = .straight
+            }
+        }
+        return out
+    }
+
+    /// Fills the rest the coach left out of a set with the role's default; set rest the coach wrote stands.
+    static func withDefaultRest(
+        _ targets: [SetTarget], cls: ExerciseClass, focus: CoachFocus, restPreference: Int
+    ) -> [SetTarget] {
+        var out = targets
+        for i in out.indices where out[i].restSeconds == nil {
+            switch out[i].resolvedRole {
+            case .warmup: out[i].restSeconds = ProgressionEngine.warmupRest
+            case .ramp: out[i].restSeconds = ProgressionEngine.rampRest
+            case .top: out[i].restSeconds = focus == .strength ? ProgressionEngine.strengthTopRest : ProgressionEngine.topRest
+            case .backoff, .straight:
+                out[i].restSeconds = max(cls == .isolation ? ProgressionEngine.isolationRest : ProgressionEngine.backoffRest,
+                                         restPreference)
             }
         }
         return out

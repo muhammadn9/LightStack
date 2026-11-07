@@ -28,7 +28,7 @@ final class CoachTrustTests: LightstackUITestCase {
         XCTAssertTrue(evidence.label.contains("Last ("), "Evidence should start with the last session: \(evidence.label)")
         XCTAssertTrue(evidence.label.contains("185×6 @1"), "Last session sets missing: \(evidence.label)")
         XCTAssertTrue(evidence.label.contains("Best:"), "Best set missing: \(evidence.label)")
-        XCTAssertEqual(anyElement("plan.source.0").label, "Calculated from your log")
+        XCTAssertEqual(anyElement("plan.source.0").label, "Set by the coach")
 
         // No history for the pushdown: the badge says so and there is no "Last" line.
         XCTAssertEqual(anyElement("plan.source.2").label, "AI estimate · adjusted")

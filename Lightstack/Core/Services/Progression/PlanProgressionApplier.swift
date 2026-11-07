@@ -10,13 +10,17 @@ struct AppliedPlan {
     var adjustments: [String]
     /// The coach's proposed edits with what the app did with each.
     var changes: [PlanChange] = []
-    /// Deterministic rules that fired (recency, caps, ordering).
+    /// Deterministic rules that fired (recency, caps, ordering, safety-rail rejections).
     var safeguards: [String] = []
+    /// Per exercise: the coach's reason, or the safety rail that replaced the coach's sets.
+    var reasons: [CoachExerciseReason] = []
 }
 
-/// Swaps the AI's set numbers for `ProgressionEngine` output where history exists, runs
-/// `PlanGuardrails` over everything else, applies the coach's review edits inside the guardrails,
-/// then enforces the per-muscle and per-lift caps. The AI's coach note is kept.
+/// Coach v3 (`aiSetsWeights`): the coach's own sets stand when they pass `PlanGuardrails.validateCoachSets`;
+/// an exercise that breaks a safety rail gets the engine's plan instead.
+/// Coach v2 / old replies: swaps the AI's set numbers for `ProgressionEngine` output where history exists,
+/// runs `PlanGuardrails` over everything else, applies the coach's review edits inside the guardrails.
+/// Either way the per-muscle and per-lift caps run last. The AI's coach note is kept.
 enum PlanProgressionApplier {
 
     static func apply(
@@ -27,7 +31,9 @@ enum PlanProgressionApplier {
         feedback: SessionFeedback?,
         bestLookup: (String) -> Double? = { _ in nil },
         coach: PlanCoachContext = PlanCoachContext(),
-        changes: [PlanChange] = []
+        changes: [PlanChange] = [],
+        /// false = rollback to v2: ignore the coach's numeric sets and use the engine.
+        aiSetsWeights: Bool = true
     ) -> AppliedPlan {
         var exercises = plan.exercises
         var targets = plan.setTargets
@@ -35,6 +41,8 @@ enum PlanProgressionApplier {
         var adjustments: [String] = []
         var safeguards: [String] = []
         var recencyHeld: Set<UUID> = []
+        var coachAccepted: Set<UUID> = []
+        var reasons: [CoachExerciseReason] = []
 
         // Heavy compounds first (unless supersets pin the order).
         if let moved = heavyFirst(exercises) {
@@ -42,8 +50,8 @@ enum PlanProgressionApplier {
             safeguards.append("Moved \(moved.names.joined(separator: ", ")) ahead of lighter work (heavy compounds go first)")
         }
 
-        // Only the first one or two heavy compounds get warm-ups.
-        let warmupIndexes = Set(exercises.indices.filter { ExerciseTraits.classify(exercises[$0].name) == .heavyCompound }.prefix(2))
+        // Only the first heavy compound gets rule-based warm-ups (the coach decides its own).
+        let warmupIndexes = Set(exercises.indices.filter { ExerciseTraits.classify(exercises[$0].name) == .heavyCompound }.prefix(1))
 
         for i in exercises.indices {
             var ex = exercises[i]
@@ -70,7 +78,53 @@ enum PlanProgressionApplier {
             let trend = group.map { ProgressionEngine.trend($0.sessions) } ?? .flat
             let bestText = allTimeBest.map { "\(String(format: "%g", $0.weight))×\($0.reps)" }
 
-            if let engine {
+            // Coach v3: the coach's own sets, checked against the safety rails.
+            var railRejection: String?
+            var acceptedCoach = false
+            let aiReason = plan.reasons[ex.id]
+            if aiSetsWeights, plan.coachSetIds.contains(ex.id), let coachSets = plan.setTargets[ex.id], !coachSets.isEmpty,
+               ex.trackingType != .cardio, let group {
+                let cls = ExerciseTraits.classify(ex.name)
+                let lastTop = lastSession.flatMap { ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups($0.sets).working) }
+                let days = lastSession.map { max(0, Int(coach.now.timeIntervalSince($0.date) / 86_400)) }
+                let goal = coach.goalAllowance(for: ex.name)
+                let rail = PlanGuardrails.RailContext(
+                    name: ex.name, cls: cls, focus: coach.focus, lastTop: lastTop, daysSinceLast: days,
+                    capBestE1RM: group.capBest?.e1RM, prWeight: allTimeBest?.weight ?? bestLookup(ex.name),
+                    goalAllowance: goal?.weight, goalReps: goal?.reps ?? 1)
+                let checked = PlanGuardrails.validateCoachSets(name: ex.name, targets: coachSets, ctx: rail)
+                switch checked.verdict {
+                case .accepted(let fixes):
+                    let final = PlanGuardrails.withDefaultRest(
+                        checked.targets, cls: cls, focus: coach.focus, restPreference: coach.restPreference)
+                    targets[ex.id] = final
+                    ex.targetSets = final.count
+                    if let top = final.first(where: { $0.role == .top }) ?? final.last(where: { $0.isWarmup != true }) {
+                        if !top.prefillReps.isEmpty { ex.targetReps = top.prefillReps }
+                        if !top.prefillRir.isEmpty { ex.targetRir = top.prefillRir }
+                        if let rest = top.restSeconds { ex.restSeconds = rest }
+                        let weight = Double(top.prefillWeight) != nil ? "\(top.prefillWeight) lbs" : nil
+                        ex.coachNote = combinedNote(weight: weight, message: aiNote, cue: plan.cues[ex.id])
+                    }
+                    let text = aiReason ?? "No reason given"
+                    evidence[ex.id] = ExerciseEvidence(
+                        source: .coach, lastSets: lastSets, lastSessionDate: lastSession?.date, best: bestText,
+                        trend: trend, rationale: text, style: nil,
+                        warmupCount: final.filter { $0.isWarmup == true }.count,
+                        adjustedByGuardrails: !fixes.isEmpty, guardrailReasons: fixes)
+                    adjustments.append("\(ex.name): coach set the targets (\(text))")
+                    for fix in fixes { adjustments.append("\(ex.name): guardrail: \(fix)") }
+                    reasons.append(CoachExerciseReason(exercise: ex.name, railFallback: false, text: text))
+                    coachAccepted.insert(ex.id)
+                    acceptedCoach = true
+                case .rejected(let why):
+                    railRejection = why
+                }
+            }
+
+            if acceptedCoach {
+                // Nothing more to do: the coach's sets are in place.
+            } else if let engine {
                 let setTargets = engine.sets.map(\.setTarget)
                 targets[ex.id] = setTargets
                 ex.targetSets = setTargets.count
@@ -81,11 +135,18 @@ enum PlanProgressionApplier {
                     let weight = "\(String(format: "%g", top.weight)) lbs"
                     ex.coachNote = combinedNote(weight: weight, message: aiNote, cue: plan.cues[ex.id])
                 }
+                let rationale = railRejection.map { "Safety rail: \($0). Rule-based baseline: \(engine.rationale)" } ?? engine.rationale
                 evidence[ex.id] = ExerciseEvidence(
-                    source: .engine, lastSets: lastSets, lastSessionDate: lastSession?.date, best: bestText,
-                    trend: trend, rationale: engine.rationale, style: engine.style,
+                    source: railRejection == nil ? .engine : .engineFallback, lastSets: lastSets,
+                    lastSessionDate: lastSession?.date, best: bestText,
+                    trend: trend, rationale: rationale, style: engine.style,
                     warmupCount: engine.warmupCount, adjustedByGuardrails: false, guardrailReasons: [])
                 adjustments.append("\(ex.name): engine set the targets (\(engine.rationale))")
+                if let why = railRejection {
+                    adjustments.append("\(ex.name): safety rail rejected the coach's sets: \(why)")
+                    safeguards.append("\(ex.name): the coach's sets broke a safety rail (\(why)), so the rule-based baseline was used")
+                    reasons.append(CoachExerciseReason(exercise: ex.name, railFallback: true, text: "Safety rail: \(why)"))
+                }
                 if engine.recencyApplied {
                     recencyHeld.insert(ex.id)
                     safeguards.append("\(ex.name): \(muscle) trained hard in the last 48 h, so the load is held at RIR 2 and the back-off is dropped")
@@ -99,12 +160,24 @@ enum PlanProgressionApplier {
                         : (coach.focus == .strength ? ProgressionEngine.mainWorkingSets + 1 : ProgressionEngine.mainWorkingSets)
                     let bestWeight = best?.weight ?? bestLookup(ex.name)
                     if let existing = targets[ex.id], !existing.isEmpty {
+                        // A coach-written exercise with nothing to measure against (no history, or the engine
+                        // cannot plan it): clamp the small stuff, then the existing guardrails, which also hold
+                        // weights to the record + 5% when there is one.
+                        let isCoach = aiSetsWeights && plan.coachSetIds.contains(ex.id)
+                        let soft: (targets: [SetTarget], fixes: [String]) = isCoach
+                            ? PlanGuardrails.softFixCoachSets(existing, focus: coach.focus) : (existing, [])
                         let guarded = PlanGuardrails.apply(
-                            name: ex.name, targets: existing, allowWarmups: allowWarmups, bestWeight: bestWeight,
+                            name: ex.name, targets: soft.targets, allowWarmups: allowWarmups, bestWeight: bestWeight,
                             workingSetCap: cap)
                         report = guarded.report
-                        let final = PlanGuardrails.withRolesAndRest(
-                            guarded.targets, cls: cls, focus: coach.focus, restPreference: coach.restPreference)
+                        report.reasons.insert(contentsOf: soft.fixes, at: 0)
+                        if let why = railRejection { report.reasons.insert("Safety rail: \(why)", at: 0) }
+                        let final = isCoach
+                            ? PlanGuardrails.withDefaultRest(
+                                PlanGuardrails.assignCoachRoles(guarded.targets, isolation: cls == .isolation),
+                                cls: cls, focus: coach.focus, restPreference: coach.restPreference)
+                            : PlanGuardrails.withRolesAndRest(
+                                guarded.targets, cls: cls, focus: coach.focus, restPreference: coach.restPreference)
                         targets[ex.id] = final
                         ex.targetSets = final.count
                         if let top = final.first(where: { $0.role == .top }) ?? final.last(where: { $0.isWarmup != true }),
@@ -120,10 +193,15 @@ enum PlanProgressionApplier {
                         ex.coachNote = combinedNote(weight: ex.coachNoteParts.weight, message: aiNote, cue: cue)
                     }
                 }
+                let isCoachSets = aiSetsWeights && plan.coachSetIds.contains(ex.id)
+                let baseRationale = group == nil ? "No history yet: coach estimate" : "Coach estimate"
+                if isCoachSets, let reason = aiReason, !isCardio {
+                    reasons.append(CoachExerciseReason(exercise: ex.name, railFallback: false, text: reason))
+                }
                 evidence[ex.id] = ExerciseEvidence(
-                    source: report.adjustedByGuardrails ? .aiGuarded : .ai, lastSets: lastSets,
+                    source: report.adjustedByGuardrails ? .aiGuarded : (isCoachSets ? .coach : .ai), lastSets: lastSets,
                     lastSessionDate: lastSession?.date, best: bestText, trend: trend,
-                    rationale: group == nil ? "No history yet: coach estimate" : "Coach estimate",
+                    rationale: isCoachSets ? (aiReason ?? baseRationale) : baseRationale,
                     style: nil, warmupCount: (targets[ex.id] ?? []).filter { $0.isWarmup == true }.count,
                     adjustedByGuardrails: report.adjustedByGuardrails, guardrailReasons: report.reasons)
                 for reason in report.reasons { adjustments.append("\(ex.name): guardrail: \(reason)") }
@@ -137,7 +215,8 @@ enum PlanProgressionApplier {
         // Per-muscle hard-set cap, then the per-lift heavy-set cap on everything.
         safeguards.append(contentsOf: capMuscleVolume(&exercises, targets: &targets, adjustments: &adjustments))
         for ex in exercises {
-            guard let list = targets[ex.id], !list.isEmpty else { continue }
+            // Straight sets at one weight are a legitimate coach choice: coach-accepted exercises skip this cap.
+            guard !coachAccepted.contains(ex.id), let list = targets[ex.id], !list.isEmpty else { continue }
             let working = list.filter { $0.isWarmup != true }
             let capped = PlanGuardrails.capHeavySets(working, step: ExerciseTraits.roundingStep(ex.name))
             guard capped.changed else { continue }
@@ -149,7 +228,9 @@ enum PlanProgressionApplier {
         // Final pass, after every other edit: the main-lift structure invariants.
         for i in exercises.indices {
             let ex = exercises[i]
-            guard ex.trackingType != .cardio, let list = targets[ex.id], !list.isEmpty else { continue }
+            // Coach-written sets already passed `validateCoachSets`; the rule-based structure pass is not theirs.
+            guard ex.trackingType != .cardio, !coachAccepted.contains(ex.id),
+                  let list = targets[ex.id], !list.isEmpty else { continue }
             let group = history.group(for: ex.name)
             let lastTop = group?.sessions.first.flatMap {
                 ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups($0.sets).working)
@@ -178,7 +259,8 @@ enum PlanProgressionApplier {
         let kept = Set(exercises.map(\.id))
         return AppliedPlan(exercises: exercises, setTargets: targets.filter { kept.contains($0.key) },
                            evidence: evidence.filter { kept.contains($0.key) }, adjustments: adjustments,
-                           changes: handled, safeguards: safeguards)
+                           changes: handled, safeguards: safeguards,
+                           reasons: reasons.filter { r in exercises.contains { $0.name == r.exercise } })
     }
 
     // MARK: - Notes
@@ -444,7 +526,7 @@ enum PlanDraftBuilder {
             if !ordered.contains(where: { ExerciseNameResolver.isMatch($0.name, ex.name) }) { ordered.append(ex) }
         }
         if let moved = PlanProgressionApplier.heavyFirst(ordered) { ordered = moved.exercises }
-        let warmupIndexes = Set(ordered.indices.filter { ExerciseTraits.classify(ordered[$0].name) == .heavyCompound }.prefix(2))
+        let warmupIndexes = Set(ordered.indices.filter { ExerciseTraits.classify(ordered[$0].name) == .heavyCompound }.prefix(1))
 
         var draft: [DraftExercise] = []
         for (i, ex) in ordered.enumerated() {

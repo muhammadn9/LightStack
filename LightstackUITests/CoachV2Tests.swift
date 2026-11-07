@@ -40,10 +40,10 @@ final class CoachV2Tests: LightstackUITestCase {
             labels.append(el.label)
         }
         XCTAssertTrue(labels.first?.hasPrefix("Warm-up") == true, "First row should be the warm-up: \(labels)")
-        XCTAssertTrue(labels.contains { $0.hasPrefix("Set 1") }, "Set 1 missing: \(labels)")
+        // Coach v3: roles come from the coach's own sets (warm-up, top set, then work sets); no forced back-off.
         XCTAssertTrue(labels.contains { $0.hasPrefix("Top set") }, "Top set missing: \(labels)")
-        XCTAssertEqual(labels.filter { $0.hasPrefix("Back-off") }.count, 1, "Bench must end with exactly one Back-off: \(labels)")
-        XCTAssertTrue(labels.last?.hasPrefix("Back-off") == true, "Back-off should be last: \(labels)")
+        XCTAssertTrue(labels.contains { $0.hasPrefix("Set 3") }, "Work set after the top set missing: \(labels)")
+        XCTAssertEqual(labels.filter { $0.hasPrefix("Back-off") }.count, 0, "No forced back-off expected: \(labels)")
         XCTAssertTrue(labels.allSatisfy { $0.contains("rest ") }, "Every row should show rest: \(labels)")
 
         // The pushdown has a known form issue: its cue shows under the rows.
@@ -74,13 +74,11 @@ final class CoachV2Tests: LightstackUITestCase {
         let caption = waitFor(anyElement("session.setRole.0.0"), "Role caption missing")
         XCTAssertTrue(caption.label.contains("rest"), "Caption should show rest: \(caption.label)")
 
-        // Log the warm-up and Set 1 as prescribed; the next pending row is the top set.
-        for n in 0..<2 {
-            tap(app.buttons["setRow.0.0.log"])
-            waitFor(app.staticTexts["loggedSet.0.\(n).weight"], "Set \(n + 1) was not logged")
-        }
+        // Log the warm-up as prescribed; under coach v3 the next pending row is the top set.
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.0.weight"], "Warm-up was not logged")
         XCTAssertFalse(anyElement("session.missBanner.0").exists, "Banner must not show for sets that hit target")
-        XCTAssertTrue(anyElement("session.setRole.0.2").label.hasPrefix("Top set"), "Row 3 should be the top set: \(anyElement("session.setRole.0.2").label)")
+        XCTAssertTrue(anyElement("session.setRole.0.1").label.hasPrefix("Top set"), "Row 2 should be the top set: \(anyElement("session.setRole.0.1").label)")
 
         replaceText(in: repsField(), with: "1")
         dismissKeyboardIfNeeded()

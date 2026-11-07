@@ -121,6 +121,47 @@ final class CoachReviewDocumentTests: XCTestCase {
         XCTAssertNil(doc.review)
     }
 
+    private func decision(_ name: String = V2.bench, outcome: DecisionOutcome? = nil) -> CoachDecision {
+        CoachDecision(
+            name: name, muscle: "Chest",
+            target: PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150),
+            sets: [PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150)],
+            reason: "e1RM up, +5", context: "last 180x6@1, trend up, energy 6", source: "coach", outcome: outcome)
+    }
+
+    func testV3DocumentWithDecisionsAndMemoryNoteRoundTrips() throws {
+        var doc = fullDocument()
+        doc.decisions = [decision(outcome: DecisionOutcome(hit: false, actualTop: "185x6@0", rir: 0, shortBy: 1, result: .missed))]
+        doc.review?.exercises[0].memoryNote = "grinds after rep 4 when rest under 2:30"
+        XCTAssertEqual(CoachReviewDocument.currentVersion, 3)
+        let text = try XCTUnwrap(doc.encoded())
+        let back = try XCTUnwrap(CoachReviewDocument.parse(text))
+        XCTAssertEqual(back, doc)
+        XCTAssertEqual(back.version, 3)
+        XCTAssertEqual(back.decision(for: V2.bench)?.outcome?.actualTop, "185x6@0")
+        XCTAssertEqual(back.review?.exercises.first?.memoryNote, "grinds after rep 4 when rest under 2:30")
+        // Decisions are written only when there are some.
+        XCTAssertFalse(try XCTUnwrap(fullDocument().encoded()).contains("\"decisions\""))
+    }
+
+    func testV2DocumentDecodesWithNoDecisions() throws {
+        let text = #"{"coachReview":2,"prescription":[{"name":"Bench","sets":[{"role":"top","weight":185,"reps":7,"rir":1,"restSeconds":120}]}],"review":{"exercises":[{"name":"Bench","notes":"n","outcome":"hold"}],"overallRead":"ok","recurringFlags":[],"aiAuthored":true}}"#
+        let doc = try XCTUnwrap(CoachReviewDocument.parse(text))
+        XCTAssertEqual(doc.version, 2)
+        XCTAssertTrue(doc.decisions.isEmpty)
+        XCTAssertNil(doc.legacyNote)
+        XCTAssertEqual(doc.prescription.first?.topSet?.weight, 185)
+        XCTAssertNil(doc.review?.exercises.first?.memoryNote)
+    }
+
+    func testDamagedDecisionsKeepTheRestOfTheDocument() throws {
+        let text = #"{"coachReview":3,"prescription":[{"name":"Bench","sets":[{"role":"top","weight":185,"reps":7,"rir":1,"restSeconds":120}]}],"decisions":[{"oops":true}]}"#
+        let doc = try XCTUnwrap(CoachReviewDocument.parse(text))
+        XCTAssertNil(doc.legacyNote)
+        XCTAssertTrue(doc.decisions.isEmpty)
+        XCTAssertEqual(doc.prescription.first?.topSet?.weight, 185)
+    }
+
     func testDisplayTextShowsReadTargetsAndFlagsButNotPlanOnlyDocuments() throws {
         let text = try XCTUnwrap(CoachReviewDocument.displayText(from: fullDocument().encoded()))
         XCTAssertTrue(text.hasPrefix("Decent session."))
@@ -388,6 +429,50 @@ final class SessionAnalyzerTests: XCTestCase {
         XCTAssertEqual(good.nextTarget, NextTarget(weight: 190, reps: 6, note: "make the jump"))
     }
 
+    func testDecisionOutcomeJoinMarksHitAndMiss() throws {
+        let top = PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150)
+        let decisions = [CoachDecision(name: V2.bench, muscle: "Chest", target: top, sets: nil, reason: "r",
+                                       context: "c", source: "coach", outcome: nil)]
+        let hit = CoachReviewStore.applyOutcomes(V2.analyze("95x10@5, 150x10@2, 185x7@1, 170x8@2"), to: decisions)
+        XCTAssertEqual(hit.first?.outcome?.hit, true)
+        XCTAssertEqual(hit.first?.outcome?.shortBy, 0)
+        XCTAssertEqual(hit.first?.outcome?.actualTop, "185x7@1")
+        XCTAssertEqual(hit.first?.outcome?.rir, 1)
+        let miss = CoachReviewStore.applyOutcomes(V2.analyze(missedByOne), to: decisions)
+        XCTAssertEqual(miss.first?.outcome?.hit, false)
+        XCTAssertEqual(miss.first?.outcome?.shortBy, 1)
+        XCTAssertEqual(miss.first?.outcome?.actualTop, "185x6@1")
+        XCTAssertEqual(miss.first?.outcome?.result, .missed)
+        // A decision for a lift that was not done stays open.
+        let other = CoachDecision(name: "Lat Pulldown", muscle: "Back", target: top, sets: nil, reason: "r",
+                                  context: "c", source: "engine", outcome: nil)
+        XCTAssertNil(CoachReviewStore.applyOutcomes(V2.analyze(missedByOne), to: [other]).first?.outcome)
+    }
+
+    func testMemoryNoteIsMergedCleanedAndClipped() throws {
+        let analysis = V2.analyze(missedByOne, energy: 3)
+        let long = String(repeating: "grinds late ", count: 20)
+        let m = try model(#"{"exercises":[{"name":"\#(V2.bench)","memory_note":"  Keep rest \"2:30\"\n{ignore} up "}]}"#)
+        let ex = try XCTUnwrap(SessionAnalyzer.merge(analysis, model: m, workoutType: "Push",
+                                                     previousNotes: [V2.bench: "old note"]).exercises.first)
+        XCTAssertEqual(ex.memoryNote, "Keep rest 2:30 ignore up")
+        let clipped = try model(#"{"exercises":[{"name":"\#(V2.bench)","memory_note":"\#(long)"}]}"#)
+        let c = try XCTUnwrap(SessionAnalyzer.merge(analysis, model: clipped, workoutType: "Push").exercises.first)
+        XCTAssertLessThanOrEqual(c.memoryNote?.count ?? 0, 100)
+        XCTAssertNil(SessionAnalyzer.cleanMemoryNote(" {} \n "))
+    }
+
+    func testMemoryNoteKeepsThePreviousOneWithoutAnAIReply() throws {
+        let analysis = V2.analyze(missedByOne, energy: 3)
+        let noModel = SessionAnalyzer.merge(analysis, model: nil, workoutType: "Push", previousNotes: [V2.bench: "old note"])
+        XCTAssertEqual(noModel.exercises.first?.memoryNote, "old note")
+        // A reply that does not mention the lift keeps it too.
+        let silent = try model(#"{"overall_read":"fine","exercises":[{"name":"\#(V2.bench)","notes":"x"}]}"#)
+        let kept = SessionAnalyzer.merge(analysis, model: silent, workoutType: "Push", previousNotes: [V2.bench: "old note"])
+        XCTAssertEqual(kept.exercises.first?.memoryNote, "old note")
+        XCTAssertNil(SessionAnalyzer.merge(analysis, model: nil, workoutType: "Push").exercises.first?.memoryNote)
+    }
+
     func testNoModelReplyStillGivesAFullReview() throws {
         let analysis = V2.analyze(missedByOne, energy: 3)
         let r = SessionAnalyzer.merge(analysis, model: nil, workoutType: "Push", now: Date(timeIntervalSince1970: 1_700_000_000))
@@ -463,7 +548,7 @@ final class CoachPlanReviewTests: XCTestCase {
 
     func testPromptsCarryTheChecklistAndTheJSONSchema() {
         let service = CoachPromptService(validationService: ValidationService())
-        let system = service.buildSystemPrompt(profile: nil, task: .plan)
+        let system = service.buildSystemPrompt(profile: nil, task: .plan, aiSetsWeights: false)
         for needle in ["REVIEW THE DRAFT", "heavy compounds first", "6-10 hard sets", "rear delts", "reorder|swap|drop|add|setCount|loadAdjust",
                        "\"verdict\"", "\"cue\"", "WORKOUT PLAN FORMAT"] {
             XCTAssertTrue(system.contains(needle), "missing \(needle)")
@@ -486,7 +571,8 @@ final class CoachPlanReviewTests: XCTestCase {
             draft: [DraftExercise(name: V2.bench, muscleGroup: "Chest", result: draftResult)], estimatedMinutes: 38,
             reviews: [V2.review(V2.bench, outcome: .missed, miss: MissAnalysis(cause: .lowEnergy, decision: .retry, reason: "bad day"))],
             recency: ["chest": MuscleRecency(lastTrained: now.addingTimeInterval(-36 * 3600), hardSets: 8)], now: now)
-        let message = service.buildWorkoutRequestMessage(workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras)
+        let message = service.buildWorkoutRequestMessage(workoutType: "Push", time: 45, energy: 6, notes: nil, coach: extras,
+                                                         aiSetsWeights: false)
         for needle in ["Focus: strength", "Constraints: incline smith not available", "DRAFT PLAN", "top set 185x7@1",
                        "DAYS SINCE EACH MUSCLE", "chest: 1.5 d (8 hard sets)", "PREVIOUS REVIEWS", "missed [lowEnergy -> retry]",
                        "rear delts skipped", "~38 min", "Review the DRAFT PLAN"] {
@@ -825,5 +911,716 @@ final class CoachReviewStoreTests: XCTestCase {
         XCTAssertNil(CoachContextBuilder.medianMinutes([w(45)], preferring: "Push"))
         XCTAssertEqual(CoachContextBuilder.medianMinutes([w(40), w(50)], preferring: nil), 45)
         XCTAssertEqual(CoachContextBuilder.medianMinutes([w(40), w(50), w(1), w(900), w(nil)], preferring: "Push"), 45)
+    }
+}
+
+// MARK: - Coach v3: the coach sets the weights, the app keeps wide rails
+
+final class CoachV3Tests: XCTestCase {
+
+    private func set(_ type: String, _ weight: Double, _ reps: Int, _ rir: Int, rest: Int? = 120) -> SetTarget {
+        let warm = type == "warmup"
+        return SetTarget(weight: String(format: "%g", weight), reps: String(reps), rir: String(rir),
+                         isWarmup: warm ? true : nil, role: warm ? .warmup : nil, restSeconds: rest)
+    }
+
+    /// Bench: last top 185x6@1 three days ago, recent best e1RM about 237.7 (230x1).
+    private func rail(last: HistorySet? = HistorySet(185, 6, rir: 1), days: Int? = 3, best: Double? = 237.7,
+                      cls: ExerciseClass = .heavyCompound, focus: CoachFocus = .hypertrophy) -> PlanGuardrails.RailContext {
+        PlanGuardrails.RailContext(name: V2.bench, cls: cls, focus: focus, lastTop: last, daysSinceLast: days, capBestE1RM: best)
+    }
+
+    private func check(_ sets: [SetTarget], _ ctx: PlanGuardrails.RailContext)
+        -> (targets: [SetTarget], verdict: PlanGuardrails.RailVerdict) {
+        PlanGuardrails.validateCoachSets(name: V2.bench, targets: sets, ctx: ctx)
+    }
+
+    private func rejection(_ verdict: PlanGuardrails.RailVerdict) -> String? {
+        if case .rejected(let reason) = verdict { return reason }
+        return nil
+    }
+
+    // MARK: Rails
+
+    func testRailsAcceptWideTopWeightAndDeriveRoles() {
+        let sets = [set("warmup", 95, 8, 4, rest: 60), set("work", 165, 8, 2), set("work", 200, 5, 1), set("work", 185, 8, 2)]
+        let result = check(sets, rail())
+        XCTAssertEqual(result.verdict, .accepted(softFixes: []))
+        XCTAssertEqual(result.targets.map(\.resolvedRole), [.warmup, .ramp, .top, .straight], "no back-off is forced")
+        XCTAssertEqual(result.targets.compactMap(\.restSeconds), [60, 120, 120, 120], "the coach's rest stands")
+    }
+
+    func testRailRejectsTopWeightMoreThanTenPercentOverTheLastTop() {
+        let result = check([set("work", 210, 5, 1), set("work", 185, 6, 2)], rail())
+        let reason = rejection(result.verdict)
+        XCTAssertNotNil(reason)
+        XCTAssertTrue(reason?.contains("203.5") ?? false, reason ?? "")
+        XCTAssertEqual(result.targets, [set("work", 210, 5, 1), set("work", 185, 6, 2)], "rejected sets come back untouched")
+        XCTAssertEqual(check([set("work", 203, 5, 1)], rail()).verdict, .accepted(softFixes: []))
+    }
+
+    func testSmallLiftsMayAlwaysTakeOneIncrement() {
+        // 20 lb curl: +10% is 22, but one increment (5) is 25.
+        let ctx = PlanGuardrails.RailContext(name: "Dumbbell Curl", cls: .isolation, focus: .hypertrophy,
+                                             lastTop: HistorySet(20, 10, rir: 2), daysSinceLast: 4, capBestE1RM: nil)
+        let limit = PlanGuardrails.coachTopLimit(ctx)?.limit ?? 0
+        XCTAssertGreaterThanOrEqual(limit, 20 + ExerciseTraits.increment("Dumbbell Curl"))
+    }
+
+    func testGapWindowsTightenTheTopWeight() {
+        // Same comparison as the engine: more than 14 days holds, more than 28 days comes back lighter.
+        XCTAssertEqual(check([set("work", 200, 5, 1)], rail(days: 14)).verdict, .accepted(softFixes: []))
+        XCTAssertNotNil(rejection(check([set("work", 190, 5, 1)], rail(days: 15)).verdict))
+        XCTAssertNotNil(rejection(check([set("work", 190, 5, 1)], rail(days: 28)).verdict))
+        XCTAssertEqual(check([set("work", 185, 6, 2)], rail(days: 28)).verdict, .accepted(softFixes: []))
+        XCTAssertNotNil(rejection(check([set("work", 185, 6, 2)], rail(days: 29)).verdict))
+        XCTAssertEqual(check([set("work", 175, 6, 2)], rail(days: 29)).verdict, .accepted(softFixes: []))
+        XCTAssertEqual(ProgressionEngine.holdAfterDays, 14)
+        XCTAssertEqual(ProgressionEngine.layoffAfterDays, 28)
+    }
+
+    func testRailRejectsAnE1RMOverTheRecentBestPlusFivePercent() {
+        let noLast = rail(last: nil, days: nil, best: 240)
+        // 200x10 estimates 266.7, over 252.
+        let high = check([set("work", 200, 10, 1)], noLast)
+        XCTAssertTrue(rejection(high.verdict)?.contains("one-rep max") ?? false, "\(high.verdict)")
+        XCTAssertEqual(check([set("work", 200, 6, 1)], noLast).verdict, .accepted(softFixes: []))
+    }
+
+    func testRailRejectsAWorkWeightUnderHalfTheLastTopAtHardEffort() {
+        let result = check([set("work", 60, 10, 2), set("work", 60, 10, 1)], rail())
+        XCTAssertTrue(rejection(result.verdict)?.contains("half") ?? false, "\(result.verdict)")
+        // A light set at easy effort is fine.
+        XCTAssertEqual(check([set("work", 90, 12, 4), set("work", 185, 6, 1)], rail()).verdict, .accepted(softFixes: []))
+    }
+
+    func testGoalAllowanceHookIsNilAndRaisesOnlyTheTenPercentCeiling() {
+        XCTAssertNil(rail().goalAllowance)
+        var ctx = rail()
+        ctx.goalAllowance = 215
+        XCTAssertEqual(check([set("work", 210, 5, 1)], ctx).verdict, .accepted(softFixes: []))
+        ctx.daysSinceLast = 20
+        XCTAssertNotNil(rejection(check([set("work", 210, 5, 1)], ctx).verdict), "gap rules still win")
+    }
+
+    func testGoalAllowanceLetsTheAttemptAndItsLadderPassTheE1RMAndTopWeightRails() {
+        // Last top 200x1, recent best e1RM 221: 225x1 (e1RM 232.5) breaks both the +10% top limit and the +5% e1RM limit.
+        let base = rail(last: HistorySet(200, 1, rir: 1), days: 3, best: 221)
+        let ladder = [set("warmup", 90, 5, 5, rest: 60), set("warmup", 135, 3, 4, rest: 60), set("warmup", 185, 1, 3, rest: 90),
+                      set("work", 225, 1, 1, rest: 240), set("work", 205, 3, 2, rest: 180)]
+        XCTAssertNotNil(rejection(check(ladder, base).verdict), "without an allowance the attempt is rejected")
+        var allowed = base
+        allowed.goalAllowance = 225
+        allowed.goalReps = 1
+        XCTAssertEqual(check(ladder, allowed).verdict, .accepted(softFixes: []))
+        XCTAssertNotNil(rejection(check([set("work", 230, 1, 1)], allowed).verdict), "above the goal weight is still rejected")
+        XCTAssertNotNil(rejection(check([set("work", 225, 5, 1)], allowed).verdict), "more reps than the goal is still rejected")
+    }
+
+    func testGoalAllowanceNeverRelaxesTheUnitConfusionOrGapRules() {
+        var ctx = rail(last: HistorySet(200, 1, rir: 1), days: 3, best: 221)
+        ctx.goalAllowance = 225
+        ctx.goalReps = 1
+        XCTAssertTrue(rejection(check([set("work", 60, 5, 1)], ctx).verdict)?.contains("half") ?? false, "unit rail stays")
+        ctx.daysSinceLast = 20
+        XCTAssertNotNil(rejection(check([set("work", 225, 1, 1)], ctx).verdict), "gap rules stay")
+    }
+
+    func testSoftFixesClampInsteadOfRejecting() {
+        let sets = [set("warmup", 20, 10, 5, rest: 60), set("warmup", 40, 10, 5, rest: 60), set("warmup", 60, 8, 4, rest: 60),
+                    set("warmup", 80, 6, 3, rest: 60), set("warmup", 100, 5, 3, rest: 60),
+                    set("work", 100, 45, 7, rest: 10), set("work", 100, 8, 0), set("work", 100, 8, 0),
+                    set("work", 100, 8, 2, rest: 900), set("work", 100, 8, 2), set("work", 100, 8, 2)]
+        let result = check(sets, rail(last: nil, days: nil, best: nil))
+        guard case .accepted(let fixes) = result.verdict else { return XCTFail("expected accepted, got \(result.verdict)") }
+        XCTAssertFalse(fixes.isEmpty)
+        let warm = result.targets.filter { $0.isWarmup == true }
+        let work = result.targets.filter { $0.isWarmup != true }
+        XCTAssertEqual(warm.map(\.prefillWeight), ["40", "60", "80"], "none at the working weight, at most 3, heaviest kept")
+        XCTAssertEqual(work.count, 5)
+        XCTAssertEqual(work[0].prefillReps, "30")
+        XCTAssertEqual(work.map(\.prefillRir), ["5", "1", "0", "2", "2"], "RIR 0-5, a single RIR 0")
+        XCTAssertEqual(work[0].restSeconds, 30)
+        XCTAssertEqual(work[3].restSeconds, 300)
+        // Strength focus may rest up to 360 s.
+        let strength = check(sets, rail(last: nil, days: nil, best: nil, focus: .strength))
+        XCTAssertEqual(strength.targets.filter { $0.isWarmup != true }[3].restSeconds, 360)
+    }
+
+    func testRolesAreDerivedByTheApp() {
+        func roles(_ sets: [SetTarget], isolation: Bool = false) -> [SetRole] {
+            PlanGuardrails.assignCoachRoles(sets, isolation: isolation).map(\.resolvedRole)
+        }
+        XCTAssertEqual(roles([set("work", 150, 10, 2), set("work", 190, 5, 1)]), [.ramp, .top])
+        XCTAssertEqual(roles([set("work", 175, 8, 2), set("work", 190, 5, 1)]), [.straight, .top], "175 is within 10% of 190")
+        XCTAssertEqual(roles([set("work", 100, 8, 2), set("work", 100, 8, 2)]), [.top, .straight])
+        XCTAssertEqual(roles([set("work", 30, 12, 2), set("work", 30, 12, 1)], isolation: true), [.straight, .straight])
+    }
+
+    // MARK: Applier
+
+    private func applyCoach(_ sets: [SetTarget], reason: String? = "Last 185x6@1, e1RM up.", now: Date = V2.day(10, 21),
+                            aiSetsWeights: Bool = true) -> (AppliedPlan, Exercise) {
+        let e = Exercise.create(workoutId: UUID(), name: V2.bench, muscleGroup: "Chest", orderIndex: 0, targetSets: 3,
+                                targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
+        var parsed = WorkoutSessionService.ParsedPlan(exercises: [e], setTargets: [e.id: sets])
+        parsed.coachSetIds = [e.id]
+        if let reason { parsed.reasons = [e.id: reason] }
+        let applied = PlanProgressionApplier.apply(
+            plan: parsed, history: V2.history, energy: 6, feedback: nil,
+            coach: PlanCoachContext(now: now), aiSetsWeights: aiSetsWeights)
+        return (applied, e)
+    }
+
+    func testApplierKeepsTheCoachsSetsWithoutForcingABackoffOrFivePercent() throws {
+        let (applied, e) = applyCoach([set("warmup", 95, 8, 4, rest: 60), set("work", 150, 10, 2, rest: 90), set("work", 195, 5, 1, rest: 150)])
+        let targets = try XCTUnwrap(applied.setTargets[e.id])
+        XCTAssertEqual(targets.map(\.resolvedRole), [.warmup, .ramp, .top])
+        XCTAssertEqual(targets.map(\.prefillWeight), ["95", "150", "195"], "195 is over +5% (194.25) but inside the +10% rail")
+        let evidence = try XCTUnwrap(applied.evidence[e.id])
+        XCTAssertEqual(evidence.source, .coach)
+        XCTAssertEqual(evidence.rationale, "Last 185x6@1, e1RM up.")
+        XCTAssertEqual(evidence.warmupCount, 1)
+        XCTAssertEqual(applied.reasons, [CoachExerciseReason(exercise: V2.bench, railFallback: false, text: "Last 185x6@1, e1RM up.")])
+        XCTAssertEqual(applied.exercises[0].coachNoteParts.weight, "195 lbs")
+        XCTAssertEqual(applied.exercises[0].restSeconds, 150)
+    }
+
+    func testCoachStraightSetsAtOneWeightAreNotCappedButEngineSetsStillAre() throws {
+        let (applied, e) = applyCoach([set("work", 100, 8, 2), set("work", 100, 8, 2), set("work", 100, 8, 1)])
+        XCTAssertEqual(applied.setTargets[e.id]?.map(\.prefillWeight), ["100", "100", "100"])
+        let capped = PlanGuardrails.capHeavySets((0..<4).map { _ in set("work", 200, 5, 2) }, step: 5)
+        XCTAssertTrue(capped.changed, "the cap still exists for engine and fallback sets")
+    }
+
+    func testRejectedExerciseGetsTheEnginePlanWithTheRailInItsEvidence() throws {
+        let (applied, e) = applyCoach([set("work", 150, 10, 2), set("work", 215, 5, 1)])
+        let targets = try XCTUnwrap(applied.setTargets[e.id])
+        XCTAssertEqual(targets.map(\.resolvedRole), [.warmup, .ramp, .top, .backoff], "the engine's baseline")
+        XCTAssertEqual(targets.map(\.prefillWeight), ["95", "150", "185", "170"])
+        let evidence = try XCTUnwrap(applied.evidence[e.id])
+        XCTAssertEqual(evidence.source, .engineFallback)
+        XCTAssertTrue(evidence.rationale.hasPrefix("Safety rail:"), evidence.rationale)
+        XCTAssertTrue(applied.safeguards.contains { $0.contains("safety rail") }, "\(applied.safeguards)")
+        XCTAssertEqual(applied.reasons.first?.railFallback, true)
+        XCTAssertEqual(applied.reasons.first?.label, "Safety rail: rule-based")
+    }
+
+    func testRailsUseTheGapBetweenTodayAndTheLastSession() throws {
+        // 21 days after 10/20: no increase, so 190 is rejected and the engine holds 185.
+        let (applied, e) = applyCoach([set("work", 150, 10, 2), set("work", 190, 5, 1)], now: V2.day(11, 10))
+        XCTAssertEqual(applied.evidence[e.id]?.source, .engineFallback)
+    }
+
+    func testRollbackSwitchIgnoresTheCoachsNumbers() throws {
+        let (applied, e) = applyCoach([set("work", 150, 10, 2), set("work", 200, 5, 1)], aiSetsWeights: false)
+        XCTAssertEqual(applied.evidence[e.id]?.source, .engine)
+        XCTAssertTrue(applied.reasons.isEmpty)
+    }
+
+    func testNewExerciseWithoutHistoryKeepsCoachSetsAfterTheExistingGuardrails() throws {
+        let e = Exercise.create(workoutId: UUID(), name: "Cable Crossover", muscleGroup: "Chest", orderIndex: 0, targetSets: 3,
+                                targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
+        var parsed = WorkoutSessionService.ParsedPlan(
+            exercises: [e], setTargets: [e.id: [set("warmup", 40, 10, 4, rest: 60), set("work", 40, 10, 3, rest: 75), set("work", 45, 8, 2, rest: 75)]])
+        parsed.coachSetIds = [e.id]
+        parsed.reasons = [e.id: "New lift: start light."]
+        let applied = PlanProgressionApplier.apply(plan: parsed, history: ExerciseHistoryIndex(), energy: 6, feedback: nil,
+                                                   coach: PlanCoachContext(now: V2.day(10, 21)))
+        let targets = try XCTUnwrap(applied.setTargets[e.id])
+        XCTAssertFalse(targets.contains { $0.isWarmup == true }, "a warm-up at the working weight is stripped")
+        XCTAssertEqual(targets.compactMap(\.restSeconds), [75, 75], "the coach's rest stands")
+        XCTAssertEqual(applied.evidence[e.id]?.source, .aiGuarded)
+        XCTAssertEqual(applied.evidence[e.id]?.rationale, "New lift: start light.")
+        XCTAssertEqual(applied.reasons.first?.text, "New lift: start light.")
+    }
+
+    // MARK: Parsing
+
+    func testNewReplyParsesNumericSetsReasonsAndSummary() throws {
+        let reply = """
+        {"summary":"Heavy day.","coaching_notes":"x","exercises":[
+         {"name":"Barbell Bench Press","muscle_group":"Chest","superset":null,"cue":null,"reason":"Last 185x6@1, e1RM rising.",
+          "sets":[{"type":"warmup","weight":95,"reps":8,"rir":4,"rest":60},{"type":"work","weight":150,"reps":10,"rir":2,"rest":90},
+                  {"type":"work","weight":190,"reps":5,"rir":1,"rest":150}]}]}
+        """
+        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: reply, workoutId: UUID(), sanitizeLabel: { $0 }))
+        let bench = try XCTUnwrap(plan.exercises.first)
+        XCTAssertEqual(plan.summary, "Heavy day.")
+        XCTAssertEqual(plan.reasons[bench.id], "Last 185x6@1, e1RM rising.")
+        XCTAssertTrue(plan.coachSetIds.contains(bench.id))
+        XCTAssertEqual(bench.targetSets, 3)
+        XCTAssertEqual(plan.setTargets[bench.id]?.map(\.resolvedRole), [.warmup, .ramp, .top])
+        XCTAssertEqual(plan.setTargets[bench.id]?.compactMap(\.restSeconds), [60, 90, 150])
+        XCTAssertEqual(bench.coachNoteParts.weight, "190 lbs")
+    }
+
+    func testOldReplyShapesStillParseAndAreNotMarkedAsCoachSets() throws {
+        let old = """
+        {"review":{"verdict":"sound","summary":"Fine.","changes":[]},
+         "exercises":[{"name":"Barbell Row","muscle_group":"Back","cue":"Ribs down","coach_note":"Pull to the hip"},
+                      {"name":"Face Pull","muscle_group":"Rear Delts",
+                       "set_targets":[{"weight":"40","reps":"15","rir":"2"},{"weight":"40","reps":"15","rir":"1"}]}]}
+        """
+        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: old, workoutId: UUID(), sanitizeLabel: { $0 }))
+        XCTAssertTrue(plan.coachSetIds.isEmpty)
+        XCTAssertTrue(plan.reasons.isEmpty)
+        XCTAssertNil(plan.summary)
+        XCTAssertEqual(plan.setTargets[plan.exercises[1].id]?.count, 2)
+        XCTAssertEqual(CoachPlanReview.parse(fromReply: old)?.summary, "Fine.")
+        // The integer form of "sets" still works.
+        let counted = try XCTUnwrap(WorkoutSessionService.plan(
+            fromPlanJSON: #"{"exercises":[{"name":"Squat","muscle_group":"Legs","sets":4}]}"#, workoutId: UUID(), sanitizeLabel: { $0 }))
+        XCTAssertEqual(counted.exercises.first?.targetSets, 4)
+        XCTAssertTrue(counted.coachSetIds.isEmpty)
+    }
+
+    func testUnparseableReplyStillFallsBackToTheDraft() {
+        XCTAssertNil(WorkoutSessionService.plan(fromPlanJSON: "Here is a plan: bench 3x8", workoutId: UUID(), sanitizeLabel: { $0 }))
+    }
+
+    // MARK: Switch, store, labels
+
+    func testRollbackSwitchDefaultsToOn() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "coachv3-\(UUID().uuidString)"))
+        XCTAssertTrue(CoachPreferences.aiSetsWeights(in: defaults))
+        defaults.set(false, forKey: CoachPreferences.aiSetsWeightsKey)
+        XCTAssertFalse(CoachPreferences.aiSetsWeights(in: defaults))
+    }
+
+    func testOldDebugSnapshotsStillDecode() throws {
+        let json = #"{"userId":"u","timestamp":0,"workoutType":"Push","model":"m","systemPromptName":"plan","systemPromptLength":1,"userMessage":"x","adjustments":[]}"#
+        let snapshot = try JSONDecoder().decode(CoachPlanSnapshot.self, from: Data(json.utf8))
+        XCTAssertNil(snapshot.reasons)
+        var withReasons = snapshot
+        withReasons.reasons = [CoachExerciseReason(exercise: "Bench", railFallback: true, text: "Safety rail: x")]
+        let round = try JSONDecoder().decode(CoachPlanSnapshot.self, from: JSONEncoder().encode(withReasons))
+        XCTAssertEqual(round.reasons?.first?.label, "Safety rail: rule-based")
+        XCTAssertEqual(CoachExerciseReason(exercise: "Bench", railFallback: false, text: "t").label, "Set by the coach")
+    }
+
+    func testEvidenceLabelsNameWhoSetTheNumbers() {
+        XCTAssertEqual(EvidenceFormat.sourceTitle(.coach), "Set by the coach")
+        XCTAssertEqual(EvidenceFormat.sourceTitle(.engineFallback), "Safety rail: rule-based")
+    }
+}
+
+// MARK: - Coach v3 goals: assessor, ladder, store, threads
+
+final class GoalAssessorTests: XCTestCase {
+
+    private let bench = "Barbell Bench Press"
+    private let now = V2.day(11, 3)
+
+    private func daysAgo(_ days: Int) -> Date { now.addingTimeInterval(-Double(days) * 86_400) }
+
+    /// 185, 190, 195, 200 x3 over the last three weeks: e1RM 203.5, 209, 214.5, 220 (+5.5 a week).
+    private var risingBench: [GoalAssessor.Point] {
+        [GoalAssessor.Point(date: daysAgo(21), weight: 185, reps: 3),
+         GoalAssessor.Point(date: daysAgo(14), weight: 190, reps: 3),
+         GoalAssessor.Point(date: daysAgo(7), weight: 195, reps: 3),
+         GoalAssessor.Point(date: daysAgo(0), weight: 200, reps: 3)]
+    }
+
+    private func assess(_ weight: Double, _ reps: Int = 1, history: [GoalAssessor.Point]? = nil) throws -> GoalAssessor.Assessment {
+        try XCTUnwrap(GoalAssessor.assess(exercise: bench, targetWeight: weight, targetReps: reps,
+                                          history: history ?? risingBench, now: now))
+    }
+
+    func testCurrentE1RMSlopeAndGap() throws {
+        let a = try assess(225)
+        XCTAssertEqual(a.currentE1RM, 220, accuracy: 0.01)
+        XCTAssertEqual(a.targetE1RM, 232.5, accuracy: 0.01)
+        XCTAssertEqual(a.weeklySlope, 5.5, accuracy: 0.3)
+        XCTAssertEqual(a.gapPercent, 5.68, accuracy: 0.05)
+        XCTAssertFalse(a.stale)
+    }
+
+    func testWithinThreePercentIsRealisticNow() throws {
+        XCTAssertEqual(try assess(215).verdict, .realisticNow)   // gap about 1%
+        XCTAssertEqual(try assess(218).verdict, .realisticNow)   // gap about 2.4%
+        XCTAssertEqual(try assess(190).verdict, .realisticNow)   // already past it
+    }
+
+    func testThreeToTenPercentIsABlockOfWeeks() throws {
+        XCTAssertEqual(try assess(220).verdict, .block(weeks: 2))   // gap 3.3%: 7.3 to go at 5.5 a week
+        XCTAssertEqual(try assess(225).verdict, .block(weeks: 3))   // gap 5.7%: 12.5 to go
+        XCTAssertEqual(try assess(232).verdict, .block(weeks: 4))   // gap 9.0%: 19.7 to go
+        XCTAssertGreaterThan(try assess(235).gapPercent, 10)        // just past the block range
+        if case .longTerm = try assess(235).verdict {} else { XCTFail("10.4% should be long term") }
+    }
+
+    func testBeyondTenPercentIsLongTermWithAnIntermediateGoal() throws {
+        let a = try assess(250)
+        XCTAssertGreaterThan(a.gapPercent, 10)
+        // About 5% over the current e1RM at one rep, on the 5 lb step.
+        XCTAssertEqual(a.verdict, .longTerm(intermediateWeight: 225))
+    }
+
+    func testFlatTrendFallsBackToAnAssumedGain() throws {
+        let flat = [GoalAssessor.Point(date: daysAgo(14), weight: 200, reps: 3),
+                    GoalAssessor.Point(date: daysAgo(0), weight: 200, reps: 3)]
+        let a = try assess(225, history: flat)
+        XCTAssertEqual(a.weeklySlope, 0, accuracy: 0.01)
+        guard case .block(let weeks) = a.verdict else { return XCTFail("expected a block, got \(a.verdict)") }
+        XCTAssertEqual(weeks, 12)   // 12.5 to go at 0.5% of 220 a week
+    }
+
+    func testStaleHistoryStillAssessesButIsFlagged() throws {
+        let old = [GoalAssessor.Point(date: daysAgo(70), weight: 200, reps: 3)]
+        let a = try assess(225, history: old)
+        XCTAssertTrue(a.stale)
+        XCTAssertEqual(a.weeklySlope, 0, accuracy: 0.001)
+        XCTAssertTrue(GoalAssessor.appCheckLine(a).contains("nothing logged"))
+    }
+
+    func testNoHistoryHasNoAssessment() {
+        XCTAssertNil(GoalAssessor.assess(exercise: bench, targetWeight: 225, targetReps: 1, history: [], now: now))
+        XCTAssertTrue(GoalAssessor.noHistoryLine(exercise: bench, targetWeight: 225, targetReps: 1).hasPrefix("APP CHECK:"))
+    }
+
+    func testWarmupLadderForA225Single() {
+        let ladder = GoalAssessor.ladder(exercise: bench, weight: 225, reps: 1)
+        XCTAssertEqual(ladder.map(\.weight), [90, 135, 170, 190, 205, 225])
+        XCTAssertEqual(ladder.map(\.reps), [5, 3, 2, 1, 1, 1])
+        XCTAssertEqual(ladder.map(\.isAttempt), [false, false, false, false, false, true])
+    }
+
+    func testLadderStartsAtTheBarForLightTargets() {
+        let ladder = GoalAssessor.ladder(exercise: bench, weight: 95, reps: 1)
+        XCTAssertEqual(ladder.first?.weight, 45)
+        XCTAssertEqual(ladder.last?.weight, 95)
+        XCTAssertEqual(ladder.last?.isAttempt, true)
+        XCTAssertEqual(ladder.map(\.weight), ladder.map(\.weight).sorted())
+        XCTAssertEqual(Set(ladder.map(\.weight)).count, ladder.count, "ladder repeats a weight")
+    }
+
+    func testLadderRoundsToDumbbellSteps() {
+        let ladder = GoalAssessor.ladder(exercise: "Incline Dumbbell Press", weight: 100, reps: 1)
+        for step in ladder { XCTAssertEqual(step.weight.truncatingRemainder(dividingBy: 2.5), 0, "\(step.weight)") }
+        XCTAssertEqual(ladder.last?.weight, 100)
+    }
+
+    func testAppCheckLineStatesTheFacts() throws {
+        let line = GoalAssessor.appCheckLine(try assess(225))
+        XCTAssertTrue(line.hasPrefix("APP CHECK: \(bench) e1RM 220"), line)
+        XCTAssertTrue(line.contains("225x1 = e1RM 233") || line.contains("225x1 = e1RM 232"), line)
+        XCTAssertTrue(line.contains("gap 6%"), line)
+        XCTAssertTrue(line.contains("not this week"), line)
+        let near = GoalAssessor.appCheckLine(try assess(215))
+        XCTAssertTrue(near.contains("Warm-up ladder"), near)
+        let far = GoalAssessor.appCheckLine(try assess(250))
+        XCTAssertTrue(far.contains("intermediate goal"), far)
+    }
+
+    func testTopPointsTakeEachSessionsBestWorkingSetNotWarmups() {
+        let sessions = [
+            HistorySession(date: daysAgo(7), sets: V2.sets("95x8@4, 185x5@2, 200x3@1")),
+            HistorySession(date: daysAgo(14), sets: V2.sets("100x5@4, 185x3@2"))
+        ]
+        let points = GoalAssessor.topPoints(from: sessions)
+        XCTAssertEqual(points.count, 2)
+        XCTAssertEqual(points.first?.weight, 185)          // oldest first
+        XCTAssertEqual(points.last?.weight, 200)
+        XCTAssertEqual(points.last?.reps, 3)
+    }
+}
+
+final class CoachGoalStoreTests: XCTestCase {
+
+    private func makeDefaults() throws -> UserDefaults {
+        let suite = "coach-goals-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return defaults
+    }
+
+    func testGoalRoundTripsThroughTheStore() throws {
+        let store = CoachGoalStore(defaults: try makeDefaults())
+        let user = UUID()
+        XCTAssertTrue(store.goals(for: user).isEmpty)
+
+        var goal = CoachGoal(exerciseName: "Barbell Bench Press", targetWeight: 225, targetReps: 1,
+                             deadline: CoachGoal.parseDay("2026-12-15"),
+                             steps: [CoachGoalStep(date: "2026-12-01", text: "Heavy single 205", weight: 205, reps: 1, attempt: false),
+                                     CoachGoalStep(date: "2026-12-15", text: "Attempt 225x1", weight: 225, reps: 1, attempt: true)],
+                             assessment: "APP CHECK: x")
+        store.add(goal, for: user)
+
+        let loaded = try XCTUnwrap(store.goals(for: user).first)
+        XCTAssertEqual(loaded, goal)
+        XCTAssertEqual(loaded.targetText, "225x1")
+        XCTAssertEqual(loaded.steps.last?.attempt, true)
+        XCTAssertEqual(store.activeGoals(for: user).count, 1)
+
+        goal.status = .achieved
+        store.update(goal, for: user)
+        XCTAssertEqual(store.goals(for: user).first?.status, .achieved)
+        XCTAssertTrue(store.activeGoals(for: user).isEmpty)
+    }
+
+    func testGoalsAreKeptPerUserAndDroppedGoalsLeaveTheActiveList() throws {
+        let store = CoachGoalStore(defaults: try makeDefaults())
+        let a = UUID(), b = UUID()
+        let first = CoachGoal(exerciseName: "Back Squat", targetWeight: 315, targetReps: 1)
+        let second = CoachGoal(exerciseName: "Deadlift", targetWeight: 405, targetReps: 1)
+        store.add(first, for: a)
+        store.add(second, for: a)
+        XCTAssertTrue(store.goals(for: b).isEmpty)
+        XCTAssertEqual(store.activeGoals(for: a).map(\.exerciseName), ["Back Squat", "Deadlift"])
+
+        store.setStatus(.dropped, goalId: first.id, for: a)
+        XCTAssertEqual(store.activeGoals(for: a).map(\.exerciseName), ["Deadlift"])
+        XCTAssertEqual(store.goals(for: a).count, 2, "dropped goals stay in the list")
+
+        store.add(second, for: a)   // same id replaces, never duplicates
+        XCTAssertEqual(store.goals(for: a).count, 2)
+    }
+
+    func testUpdateIgnoresUnknownGoals() throws {
+        let store = CoachGoalStore(defaults: try makeDefaults())
+        let user = UUID()
+        store.update(CoachGoal(exerciseName: "Back Squat", targetWeight: 315, targetReps: 1), for: user)
+        XCTAssertTrue(store.goals(for: user).isEmpty)
+    }
+}
+
+final class CoachThreadTests: XCTestCase {
+
+    private func makeStore() throws -> CoachThreadStore {
+        let suite = "coach-threads-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return CoachThreadStore(defaults: defaults)
+    }
+
+    private func exercise(_ name: String, sets: Int = 3) -> Exercise {
+        Exercise.create(workoutId: UUID(), name: name, muscleGroup: "Chest", orderIndex: 0,
+                        targetSets: sets, targetReps: "8", targetRir: "2", restSeconds: 90, coachNote: nil)
+    }
+
+    private func seed(review: SessionReview? = nil) -> ThreadSeed {
+        let bench = exercise("Barbell Bench Press")
+        let fly = exercise("Cable Fly")
+        let targets: [UUID: [SetTarget]] = [
+            bench.id: [SetTarget(weight: "95", reps: "8", role: .warmup),
+                       SetTarget(weight: "135", reps: "8", rir: "2", role: .top),
+                       SetTarget(weight: "135", reps: "8", rir: "1", role: .straight)]
+        ]
+        return ThreadSeed.build(
+            workoutId: UUID(),
+            summary: "Good order for a push day.",
+            notes: "Controlled reps.",
+            exercises: [bench, fly],
+            setTargets: targets,
+            reasons: [CoachExerciseReason(exercise: "Barbell Bench Press", railFallback: false, text: "Repeat last top set."),
+                      CoachExerciseReason(exercise: "Cable Fly", railFallback: true, text: "Capped at last session.")],
+            review: review)
+    }
+
+    func testPlanMessageHasSummaryNotesReasonsAndTargets() throws {
+        let message = try XCTUnwrap(seed().planMessage)
+        XCTAssertTrue(message.contains("Good order for a push day."))
+        XCTAssertTrue(message.contains("Controlled reps."))
+        XCTAssertTrue(message.contains("Barbell Bench Press: 95x8 warm-up, 135x8 @RIR2, 135x8 @RIR1"), message)
+        XCTAssertTrue(message.contains("Repeat last top set."))
+        XCTAssertTrue(message.contains("Safety rail: Capped at last session."))
+        // No prescription: the exercise's own targets are used.
+        XCTAssertTrue(message.contains("Cable Fly: 3 sets of 8"), message)
+    }
+
+    func testCompactSummaryIsShortAndKeepsTopSets() throws {
+        let compact = try XCTUnwrap(seed().compactSummary)
+        XCTAssertTrue(compact.contains("Barbell Bench Press (2 sets, top 135x8)"), compact)
+        XCTAssertLessThanOrEqual(compact.count, ThreadSeed.compactLimit + 1)
+        XCTAssertNil(ThreadSeed(workoutId: UUID(), summary: nil, notes: nil, items: [], reviewText: nil).planMessage)
+    }
+
+    func testReviewTextComesFromTheSessionReview() throws {
+        let review = SessionReview(
+            exercises: [ExerciseReview(name: "Bench", notes: "Hit every target.", outcome: .hold,
+                                       nextTarget: NextTarget(weight: 140, reps: 8), missAnalysis: nil)],
+            overallRead: "Solid push day.", recurringFlags: [])
+        let text = try XCTUnwrap(seed(review: review).reviewText)
+        XCTAssertTrue(text.hasPrefix("Workout review: Solid push day."), text)
+        XCTAssertTrue(text.contains("Next time: 140 x 8"), text)
+        XCTAssertNil(seed().reviewText)
+    }
+
+    func testThreadStoreRoundTripKeepsIdsOrderAndFlags() throws {
+        let store = try makeStore()
+        let workoutId = UUID()
+        XCTAssertNil(store.thread(forWorkout: workoutId))
+
+        let messages = [ChatMessage(role: .coach, content: "Plan"), ChatMessage(role: .user, content: "Swap flies?")]
+        store.save(StoredChatThread(messages: messages.map(StoredChatMessage.init), planSeeded: true,
+                                    reviewAppended: false, updatedAt: Date()), forWorkout: workoutId)
+
+        let loaded = try XCTUnwrap(store.thread(forWorkout: workoutId))
+        XCTAssertTrue(loaded.planSeeded)
+        XCTAssertFalse(loaded.reviewAppended)
+        let restored = loaded.messages.map(\.message)
+        XCTAssertEqual(restored.map(\.id), messages.map(\.id))
+        XCTAssertEqual(restored.map(\.content), ["Plan", "Swap flies?"])
+        XCTAssertEqual(restored.first?.role, .coach)
+        XCTAssertEqual(restored.last?.role, .user)
+        XCTAssertNil(store.thread(forWorkout: UUID()), "another workout has its own thread")
+    }
+
+    func testThreadStoreCapsMessagesLengthAndThreads() throws {
+        let store = try makeStore()
+        let id = UUID()
+        let many = (0..<(CoachThreadStore.maxMessages + 20)).map { ChatMessage(role: .user, content: "m\($0)") }
+        let long = ChatMessage(role: .coach, content: String(repeating: "x", count: CoachThreadStore.maxCharacters + 500))
+        store.save(StoredChatThread(messages: (many + [long]).map(StoredChatMessage.init), planSeeded: false,
+                                    reviewAppended: false, updatedAt: Date()), forWorkout: id)
+        let loaded = try XCTUnwrap(store.thread(forWorkout: id))
+        XCTAssertEqual(loaded.messages.count, CoachThreadStore.maxMessages)
+        XCTAssertEqual(loaded.messages.last?.content.count, CoachThreadStore.maxCharacters + 1)   // text plus "…"
+
+        // The oldest threads are dropped past the cap.
+        let ids = (0..<(CoachThreadStore.maxThreads + 3)).map { _ in UUID() }
+        for (index, threadId) in ids.enumerated() {
+            store.save(StoredChatThread(messages: [StoredChatMessage(ChatMessage(role: .user, content: "t"))],
+                                        planSeeded: true, reviewAppended: false,
+                                        updatedAt: Date(timeIntervalSince1970: Double(1_000 + index))), forWorkout: threadId)
+        }
+        XCTAssertNil(store.thread(forWorkout: ids[0]))
+        XCTAssertNotNil(store.thread(forWorkout: ids[ids.count - 1]))
+    }
+
+    func testHiddenContextIsAppendedOnlyForTheAIAndWindowKeepsTheContextMessage() {
+        let context = ChatMessage(role: .user, content: "ctx")
+        let ask = ChatMessage(role: .user, content: "225x1 bench")
+        var all = [context, ask]
+        for i in 0..<10 { all.append(ChatMessage(role: i % 2 == 0 ? .coach : .user, content: "m\(i)")) }
+        let windowed = CoachChatViewModel.windowedMessages(all)
+        XCTAssertEqual(windowed.count, CoachChatViewModel.historyWindow + 1)
+        XCTAssertEqual(windowed.first?.content, "ctx")
+
+        let sent = CoachChatViewModel.withHiddenContext([context, ask], hidden: [ask.id: "APP CHECK: Bench e1RM 221"])
+        XCTAssertEqual(sent[0].content, "ctx")
+        XCTAssertEqual(sent[1].content, "225x1 bench\n\nAPP CHECK: Bench e1RM 221")
+        XCTAssertEqual(ask.content, "225x1 bench", "the visible message is unchanged")
+    }
+
+    func testAgreedNotesPreferTheCoachsPlanNotesLineAndStayWithin300() {
+        let context = ChatMessage(role: .user, content: "ctx")
+        let said = ChatMessage(role: .user, content: "my left shoulder is sore")
+        let reply = ChatMessage(role: .coach, content: "Got it.\nPlan notes: Left shoulder sore, no overhead pressing.")
+        XCTAssertEqual(CoachChatViewModel.agreedNotes(from: [context, said, reply]),
+                       "Left shoulder sore, no overhead pressing.")
+        // Without a coach line it is what the athlete said.
+        XCTAssertEqual(CoachChatViewModel.agreedNotes(from: [context, said]), "my left shoulder is sore")
+        let rambling = ChatMessage(role: .user, content: String(repeating: "a", count: 500))
+        XCTAssertLessThanOrEqual(CoachChatViewModel.agreedNotes(from: [context, rambling]).count, 300)
+        XCTAssertEqual(CoachChatViewModel.agreedNotes(from: [context]), "")
+    }
+}
+
+
+// MARK: - Goals in the plan
+
+final class GoalPlannerTests: XCTestCase {
+
+    private let bench = "Barbell Bench Press"
+    private let now = V2.day(11, 3)
+
+    private func goal(steps: [CoachGoalStep] = [], deadline: Date? = nil) -> CoachGoal {
+        CoachGoal(exerciseName: bench, targetWeight: 225, targetReps: 1, deadline: deadline, steps: steps)
+    }
+
+    private var nearHistory: [GoalAssessor.Point] {
+        [GoalAssessor.Point(date: now.addingTimeInterval(-3 * 86_400), weight: 220, reps: 1)]
+    }
+
+    func testTodaysStepPrefersTodayThenUndatedThenNearestFuture() {
+        let undated = CoachGoalStep(text: "build single")
+        let today = CoachGoalStep(date: "2026-11-03", text: "heavy single")
+        let later = CoachGoalStep(date: "2026-11-10", text: "attempt", attempt: true)
+        let sooner = CoachGoalStep(date: "2026-11-06", text: "volume")
+        let past = CoachGoalStep(date: "2026-10-20", text: "old")
+        XCTAssertEqual(GoalPlanner.todayStep(of: goal(steps: [past, later, today, undated]), now: now)?.step.text, "heavy single")
+        XCTAssertEqual(GoalPlanner.todayStep(of: goal(steps: [past, later, undated]), now: now)?.step.text, "build single")
+        let future = GoalPlanner.todayStep(of: goal(steps: [past, later, sooner]), now: now)
+        XCTAssertEqual(future?.step.text, "volume")
+        XCTAssertEqual(future?.isToday, false)
+        XCTAssertNil(GoalPlanner.todayStep(of: goal(steps: [past]), now: now))
+    }
+
+    func testAllowanceOnlyForAnAttemptStepWhenRealisticNow() {
+        let attempt = CoachGoalStep(text: "attempt 225x1", weight: 225, reps: 1, attempt: true)
+        let near = GoalPlanner.items(goals: [goal(steps: [attempt])], history: { _ in self.nearHistory }, now: now)
+        XCTAssertEqual(GoalPlanner.allowances(near), [GoalAllowance(name: bench, weight: 225, reps: 1)])
+
+        let farHistory = [GoalAssessor.Point(date: now, weight: 185, reps: 3)]
+        let far = GoalPlanner.items(goals: [goal(steps: [attempt])], history: { _ in farHistory }, now: now)
+        XCTAssertTrue(GoalPlanner.allowances(far).isEmpty, "not realistic now")
+
+        let work = CoachGoalStep(text: "top single 215x1", weight: 215, reps: 1)
+        let notAttempt = GoalPlanner.items(goals: [goal(steps: [work])], history: { _ in self.nearHistory }, now: now)
+        XCTAssertTrue(GoalPlanner.allowances(notAttempt).isEmpty)
+
+        let futureAttempt = CoachGoalStep(date: "2026-11-07", text: "attempt", attempt: true)
+        let later = GoalPlanner.items(goals: [goal(steps: [futureAttempt])], history: { _ in self.nearHistory }, now: now)
+        XCTAssertTrue(GoalPlanner.allowances(later).isEmpty, "the attempt is not today")
+    }
+
+    func testRelevantGoalsFollowTheBaselineOrTheMuscle() {
+        let items = GoalPlanner.items(goals: [goal()], history: { _ in self.nearHistory }, now: now)
+        XCTAssertEqual(GoalPlanner.relevant(items, lifts: [CoachLiftRef(name: "Bench Press", muscle: "Chest")]).count, 1)
+        XCTAssertEqual(GoalPlanner.relevant(items, lifts: [CoachLiftRef(name: "Incline Dumbbell Press", muscle: "Chest")]).count, 1)
+        XCTAssertTrue(GoalPlanner.relevant(items, lifts: [CoachLiftRef(name: "Barbell Squat", muscle: "Quads")]).isEmpty)
+        XCTAssertEqual(GoalPlanner.relevant(items, lifts: []).count, 1, "no baseline: nothing to rule out")
+    }
+
+    private func logged(_ name: String, _ sets: [(Double, Int)]) -> (exercise: Exercise, sets: [UUID: [WorkoutSet]]) {
+        let exercise = Exercise.create(workoutId: UUID(), name: name, muscleGroup: "Chest", orderIndex: 0, targetSets: nil,
+                                       targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
+        let rows = sets.enumerated().map { index, entry in
+            WorkoutSet(id: UUID(), exerciseId: exercise.id, localId: nil, setNumber: index + 1, weightLbs: entry.0, reps: entry.1,
+                       rir: 1, userFeedback: nil, isPR: false, syncStatus: .pending, recordedAt: Date())
+        }
+        return (exercise, [exercise.id: rows])
+    }
+
+    func testAchievedNeedsWeightAndRepsOnAMatchingLift() {
+        let g = goal()
+        let hit = logged(bench, [(185, 5), (225, 1)])
+        XCTAssertEqual(GoalPlanner.achieved(goals: [g], exercises: [hit.exercise], sets: hit.sets).map(\.id), [g.id])
+        let over = logged(bench, [(230, 3)])
+        XCTAssertEqual(GoalPlanner.achieved(goals: [g], exercises: [over.exercise], sets: over.sets).count, 1)
+        let light = logged(bench, [(215, 3), (185, 8)])
+        XCTAssertTrue(GoalPlanner.achieved(goals: [g], exercises: [light.exercise], sets: light.sets).isEmpty, "never reached the weight")
+        let other = logged("Barbell Squat", [(315, 5)])
+        XCTAssertTrue(GoalPlanner.achieved(goals: [g], exercises: [other.exercise], sets: other.sets).isEmpty, "different lift")
+        var done = g
+        done.status = .achieved
+        XCTAssertTrue(GoalPlanner.achieved(goals: [done], exercises: [hit.exercise], sets: hit.sets).isEmpty, "only active goals")
+    }
+
+    func testGoalHitIsAppendedToTheReadOnlyWhenTheModelOmittedIt() {
+        let g = goal()
+        let appended = GoalPlanner.read("Solid push day.", withAchieved: [g])
+        XCTAssertEqual(appended, "Solid push day. Goal hit: Barbell Bench Press 225x1.")
+        XCTAssertEqual(GoalPlanner.read("Goal hit! 225x1 done.", withAchieved: [g]), "Goal hit! 225x1 done.")
+        let message = ThreadSeed.reviewMessage(
+            from: SessionReview(exercises: [], overallRead: appended, recurringFlags: []))
+        XCTAssertTrue(message?.contains("Goal hit: Barbell Bench Press 225x1.") ?? false, "the chat thread's review shows it")
+    }
+
+    func testMemoryIndexListsLiftsOfAWorkoutType() {
+        var doc = CoachReviewDocument()
+        let outcome = DecisionOutcome(hit: true, actualTop: "40x12@2", rir: nil, shortBy: 0, result: .hold)
+        doc.decisions = [CoachDecision(
+            name: "Cable Fly", muscle: "Chest",
+            target: PrescribedSet(role: .top, weight: 40, reps: 12, rir: 2, restSeconds: 90),
+            sets: nil, reason: "r", context: "c", source: "coach", outcome: outcome)]
+        var push = Workout.create(userId: UUID(), workoutType: "Push", energyLevel: 6, timeAvailableMinutes: 45, date: now)
+        push.aiProgressionNote = doc.encoded()
+        var pull = push
+        pull.workoutType = "Pull"
+        XCTAssertEqual(CoachMemoryIndex(workouts: [push]).lifts(forWorkoutType: "push").map(\.name), ["Cable Fly"])
+        XCTAssertTrue(CoachMemoryIndex(workouts: [pull]).lifts(forWorkoutType: "Push").isEmpty)
     }
 }

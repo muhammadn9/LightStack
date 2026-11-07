@@ -299,10 +299,13 @@ enum SessionAnalyzer {
 
     // MARK: - Deterministic review (no model)
 
-    static func fallbackReview(_ analysis: SessionAnalysis, workoutType: String, now: Date = Date()) -> SessionReview {
+    /// `previousNotes`: exercise name -> the last memory note, kept when no model reply rewrites it.
+    static func fallbackReview(_ analysis: SessionAnalysis, workoutType: String, now: Date = Date(),
+                               previousNotes: [String: String] = [:]) -> SessionReview {
         SessionReview(
             exercises: analysis.exercises.map { a in
-                ExerciseReview(name: a.name, notes: a.note, outcome: a.outcome, nextTarget: a.target, missAnalysis: a.miss)
+                ExerciseReview(name: a.name, notes: a.note, outcome: a.outcome, nextTarget: a.target, missAnalysis: a.miss,
+                               memoryNote: previousNote(for: a.name, in: previousNotes))
             },
             overallRead: deterministicOverallRead(analysis, workoutType: workoutType),
             recurringFlags: mandatoryFlags(analysis),
@@ -339,8 +342,10 @@ enum SessionAnalyzer {
     /// Combines the model's JSON with the rules. The model writes the words; the rules keep
     /// misses, pain flags and target sanity honest.
     static func merge(_ analysis: SessionAnalysis, model: ModelReview?, workoutType: String,
-                      now: Date = Date()) -> SessionReview {
-        guard let model else { return fallbackReview(analysis, workoutType: workoutType, now: now) }
+                      now: Date = Date(), previousNotes: [String: String] = [:]) -> SessionReview {
+        guard let model else {
+            return fallbackReview(analysis, workoutType: workoutType, now: now, previousNotes: previousNotes)
+        }
         var exercises: [ExerciseReview] = []
         for a in analysis.exercises {
             let m = model.exercises.first { ExerciseNameResolver.isMatch($0.name, a.name) }
@@ -381,8 +386,10 @@ enum SessionAnalyzer {
                 target = NextTarget(weight: ExerciseTraits.round(mt.weight, step: ExerciseTraits.roundingStep(a.name)),
                                     reps: mt.reps, note: mt.note ?? a.target?.note)
             }
+            // The model rewrites the memory note; without one, the previous note stays.
+            let memory = m?.memoryNote.flatMap(cleanMemoryNote) ?? previousNote(for: a.name, in: previousNotes)
             exercises.append(ExerciseReview(name: a.name, notes: notes, outcome: outcome,
-                                            nextTarget: target, missAnalysis: miss))
+                                            nextTarget: target, missAnalysis: miss, memoryNote: memory))
         }
         var flags = model.recurringFlags
         for mandatory in mandatoryFlags(analysis) where !flags.contains(where: { $0.lowercased() == mandatory.lowercased() }) {
@@ -396,6 +403,37 @@ enum SessionAnalyzer {
         }
         return SessionReview(exercises: exercises, overallRead: String(read.prefix(600)),
                              recurringFlags: Array(flags.prefix(6)), createdAt: now, aiAuthored: true)
+    }
+
+    // MARK: - Memory notes
+
+    static let memoryNoteLimit = 100
+
+    /// A memory note goes back into prompts, so it is flattened to one plain line, stripped of
+    /// quotes, braces and markup characters, and clipped. nil when nothing is left.
+    static func cleanMemoryNote(_ raw: String) -> String? {
+        cleanLine(raw, limit: memoryNoteLimit)
+    }
+
+    /// One plain line for prompt re-use: no newlines, quotes, braces or markup; clipped to `limit`.
+    static func cleanLine(_ raw: String, limit: Int) -> String? {
+        let banned = CharacterSet(charactersIn: "\"{}[]<>`\\#|")
+        let cleaned = raw.unicodeScalars
+            .map { scalar -> String in
+                if CharacterSet.controlCharacters.contains(scalar) || CharacterSet.newlines.contains(scalar) { return " " }
+                if banned.contains(scalar) { return "" }
+                return String(scalar)
+            }
+            .joined()
+        let collapsed = cleaned.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        guard !collapsed.isEmpty else { return nil }
+        let clipped = String(collapsed.prefix(limit)).trimmingCharacters(in: .whitespaces)
+        return clipped.isEmpty ? nil : clipped
+    }
+
+    private static func previousNote(for name: String, in notes: [String: String]) -> String? {
+        if let exact = notes[name] { return exact }
+        return notes.first { ExerciseNameResolver.isMatch($0.key, name) }?.value
     }
 
     // MARK: - Rolling summary
@@ -423,6 +461,8 @@ struct ModelReview: Equatable {
         var cause: MissCause?
         var decision: MissDecision?
         var reason: String?
+        /// The coach's rewritten note about this lift, already cleaned and clipped.
+        var memoryNote: String?
     }
     var exercises: [Exercise]
     var overallRead: String?
@@ -449,7 +489,8 @@ struct ModelReview: Equatable {
                 nextTarget: target,
                 cause: JSONReply.string(miss?["cause"]).flatMap(MissCause.init(rawValue:)),
                 decision: JSONReply.string(miss?["decision"]).flatMap(MissDecision.init(rawValue:)),
-                reason: JSONReply.string(miss?["reason"]).map { String($0.prefix(300)) })
+                reason: JSONReply.string(miss?["reason"]).map { String($0.prefix(300)) },
+                memoryNote: JSONReply.string(raw["memory_note"]).flatMap(SessionAnalyzer.cleanMemoryNote))
         }
         let flags = ((object["recurring_flags"] as? [Any]) ?? []).compactMap { JSONReply.string($0) }.map { String($0.prefix(120)) }
         return ModelReview(exercises: exercises, overallRead: read.map { String($0.prefix(600)) }, recurringFlags: Array(flags.prefix(6)))
