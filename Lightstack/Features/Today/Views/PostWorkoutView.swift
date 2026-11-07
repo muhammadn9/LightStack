@@ -3,7 +3,10 @@ import SwiftUI
 /// Post-workout summary screen with purple radiant theme.
 struct PostWorkoutView: View {
     @ObservedObject var todayViewModel: TodayViewModel
+    /// When provided, a "Chat with Coach" button continues the workout's coach thread after the review.
+    var chatViewModel: CoachChatViewModel? = nil
     @State private var userNote: String = ""
+    @State private var showChat = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -12,9 +15,15 @@ struct PostWorkoutView: View {
                     completionHeader
                     sessionStatsRow
                     aiNoteSection
+                    chatButton
                     userNoteSection
                 }
                 .padding(20)
+            }
+            .sheet(isPresented: $showChat) {
+                if let chatVM = chatViewModel {
+                    CoachChatView(viewModel: chatVM, todayViewModel: todayViewModel)
+                }
             }
             // Pinned, so a long review never pushes Save off screen.
             saveButton
@@ -139,6 +148,34 @@ struct PostWorkoutView: View {
                 .background(AppTheme.surface)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
+        }
+    }
+
+    // MARK: - Chat
+
+    /// Continues the same coach thread (plan, session chat and now the review).
+    @ViewBuilder
+    private var chatButton: some View {
+        if let chatVM = chatViewModel, !todayViewModel.isLoadingNote {
+            Button {
+                if let userId = todayViewModel.userId {
+                    chatVM.configure(
+                        userId: userId,
+                        workoutType: todayViewModel.sessionService.currentWorkoutType ?? "",
+                        exercises: todayViewModel.exercises,
+                        loggedSets: todayViewModel.loggedSets,
+                        seed: CoachChatViewModel.seed(from: todayViewModel)
+                    )
+                }
+                showChat = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bubble")
+                    Text("Chat with Coach")
+                }
+            }
+            .buttonStyle(WaxSealButtonStyle(isSecondary: true))
+            .accessibilityIdentifier("postWorkoutChatButton")
         }
     }
 

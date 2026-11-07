@@ -36,9 +36,10 @@ final class CoachChatTests: LightstackUITestCase {
         launchApp()
         generateAndStartPushWorkout()
         waitFor(app.staticTexts["Barbell Bench Press"])
+        // Coach v3: bench opens with a 95 lb warm-up, so the first working set is row 1.
         let weight = app.textFields["setRow.0.0.weight"]
         waitFor(weight)
-        XCTAssertEqual(weight.value as? String, "135")
+        XCTAssertEqual(weight.value as? String, "95")
 
         let field = chatInput
         tap(app.buttons["Chat with coach"], until: field)
@@ -50,12 +51,44 @@ final class CoachChatTests: LightstackUITestCase {
         shot("coach-change-applied")
         tap(app.buttons["Done"])
 
+        // "Heavier bench" is about the working sets: the warm-up must stay at 95.
         waitFor(weight)
+        XCTAssertEqual(weight.value as? String, "95", "The coach's change must not touch the warm-up")
+        tap(app.buttons["setRow.0.0.log"])
+        waitFor(app.staticTexts["loggedSet.0.0.weight"], "Warm-up was not logged")
         let updated = NSPredicate(format: "value == '155'")
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: updated, object: weight)], timeout: 5),
                        .completed, "Bench weight is still \(weight.value ?? "nil") after applying the coach's change")
         XCTAssertEqual(app.textFields["setRow.0.0.reps"].value as? String, "10")
         shot("coach-change-on-rows")
+    }
+
+    /// Goals via chat: setup -> Talk to the coach -> ask for a lift goal -> agree -> Save goal.
+    /// The fake AI proposes a plan first and writes the goal block only after "agree".
+    func testGoalFromSetupChatCanBeSaved() throws {
+        launchApp()
+        tap(app.buttons["talkToCoachButton"])
+        let field = chatInput
+        waitFor(field)
+
+        type("225x1 bench", into: field)
+        let proposal = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Does that plan work'")).firstMatch
+        tap(app.buttons["chatSendButton"], until: proposal)
+        waitFor(proposal, "The coach never answered the goal")
+        XCTAssertFalse(app.buttons["coach.goalCard.save"].exists, "A goal card appeared before the athlete agreed")
+
+        type("I agree", into: chatInput)
+        let save = app.buttons["coach.goalCard.save"]
+        tap(app.buttons["chatSendButton"], until: save)
+        waitFor(app.descendants(matching: .any)["coach.goalCard"], "No goal card")
+        shot("goal-card")
+
+        tap(save)
+        let saved = app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH 'Saved:'")).firstMatch
+        waitFor(saved, "The goal was not confirmed in the chat")
+        XCTAssertTrue(app.buttons["coach.goals.toggle"].waitForExistence(timeout: 5), "Saved goal is not listed")
+        XCTAssertTrue(app.buttons["coach.buildPlan"].exists, "Build today's plan is missing in planning mode")
+        shot("goal-saved")
     }
 
     /// "remove <exercise>" is handled on the phone: the confirmation sheet appears with a

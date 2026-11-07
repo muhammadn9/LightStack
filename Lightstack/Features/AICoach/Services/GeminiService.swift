@@ -114,6 +114,9 @@ final class GeminiService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue(anonKey, forHTTPHeaderField: "apikey")
             request.httpBody = httpBody
+            // Just above the proxy's 55s upstream cap, so a slow model surfaces the
+            // proxy's own 504 (which does not trigger the model fallback).
+            request.timeoutInterval = 58
             #if DEBUG
             AIUsageTracker.shared.recordCall(task: options.task)
             #endif
@@ -201,7 +204,7 @@ final class GeminiService {
 
     /// Thinking setting per model family. Gemini 2.5 takes a token budget (0 turns thinking
     /// off); Gemini 3.x takes a level. Both stay inside what the ai-proxy accepts
-    /// (budget 0...1024, level minimal/low).
+    /// (budget 0...4096, level minimal/low/medium).
     static func thinkingConfig(forModel model: String, effort: AIRequestOptions.ThinkingEffort = .minimal) -> [String: Any]? {
         switch effort {
         case .modelDefault:
@@ -212,6 +215,9 @@ final class GeminiService {
         case .low:
             if model.hasPrefix("gemini-2.5") { return ["thinkingBudget": 1024] }
             if model.hasPrefix("gemini-3") { return ["thinkingLevel": "low"] }
+        case .medium:
+            if model.hasPrefix("gemini-2.5") { return ["thinkingBudget": 4096] }
+            if model.hasPrefix("gemini-3") { return ["thinkingLevel": "medium"] }
         }
         return nil
     }
@@ -260,6 +266,9 @@ final class GeminiService {
         // prompt asks for JSON and the caller parses leniently.
         if expectsJSON, !options.googleSearch {
             generationConfig["responseMimeType"] = "application/json"
+            if let schema = options.schema {
+                generationConfig["responseSchema"] = schema.definition
+            }
         }
 
         var body: [String: Any] = [

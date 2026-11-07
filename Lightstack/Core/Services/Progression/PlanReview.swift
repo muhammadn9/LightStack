@@ -110,6 +110,13 @@ enum JSONReply {
     }
 }
 
+/// An agreed goal attempt due today: the lift's top weight may reach `weight` for `reps` (see `PlanGuardrails.RailContext`).
+struct GoalAllowance: Equatable {
+    var name: String
+    var weight: Double
+    var reps: Int
+}
+
 /// Everything the plan pipeline knows about the athlete besides the exercise history.
 struct PlanCoachContext {
     var focus: CoachFocus = .hypertrophy
@@ -119,6 +126,12 @@ struct PlanCoachContext {
     /// Muscle (canonical) -> last trained.
     var recency: [String: MuscleRecency] = [:]
     var now: Date = Date()
+    /// Goal attempts due today (one per lift); the safety rails let those lifts reach the goal weight.
+    var goalAllowances: [GoalAllowance] = []
+
+    func goalAllowance(for name: String) -> GoalAllowance? {
+        goalAllowances.first { ExerciseNameResolver.isMatch($0.name, name) }
+    }
 
     struct DatedTarget: Equatable {
         var target: NextTarget

@@ -55,7 +55,7 @@ struct WorkoutSessionSheet: View {
                             )
                         }
                     case .postWorkout:
-                        PostWorkoutView(todayViewModel: todayViewModel)
+                        PostWorkoutView(todayViewModel: todayViewModel, chatViewModel: chatViewModel)
                     }
                 }
             }

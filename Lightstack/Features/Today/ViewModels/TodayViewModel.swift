@@ -211,6 +211,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             logged: loggedSets[exercise.id] ?? [])
     }
 
+    func inSessionDrop(for exercise: Exercise) -> InSessionAdjuster.LoweredWeight? {
+        InSessionAdjuster.evaluateDrop(prescribed: setTargets[exercise.id] ?? [], logged: loggedSets[exercise.id] ?? [])
+    }
+
     /// Saves the athlete's answer to "what got in the way?" so the post-workout review can tell
     /// a bad day from a weight that is too heavy now.
     @discardableResult
@@ -452,6 +456,13 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
     // MARK: - Workout Modifications
 
+    /// Maps a coach-proposed exercise name onto the athlete's existing spelling.
+    private func canonicalAIName(_ name: String) -> ExerciseNameResolver.Canonical {
+        guard let userId else { return ExerciseNameResolver.canonicalName(for: name, existing: []) }
+        let stats = workoutRepository.fetchExerciseNameStats(userId: userId)
+        return ExerciseNameResolver.canonicalName(for: name, existing: stats.map { ($0.name, $0.setCount) })
+    }
+
     /// Apply a workout modification while preserving already-logged sets.
     /// Applies one coach modification. Returns false when it names an exercise that
     /// isn't in this workout, so the caller can say so instead of claiming success.
@@ -465,16 +476,18 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
 
         switch modification {
         case .addExercise(let name, let muscleGroup, let targetSets, let targetReps, let targetRir, let restSeconds, let targetWeight, let note, let perSet):
+            let canonical = canonicalAIName(name)
             let newExercise = Exercise.create(
                 workoutId: workoutId,
-                name: name,
+                name: canonical.name,
                 muscleGroup: muscleGroup,
                 orderIndex: nextOrderIndex,
                 targetSets: targetSets,
                 targetReps: targetReps,
                 targetRir: targetRir,
                 restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
-                coachNote: Self.coachNote(nil, weight: targetWeight, note: note)
+                coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
+                isPerArm: canonical.isPerArm ? true : nil
             )
             exercises.append(newExercise)
             storeSetTargets(perSet, for: newExercise.id)
@@ -503,8 +516,23 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 if !perSet.isEmpty {
                     storeSetTargets(perSet, for: exercise.id)
                 } else if newTargetReps != nil || newTargetRir != nil || newTargetWeight != nil {
-                    // A new single target supersedes any earlier per-set plan.
-                    setTargets[exercise.id] = nil
+                    // A new single target supersedes the working sets of any earlier per-set plan.
+                    // The coach's warm-ups are kept as they were: "go heavier" is about the work.
+                    let existing = setTargets[exercise.id] ?? []
+                    let warmups = existing.filter { $0.isWarmup == true }
+                    if warmups.isEmpty {
+                        setTargets[exercise.id] = nil
+                    } else {
+                        let template = existing.last { $0.isWarmup != true } ?? SetTarget()
+                        var work = template
+                        if let newTargetWeight { work.weight = newTargetWeight }
+                        if let newTargetReps { work.reps = newTargetReps }
+                        if let newTargetRir { work.rir = newTargetRir }
+                        let total = newTargetSets ?? exercise.targetSets ?? existing.count
+                        let workCount = max(1, total - warmups.count)
+                        setTargets[exercise.id] = warmups + Array(repeating: work, count: workCount)
+                        exercise.targetSets = warmups.count + workCount
+                    }
                 }
                 if let reps = newTargetReps {
                     exercise.targetReps = reps
@@ -529,9 +557,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 let groupId = exercises[index].supersetGroupId
 
                 // Create new exercise
+                let canonical = canonicalAIName(newName)
                 let newExercise = Exercise.create(
                     workoutId: workoutId,
-                    name: newName,
+                    name: canonical.name,
                     muscleGroup: muscleGroup,
                     orderIndex: orderIndex,
                     targetSets: targetSets,
@@ -539,7 +568,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     targetRir: targetRir,
                     restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
                     coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
-                    supersetGroupId: groupId
+                    supersetGroupId: groupId,
+                    isPerArm: canonical.isPerArm ? true : nil
                 )
 
                 exercises[index] = newExercise
