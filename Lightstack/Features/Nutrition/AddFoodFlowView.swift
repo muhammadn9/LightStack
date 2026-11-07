@@ -362,7 +362,8 @@ struct AddFoodFlowView: View {
                             onPlate: { food, servings in addToPlate(food, servings) },
                             onLogged: { popAfterSheet = true })
         case .ai:
-            AIMealLogView(viewModel: viewModel, initialText: query, initialSlotId: slotId)
+            AIMealLogView(viewModel: viewModel, initialText: query, initialSlotId: slotId,
+                          onLogged: { popAfterSheet = true })
         case .branded(let product):
             NavigationStack {
                 BrandedServingView(

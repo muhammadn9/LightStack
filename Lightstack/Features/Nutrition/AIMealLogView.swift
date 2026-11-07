@@ -89,6 +89,7 @@ struct AIMealLogView: View {
     @ObservedObject var viewModel: NutritionViewModel
     var initialText = ""
     var initialSlotId: UUID?
+    var onLogged: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
 
     @State private var text = ""
@@ -498,6 +499,7 @@ struct AIMealLogView: View {
     private func logItems() {
         guard !items.isEmpty else { return }
         viewModel.logAIItems(items, mealSlotId: slotId)
+        onLogged?()
         dismiss()
     }
 }

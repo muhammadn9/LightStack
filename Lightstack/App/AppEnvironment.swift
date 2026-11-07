@@ -243,7 +243,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         self.foodDatabase = foodDatabase
         var nutritionAI: NutritionAIServicing = NutritionAIService(manager: aiServiceManager)
         #if DEBUG
-        if UITestMode.isActive { nutritionAI = FakeNutritionAIService() }
+        if UITestMode.isActive { nutritionAI = FakeNutritionAIService(delay: UITestMode.aiDelay) }
         #endif
         self.nutritionAI = nutritionAI
 
