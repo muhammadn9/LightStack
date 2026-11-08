@@ -79,7 +79,7 @@ struct SettingsView: View {
                 #endif
 
                 Section {
-                    Toggle("AI coaching (Google Gemini)", isOn: Binding(
+                    Toggle("AI features (Google Gemini)", isOn: Binding(
                         get: { aiConsentGranted },
                         set: { aiConsentGranted = $0; AIConsent.set($0) }
                     ))
@@ -101,7 +101,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Privacy")
                 } footer: {
-                    Text("When on, your workout history, profile stats and notes to the coach are sent to Google Gemini through LightStack's server to write coaching. When off, no AI requests are made.")
+                    Text("When on, your workout history, profile stats, notes to the coach, and the meal descriptions and photos you choose to send are shared with Google Gemini through LightStack's server to write coaching and estimate meals. Restaurant meals may be looked up with Google Search. When off, no AI requests are made.")
                 }
 
                 Section("Account") {
@@ -293,7 +293,7 @@ enum AIConsent {
     /// Error to return to callers when AI is requested without consent.
     static let deniedError = NSError(
         domain: "AIConsent", code: 1,
-        userInfo: [NSLocalizedDescriptionKey: "AI coaching is off. Turn it on in Settings, Privacy, to let LightStack send your training data to Google Gemini."]
+        userInfo: [NSLocalizedDescriptionKey: "AI features are off. Turn them on in Settings, Privacy, to let LightStack send your training and meal data to Google Gemini."]
     )
 }
 
@@ -317,9 +317,9 @@ enum PrivacyPolicy {
         ("Training", "Workouts, exercises, sets (weight, reps, RIR), personal records, plans, rest days and coach summaries."),
         ("Nutrition", "Foods, meals, water, daily notes, targets and plans you log."),
         ("Where it lives", "On your iPhone and in your LightStack account on Supabase. Deleting your account removes both."),
-        ("AI coaching", "With your permission, your profile stats, goals, notes, recent workouts and chat messages go through LightStack's server to Google Gemini to write coaching. Your name and email are not needed for this."),
+        ("AI features", "With your permission, your profile stats, goals, notes, recent workouts and chat messages go through LightStack's server to Google Gemini to write coaching. Meal descriptions and meal photos you choose to send for AI meal logging go the same way, and restaurant meals may be looked up with Google Search. Your name and email are not needed for this."),
         ("Barcode and food search", "Barcodes and search words you type are sent to Open Food Facts."),
-        ("Your choices", "Turn AI coaching off any time in Settings. Delete your account and all data in Settings, Delete account.")
+        ("Your choices", "Turn AI features off any time in Settings. Delete your account and all data in Settings, Delete account.")
     ]
 }
 
@@ -361,9 +361,9 @@ struct AIConsentSheet: View {
                 Image(systemName: "sparkles")
                     .font(.system(size: 34))
                     .foregroundStyle(AppTheme.accent)
-                Text("Allow AI coaching?")
+                Text("Allow AI features?")
                     .font(AppTheme.playfairItalic(26, weight: .bold))
-                Text("To write your plans and coaching, LightStack sends your workout history, profile stats (age, height, weight, goals, training experience) and your notes to the coach to Google Gemini, through LightStack's server. It is used only to generate your coaching.")
+                Text("To write your plans and coaching and to estimate meals you log with AI, LightStack sends your workout history, profile stats (age, height, weight, goals, training experience), notes to the coach, and the meal descriptions and photos you choose to send to Google Gemini, through LightStack's server. Restaurant meals may be looked up with Google Search. It is used only to generate those results.")
                     .foregroundStyle(AppTheme.textSecondary)
                 Text("You can change this any time in Settings. Without it, the rest of the app works and no AI requests are made.")
                     .foregroundStyle(AppTheme.textSecondary)

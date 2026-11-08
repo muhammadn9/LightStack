@@ -8,7 +8,7 @@ Derived from the Core Data model, the Supabase schema (`supabase/supabase_schema
 |---|---|---|
 | Device (Core Data, UserDefaults, Keychain) | Everything below, plus the offline sync queue, settings and the Supabase session | Removed by Delete account |
 | Supabase (Postgres + Auth) | Account and all synced tables | Row-level security per user; removed by `delete-account` |
-| Google Gemini (via `ai-proxy`) | Prompt content for AI features only | Needs user consent; not stored by LightStack. Retention is under Google's terms |
+| Google Gemini (via `ai-proxy`) | Prompt content for AI features only (coaching text, meal descriptions, meal photos). Restaurant meals may also use Google Search grounding | Needs user consent; not stored by LightStack. Retention is under Google's terms |
 | Open Food Facts | Barcodes and food search text | No account identifier sent |
 
 ## Data collected
@@ -23,6 +23,7 @@ Derived from the Core Data model, the Supabase schema (`supabase/supabase_schema
 | Coach summaries | rolling AI context text | Coaching memory | CDAIContextSummary | ai_context_summaries | yes |
 | Coach chat | messages typed to the coach | Coaching | in memory / debug store | no | yes |
 | Nutrition | foods, entries, meal slots, water, day notes, targets, goal settings, plans | Nutrition tab | CDFood, CDFoodEntry, CDMealSlot, CDWaterEntry, CDDayNote, CDNutritionTarget, CDNutritionGoalSettings, CDNutritionPlan | matching tables | no |
+| AI meal logging input | meal description text and meal photos the user chooses to send | Estimate nutrition for a meal | not stored (photo sent once) | no | yes |
 | Sync bookkeeping | tombstones, rate-limit rows | Sync correctness, abuse control | queue in UserDefaults | sync_tombstones, rate_limits | no |
 | Form check video | camera frames analysed on device (Vision pose); only the numeric result summary may go to AI feedback | Form feedback | not stored | no | summary text only |
 | Preferences | theme, units, rest timer, Live Activity | Settings | UserDefaults | no | no |
@@ -30,6 +31,8 @@ Derived from the Core Data model, the Supabase schema (`supabase/supabase_schema
 No advertising, analytics or crash-reporting SDKs are present.
 
 ## What goes to Google Gemini
+
+AI meal logging (nutrition phase 4) also sends the meal description you type and any meal photo you choose to send, through `ai-proxy`, to estimate nutrition. Restaurant meals may use Google Search grounding. Photos are sent only on a user action and are not stored by LightStack.
 
 `CoachPromptService.profileLine` sends, on every AI call: display name, age, weight, height, training months, goals, avoid list, equipment, notes to coach. Task prompts add recent sessions (exercises, sets), best sets, rolling summary, the day's notes/time/energy, and chat messages.
 

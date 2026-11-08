@@ -39,11 +39,11 @@ Sources: [Apple: account deletion (5.1.1)](https://developer.apple.com/help/app-
 | Identifiers: User ID | Yes | Supabase user UUID | Yes | App functionality |
 | Usage Data | No for now | Debug-only AI usage counters; no analytics SDK. If you add `ai_usage` server logs (see cost model), declare Product Interaction, linked, for analytics/app functionality | | |
 | Diagnostics | Check | `DiagnosticsStore` is local and user-exported only (no upload found). Supabase/Google/proxy logs keep IP and request metadata. Declare Crash/Performance Data only if you adopt TestFlight/Xcode crash data off-device (Apple's own is not "collected by you") | | |
-| Photos or Video / Camera | No | Camera frames processed on device only (verify) | | |
+| Photos or Video / Camera | Yes (Photos or Videos) | Form-check camera frames stay on device; meal photos the user chooses to send for AI meal logging go to Google Gemini via `ai-proxy`, not stored by LightStack. Declare as Photos or Videos, not linked, app functionality | | |
 | Purchases | Not yet | Add when StoreKit is added | | |
 | Location, Contacts, Browsing, Search History | No | Barcode and food search queries go to Open Food Facts: if Apple counts them, declare Search History, not linked to identity (no user id is sent) | | |
 
-Third-party AI statement for the label and policy: user content and health/fitness data are shared with Google (Gemini API) to generate responses. Confirm the Gemini API paid-tier terms (data not used to train models) and write that into the policy; the free tier does use data for product improvement, so **use the paid tier in production**.
+Third-party AI statement for the label and policy: user content, meal descriptions, meal photos and health/fitness data are shared with Google (Gemini API, and Google Search for restaurant meals) to generate responses. Confirm the Gemini API paid-tier terms (data not used to train models) and write that into the policy; the free tier does use data for product improvement, so **use the paid tier in production**.
 
 ## 3. PrivacyInfo.xcprivacy and Required Reason APIs
 

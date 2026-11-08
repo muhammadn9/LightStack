@@ -18,13 +18,14 @@ We do not use advertising or analytics SDKs and do not sell your data.
 
 To run the app, back up and sync your data across sessions, personalise training and nutrition, and, with your permission, generate AI coaching.
 
-## AI coaching and Google Gemini
+## AI features and Google Gemini
 
-If you allow it, your profile stats (age, height, weight, goals, training experience, equipment, notes), recent workouts and chat messages are sent through our server to Google Gemini to generate coaching. Your name and email are not required for this. You can turn this off at any time in Settings; then no AI requests are made. Google processes this data under [Google Gemini API terms, retention: confirm].
+If you allow it, your profile stats (age, height, weight, goals, training experience, equipment, notes), recent workouts and chat messages are sent through our server to Google Gemini to generate coaching. When you log a meal with AI, the meal description you type and any meal photo you choose to send are sent the same way to estimate its nutrition. Restaurant meals may be looked up with Google Search. Photos are sent only when you pick or take one for AI meal logging. Your name and email are not required for this. You can turn this off at any time in Settings; then no AI requests are made. Google processes this data under [Google Gemini API terms, retention: confirm].
 
 ## Other recipients
 
 - **Supabase** hosts our database and authentication ([region]).
+- **Google (Gemini API and Google Search)** processes the AI requests described above.
 - **Open Food Facts** receives barcodes and food search text you enter.
 - **Apple / Google** if you use their sign-in.
 
