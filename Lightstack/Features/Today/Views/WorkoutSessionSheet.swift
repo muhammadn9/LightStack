@@ -107,7 +107,9 @@ struct WorkoutSessionSheet: View {
                     if case .repeatExisting = mode {
                         todayViewModel.exercises.forEach { vm.prefillTargets(for: $0) }
                     }
-                } else if newPhase == .setup {
+                } else if newPhase == .setup, !showsPlanFailure {
+                    // A failed generation also lands on .setup, but with an error: stay open so the athlete
+                    // sees the Retry / Build manually screen instead of the sheet vanishing.
                     onDismiss()
                 }
             }

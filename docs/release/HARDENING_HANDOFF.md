@@ -8,7 +8,7 @@ Branch: `claude/production-readiness-hardening`, built from `main` at 8f44149. N
 - The SQL tests ran against a local Postgres 16 with stubbed Supabase roles:
   - `rls_boundaries.sql`: 274 RLS OK
   - `ai_budget.sql`: 23 checks OK, plus a 6-session concurrency test
-- The ai-proxy tests ran under Node with a Deno shim (10 ok).
+- The ai-proxy tests ran under Node with a Deno shim (16 ok, including the meal task: one photo + search allowed, everything else rejected).
 - Nothing has been deployed.
 
 ## What changed
@@ -38,6 +38,8 @@ Branch: `claude/production-readiness-hardening`, built from `main` at 8f44149. N
    - for Sign in with Apple revoke: `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_CLIENT_ID`
 6. Deploy the edge functions with `supabase functions deploy ai-proxy` and `supabase functions deploy delete-account`.
    - The proxy fails closed (503 `budget_unavailable`) if step 4 is missing.
+   - This proxy is the live **v4**: coach v3 + nutrition phase 4 (AI meal logging) + all hardening controls. Deploying it replaces the current live proxy; do not deploy main's older `index.ts` over it.
+   - New task `mealEstimate` (the app's `AITask.nutrition`): up to 4096 output tokens, thinking up to `low`, reserve $0.06 (covers an image plus Google Search grounding, which is billed per request on top of tokens; check this against real prices in `ai_budget_config`). It is the only task that may carry ONE `image/jpeg` or `image/png` `inline_data` part (body up to 3,000,000 chars; everything else stays at 200,000) or `tools: [{"google_search":{}}]`. Every other task, and legacy clients (no task id), still get a 400 for media and tools. With tools present, `responseMimeType`/`responseSchema` are dropped.
 7. Add the Info.plist key `LSPrivacyPolicyURL` with the published policy URL.
 8. Add `PrivacyInfo.xcprivacy` from `docs/release/PrivacyInfo.xcprivacy.template`, then run `xcodegen generate`.
 9. In Google Cloud, set a billing budget alert and a Generative Language API quota cap. See `AI_COST_CONTROLS.md`.

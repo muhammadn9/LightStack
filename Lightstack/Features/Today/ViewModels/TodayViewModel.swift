@@ -114,6 +114,8 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     @Published var streak: Int = 0
     /// Friendly text for the last failure (see `AIErrorPresentation`); never raw error output.
     @Published var errorMessage: String?
+    /// True when `errorMessage` came from a failed plan generation, so the UI can offer Retry / Build manually.
+    @Published private(set) var planGenerationFailed = false
     @Published var isLoadingNote: Bool = false
     @Published var lastPR: PersonalRecord?
     /// Last session's sets per new exercise id (repeat sessions only).
@@ -235,6 +237,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         }
         lastPlanRequest = (workoutType, time, energy, notes, constraints, focus)
         phase = .generating
+        planGenerationFailed = false
         errorMessage = nil
         coachReview = nil
         sessionService.generatePlan(
@@ -539,6 +542,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     func sessionServiceDidFail(_ service: WorkoutSessionService, error: Error) {
         self.errorMessage = AIErrorPresentation.message(for: error)
         self.isLoadingNote = false
+        planGenerationFailed = (phase == .generating)
         if phase == .generating {
             phase = .setup
         }

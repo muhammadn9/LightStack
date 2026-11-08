@@ -135,7 +135,9 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showDeleteAccount) {
+                // Sheets get their own keyboard pill; without it the typed-confirmation field can't be dismissed.
                 DeleteAccountSheet()
+                    .keyboardDoneButton()
             }
             .sheet(isPresented: $showPrivacyInfo) {
                 NavigationStack { PrivacyInfoView() }
@@ -267,7 +269,7 @@ enum AIConsent {
     /// UI-test mode (DEBUG) auto-grants so existing tests keep working.
     static func granted(in defaults: UserDefaults = .standard) -> Bool {
         #if DEBUG
-        if UITestMode.isActive { return true }
+        if UITestMode.isActive && !UITestMode.wantsNoAIConsent { return true }
         #endif
         return defaults.bool(forKey: key)
     }

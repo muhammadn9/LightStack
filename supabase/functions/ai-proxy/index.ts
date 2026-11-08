@@ -18,8 +18,13 @@
 //   kill switch, per-user/global day+month budgets and in-flight concurrency before the
 //   call; ai_settle records the real cost from usageMetadata afterwards. See budget.ts and
 //   docs/ai/AI_COST_CONTROLS.md.
+// - Media and tools are per task (tasks.ts allowImages / allowSearch). Only the `mealEstimate` task may
+//   carry ONE image/jpeg or image/png inline_data part (base64) and tools exactly [{"google_search":{}}];
+//   every other task, and legacy clients, get a 400 for either. With tools present responseMimeType and
+//   responseSchema are dropped (Gemini can reject them together; the app asks for JSON in text and parses it
+//   leniently). Bodies with an image may be up to 3,000,000 chars; everything else stays at 200,000.
 //
-// Request body (from the app): { task, request_id, model, system_instruction, contents, generationConfig }
+// Request body (from the app): { task, request_id, model, system_instruction, contents, generationConfig, tools? }
 // Response: Gemini's JSON as-is, with Gemini's status code, so the app's parser
 // and 503/429 handling keep working.
 
@@ -28,15 +33,16 @@ import { cleanRequestId, mapReserveReason, parseUsage } from "./budget.ts";
 import {
   chooseModel,
   clampOutputTokens,
+  checkContentsAndTools,
   clampThinking,
-  inputChars,
+  MAX_BODY_CHARS,
+  MAX_BODY_CHARS_WITH_IMAGE,
   resolveTask,
   TASKS,
-  textOnlyContents,
+  textInputChars,
   textOnlySystemInstruction,
 } from "./tasks.ts";
 
-const MAX_BODY_CHARS = 200_000;
 const UPSTREAM_TIMEOUT_MS = 55_000;
 const MAX_THINKING_BUDGET = 4096;
 const MAX_SCHEMA_CHARS = 6000;
@@ -79,6 +85,7 @@ function sanitizeConfig(
   raw: unknown,
   thinking: Record<string, unknown>,
   maxOutputTokens: number,
+  allowJsonMime = true,
 ): Record<string, unknown> {
   const config: Record<string, unknown> = { thinkingConfig: thinking, maxOutputTokens };
   if (typeof raw !== "object" || raw === null) return config;
@@ -86,7 +93,7 @@ function sanitizeConfig(
   if (typeof r.temperature === "number") {
     config.temperature = Math.min(Math.max(r.temperature, 0), 2);
   }
-  if (r.responseMimeType === "application/json") {
+  if (allowJsonMime && r.responseMimeType === "application/json") {
     config.responseMimeType = "application/json";
     const schema = r.responseSchema;
     if (typeof schema === "object" && schema !== null && !Array.isArray(schema) &&
@@ -115,7 +122,7 @@ Deno.serve(async (req: Request) => {
   if (userError || !userData?.user) return error("Not signed in", 401);
 
   const raw = await req.text();
-  if (raw.length > MAX_BODY_CHARS) return error("Request too large", 413);
+  if (raw.length > MAX_BODY_CHARS_WITH_IMAGE) return error("Request too large", 413);
 
   let body: Record<string, unknown>;
   try {
@@ -135,13 +142,19 @@ Deno.serve(async (req: Request) => {
   if (!Array.isArray(body.contents) || body.contents.length === 0) {
     return error("Missing contents", 400, "invalid_request");
   }
-  // Text only: media / file URIs are billed far beyond their JSON size (see textOnlyContents).
-  const contents = textOnlyContents(body.contents);
+  // Media and tools are per task (tasks.ts checkContentsAndTools): without allowImages every inline_data part is
+  // refused, and without allowSearch any `tools` is refused. Media / file URIs are billed far beyond their JSON
+  // size and would bypass the input cap and the reservation.
+  const shape = checkContentsAndTools(taskName, body.contents, body.tools);
+  if (!shape.ok) return error(shape.message, 400, "invalid_request");
   const systemInstruction = textOnlySystemInstruction(body.system_instruction);
-  if (!contents || systemInstruction === null) {
-    return error("Only text content is supported", 400, "invalid_request");
-  }
-  if (inputChars({ contents, system_instruction: systemInstruction }) > spec.maxInputChars) {
+  if (systemInstruction === null) return error("Only text content is supported", 400, "invalid_request");
+  const contents = shape.contents;
+  const useSearch = shape.useSearch;
+  // Text-only requests keep the 200,000 limit; only an image on an image-allowed task gets 3,000,000.
+  if (shape.images === 0 && raw.length > MAX_BODY_CHARS) return error("Request too large", 413, "input_too_large");
+  // The image bytes are bounded by the body limit above; the task cap counts the text.
+  if (textInputChars(contents, systemInstruction) > spec.maxInputChars) {
     return error("Request too large for this feature", 413, "input_too_large");
   }
 
@@ -177,8 +190,9 @@ Deno.serve(async (req: Request) => {
 
   const payload: Record<string, unknown> = {
     contents,
-    generationConfig: sanitizeConfig(body.generationConfig, thinking, maxOutputTokens),
+    generationConfig: sanitizeConfig(body.generationConfig, thinking, maxOutputTokens, !useSearch),
   };
+  if (useSearch) payload.tools = [{ google_search: {} }];
   if (systemInstruction) payload.system_instruction = systemInstruction;
 
   // Gives back the slot this request consumed. Uses the service role (the RPC is

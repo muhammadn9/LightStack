@@ -337,6 +337,7 @@ struct FoodRowView<Accessory: View>: View {
                     .font(.body.weight(.medium))
                     .foregroundStyle(AppTheme.textPrimary)
                     .multilineTextAlignment(.leading)
+                if food.isAIEstimate { AIEstimateBadge() }
                 HStack(spacing: 6) {
                     Text(food.servingLabel)
                         .foregroundStyle(AppTheme.textSecondary)

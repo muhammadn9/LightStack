@@ -152,6 +152,45 @@ final class NutritionRepository {
         return saveFood(food)
     }
 
+    // MARK: - AI estimates
+
+    /// Saves an AI-estimated item as a food (source AI, with its sources and confidence) so it shows in
+    /// Recent/Saved and can be reused. The saved food holds the FULL item; the diary entry carries `servings`.
+    /// A food already saved with the same name, venue and values is reused instead of duplicated.
+    @discardableResult
+    func saveAIFood(_ item: AIMealItem, userId: UUID) -> NutritionFood {
+        let name = item.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let brand = item.venue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        func same(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 0.05 }
+        let n = item.fullItem
+        if let existing = localStorage.fetchFoods(userId: userId).first(where: {
+            $0.source == .ai
+                && $0.name.caseInsensitiveCompare(name) == .orderedSame
+                && ($0.brand ?? "").caseInsensitiveCompare(brand ?? "") == .orderedSame
+                && same($0.nutrients.kcal, n.kcal) && same($0.nutrients.protein, n.protein)
+                && same($0.nutrients.carbs, n.carbs) && same($0.nutrients.fat, n.fat)
+        }) {
+            return existing
+        }
+        let food = NutritionFood.make(
+            userId: userId, name: name.isEmpty ? "AI estimate" : name, brand: (brand?.isEmpty ?? true) ? nil : brand,
+            servingLabel: item.servingLabel, servingUnit: "serving", servingAmount: 1, servingGrams: nil,
+            nutrients: n, source: .ai, aiSources: item.sources, aiConfidence: item.confidence, now: now()
+        )
+        return saveFood(food)
+    }
+
+    /// Saves each item as a food (see `saveAIFood`) and returns them as plate items with the item's servings.
+    func plateItems(for items: [AIMealItem], userId: UUID) -> [PlateItem] {
+        items.map { PlateItem(food: saveAIFood($0, userId: userId), servings: max(0, $0.servings)) }
+    }
+
+    /// Saves and logs AI items into a meal on a day with their servings (half a bowl = 0.5 of the saved bowl).
+    @discardableResult
+    func logAIItems(_ items: [AIMealItem], userId: UUID, mealSlotId: UUID?, on date: Date) -> [FoodEntry] {
+        logFoods(plateItems(for: items.filter { $0.servings > 0 }, userId: userId), mealSlotId: mealSlotId, on: date)
+    }
+
     // MARK: - Entries
 
     /// Logs `servings` of a saved food on a local day. The entry snapshots the food's values.

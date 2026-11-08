@@ -1,14 +1,17 @@
 // Run: deno test supabase/functions/ai-proxy/ai_proxy_test.ts   (no network, no external imports)
 import { cleanRequestId, mapReserveReason, parseUsage } from "./budget.ts";
 import {
+  checkContentsAndTools,
   chooseModel,
   clampOutputTokens,
   clampThinking,
   inputChars,
+  isGoogleSearchTools,
   resolveTask,
   TASKS,
   textOnlyContents,
   textOnlySystemInstruction,
+  validateContents,
 } from "./tasks.ts";
 
 function eq(actual: unknown, expected: unknown, msg = "") {
@@ -127,4 +130,72 @@ Deno.test("contents are text only; media, file URIs and extra keys are refused",
   eq(textOnlySystemInstruction({ parts: [{ text: "s" }] }), { parts: [{ text: "s" }] });
   eq(textOnlySystemInstruction({ parts: [{ inline_data: {} }] }), null);
   eq(textOnlySystemInstruction("s"), null);
+});
+
+// ---- Meal estimation (nutrition phase 4): one photo + search, only for mealEstimate ----
+const B64 = "QUJDREVGRw==";
+const img = (mime = "image/jpeg", data = B64) => ({ inline_data: { mime_type: mime, data } });
+const SEARCH = [{ google_search: {} }];
+const mealContents = (...extra: unknown[]) => [{ role: "user", parts: [{ text: "Chipotle bowl" }, ...extra] }];
+
+Deno.test("mealEstimate task: limits, flags, and phase 4's request fits", () => {
+  const m = TASKS.mealEstimate;
+  eq([m.allowImages, m.allowSearch], [1, true]);
+  eq(resolveTask("mealEstimate"), { ok: true, name: "mealEstimate" });
+  if (m.maxOutputTokens < 3000 || m.maxOutputTokens > 4096) throw new Error("output cap");
+  eq(clampOutputTokens("mealEstimate", 3000), 3000);
+  eq(clampThinking("mealEstimate", "gemini-2.5-flash", { thinkingBudget: 1024 }), { thinkingBudget: 1024 });
+  eq(clampThinking("mealEstimate", "gemini-3.5-flash", { thinkingLevel: "medium" }), { thinkingLevel: "low" });
+  if (m.reserveUsd < 0.035) throw new Error("reserve must cover search grounding");
+  // Only mealEstimate may take images or search.
+  for (const [name, spec] of Object.entries(TASKS)) {
+    if (name !== "mealEstimate" && (spec.allowImages !== 0 || spec.allowSearch)) throw new Error(`${name} must not allow media or tools`);
+  }
+});
+
+Deno.test("mealEstimate accepts one jpeg or png and the search tool", () => {
+  const a = checkContentsAndTools("mealEstimate", mealContents(img()), SEARCH);
+  eq(a.ok && [a.images, a.useSearch], [1, true]);
+  const b = checkContentsAndTools("mealEstimate", mealContents(img("image/png")), undefined);
+  eq(b.ok && [b.images, b.useSearch], [1, false]);
+  const c = checkContentsAndTools("mealEstimate", mealContents(), SEARCH);
+  eq(c.ok && [c.images, c.useSearch], [0, true]);
+});
+
+Deno.test("mealEstimate rejects 2 images, pdf/video/gif mime, bad base64, extra keys, other tools", () => {
+  eq(checkContentsAndTools("mealEstimate", mealContents(img(), img()), undefined).ok, false);
+  eq(checkContentsAndTools("mealEstimate", [{ role: "user", parts: [img()] }, { role: "user", parts: [img()] }], undefined).ok, false);
+  for (const mime of ["application/pdf", "video/mp4", "image/gif", "image/webp"]) {
+    eq(checkContentsAndTools("mealEstimate", mealContents(img(mime)), undefined).ok, false, mime);
+  }
+  eq(checkContentsAndTools("mealEstimate", mealContents(img("image/jpeg", "not base64!!")), undefined).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents(img("image/jpeg", "")), undefined).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents({ inline_data: { mime_type: "image/jpeg", data: B64, extra: 1 } }), undefined).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents({ fileData: { fileUri: "https://x" } }), undefined).ok, false);
+  eq(checkContentsAndTools("mealEstimate", [{ role: "system", parts: [{ text: "a" }] }], undefined).ok, false);
+  eq(checkContentsAndTools("mealEstimate", [{ role: "user", parts: Array(9).fill({ text: "a" }) }], undefined).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents(), [{ code_execution: {} }]).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents(), [{ google_search: {} }, { code_execution: {} }]).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents(), [{ google_search: { x: 1 } }]).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents(), [{ function_declarations: [] }]).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents(), []).ok, false);
+  eq(checkContentsAndTools("mealEstimate", mealContents(), null).ok, false);
+  eq(isGoogleSearchTools(SEARCH), true);
+});
+
+Deno.test("every other task and legacy still reject images and tools", () => {
+  for (const name of ["plan", "chat", "postWorkout", "monthPlan", "formFeedback", "other", "legacy"] as const) {
+    eq(checkContentsAndTools(name, mealContents(img()), undefined).ok, false, `${name} image`);
+    eq(checkContentsAndTools(name, mealContents(img("image/png")), undefined).ok, false, `${name} png`);
+    eq(checkContentsAndTools(name, mealContents(), SEARCH).ok, false, `${name} search`);
+    eq(checkContentsAndTools(name, mealContents(img()), SEARCH).ok, false, `${name} both`);
+    eq(checkContentsAndTools(name, mealContents(), undefined).ok, true, `${name} text ok`);
+  }
+  eq(validateContents(mealContents(img()), 0), null);
+});
+
+Deno.test("legacy (no task id) is not meal estimation and cannot ask for it by media", () => {
+  eq(resolveTask(undefined, true), { ok: true, name: "legacy" });
+  eq(checkContentsAndTools("legacy", mealContents(img()), SEARCH).ok, false);
+  eq(TASKS.legacy.allowImages, 0);
 });

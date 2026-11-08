@@ -33,6 +33,19 @@ final class AIServiceManager {
         options: AIRequestOptions = .default,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        generateReply(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON, options: options) {
+            completion($0.map(\.text))
+        }
+    }
+
+    /// Like `generateChat` but keeps the search-grounding sources. Same provider fallback, one call per provider tried.
+    func generateReply(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool = true,
+        options: AIRequestOptions = .default,
+        completion: @escaping (Result<AIReply, Error>) -> Void
+    ) {
         // Nothing is sent to the third-party AI provider without the athlete's consent.
         guard AIConsent.isGranted else {
             completion(.failure(AIConsent.deniedError))
@@ -57,7 +70,7 @@ final class AIServiceManager {
         expectsJSON: Bool,
         options: AIRequestOptions,
         attemptedProviders: [String],
-        completion: @escaping (Result<String, Error>) -> Void
+        completion: @escaping (Result<AIReply, Error>) -> Void
     ) {
         // Find next available provider
         guard let availableProvider = findNextAvailableProvider(excluding: attemptedProviders) else {
@@ -68,7 +81,7 @@ final class AIServiceManager {
 
         logger.debug("Trying provider: \(availableProvider.name)")
 
-        availableProvider.generateChat(
+        availableProvider.generateReply(
             systemPrompt: systemPrompt,
             messages: messages,
             expectsJSON: expectsJSON,
