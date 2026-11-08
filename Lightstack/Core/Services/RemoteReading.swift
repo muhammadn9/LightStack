@@ -23,6 +23,8 @@ protocol RemoteReading: Sendable {
     func fetchDayNotes(userId: UUID) async throws -> [DayNote]
     func fetchGoalSettings(userId: UUID) async throws -> [NutritionGoalSettings]
     func fetchNutritionPlans(userId: UUID) async throws -> [NutritionPlan]
+    func fetchFoodCollections(userId: UUID) async throws -> [FoodCollection]
+    func fetchFoodCollectionItems(userId: UUID) async throws -> [FoodCollectionItem]
 }
 
 /// Nutrition reads default to "nothing in the cloud" so fakes that predate nutrition keep compiling.
@@ -35,6 +37,8 @@ extension RemoteReading {
     func fetchDayNotes(userId: UUID) async throws -> [DayNote] { [] }
     func fetchGoalSettings(userId: UUID) async throws -> [NutritionGoalSettings] { [] }
     func fetchNutritionPlans(userId: UUID) async throws -> [NutritionPlan] { [] }
+    func fetchFoodCollections(userId: UUID) async throws -> [FoodCollection] { [] }
+    func fetchFoodCollectionItems(userId: UUID) async throws -> [FoodCollectionItem] { [] }
 }
 
 extension SupabaseService: RemoteReading {
@@ -218,6 +222,44 @@ extension SupabaseService: RemoteReading {
                 .select()
                 .eq("user_id", value: userId.uuidString)
                 .order("sort_order", ascending: true)
+                .order("id", ascending: true)
+                .range(from: offset, to: offset + Self.readPageSize - 1)
+                .execute()
+                .value
+            all.append(contentsOf: page)
+            if page.count < Self.readPageSize { return all }
+            offset += page.count
+        }
+    }
+
+    func fetchFoodCollections(userId: UUID) async throws -> [FoodCollection] {
+        var all: [FoodCollection] = []
+        var offset = 0
+        while true {
+            let page: [FoodCollection] = try await client
+                .from("food_collections")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("name", ascending: true)
+                .order("id", ascending: true)
+                .range(from: offset, to: offset + Self.readPageSize - 1)
+                .execute()
+                .value
+            all.append(contentsOf: page)
+            if page.count < Self.readPageSize { return all }
+            offset += page.count
+        }
+    }
+
+    func fetchFoodCollectionItems(userId: UUID) async throws -> [FoodCollectionItem] {
+        var all: [FoodCollectionItem] = []
+        var offset = 0
+        while true {
+            let page: [FoodCollectionItem] = try await client
+                .from("food_collection_items")
+                .select()
+                .eq("user_id", value: userId.uuidString)
+                .order("collection_id", ascending: true)
                 .order("id", ascending: true)
                 .range(from: offset, to: offset + Self.readPageSize - 1)
                 .execute()

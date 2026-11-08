@@ -193,7 +193,8 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
   user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   entity     TEXT NOT NULL CHECK (entity IN
                ('workout','exercise','set','personal_record','month_plan','planned_session','rest_day',
-                'nutrition_target','food','food_entry','meal_slot','water_entry','day_note')),
+                'nutrition_target','food','food_entry','meal_slot','water_entry','day_note',
+                'food_collection','food_collection_item')),
   record_id  UUID NOT NULL,
   deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, entity, record_id)
@@ -255,7 +256,7 @@ CREATE TABLE IF NOT EXISTS public.foods (
   iron_mg        numeric,
   vitamin_d_mcg  numeric,
   other_micros   jsonb NOT NULL DEFAULT '{}'::jsonb,
-  source         text NOT NULL DEFAULT 'quick' CHECK (source IN ('quick','scan','off','ai')),
+  source         text NOT NULL DEFAULT 'quick' CHECK (source IN ('quick','scan','off','ai','recipe')),
   barcode        text,
   ai_sources     jsonb,
   ai_confidence  text CHECK (ai_confidence IS NULL OR ai_confidence IN ('low','medium','high')),
@@ -714,6 +715,38 @@ CREATE TABLE IF NOT EXISTS public.nutrition_plans (
 CREATE INDEX IF NOT EXISTS idx_nutrition_plans_user_order
   ON public.nutrition_plans(user_id, sort_order);
 
+-- NUTRITION KITCHEN (saved meals and recipes)
+-- a. food_collections: kind 'meal' (logged as one entry per item) or 'recipe' (owns a derived foods row, source 'recipe')
+CREATE TABLE IF NOT EXISTS public.food_collections (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  kind            text NOT NULL DEFAULT 'meal' CHECK (kind IN ('meal','recipe')),
+  name            text NOT NULL,
+  servings_yield  numeric NOT NULL DEFAULT 1 CHECK (servings_yield > 0),
+  cooked_weight_g numeric CHECK (cooked_weight_g IS NULL OR cooked_weight_g > 0),
+  last_used_at    timestamptz,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_food_collections_user_kind
+  ON public.food_collections(user_id, kind);
+
+-- b. food_collection_items: deleting the collection or the food removes the item
+CREATE TABLE IF NOT EXISTS public.food_collection_items (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  collection_id uuid NOT NULL REFERENCES public.food_collections(id) ON DELETE CASCADE,
+  food_id       uuid NOT NULL REFERENCES public.foods(id) ON DELETE CASCADE,
+  servings      numeric NOT NULL DEFAULT 1 CHECK (servings > 0),
+  sort_order    integer NOT NULL DEFAULT 0,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_food_collection_items_collection
+  ON public.food_collection_items(collection_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_food_collection_items_food
+  ON public.food_collection_items(food_id);
+
 -- c. RLS: own rows only
 ALTER TABLE public.nutrition_goal_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.nutrition_plans         ENABLE ROW LEVEL SECURITY;
@@ -731,3 +764,25 @@ CREATE POLICY "Users manage own nutrition plans"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 GRANT ALL ON public.nutrition_plans TO authenticated;
+
+-- c. RLS: own rows only; items must also point at the caller's own collection and food
+ALTER TABLE public.food_collections      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.food_collection_items ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage own food collections" ON public.food_collections;
+CREATE POLICY "Users manage own food collections"
+  ON public.food_collections FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+GRANT ALL ON public.food_collections TO authenticated;
+
+DROP POLICY IF EXISTS "Users manage own food collection items" ON public.food_collection_items;
+CREATE POLICY "Users manage own food collection items"
+  ON public.food_collection_items FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (SELECT 1 FROM public.food_collections c WHERE c.id = collection_id AND c.user_id = auth.uid())
+    AND EXISTS (SELECT 1 FROM public.foods f WHERE f.id = food_id AND f.user_id = auth.uid())
+  );
+GRANT ALL ON public.food_collection_items TO authenticated;

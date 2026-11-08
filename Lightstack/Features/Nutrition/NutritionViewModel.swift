@@ -12,7 +12,9 @@ final class NutritionViewModel: ObservableObject {
     @Published private(set) var trackers: [NutrientTracker] = []
     @Published private(set) var waterUnit: WaterUnit = WaterUnit.current()
     /// Bumped whenever the saved-food list changes, so Kitchen and the add-food flow refresh.
-    @Published private(set) var foodsVersion = 0
+    @Published internal(set) var foodsVersion = 0
+    /// Bumped whenever a saved meal or recipe changes (or a food they use does), so Kitchen refreshes.
+    @Published internal(set) var kitchenVersion = 0
     /// True once the setup wizard has been finished (on any device).
     @Published private(set) var isSetupComplete = false
     @Published private(set) var plans: [NutritionPlan] = []
@@ -23,7 +25,7 @@ final class NutritionViewModel: ObservableObject {
     /// AI meal estimate state for the UI.
     @Published private(set) var aiState: AIEstimateState = .idle
 
-    private let repository: NutritionRepository
+    let repository: NutritionRepository
     private let userIdProvider: () -> UUID?
     private let foodDatabase: OpenFoodFactsServicing?
     private let nutritionAI: NutritionAIServicing?
@@ -333,12 +335,14 @@ final class NutritionViewModel: ObservableObject {
         guard let userId else { return }
         repository.deleteFood(id: food.id, userId: userId)
         foodsVersion += 1
+        kitchenVersion += 1
     }
 
     /// Saves edits to a saved food (name, serving, nutrients, favourite).
     func updateFood(_ food: NutritionFood) {
         repository.saveFood(food)
         foodsVersion += 1
+        kitchenVersion += 1
     }
 
     /// Saves a new food and, when `servings` is given, logs that many servings on the selected day into `mealSlotId`.

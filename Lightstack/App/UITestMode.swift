@@ -98,6 +98,7 @@ enum UITestMode {
         defaults.removeObject(forKey: "nutritionSelectedTab")
         defaults.removeObject(forKey: "nutritionSetupSkipped")
         defaults.removeObject(forKey: WaterUnit.storageKey)
+        defaults.removeObject(forKey: ServingUnitPreferences.storageKey)
         defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
         CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
@@ -137,6 +138,35 @@ enum UITestMode {
             food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true),
             food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false)
         ].forEach { localStorage.saveFood($0) }
+        seedKitchen(localStorage: localStorage, stamp: stamp)
+    }
+
+    /// One saved meal ("Usual breakfast": 3 eggs + oats) and one recipe ("Egg Oat Bowl", 2 servings, with its
+    /// derived food) so the Kitchen screens have something to show.
+    private static func seedKitchen(localStorage: LocalStorageService, stamp: Date) {
+        let foods = localStorage.fetchFoods(userId: userId)
+        guard let egg = foods.first(where: { $0.name == "Egg" }), let oats = foods.first(where: { $0.name == "Oats" }) else { return }
+
+        let meal = FoodCollection.make(userId: userId, kind: .meal, name: "Usual breakfast", now: stamp)
+        localStorage.saveFoodCollection(meal)
+        localStorage.saveFoodCollectionItems([
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: meal.id, foodId: egg.id, servings: 3,
+                               sortOrder: 0, createdAt: stamp, updatedAt: stamp),
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: meal.id, foodId: oats.id, servings: 1,
+                               sortOrder: 1, createdAt: stamp, updatedAt: stamp)
+        ])
+
+        let recipe = FoodCollection.make(userId: userId, kind: .recipe, name: "Egg Oat Bowl", servingsYield: 2,
+                                         cookedWeightGrams: 500, now: stamp)
+        localStorage.saveFoodCollection(recipe)
+        localStorage.saveFoodCollectionItems([
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: recipe.id, foodId: egg.id, servings: 2,
+                               sortOrder: 0, createdAt: stamp, updatedAt: stamp),
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: recipe.id, foodId: oats.id, servings: 2,
+                               sortOrder: 1, createdAt: stamp, updatedAt: stamp)
+        ])
+        let lines = [PlateItem(food: egg, servings: 2), PlateItem(food: oats, servings: 2)]
+        localStorage.saveFood(RecipeMath.derivedFood(for: recipe, lines: lines, existing: nil, now: stamp))
     }
 
     /// Writes the profile and one past Push workout when the store has no profile yet.
