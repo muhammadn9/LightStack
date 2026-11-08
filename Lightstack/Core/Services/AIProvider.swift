@@ -40,6 +40,15 @@ protocol AIProvider {
         completion: @escaping (Result<String, Error>) -> Void
     )
 
+    /// Same as above, but also returns the web sources Gemini's search grounding used (empty when none).
+    func generateReply(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool,
+        options: AIRequestOptions,
+        completion: @escaping (Result<AIReply, Error>) -> Void
+    )
+
     /// Mark provider as rate limited until specified time
     func markRateLimited(until: Date)
 
@@ -48,6 +57,12 @@ protocol AIProvider {
 }
 
 // MARK: - Default implementations
+
+/// A model reply plus the web pages its search grounding cited (from groundingMetadata, never model-written).
+struct AIReply: Equatable {
+    var text: String
+    var sources: [AIFoodSource] = []
+}
 
 extension AIProvider {
     func generateChat(
@@ -58,6 +73,19 @@ extension AIProvider {
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         generateChat(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON, completion: completion)
+    }
+
+    /// Default: text only, no sources.
+    func generateReply(
+        systemPrompt: String,
+        messages: [ChatMessage],
+        expectsJSON: Bool,
+        options: AIRequestOptions,
+        completion: @escaping (Result<AIReply, Error>) -> Void
+    ) {
+        generateChat(systemPrompt: systemPrompt, messages: messages, expectsJSON: expectsJSON, options: options) { result in
+            completion(result.map { AIReply(text: $0) })
+        }
     }
 
     /// Default: available when the API key is non-empty and the rate-limit window has passed.

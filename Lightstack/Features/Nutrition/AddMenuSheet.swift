@@ -7,6 +7,7 @@ struct AddMenuSheet: View {
     let onQuickTrack: () -> Void
     let onCreateFood: () -> Void
     let onBarcode: () -> Void
+    let onAI: (String) -> Void
 
     @State private var query = ""
 
@@ -27,7 +28,14 @@ struct AddMenuSheet: View {
                     .frame(minHeight: 48)
                     .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AppTheme.border, lineWidth: 0.5))
-                    roundDisabled("sparkles", id: "addmenu.ai", label: "AI search, coming soon")
+                    Button { onAI(query) } label: {
+                        Image(systemName: "sparkles").font(.title3).foregroundStyle(AppTheme.accent)
+                            .frame(width: 48, height: 48)
+                            .background(AppTheme.surface, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Log with AI")
+                    .accessibilityIdentifier("addmenu.ai")
                     Button(action: onBarcode) {
                         Image(systemName: "barcode.viewfinder").font(.title3).foregroundStyle(AppTheme.textPrimary)
                             .frame(width: 48, height: 48)
@@ -59,16 +67,6 @@ struct AddMenuSheet: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(AppTheme.background.ignoresSafeArea())
-    }
-
-    private func roundDisabled(_ icon: String, id: String, label: String) -> some View {
-        Image(systemName: icon).font(.title3).foregroundStyle(AppTheme.textSecondary)
-            .frame(width: 48, height: 48)
-            .background(AppTheme.surface, in: Circle())
-            .opacity(0.5)
-            .accessibilityLabel(label)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityIdentifier(id)
     }
 
     private func tile(_ icon: String, _ color: Color, _ title: String, id: String, enabled: Bool,
