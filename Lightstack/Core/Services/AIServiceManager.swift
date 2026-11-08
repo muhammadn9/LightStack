@@ -19,6 +19,8 @@ final class AIServiceManager {
         providers.first(where: { $0.isAvailable })?.name ?? providers.first?.name ?? "unknown"
     }
 
+    /// THE single entry point for every AI request (all features call this). Put any
+    /// app-wide gate (e.g. third-party AI consent) at the top of this function.
     /// Generate chat completion using the first available provider.
     /// Automatically falls back to next provider if current one is rate limited.
     ///
@@ -44,6 +46,11 @@ final class AIServiceManager {
         options: AIRequestOptions = .default,
         completion: @escaping (Result<AIReply, Error>) -> Void
     ) {
+        // Nothing is sent to the third-party AI provider without the athlete's consent.
+        guard AIConsent.isGranted else {
+            completion(.failure(AIConsent.deniedError))
+            return
+        }
         logger.debug("Starting chat generation with \(self.providers.count) providers available")
         tryNextProvider(
             systemPrompt: systemPrompt,
@@ -92,6 +99,7 @@ final class AIServiceManager {
 
                 // ai-proxy refusals (per-user rate limit, signed out) apply to every
                 // model, so show them as-is instead of trying the next provider.
+                // Budget / kill-switch refusals are final: the fallback model would be refused too.
                 if (error as NSError).domain == GeminiService.proxyErrorDomain {
                     completion(.failure(error))
                     return

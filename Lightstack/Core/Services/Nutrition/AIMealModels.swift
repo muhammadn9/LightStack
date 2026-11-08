@@ -93,6 +93,8 @@ enum NutritionAIError: Error, Equatable, LocalizedError {
             default: return .failed(ns.localizedDescription)
             }
         }
+        // AI is switched off in Settings: say so instead of "couldn't be reached".
+        if ns.domain == AIConsent.deniedError.domain { return .failed(ns.localizedDescription) }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff:

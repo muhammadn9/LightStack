@@ -90,6 +90,30 @@ final class CoachPromptServiceTests: XCTestCase {
         XCTAssertTrue(service.buildSystemPrompt(profile: nil).contains("TRAINING PRINCIPLES"))
     }
 
+    // MARK: - Data minimisation
+
+    func testProfileLineNeverSendsNameOrIdsAndClipsNotes() {
+        let userId = UUID(), profileId = UUID()
+        let profile = UserProfile(
+            id: profileId, userId: userId, displayName: "Jane Q. Sample", age: 34, heightInches: 70, weightLbs: 180,
+            trainingAgeMonths: 24, primaryGoals: ["Strength"], splitDays: ["Mon"], avoidExercises: ["Deadlift"],
+            equipment: ["barbell": true], customEquipment: nil,
+            notesToCoach: String(repeating: "knee pain ", count: 200), createdAt: Date(), updatedAt: Date())
+        for task: CoachPromptService.PromptTask in [.plan, .chat, .postWorkout, .monthPlan] {
+            let prompt = service.buildSystemPrompt(profile: profile, task: task)
+            XCTAssertFalse(prompt.contains("Jane"), "display name must not be sent")
+            XCTAssertFalse(prompt.contains("Sample"))
+            XCTAssertFalse(prompt.contains(userId.uuidString))
+            XCTAssertFalse(prompt.contains(profileId.uuidString))
+            XCTAssertTrue(prompt.contains("age 34"))
+            XCTAssertTrue(prompt.contains("avoid: Deadlift"))
+            XCTAssertTrue(prompt.contains("goals: Strength"))
+        }
+        let line = service.buildSystemPrompt(profile: profile, task: .chat)
+            .components(separatedBy: "\n").first { $0.hasPrefix("ATHLETE:") } ?? ""
+        XCTAssertLessThan(line.count, 900, "notes are clipped")
+    }
+
     // MARK: - Brief block
 
     private func sampleBrief() -> ExerciseBrief {

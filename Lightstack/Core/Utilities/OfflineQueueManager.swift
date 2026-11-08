@@ -388,10 +388,24 @@ actor OfflineQueueManager {
     /// True from an auth failure until the next successful upload.
     private(set) var authBlocked = false
 
+    /// Set by `purgeAll`: nothing may be queued for the purged account (or while nobody is signed in)
+    /// until a different user signs in or `resumeEnqueue()` is called. Stops a late write from
+    /// recreating cloud data after the account was deleted.
+    private var enqueueBlocked = false
+    private var purgedOwner: UUID?
+    /// Bumped by `purgeAll`; a running pass stops as soon as it sees a different value.
+    private var purgeGeneration = 0
+    /// Timer that re-runs a flush when the earliest backed-off operation becomes due.
+    private var wakeTask: Task<Void, Never>?
+    private static let lastKnownOwnerKey = "lightstack.queue.lastKnownOwner"
+
     /// Stop a pass after this many consecutive transient failures (likely offline).
     private let transientStreakLimit = 3
     /// Persist at most every N flush outcomes (replays are idempotent, see SyncErrorClassifier).
     private let saveEvery = 25
+
+    private static let writeOptions: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+    private static let directoryAttributes: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
 
     private var queueURL: URL { directory.appendingPathComponent("queue.json") }
     private var failedURL: URL { directory.appendingPathComponent("failed.json") }
@@ -490,6 +504,75 @@ actor OfflineQueueManager {
         defaults.set(now().timeIntervalSince1970, forKey: Self.lastSuccessKey(owner))
     }
 
+    // MARK: - Owner tagging and purge
+
+    /// Owner to stamp on a new operation. When nobody is signed in (sign-out raced the write) the
+    /// last signed-in user is used, so the change can never be adopted by the next, different user.
+    private func resolveOwnerForEnqueue() async -> UUID? {
+        if let owner = await ownerProvider() {
+            if defaults.string(forKey: Self.lastKnownOwnerKey) != owner.uuidString {
+                defaults.set(owner.uuidString, forKey: Self.lastKnownOwnerKey)
+            }
+            return owner
+        }
+        return defaults.string(forKey: Self.lastKnownOwnerKey).flatMap(UUID.init(uuidString:))
+    }
+
+    /// True (and the sequence number released) when enqueueing is blocked by `purgeAll`.
+    private func dropIfBlocked(owner: UUID?, sequence: Int64) -> Bool {
+        guard enqueueBlocked else { return false }
+        if let owner, owner != purgedOwner {
+            enqueueBlocked = false      // a different user signed in
+            purgedOwner = nil
+            return false
+        }
+        Self.logger.info("enqueue refused: queue was purged for this account")
+        sequencer.markArrived(sequence)
+        return true
+    }
+
+    /// Lifts the block set by `purgeAll`. Call when a user signs in.
+    func resumeEnqueue() {
+        enqueueBlocked = false
+        purgedOwner = nil
+    }
+
+    /// Erases every queued and dead-lettered operation (all users), the corrupt-file backups and the
+    /// per-user bookkeeping, persists the empty state, and blocks further enqueueing until a different
+    /// user signs in (or `resumeEnqueue()`). For account deletion; NOT for plain sign-out, where
+    /// unsynced changes must survive. Waits (bounded, ~10 s) for a running upload to wind down, so when
+    /// this returns nothing more is sent. An upload already on the wire cannot be recalled.
+    func purgeAll(reason: String) async {
+        loadIfNeeded()
+        purgedOwner = await ownerProvider() ?? defaults.string(forKey: Self.lastKnownOwnerKey).flatMap(UUID.init(uuidString:))
+        enqueueBlocked = true
+        purgeGeneration += 1
+        wakeTask?.cancel()
+        wakeTask = nil
+        wipeAll()
+        var waits = 0
+        while isFlushing && waits < 200 {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            waits += 1
+        }
+        wipeAll()
+        Self.logger.info("queue purged (\(reason, privacy: .public))")
+    }
+
+    private func wipeAll() {
+        queue = []
+        failed = []
+        unsavedOutcomes = 0
+        saveQueue()
+        saveFailed()
+        if let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            for url in files where url.lastPathComponent.contains(".corrupt-") { try? FileManager.default.removeItem(at: url) }
+        }
+        if let owner = purgedOwner { defaults.removeObject(forKey: Self.lastSuccessKey(owner)) }
+        defaults.removeObject(forKey: Self.lastKnownOwnerKey)
+        notifyChanged()
+    }
+
     // MARK: - Submitting writes (call-site API)
 
     /// Queue a write from synchronous code. The causal sequence number is taken
@@ -569,8 +652,16 @@ actor OfflineQueueManager {
     func enqueueEncoded(
         _ type: QueuedOperationType, data: Data, recordKey: String?, sequence: Int64, flush: Bool = true
     ) async {
-        let owner = await ownerProvider()
+        let owner = await resolveOwnerForEnqueue()
         loadIfNeeded()
+        if dropIfBlocked(owner: owner, sequence: sequence) { return }
+        if type == .upsertRestDay, let day = try? decoder.decode(RestDay.self, from: data) {
+            // Re-adding a day cancels a still-queued removal (deletes otherwise sort after upserts).
+            removePendingRestDayOps(.deleteRestDay, day: RestDay.dayString(day.date), owner: owner, before: sequence)
+        } else if type == .deleteRestDay, let del = try? decoder.decode(DeleteRestDayPayload.self, from: data) {
+            // Removing a day cancels a still-queued add of it.
+            removePendingRestDayOps(.upsertRestDay, day: RestDay.dayString(del.date), owner: owner, before: sequence)
+        }
         if type == .upsertContextSummary, let model = try? decoder.decode(AIContextSummary.self, from: data) {
             // A fresh summary for a type revives it: a still-queued delete must not wipe it.
             removePendingSummaryDeletes(of: model.workoutType, owner: owner, before: sequence)
@@ -578,6 +669,22 @@ actor OfflineQueueManager {
         append(type, data: data, recordKey: recordKey, sequence: sequence, owner: owner)
         saveQueue()
         if flush { await flushSoon() }
+    }
+
+    private func removePendingRestDayOps(_ type: QueuedOperationType, day: String, owner: UUID?, before sequence: Int64) {
+        queue.removeAll { op in
+            guard op.type == type, op.ownerUserId == owner, op.id != executingId, op.sequence < sequence else { return false }
+            switch type {
+            case .deleteRestDay:
+                guard let m = try? decoder.decode(DeleteRestDayPayload.self, from: op.payload) else { return false }
+                return RestDay.dayString(m.date) == day
+            case .upsertRestDay:
+                guard let m = try? decoder.decode(RestDay.self, from: op.payload) else { return false }
+                return RestDay.dayString(m.date) == day
+            default:
+                return false
+            }
+        }
     }
 
     private func removePendingSummaryDeletes(of workoutType: String, owner: UUID?, before sequence: Int64) {
@@ -596,8 +703,9 @@ actor OfflineQueueManager {
     }
 
     private func enqueueDeleteContextSummaries(types: [String], sequence: Int64) async {
-        let owner = await ownerProvider()
+        let owner = await resolveOwnerForEnqueue()
         loadIfNeeded()
+        if dropIfBlocked(owner: owner, sequence: sequence) { await flushSoon(); return }
         let doomed = Set(types)
         // Earlier-sequenced upserts for these types would resurrect the rows: drop them.
         queue.removeAll { op in
@@ -643,7 +751,7 @@ actor OfflineQueueManager {
     }
 
     private func enqueueTombstone(entity: TombstoneEntity, ids: [UUID], deletedAt: Date, sequence: Int64) async {
-        let owner = await ownerProvider()
+        let owner = await resolveOwnerForEnqueue()
         let payload = TombstonePayload(userId: owner, entity: entity, recordIds: ids, deletedAt: deletedAt)
         guard let data = try? encoder.encode(payload) else {
             Self.logger.error("enqueueTombstone failed to encode payload")
@@ -652,6 +760,7 @@ actor OfflineQueueManager {
             return
         }
         loadIfNeeded()
+        if dropIfBlocked(owner: owner, sequence: sequence) { return }
         append(.insertTombstone, data: data, recordKey: nil, sequence: sequence, owner: owner)
         saveQueue()
         await flushSoon()
@@ -674,8 +783,9 @@ actor OfflineQueueManager {
             await flushSoon()
             return
         }
-        let owner = await ownerProvider()
+        let owner = await resolveOwnerForEnqueue()
         loadIfNeeded()
+        if dropIfBlocked(owner: owner, sequence: seq) { return }
 
         var staleExerciseIds = Set<UUID>()
         queue.removeAll { op in
@@ -704,7 +814,7 @@ actor OfflineQueueManager {
     }
 
     /// Remove all queued operations and the dead-letter list. Tests/debug only;
-    /// NOT called on sign-out (unsynced changes must survive).
+    /// NOT called on sign-out (unsynced changes must survive). Account deletion uses `purgeAll(reason:)`.
     func clearQueue() {
         loadIfNeeded()
         queue = []
@@ -1092,6 +1202,23 @@ actor OfflineQueueManager {
             if !shouldContinue { break }
         } while needsAnotherPass
         savePendingChanges()
+        scheduleWake()
+    }
+
+    /// Re-run the flush when the earliest backed-off operation falls due, so a flaky connection
+    /// recovers without waiting for the next app event. One timer; replaced on every pass.
+    private func scheduleWake() {
+        wakeTask?.cancel()
+        wakeTask = nil
+        guard autoFlush, !enqueueBlocked else { return }
+        let current = now()
+        guard let next = queue.compactMap(\.nextAttemptAt).filter({ $0 > current }).min() else { return }
+        let nanos = UInt64(max(1, next.timeIntervalSince(current)) * 1_000_000_000)
+        wakeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: nanos)
+            guard !Task.isCancelled else { return }
+            await self?.flush()
+        }
     }
 
     /// Returns false when the pass was cut short (auth, owner change, offline) and
@@ -1103,6 +1230,7 @@ actor OfflineQueueManager {
         }
         adoptLegacyOperations(for: owner)
 
+        let startGeneration = purgeGeneration
         let startNow = now()
         // Only the contiguous arrived prefix: a later write (e.g. a child) must not run
         // while an earlier one (its parent) is still on its way to the queue.
@@ -1132,6 +1260,11 @@ actor OfflineQueueManager {
             // The owner can change mid-pass (sign-out / account switch).
             guard await ownerProvider() == owner else {
                 Self.logger.info("flush stopped: signed-in user changed")
+                stopped = true
+                break
+            }
+            guard purgeGeneration == startGeneration else {
+                Self.logger.info("flush stopped: queue was purged")
                 stopped = true
                 break
             }
@@ -1290,14 +1423,18 @@ actor OfflineQueueManager {
         unsavedOutcomes += 1
     }
 
+    /// Ownerless (pre-tagging) operations go to the user who was signed in before them, if known,
+    /// otherwise to the first user to flush; never to a later, different account.
     private func adoptLegacyOperations(for owner: UUID) {
+        let heir = defaults.string(forKey: Self.lastKnownOwnerKey).flatMap(UUID.init(uuidString:)) ?? owner
+        defaults.set(owner.uuidString, forKey: Self.lastKnownOwnerKey)
         var changed = false
         for i in queue.indices where queue[i].ownerUserId == nil {
-            queue[i].ownerUserId = owner
+            queue[i].ownerUserId = heir
             changed = true
         }
         for i in failed.indices where failed[i].ownerUserId == nil {
-            failed[i].ownerUserId = owner
+            failed[i].ownerUserId = heir
             changed = true
         }
         if changed { saveQueue(); saveFailed() }
@@ -1476,7 +1613,8 @@ actor OfflineQueueManager {
     private func loadIfNeeded() {
         guard !loaded else { return }
         loaded = true
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true, attributes: Self.directoryAttributes)
 
         let queueExists = FileManager.default.fileExists(atPath: queueURL.path)
         queue = readOperations(at: queueURL, label: "queue")
@@ -1492,6 +1630,10 @@ actor OfflineQueueManager {
                     Self.logger.info("migrated \(ops.count) legacy operations")
                 }
             }
+        }
+        // The old copy of the queue (user data) must not linger in UserDefaults once imported.
+        if defaults.data(forKey: Self.legacyDefaultsKey) != nil, queueExists || defaults.bool(forKey: Self.migrationDoneKey) || !queue.isEmpty {
+            defaults.removeObject(forKey: Self.legacyDefaultsKey)
         }
         if !defaults.bool(forKey: Self.migrationDoneKey) {
             defaults.set(true, forKey: Self.migrationDoneKey)
@@ -1521,7 +1663,7 @@ actor OfflineQueueManager {
         let (recovered, _) = Self.decodeLossy(data)
         Self.logger.info("recovered \(recovered.count) operations from corrupt \(label, privacy: .public) file")
         if !recovered.isEmpty, let out = try? encoder.encode(recovered) {
-            try? out.write(to: url, options: .atomic)
+            try? out.write(to: url, options: Self.writeOptions)
         }
         return recovered
     }
@@ -1560,9 +1702,10 @@ actor OfflineQueueManager {
 
     private func write(_ ops: [QueuedOperation], to url: URL, label: String) {
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true, attributes: Self.directoryAttributes)
             let data = try encoder.encode(ops)
-            try data.write(to: url, options: .atomic)
+            try data.write(to: url, options: Self.writeOptions)
         } catch {
             Self.logger.error("failed to persist \(label, privacy: .public) (\(ops.count) ops)")
         }

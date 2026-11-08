@@ -1,5 +1,6 @@
 import XCTest
 import CryptoKit
+import CoreData
 @testable import Lightstack
 
 final class SecurityHardeningTests: XCTestCase {
@@ -76,5 +77,161 @@ private final class StubProvider: AIProvider {
                       completion: @escaping (Result<String, Error>) -> Void) {
         calls += 1
         completion(result)
+    }
+}
+
+// MARK: - Local data protection
+
+final class LocalDataProtectionTests: XCTestCase {
+
+    func testStoreDescriptionCarriesFileProtection() {
+        let description = NSPersistentStoreDescription()
+        LocalStorageService.applyFileProtection(to: description)
+        let value = description.options[NSPersistentStoreFileProtectionKey] as? FileProtectionType
+        XCTAssertEqual(value, .completeUntilFirstUserAuthentication)
+    }
+
+    func testReleaseModeDebugStoreKeepsSizesNotText() throws {
+        let suite = "coach-redact-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = CoachDebugStore(defaults: defaults, redactContent: true)
+        let me = UUID()
+        store.recordRequest(userId: me, workoutType: "Push", model: "m", systemPromptName: "plan",
+                            systemPromptLength: 10, userMessage: "my secret goals")
+        store.recordResponse(userId: me, raw: "private reply", adjustments: ["detail"])
+        let snapshot = try XCTUnwrap(store.lastPlan(forUser: me))
+        XCTAssertEqual(snapshot.userMessage, "[redacted, 15 chars]")
+        XCTAssertEqual(snapshot.rawResponse, "[redacted, 13 chars]")
+        XCTAssertTrue(snapshot.adjustments.isEmpty)
+        let stored = try XCTUnwrap(defaults.data(forKey: CoachDebugStore.defaultsKey))
+        XCTAssertFalse(String(decoding: stored, as: UTF8.self).contains("secret"))
+    }
+
+    func testDebugSnapshotExpires() throws {
+        let suite = "coach-expiry-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = CoachDebugStore(defaults: defaults, redactContent: false)
+        let me = UUID()
+        store.recordRequest(userId: me, workoutType: "Push", model: "m", systemPromptName: "plan",
+                            systemPromptLength: 1, userMessage: "x",
+                            now: Date().addingTimeInterval(-CoachDebugStore.maxAge - 60))
+        XCTAssertNil(store.lastPlan(forUser: me))
+        XCTAssertNil(defaults.data(forKey: CoachDebugStore.defaultsKey))
+    }
+
+    func testClearAllRemovesSharedSnapshot() {
+        let me = UUID()
+        CoachDebugStore.shared.recordRequest(userId: me, workoutType: "Push", model: "m",
+                                             systemPromptName: "plan", systemPromptLength: 1, userMessage: "x")
+        CoachDebugStore.clearAll()
+        XCTAssertNil(CoachDebugStore.shared.lastPlan(forUser: me))
+    }
+
+    func testDiagnosticsClearRemovesFile() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("diag-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = DiagnosticsStore(directory: dir)
+        store.append([DiagnosticEntry(id: "1", date: Date(), kind: .crash, summary: "s")])
+        XCTAssertEqual(store.load().count, 1)
+        store.clear()
+        XCTAssertTrue(store.load().isEmpty)
+    }
+
+    func testWipeAllUserDataRemovesEverything() {
+        let storage = LocalStorageService(inMemory: true)
+        let me = UUID()
+        storage.saveProfile(UserProfile(
+            id: me, userId: me, displayName: nil, age: nil, heightInches: nil, weightLbs: nil,
+            trainingAgeMonths: nil, primaryGoals: [], splitDays: [], avoidExercises: [], equipment: [:],
+            customEquipment: nil, notesToCoach: nil, createdAt: Date(), updatedAt: Date()))
+        XCTAssertNotNil(storage.fetchProfile(userId: me))
+        XCTAssertTrue(storage.wipeAllUserData())
+        XCTAssertNil(storage.fetchProfile(userId: me))
+    }
+}
+
+// MARK: - Account deletion, AI consent, privacy URL
+
+final class AccountPrivacyTests: XCTestCase {
+
+    private func freshDefaults() throws -> UserDefaults {
+        let name = "AccountPrivacyTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    func testConsentIsOffByDefaultAndPrompts() throws {
+        let defaults = try freshDefaults()
+        XCTAssertFalse(AIConsent.granted(in: defaults))
+        XCTAssertTrue(AIConsent.shouldPrompt(in: defaults))
+    }
+
+    func testConsentPersistsWithDateAndStopsPrompting() throws {
+        let defaults = try freshDefaults()
+        let now = Date(timeIntervalSince1970: 1_000)
+        AIConsent.set(true, in: defaults, now: now)
+        XCTAssertTrue(defaults.bool(forKey: "ai.thirdPartyConsent.v1"))
+        XCTAssertEqual(AIConsent.decisionDate(in: defaults), now)
+        XCTAssertFalse(AIConsent.shouldPrompt(in: defaults))
+    }
+
+    func testNotNowIsNotAskedAgainAndCanBeGrantedLater() throws {
+        let defaults = try freshDefaults()
+        AIConsent.set(false, in: defaults)
+        XCTAssertFalse(AIConsent.shouldPrompt(in: defaults))
+        XCTAssertFalse(defaults.bool(forKey: AIConsent.key))
+        AIConsent.set(true, in: defaults)
+        XCTAssertTrue(defaults.bool(forKey: AIConsent.key))
+    }
+
+    func testPrivacyPolicyURLMustBeHTTPS() {
+        XCTAssertNil(PrivacyPolicy.url(from: nil))
+        XCTAssertNil(PrivacyPolicy.url(from: "  "))
+        XCTAssertNil(PrivacyPolicy.url(from: "http://example.com/p"))
+        XCTAssertNil(PrivacyPolicy.url(from: "javascript:alert(1)"))
+        XCTAssertEqual(PrivacyPolicy.url(from: " https://example.com/privacy ")?.absoluteString, "https://example.com/privacy")
+    }
+
+    func testDeleteConfirmRequiresExactWord() {
+        XCTAssertFalse(DeleteAccountSheet.canConfirm(typed: "", phase: .idle))
+        XCTAssertFalse(DeleteAccountSheet.canConfirm(typed: "delete", phase: .idle))
+        XCTAssertFalse(DeleteAccountSheet.canConfirm(typed: "DELETE ", phase: .idle))
+        XCTAssertTrue(DeleteAccountSheet.canConfirm(typed: "DELETE", phase: .idle))
+        XCTAssertTrue(DeleteAccountSheet.canConfirm(typed: "DELETE", phase: .failed("x")))
+        XCTAssertFalse(DeleteAccountSheet.canConfirm(typed: "DELETE", phase: .deleting))
+    }
+
+    // MARK: Ordering
+
+    private final class FakeSteps: AccountDeletionSteps {
+        var log: [String] = []
+        var remoteError: Error?
+        func deleteRemoteAccount(appleAuthorizationCode: String?) async throws {
+            log.append("remote")
+            if let remoteError { throw remoteError }
+        }
+        func clearOfflineQueue() async { log.append("queue") }
+        func wipeLocalData() async { log.append("wipe") }
+        func signOutToLogin() async { log.append("signOut") }
+    }
+
+    func testDeletionRunsCloudThenQueueThenWipeThenSignOut() async throws {
+        let steps = FakeSteps()
+        try await AccountDeletionCoordinator(steps: steps).run()
+        XCTAssertEqual(steps.log, ["remote", "queue", "wipe", "signOut"])
+    }
+
+    func testFailedCloudDeletionKeepsLocalData() async {
+        let steps = FakeSteps()
+        steps.remoteError = AccountDeletionError.offline
+        do {
+            try await AccountDeletionCoordinator(steps: steps).run()
+            XCTFail("expected failure")
+        } catch {
+            XCTAssertEqual(steps.log, ["remote"])
+        }
     }
 }

@@ -2,7 +2,10 @@ import Foundation
 
 /// Which feature an AI call belongs to. Drives output caps and the DEBUG usage counter.
 enum AITask: String, CaseIterable {
-    case plan, chat, postWorkout, monthPlan, formFeedback, nutrition, other
+    case plan, chat, postWorkout, monthPlan, formFeedback, other
+    /// Meal estimation. The raw value is the ai-proxy task id (tasks.ts `mealEstimate`): the only task the
+    /// server lets carry a photo and the Google Search tool.
+    case nutrition = "mealEstimate"
 
     var label: String {
         switch self {
@@ -21,6 +24,9 @@ enum AITask: String, CaseIterable {
 /// (8192 tokens, default thinking) so existing callers and tests keep working.
 struct AIRequestOptions: Equatable {
     var task: AITask = .other
+    /// One id per logical request. Retries and the fallback model reuse it, so the server
+    /// never counts the same request twice. Not part of equality.
+    var requestID: String = UUID().uuidString
     var maxOutputTokens: Int = 8192
     var temperature: Double = 0.7
     /// How much the model may think before answering. `.modelDefault` sends no thinking field.
@@ -46,7 +52,13 @@ struct AIRequestOptions: Equatable {
     /// True when any thinking field is sent.
     var sendsThinking: Bool { thinking != .modelDefault }
 
-    static let `default` = AIRequestOptions()
+    /// Computed (not stored) so every use gets a fresh requestID.
+    static var `default`: AIRequestOptions { AIRequestOptions() }
+
+    static func == (lhs: AIRequestOptions, rhs: AIRequestOptions) -> Bool {
+        lhs.task == rhs.task && lhs.maxOutputTokens == rhs.maxOutputTokens &&
+            lhs.temperature == rhs.temperature && lhs.thinking == rhs.thinking
+    }
 
     /// Caps are the largest realistic output for each task, plus headroom.
     static func forTask(_ task: AITask) -> AIRequestOptions {

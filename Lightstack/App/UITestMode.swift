@@ -60,6 +60,11 @@ enum UITestMode {
     /// `-uiTestingNutritionWizard` lets the nutrition setup wizard open by itself on first visit (it is off in
     /// UI tests otherwise, so the other nutrition tests are not interrupted).
     static let wantsNutritionWizard: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingNutritionWizard")
+    /// `-uiTestingNoAIConsent` stops test mode from auto-granting the third-party AI consent, so the consent
+    /// sheet and the "AI is off" paths can be tested. (A reset launch also clears any stored answer.)
+    static let wantsNoAIConsent: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingNoAIConsent")
+    /// `-uiTestingAIFail` makes the fake AI provider fail every request (Retry / Build manually paths).
+    static let wantsAIFailure: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingAIFail")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -93,6 +98,9 @@ enum UITestMode {
         defaults.removeObject(forKey: PerArmPreference.key)
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
+        defaults.removeObject(forKey: AIConsent.key)
+        defaults.removeObject(forKey: AIConsent.dateKey)
+        defaults.removeObject(forKey: AIConsent.promptedKey)
         defaults.set(0, forKey: "selectedTab")
         defaults.set("gym", forKey: "appSide")
         defaults.removeObject(forKey: "nutritionSelectedTab")
@@ -517,6 +525,12 @@ final class UITestFakeAIProvider: AIProvider {
         options: AIRequestOptions,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        if UITestMode.wantsAIFailure {
+            let failure = NSError(domain: "UITestFakeAI", code: 500,
+                                  userInfo: [NSLocalizedDescriptionKey: "Simulated AI failure"])
+            DispatchQueue.main.async { completion(.failure(failure)) }
+            return
+        }
         let last = messages.last?.content ?? ""
         let reply: String
         if last.contains("completed sets") {

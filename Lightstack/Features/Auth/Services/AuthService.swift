@@ -1,6 +1,8 @@
 import Foundation
 import AuthenticationServices
 import CryptoKit
+import CoreData
+import Security
 import Supabase
 import GoogleSignIn
 import UIKit
@@ -413,7 +415,7 @@ final class AuthService: NSObject {
     // MARK: - Sign Out
 
     func signOut() {
-        CoachDebugStore.shared.clear()
+        LocalStorageService.clearSessionScopedCaches()
         userSignOutAt = Date()
         Task {
             do {
@@ -423,13 +425,16 @@ final class AuthService: NSObject {
                 // Already signed out on the server side (expired / revoked): finish locally.
                 await finishSignOut()
             } catch {
-                await notifyError(error)
+                // Offline or server error: sign-out must still complete locally.
+                try? await supabaseClient.auth.signOut(scope: .local)
+                await finishSignOut()
             }
         }
     }
 
     @MainActor
     private func finishSignOut() {
+        LocalStorageService.clearSessionScopedCaches()
         expiry.clear()
         UserDefaults.standard.removeObject(forKey: Self.lastKnownUserKey)
         resetGoogleState()
@@ -646,5 +651,181 @@ final class LatestAttemptRunner {
     /// Test helper: waits for the current attempt to finish.
     func waitUntilIdle() async {
         await task?.value
+    }
+}
+
+// MARK: - Account deletion
+
+/// What the `delete-account` Edge Function answers.
+struct AccountDeletionResponse: Decodable, Equatable {
+    let ok: Bool
+    let error: String?
+}
+
+enum AccountDeletionError: LocalizedError, Equatable {
+    case server(String?)
+    case offline
+    case notSignedIn
+
+    var errorDescription: String? {
+        switch self {
+        case .offline:
+            return "Couldn't reach the server. Check your connection and try again. Nothing was deleted."
+        case .notSignedIn:
+            return "Your session has expired. Sign in again, then retry. Nothing was deleted."
+        case .server(let code):
+            let suffix = code.map { " (\($0))" } ?? ""
+            return "The account couldn't be deleted right now\(suffix). Nothing was removed from this device. Please try again."
+        }
+    }
+}
+
+extension AuthService {
+    /// True when the signed-in account has an Apple identity (Sign in with Apple).
+    var hasAppleIdentity: Bool {
+        supabaseClient.auth.currentUser?.identities?.contains { $0.provider == "apple" } ?? false
+    }
+
+    /// Asks the `delete-account` Edge Function to delete the signed-in user's cloud data and auth
+    /// user. Local data is NOT touched here (see `AccountDeletionCoordinator`). Throws on failure
+    /// so the caller keeps local data. `appleAuthorizationCode` (fresh, from re-authorizing with
+    /// Apple) lets the server revoke the Apple token.
+    func deleteAccount(appleAuthorizationCode: String? = nil) async throws {
+        #if DEBUG
+        if UITestMode.isActive { return }
+        #endif
+        guard supabaseClient.auth.currentUser != nil else { throw AccountDeletionError.notSignedIn }
+
+        struct Body: Encodable { let apple_authorization_code: String? }
+        do {
+            let response: AccountDeletionResponse = try await supabaseClient.functions.invoke(
+                "delete-account",
+                options: FunctionInvokeOptions(body: Body(apple_authorization_code: appleAuthorizationCode))
+            )
+            guard response.ok else { throw AccountDeletionError.server(response.error) }
+        } catch let error as AccountDeletionError {
+            throw error
+        } catch let error as FunctionsError {
+            if case .httpError(let code, let data) = error {
+                let reason = (try? JSONDecoder().decode(AccountDeletionResponse.self, from: data))?.error
+                if code == 401 { throw AccountDeletionError.notSignedIn }
+                throw AccountDeletionError.server(reason ?? "http_\(code)")
+            }
+            throw AccountDeletionError.server(nil)
+        } catch is URLError {
+            throw AccountDeletionError.offline
+        }
+        await disconnectGoogle()
+    }
+
+    /// Revokes this app's access to the Google account, when a Google session can be restored.
+    @MainActor
+    private func disconnectGoogle() async {
+        if GIDSignIn.sharedInstance.currentUser == nil {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                GIDSignIn.sharedInstance.restorePreviousSignIn { _, _ in continuation.resume() }
+            }
+        }
+        guard GIDSignIn.sharedInstance.currentUser != nil else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            GIDSignIn.sharedInstance.disconnect { _ in continuation.resume() }
+        }
+    }
+
+    /// Final step of account deletion: the server session is already gone, so end the local
+    /// session without relying on the network and route to the login screen.
+    @MainActor
+    func completeAccountDeletionSignOut() async {
+        userSignOutAt = Date()
+        try? await supabaseClient.auth.signOut(scope: .local)
+        finishSignOut()
+    }
+}
+
+/// The steps of deleting an account, behind a protocol so the ordering can be tested with fakes.
+protocol AccountDeletionSteps {
+    func deleteRemoteAccount(appleAuthorizationCode: String?) async throws
+    func clearOfflineQueue() async
+    func wipeLocalData() async
+    func signOutToLogin() async
+}
+
+/// Runs the steps in the only safe order: cloud first (a failure leaves local data intact), then the
+/// offline queue (so stale operations can't recreate cloud data), then local data, then sign-out.
+struct AccountDeletionCoordinator {
+    let steps: AccountDeletionSteps
+
+    func run(appleAuthorizationCode: String? = nil) async throws {
+        try await steps.deleteRemoteAccount(appleAuthorizationCode: appleAuthorizationCode)
+        await steps.clearOfflineQueue()
+        await steps.wipeLocalData()
+        await steps.signOutToLogin()
+    }
+}
+
+/// Production steps.
+struct LiveAccountDeletionSteps: AccountDeletionSteps {
+    let authService: AuthService
+    let offlineQueue: OfflineQueueManager
+    let localStorage: LocalStorageService
+
+    func deleteRemoteAccount(appleAuthorizationCode: String?) async throws {
+        try await authService.deleteAccount(appleAuthorizationCode: appleAuthorizationCode)
+    }
+
+    func clearOfflineQueue() async {
+        // Only after the server confirmed deletion, so a failed delete keeps unsynced changes.
+        await offlineQueue.purgeAll(reason: "account deleted")
+    }
+
+    func wipeLocalData() async {
+        await MainActor.run {
+            if !localStorage.wipeAllUserData() {
+                LocalDataEraser.eraseCoreData(in: localStorage)
+            }
+            LocalStorageService.clearSessionScopedCaches()
+            LocalDataEraser.eraseDefaultsAndKeychain()
+        }
+    }
+
+    func signOutToLogin() async {
+        await authService.completeAccountDeletionSignOut()
+    }
+}
+
+/// Wipes everything the app stores on this device for the signed-in user.
+enum LocalDataEraser {
+    /// Deletes every row of every entity, then resets the context.
+    @MainActor
+    static func eraseCoreData(in storage: LocalStorageService) {
+        let container = storage.container
+        for entity in container.persistentStoreCoordinator.managedObjectModel.entities {
+            guard let name = entity.name else { continue }
+            let request = NSBatchDeleteRequest(fetchRequest: NSFetchRequest<NSFetchRequestResult>(entityName: name))
+            request.resultType = .resultTypeObjectIDs
+            do {
+                let result = try container.viewContext.execute(request) as? NSBatchDeleteResult
+                if let ids = result?.result as? [NSManagedObjectID] {
+                    NSManagedObjectContext.mergeChanges(
+                        fromRemoteContextSave: [NSDeletedObjectsKey: ids],
+                        into: [container.viewContext]
+                    )
+                }
+            } catch {
+                Logger(subsystem: "org.lightstack.app", category: "LocalDataEraser")
+                    .error("Couldn't wipe \(name, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        container.viewContext.reset()
+    }
+
+    /// Clears this app's UserDefaults domain and every Keychain item it owns (including the
+    /// Supabase session store). Keychain access is per-app, so other apps are untouched.
+    @MainActor
+    static func eraseDefaultsAndKeychain(defaults: UserDefaults = .standard) {
+        if let domain = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: domain)
+        }
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword] as CFDictionary)
     }
 }
