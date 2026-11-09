@@ -127,16 +127,18 @@ enum UITestMode {
     /// A few saved foods so the add-food flow has something to pick in UI tests.
     private static func seedNutritionFoods(localStorage: LocalStorageService) {
         let stamp = Date()
-        func food(_ name: String, _ label: String, kcal: Double, p: Double, c: Double, f: Double, recent: Bool) -> NutritionFood {
-            var item = NutritionFood.make(userId: userId, name: name, servingLabel: label,
+        func food(_ name: String, _ label: String, kcal: Double, p: Double, c: Double, f: Double, recent: Bool,
+                  unit: String = "serving", amount: Double = 1, grams: Double? = nil) -> NutritionFood {
+            var item = NutritionFood.make(userId: userId, name: name, servingLabel: label, servingUnit: unit,
+                                          servingAmount: amount, servingGrams: grams,
                                           nutrients: NutrientValues(kcal: kcal, protein: p, carbs: c, fat: f), now: stamp)
             if recent { item.lastUsedAt = stamp }
             return item
         }
         [
             food("Egg", "2 large egg", kcal: 140, p: 12, c: 0, f: 10, recent: true),
-            food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true),
-            food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false)
+            food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true, unit: "cup", amount: 1, grams: 245),
+            food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false, grams: 40)
         ].forEach { localStorage.saveFood($0) }
         seedKitchen(localStorage: localStorage, stamp: stamp)
     }

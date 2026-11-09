@@ -191,9 +191,40 @@ final class NutritionViewModel: ObservableObject {
     }
 
     func logPlate(_ items: [PlateItem], mealSlotId: UUID?) {
-        repository.logFoods(items, mealSlotId: mealSlotId, on: date)
+        if items.contains(where: { $0.measuredLabel != nil }) {
+            for item in items {
+                if let unit = item.unit, let amount = item.amount, item.measuredLabel != nil {
+                    logMeasured(item.food, amount: amount, unit: unit, mealSlotId: mealSlotId, reloadAfter: false)
+                } else {
+                    repository.logFood(item.food, servings: item.servings, on: date, mealSlotId: mealSlotId)
+                }
+            }
+        } else {
+            repository.logFoods(items, mealSlotId: mealSlotId, on: date)
+        }
         foodsVersion += 1
         reload()
+    }
+
+    /// Logs "amount + unit" of a saved food as one entry that reads "150 g": the entry's quantity is the amount
+    /// and its serving label is the unit, with the food's values per unit, so totals stay exact.
+    @discardableResult
+    func logMeasured(_ food: NutritionFood, amount: Double, unit: NutritionUnit, mealSlotId: UUID? = nil,
+                     reloadAfter: Bool = true) -> Bool {
+        guard let servings = ServingUnitConverter.servings(amount: amount, unit: unit, for: food),
+              servings > 0, amount > 0 else { return false }
+        var entry = repository.logFood(food, servings: servings, on: date, mealSlotId: mealSlotId)
+        if unit != .serving {
+            entry.servings = amount
+            entry.servingLabel = unit.displayName
+            entry.perServing = food.nutrients.scaled(by: servings / amount)
+            repository.updateEntry(entry)
+        }
+        if reloadAfter {
+            foodsVersion += 1
+            reload()
+        }
+        return true
     }
 
     func update(_ entry: FoodEntry) {

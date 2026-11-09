@@ -149,8 +149,6 @@ extension NutritionViewModel {
     /// Logs "amount + unit" of a saved food. Returns false when the unit does not apply to the food.
     @discardableResult
     func log(_ food: NutritionFood, amount: Double, unit: NutritionUnit, mealSlotId: UUID? = nil) -> Bool {
-        guard let servings = ServingUnitConverter.servings(amount: amount, unit: unit, for: food), servings > 0 else { return false }
-        log(food, servings: servings, mealSlotId: mealSlotId)
-        return true
+        logMeasured(food, amount: amount, unit: unit, mealSlotId: mealSlotId)
     }
 }

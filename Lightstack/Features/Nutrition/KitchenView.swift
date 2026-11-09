@@ -1,15 +1,52 @@
 import SwiftUI
 
-/// Saved foods. Only Foods has data this phase; Recipes and Meals are placeholders.
+private enum KitchenSheet: Identifiable {
+    case editFood(NutritionFood), createFood, createMeal, createRecipe
+    case editMeal(KitchenCollection), editRecipe(KitchenCollection)
+
+    var id: String {
+        switch self {
+        case .editFood(let food): return "food-\(food.id.uuidString)"
+        case .createFood: return "createFood"
+        case .createMeal: return "createMeal"
+        case .createRecipe: return "createRecipe"
+        case .editMeal(let meal): return "meal-\(meal.id.uuidString)"
+        case .editRecipe(let recipe): return "recipe-\(recipe.id.uuidString)"
+        }
+    }
+}
+
+/// Saved recipes, meals and foods.
 struct KitchenView: View {
     @ObservedObject var viewModel: NutritionViewModel
     @State private var filter: FoodFilter = .all
     @State private var query = ""
     @State private var foods: [NutritionFood] = []
-    @State private var editing: NutritionFood?
-    @State private var creating = false
+    @State private var collections: [KitchenCollection] = []
+    @State private var sheet: KitchenSheet?
+    @State private var deleting: KitchenCollection?
 
     private var showsFoods: Bool { filter == .all || filter == .foods }
+    private var visibleCollections: [KitchenCollection] {
+        collections.filter { filter == .all || (filter == .recipes && $0.kind == .recipe) || (filter == .meals && $0.kind == .meal) }
+    }
+    private var visibleFoods: [NutritionFood] { showsFoods ? foods : [] }
+    private var isEmpty: Bool { visibleCollections.isEmpty && visibleFoods.isEmpty }
+
+    private enum Entry: Identifiable {
+        case collection(KitchenCollection), food(NutritionFood)
+        var id: UUID {
+            switch self { case .collection(let c): return c.id; case .food(let f): return f.id }
+        }
+        var sortName: String {
+            switch self { case .collection(let c): return c.name; case .food(let f): return f.name }
+        }
+    }
+
+    private var entries: [Entry] {
+        (visibleCollections.map(Entry.collection) + visibleFoods.map(Entry.food))
+            .sorted { $0.sortName.localizedCaseInsensitiveCompare($1.sortName) == .orderedAscending }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,23 +56,19 @@ struct KitchenView: View {
                 .padding(.vertical, 10)
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    if !showsFoods {
-                        Text("\(filter.rawValue) are coming soon.")
-                            .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
-                            .padding(.horizontal, 20)
-                            .accessibilityIdentifier("kitchen.soon")
-                    } else if foods.isEmpty {
-                        Text(query.isEmpty ? "No saved foods yet. Tap + to create one or scan a label from the Journal."
-                                           : "No saved foods match.")
+                    if isEmpty {
+                        Text(emptyText)
                             .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
                             .padding(.horizontal, 20)
                             .accessibilityIdentifier("kitchen.empty")
                     } else {
-                        Text("Saved").font(.headline).foregroundStyle(AppTheme.textPrimary).padding(.horizontal, 20)
                         VStack(spacing: 0) {
-                            ForEach(Array(foods.enumerated()), id: \.element.id) { index, food in
+                            ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                                 if index > 0 { Divider().padding(.leading, 70) }
-                                row(food)
+                                switch entry {
+                                case .collection(let item): collectionRow(item)
+                                case .food(let food): row(food)
+                                }
                             }
                         }
                         .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -49,29 +82,75 @@ struct KitchenView: View {
         .background(AppTheme.background.ignoresSafeArea())
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack(spacing: 10) {
-                PillSearchField(text: $query, prompt: "Search food", id: "kitchen.search")
-                Button { creating = true } label: {
+                PillSearchField(text: $query, prompt: "Search kitchen", id: "kitchen.search")
+                Menu {
+                    Button { sheet = .createFood } label: { Label("Create food", systemImage: KitchenIcon.food) }
+                        .accessibilityIdentifier("kitchen.create.food")
+                    Button { sheet = .createMeal } label: { Label("Create meal", systemImage: KitchenIcon.meal) }
+                        .accessibilityIdentifier("kitchen.create.meal")
+                    Button { sheet = .createRecipe } label: { Label("Create recipe", systemImage: KitchenIcon.recipe) }
+                        .accessibilityIdentifier("kitchen.create.recipe")
+                } label: {
                     Image(systemName: "plus").font(.title3.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
                         .frame(width: 48, height: 48)
                         .background(AppTheme.surface, in: Circle())
                         .overlay(Circle().strokeBorder(AppTheme.border, lineWidth: 0.5))
                 }
-                .accessibilityLabel("Create food")
+                .accessibilityLabel("Create")
                 .accessibilityIdentifier("kitchen.create")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
-        .sheet(item: $editing) { food in FoodEditView(viewModel: viewModel, food: food) }
-        .sheet(isPresented: $creating) { CreateFoodView(viewModel: viewModel, logByDefault: false) }
+        .sheet(item: $sheet) { item in
+            switch item {
+            case .editFood(let food): FoodEditView(viewModel: viewModel, food: food)
+            case .createFood: CreateFoodView(viewModel: viewModel, logByDefault: false)
+            case .createMeal: MealEditorView(viewModel: viewModel)
+            case .createRecipe: RecipeEditorView(viewModel: viewModel)
+            case .editMeal(let meal): MealEditorView(viewModel: viewModel, meal: meal)
+            case .editRecipe(let recipe): RecipeEditorView(viewModel: viewModel, recipe: recipe)
+            }
+        }
+        .alert("Delete \(deleting?.name ?? "")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete", role: .destructive) {
+                if let item = deleting {
+                    if item.kind == .meal { viewModel.deleteMeal(item) } else { viewModel.deleteRecipe(item) }
+                }
+                deleting = nil
+                reload()
+            }
+            .accessibilityIdentifier("kitchen.delete.confirm")
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: { Text("Entries you already logged stay in your journal.") }
         .onAppear(perform: reload)
         .onChange(of: query) { _, _ in reload() }
         .onChange(of: viewModel.foodsVersion) { _, _ in reload() }
+        .onChange(of: viewModel.kitchenVersion) { _, _ in reload() }
+    }
+
+    private var emptyText: String {
+        if !query.isEmpty { return "Nothing in your Kitchen matches." }
+        switch filter {
+        case .recipes: return "No recipes yet. Tap + to create one."
+        case .meals: return "No saved meals yet. Tap + to create one, or save a meal from your Journal."
+        default: return "Your Kitchen is empty. Tap + to create a food, meal or recipe, or scan a label from the Journal."
+        }
+    }
+
+    private func collectionRow(_ item: KitchenCollection) -> some View {
+        Button { sheet = item.kind == .meal ? .editMeal(item) : .editRecipe(item) } label: {
+            CollectionRowView(item: item) { EmptyView() }
+                .background(AppTheme.surface)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("kitchen.row.\(item.name)")
+        .swipeToDelete(id: "kitchen.swipeDelete.\(item.name)") { deleting = item }
     }
 
     private func row(_ food: NutritionFood) -> some View {
         HStack(spacing: 0) {
-            Button { editing = food } label: { FoodRowView(food: food) { EmptyView() } }
+            Button { sheet = .editFood(food) } label: { KitchenFoodRow(food: food) { EmptyView() } }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("kitchen.food.\(food.name)")
             Button { viewModel.setFavorite(food, !food.isFavorite) } label: {
@@ -86,7 +165,9 @@ struct KitchenView: View {
     }
 
     private func reload() {
-        foods = viewModel.searchFoods(query)
+        // A recipe's own food shows up as the recipe, never under Foods.
+        foods = viewModel.searchFoods(query).filter { $0.source != .recipe }
+        collections = viewModel.kitchenItems(query: query)
     }
 }
 

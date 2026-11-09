@@ -3,6 +3,7 @@ import SwiftUI
 private enum FlowSheet: Identifiable {
     case servings(NutritionFood), plate, quickAdd, create, scan, barcode, ai
     case branded(OpenFoodFactsProduct)
+    case meal(KitchenCollection)
 
     var id: String {
         switch self {
@@ -14,6 +15,7 @@ private enum FlowSheet: Identifiable {
         case .barcode: return "barcode"
         case .ai: return "ai"
         case .branded(let p): return "branded-\(p.barcode)"
+        case .meal(let m): return "meal-\(m.id.uuidString)"
         }
     }
 }
@@ -32,12 +34,36 @@ struct AddFoodFlowView: View {
     @State private var recent: [NutritionFood] = []
     @State private var saved: [NutritionFood] = []
     @State private var results: [NutritionFood] = []
+    @State private var meals: [KitchenCollection] = []
     @State private var sheet: FlowSheet?
     @State private var popAfterSheet = false
     @FocusState private var searchFocused: Bool
 
     private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
     private var slotName: String { viewModel.slot(id: slotId)?.name ?? "Meal" }
+    private var showsMeals: Bool { filter == .all || filter == .meals }
+    private var showsFoodList: Bool { filter != .meals }
+
+    private func matchesFilter(_ food: NutritionFood) -> Bool {
+        switch filter {
+        case .all: return true
+        case .recipes: return food.source == .recipe
+        case .foods: return food.source != .recipe
+        case .meals: return false
+        }
+    }
+
+    private var visibleResultsEmpty: Bool {
+        (!showsFoodList || results.filter(matchesFilter).isEmpty) && (!showsMeals || meals.isEmpty)
+    }
+
+    private var emptyListText: String {
+        switch filter {
+        case .recipes: return "No recipes yet. Create one from the + menu in the Journal or the Kitchen."
+        case .meals: return "No saved meals yet. Save a meal from the plate or from a Journal meal."
+        default: return "Foods you save show up here. Tap + to create one, scan a label or use Quick add."
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,15 +74,17 @@ struct AddFoodFlowView: View {
                 .background(AppTheme.surface)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if filter == .recipes || filter == .meals {
-                        Text("\(filter.rawValue) are coming soon. Save foods to your Kitchen in the meantime.")
-                            .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
-                            .padding(.horizontal, 16)
-                            .accessibilityIdentifier("addfood.soon")
-                    } else if isSearching {
-                        section(title: "Results", foods: results, icon: "magnifyingglass")
-                        if results.isEmpty {
-                            Text("No saved foods match.").font(.subheadline).foregroundStyle(AppTheme.textSecondary)
+                    if isSearching {
+                        if showsMeals && !meals.isEmpty { mealsSection }
+                        if showsFoodList {
+                            let foodResults = results.filter(matchesFilter)
+                            if !foodResults.isEmpty || meals.isEmpty || !showsMeals {
+                                section(title: "Results", foods: foodResults, icon: "magnifyingglass")
+                            }
+                        }
+                        if visibleResultsEmpty {
+                            Text(filter == .meals ? "No saved meals match." : "No saved foods match.")
+                                .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
                                 .padding(.horizontal, 16)
                                 .accessibilityIdentifier("addfood.empty")
                         }
@@ -68,15 +96,18 @@ struct AddFoodFlowView: View {
                             )
                         }
                     } else {
-                        if !recent.isEmpty {
-                            section(title: "Most Recent", foods: showAllRecent ? recent : Array(recent.prefix(5)),
-                                    icon: "clock.arrow.circlepath", showMore: !showAllRecent && recent.count > 5)
+                        let recentShown = recent.filter(matchesFilter)
+                        let savedShown = saved.filter(matchesFilter)
+                        if showsFoodList && !recentShown.isEmpty {
+                            section(title: "Most Recent", foods: showAllRecent ? recentShown : Array(recentShown.prefix(5)),
+                                    icon: "clock.arrow.circlepath", showMore: !showAllRecent && recentShown.count > 5)
                         }
-                        if !saved.isEmpty {
-                            section(title: "Saved", foods: saved, icon: "bookmark")
+                        if showsMeals && !meals.isEmpty { mealsSection }
+                        if showsFoodList && !savedShown.isEmpty {
+                            section(title: "Saved", foods: savedShown, icon: "bookmark")
                         }
-                        if recent.isEmpty && saved.isEmpty {
-                            Text("Foods you save show up here. Tap + to create one, scan a label or use Quick add.")
+                        if recentShown.isEmpty && savedShown.isEmpty && (meals.isEmpty || !showsMeals) {
+                            Text(emptyListText)
                                 .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
                                 .padding(.horizontal, 16)
                                 .accessibilityIdentifier("addfood.empty")
@@ -111,6 +142,7 @@ struct AddFoodFlowView: View {
         .onChange(of: query) { _, _ in reloadFoods(); updateBranded() }
         .onDisappear { viewModel.cancelBrandedSearch() }
         .onChange(of: viewModel.foodsVersion) { _, _ in reloadFoods() }
+        .onChange(of: viewModel.kitchenVersion) { _, _ in reloadFoods() }
     }
 
     // MARK: - Header
@@ -239,6 +271,29 @@ struct AddFoodFlowView: View {
         }
     }
 
+    private var mealsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: KitchenIcon.meal).foregroundStyle(AppTheme.textSecondary)
+                Text("Meals").font(.headline).foregroundStyle(AppTheme.textPrimary)
+            }
+            .padding(.horizontal, 20)
+            VStack(spacing: 0) {
+                ForEach(Array(meals.enumerated()), id: \.element.id) { index, meal in
+                    if index > 0 { Divider().padding(.leading, 70) }
+                    Button { sheet = .meal(meal) } label: {
+                        CollectionRowView(item: meal, showBadge: true) { EmptyView() }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("addfood.savedMeal.\(meal.name)")
+                    .accessibilityHint("Review and log this meal")
+                }
+            }
+            .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 16)
+        }
+    }
+
     private func foodRow(_ food: NutritionFood) -> some View {
         let inPlate = plate.contains { $0.food.id == food.id }
         return HStack(spacing: 0) {
@@ -325,6 +380,7 @@ struct AddFoodFlowView: View {
     }
 
     private func reloadFoods() {
+        meals = viewModel.savedMeals(query: query.trimmingCharacters(in: .whitespacesAndNewlines))
         if isSearching {
             results = viewModel.searchFoods(query)
         } else {
@@ -341,16 +397,22 @@ struct AddFoodFlowView: View {
         case .servings(let food):
             let existing = plate.first { $0.food.id == food.id }
             ServingsSheet(
-                food: food, initial: existing?.servings ?? 1, isOnPlate: existing != nil,
-                onSave: { servings in
-                    if let index = plate.firstIndex(where: { $0.food.id == food.id }) { plate[index].servings = servings }
-                    else { plate.append(PlateItem(food: food, servings: servings)) }
+                food: food, units: viewModel.servingUnits(for: food),
+                initial: existing?.servings ?? 1, initialUnit: existing?.unit, initialAmount: existing?.amount,
+                isOnPlate: existing != nil,
+                onSave: { item in
+                    if let index = plate.firstIndex(where: { $0.food.id == food.id }) { plate[index] = item }
+                    else { plate.append(item) }
                 },
                 onRemove: { plate.removeAll { $0.food.id == food.id } }
             )
             .presentationDetents([.medium])
         case .plate:
-            PlateSheet(plate: $plate).presentationDetents([.medium, .large])
+            PlateSheet(viewModel: viewModel, plate: $plate).presentationDetents([.medium, .large])
+        case .meal(let meal):
+            MealLogSheet(viewModel: viewModel, meal: meal, slotName: slotName, slotId: slotId,
+                         onLogged: { popAfterSheet = true })
+                .presentationDetents([.medium, .large])
         case .quickAdd:
             QuickAddView(viewModel: viewModel, mealSlotId: slotId, onAdded: { popAfterSheet = true })
         case .create:
@@ -388,14 +450,22 @@ struct AddFoodFlowView: View {
 
 private struct ServingsSheet: View {
     let food: NutritionFood
+    let units: [NutritionUnit]
     let initial: Double
+    let initialUnit: NutritionUnit?
+    let initialAmount: Double?
     let isOnPlate: Bool
-    let onSave: (Double) -> Void
+    let onSave: (PlateItem) -> Void
     let onRemove: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @State private var unit: NutritionUnit = .serving
+    @State private var loaded = false
 
-    private var servings: Double? { NutritionFormat.parse(text).flatMap { $0 > 0 ? $0 : nil } }
+    private var amount: Double? { NutritionFormat.parse(text).flatMap { $0 > 0 ? $0 : nil } }
+    private var servings: Double? {
+        amount.flatMap { ServingUnitConverter.servings(amount: $0, unit: unit, for: food) }.flatMap { $0 > 0 ? $0 : nil }
+    }
 
     var body: some View {
         NavigationStack {
@@ -411,10 +481,16 @@ private struct ServingsSheet: View {
                 }
                 .listRowBackground(AppTheme.surface)
                 Section {
-                    NutritionField(title: "Servings", unit: "", text: $text, id: "plate.servings.field", placeholder: "1")
+                    NutritionField(title: units.count > 1 ? "Amount" : "Servings", unit: unit == .serving ? "" : unit.displayName,
+                                   text: $text, id: "plate.servings.field", placeholder: "1")
+                    if units.count > 1 { unitPicker }
                     if let servings {
                         MacroSummaryLine(nutrients: food.nutrients.scaled(by: servings))
                             .accessibilityIdentifier("plate.servings.summary")
+                        if unit != .serving {
+                            Text("= \(ServingUnitConverter.format(servings)) \(servings == 1 ? "serving" : "servings")")
+                                .font(.footnote).foregroundStyle(AppTheme.textSecondary)
+                        }
                     }
                 }
                 .listRowBackground(AppTheme.surface)
@@ -435,24 +511,68 @@ private struct ServingsSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isOnPlate ? "Update" : "Add") {
-                        guard let servings else { return }
-                        onSave(servings)
+                        guard let servings, let amount else { return }
+                        onSave(PlateItem(food: food, servings: servings, unit: unit == .serving ? nil : unit,
+                                         amount: unit == .serving ? nil : amount))
                         dismiss()
                     }
                     .disabled(servings == nil)
                     .accessibilityIdentifier("plate.servings.save")
                 }
             }
-            .onAppear { text = NutritionFormat.amount(initial) }
+            .onAppear {
+                guard !loaded else { return }
+                loaded = true
+                if let initialUnit, let initialAmount, units.contains(initialUnit) {
+                    unit = initialUnit
+                    text = ServingUnitConverter.format(initialAmount)
+                } else {
+                    text = ServingUnitConverter.format(initial)
+                }
+            }
         }
+    }
+
+    /// Unit chips, favourites first.
+    private var unitPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(units) { option in
+                    Button { select(option) } label: {
+                        Text(option.displayName)
+                            .font(.subheadline.weight(unit == option ? .semibold : .regular))
+                            .foregroundStyle(unit == option ? AppTheme.onAccent : AppTheme.textPrimary)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 44)
+                            .background(unit == option ? AppTheme.accent : AppTheme.surfaceElevated, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(unit == option ? .isSelected : [])
+                    .accessibilityIdentifier("log.unit.\(option.rawValue)")
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("log.unit")
+    }
+
+    private func select(_ option: NutritionUnit) {
+        guard option != unit else { return }
+        if let amount, let converted = ServingUnitConverter.convert(amount, from: unit, to: option, for: food) {
+            text = ServingUnitConverter.format(converted)
+        }
+        unit = option
     }
 }
 
 // MARK: - Plate sheet
 
 private struct PlateSheet: View {
+    @ObservedObject var viewModel: NutritionViewModel
     @Binding var plate: [PlateItem]
     @Environment(\.dismiss) private var dismiss
+    @State private var savingAsMeal = false
 
     var body: some View {
         NavigationStack {
@@ -468,15 +588,15 @@ private struct PlateSheet: View {
                             Text(item.food.name).font(.body.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
                             Spacer()
                             HStack(spacing: 0) {
-                                Button { item.servings = max(0.5, item.servings - 0.5) } label: {
+                                Button { item.servings = max(0.5, item.servings - 0.5); item.unit = nil; item.amount = nil } label: {
                                     Image(systemName: "minus.circle").frame(width: 44, height: 44)
                                 }
                                 .accessibilityLabel("Fewer servings of \(item.food.name)")
                                 .accessibilityIdentifier("plate.item.\(item.food.name).dec")
-                                Text(NutritionFormat.amount(item.servings))
+                                Text(item.measuredLabel ?? NutritionFormat.amount(item.servings))
                                     .font(.headline).frame(minWidth: 36)
                                     .accessibilityIdentifier("plate.item.\(item.food.name).servings")
-                                Button { item.servings += 0.5 } label: {
+                                Button { item.servings += 0.5; item.unit = nil; item.amount = nil } label: {
                                     Image(systemName: "plus.circle").frame(width: 44, height: 44)
                                 }
                                 .accessibilityLabel("More servings of \(item.food.name)")
@@ -490,6 +610,16 @@ private struct PlateSheet: View {
                     .listRowBackground(AppTheme.surface)
                 }
                 .onDelete { plate.remove(atOffsets: $0) }
+                if !plate.isEmpty {
+                    Button { savingAsMeal = true } label: {
+                        Label("Save as meal", systemImage: "square.and.arrow.down").foregroundStyle(AppTheme.accent).frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("plate.saveAsMeal")
+                    .listRowBackground(AppTheme.surface)
+                }
+            }
+            .sheet(isPresented: $savingAsMeal) {
+                MealEditorView(viewModel: viewModel, initialItems: plate)
             }
             .nutritionFormStyle()
             .navigationTitle("Plate")

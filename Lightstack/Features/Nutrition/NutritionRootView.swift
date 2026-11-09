@@ -30,7 +30,6 @@ struct NutritionRootView: View {
                     KitchenView(viewModel: viewModel)
                         .tabItem { Label("Kitchen", systemImage: "refrigerator") }
                         .tag(3)
-                        .accessibilityIdentifier("nutrition.tab.kitchen")
                 }
                 .tint(AppTheme.accent)
                 .sensoryFeedback(.selection, trigger: selectedTab)

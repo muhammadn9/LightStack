@@ -292,5 +292,16 @@ enum JournalDaySummaryBuilder {
 struct PlateItem {
     var food: NutritionFood
     var servings: Double
-    init(food: NutritionFood, servings: Double = 1) { self.food = food; self.servings = servings }
+    /// Set when the user entered "amount + unit" (say 150 g); `servings` is the same quantity in servings.
+    var unit: NutritionUnit?
+    var amount: Double?
+    init(food: NutritionFood, servings: Double = 1, unit: NutritionUnit? = nil, amount: Double? = nil) {
+        self.food = food; self.servings = servings; self.unit = unit; self.amount = amount
+    }
+
+    /// "150 g" when entered in a unit, else nil.
+    var measuredLabel: String? {
+        guard let unit, unit != .serving, let amount else { return nil }
+        return ServingUnitConverter.label(amount: amount, unit: unit)
+    }
 }

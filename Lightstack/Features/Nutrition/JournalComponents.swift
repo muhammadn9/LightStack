@@ -20,6 +20,14 @@ enum JournalFormat {
         return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
 
+    /// "150 g" for an entry logged in a unit, "1.5 × 2 large egg" otherwise.
+    static func amountText(for entry: FoodEntry) -> String {
+        if let unit = NutritionUnit.allCases.first(where: { $0 != .serving && $0.displayName == entry.servingLabel }) {
+            return ServingUnitConverter.label(amount: entry.servings, unit: unit)
+        }
+        return "\(NutritionFormat.amount(entry.servings)) × \(entry.servingLabel)"
+    }
+
     /// Emoji picked from the food's name. Purely decorative.
     static func emoji(for name: String) -> String {
         let n = name.lowercased()
@@ -273,6 +281,7 @@ struct SwipeToDelete: ViewModifier {
     let id: String
     let onDelete: () -> Void
     @State private var offset: CGFloat = 0
+    @State private var dragging = false
     private let revealWidth: CGFloat = 76
 
     func body(content: Content) -> some View {
@@ -294,16 +303,26 @@ struct SwipeToDelete: ViewModifier {
             .accessibilityIdentifier(id)
 
             content
+                .allowsHitTesting(offset == 0 && !dragging)
+                .overlay {
+                    // While revealed, a tap on the row only closes it (never opens it).
+                    if offset < 0 {
+                        Color.clear.contentShape(Rectangle())
+                            .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { offset = 0 } }
+                    }
+                }
                 .offset(x: offset)
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 24)
                         .onChanged { value in
                             guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                            dragging = true // cancels the row's own tap so a swipe never opens it
                             offset = min(0, max(-revealWidth * 1.3, value.translation.width + (offset <= -revealWidth ? -revealWidth : 0)))
                         }
                         .onEnded { value in
+                            dragging = false
                             withAnimation(.easeOut(duration: 0.2)) {
-                                offset = value.translation.width < -revealWidth / 2 ? -revealWidth : 0
+                                offset = min(value.translation.width, value.predictedEndTranslation.width) < -revealWidth / 2 ? -revealWidth : 0
                             }
                         }
                 )
@@ -338,6 +357,7 @@ struct FoodRowView<Accessory: View>: View {
                     .foregroundStyle(AppTheme.textPrimary)
                     .multilineTextAlignment(.leading)
                 if food.isAIEstimate { AIEstimateBadge() }
+                if food.source == .recipe { KitchenBadge(text: "Recipe", icon: "frying.pan", id: "food.recipeBadge") }
                 HStack(spacing: 6) {
                     Text(food.servingLabel)
                         .foregroundStyle(AppTheme.textSecondary)
