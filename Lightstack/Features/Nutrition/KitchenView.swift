@@ -25,6 +25,7 @@ struct KitchenView: View {
     @State private var collections: [KitchenCollection] = []
     @State private var sheet: KitchenSheet?
     @State private var deleting: KitchenCollection?
+    @State private var deletingFood: NutritionFood?
 
     private var showsFoods: Bool { filter == .all || filter == .foods }
     private var visibleCollections: [KitchenCollection] {
@@ -123,6 +124,15 @@ struct KitchenView: View {
             .accessibilityIdentifier("kitchen.delete.confirm")
             Button("Cancel", role: .cancel) { deleting = nil }
         } message: { Text("Entries you already logged stay in your journal.") }
+        .alert("Delete \(deletingFood?.name ?? "")?", isPresented: Binding(get: { deletingFood != nil }, set: { if !$0 { deletingFood = nil } })) {
+            Button("Delete", role: .destructive) {
+                if let food = deletingFood { viewModel.deleteFood(food) }
+                deletingFood = nil
+                reload()
+            }
+            .accessibilityIdentifier("kitchen.delete.confirm")
+            Button("Cancel", role: .cancel) { deletingFood = nil }
+        } message: { Text("Entries you already logged stay in your journal.") }
         .onAppear(perform: reload)
         .onChange(of: query) { _, _ in reload() }
         .onChange(of: viewModel.foodsVersion) { _, _ in reload() }
@@ -139,19 +149,20 @@ struct KitchenView: View {
     }
 
     private func collectionRow(_ item: KitchenCollection) -> some View {
-        Button { sheet = item.kind == .meal ? .editMeal(item) : .editRecipe(item) } label: {
-            CollectionRowView(item: item) { EmptyView() }
-                .background(AppTheme.surface)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("kitchen.row.\(item.name)")
-        .swipeToDelete(id: "kitchen.swipeDelete.\(item.name)") { deleting = item }
+        let open = { sheet = item.kind == .meal ? .editMeal(item) : .editRecipe(item) }
+        return CollectionRowView(item: item) { EmptyView() }
+            .background(AppTheme.surface)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier("kitchen.row.\(item.name)")
+            .swipeToDelete(id: "kitchen.swipeDelete.\(item.name)", onTap: open) { deleting = item }
     }
 
     private func row(_ food: NutritionFood) -> some View {
         HStack(spacing: 0) {
-            Button { sheet = .editFood(food) } label: { KitchenFoodRow(food: food) { EmptyView() } }
-                .buttonStyle(.plain)
+            KitchenFoodRow(food: food) { EmptyView() }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("kitchen.food.\(food.name)")
             Button { viewModel.setFavorite(food, !food.isFavorite) } label: {
                 Image(systemName: food.isFavorite ? "star.fill" : "star")
@@ -162,6 +173,8 @@ struct KitchenView: View {
             .accessibilityLabel(food.isFavorite ? "Remove \(food.name) from favourites" : "Add \(food.name) to favourites")
             .accessibilityIdentifier("kitchen.favorite.\(food.name)")
         }
+        .background(AppTheme.surface)
+        .swipeToDelete(id: "kitchen.swipeDelete.\(food.name)", onTap: { sheet = .editFood(food) }) { deletingFood = food }
     }
 
     private func reload() {

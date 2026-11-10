@@ -737,28 +737,27 @@ private struct MealCardView: View {
     }
 
     private func entryRow(_ entry: FoodEntry) -> some View {
-        Button { onEditEntry(entry) } label: {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(entry.name).font(.body.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
-                        .multilineTextAlignment(.leading)
-                    Text(JournalFormat.amountText(for: entry))
-                        .font(.caption).foregroundStyle(AppTheme.textSecondary)
-                    MacroSummaryLine(nutrients: entry.total, font: .caption.weight(.semibold))
-                }
-                Spacer(minLength: 6)
-                Text("\(NutritionFormat.whole(entry.total.kcal)) kcal")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.name).font(.body.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
+                    .multilineTextAlignment(.leading)
+                Text(JournalFormat.amountText(for: entry))
+                    .font(.caption).foregroundStyle(AppTheme.textSecondary)
+                MacroSummaryLine(nutrients: entry.total, font: .caption.weight(.semibold))
             }
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppTheme.surface)
-            .contentShape(Rectangle())
+            Spacer(minLength: 6)
+            Text("\(NutritionFormat.whole(entry.total.kcal)) kcal")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.surface)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("journal.entry.\(entry.name)")
         .accessibilityHint("Edit this entry")
-        .swipeToDelete(id: "journal.entry.delete") { onDeleteEntry(entry) }
+        .swipeToDelete(id: "journal.entry.delete", onTap: { onEditEntry(entry) }) { onDeleteEntry(entry) }
     }
 }
 

@@ -277,11 +277,15 @@ struct PillSearchField: View {
 // MARK: - Swipe to delete
 
 /// Reveals a Delete button when the row is dragged left. The row needs an opaque background.
+/// The modifier owns the row's tap (`onTap`): rows must not wrap their content in a `Button`,
+/// because a Button that already began tracking the touch still fires when a swipe ends.
 struct SwipeToDelete: ViewModifier {
     let id: String
+    let onTap: (() -> Void)?
     let onDelete: () -> Void
     @State private var offset: CGFloat = 0
     @State private var dragging = false
+    @State private var didDrag = false
     private let revealWidth: CGFloat = 76
 
     func body(content: Content) -> some View {
@@ -303,6 +307,12 @@ struct SwipeToDelete: ViewModifier {
             .accessibilityIdentifier(id)
 
             content
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Only a clean tap on a closed row opens it; a swipe never does.
+                    guard offset == 0, !didDrag else { return }
+                    onTap?()
+                }
                 .allowsHitTesting(offset == 0 && !dragging)
                 .overlay {
                     // While revealed, a tap on the row only closes it (never opens it).
@@ -316,11 +326,16 @@ struct SwipeToDelete: ViewModifier {
                     DragGesture(minimumDistance: 24)
                         .onChanged { value in
                             guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                            dragging = true // cancels the row's own tap so a swipe never opens it
+                            dragging = true
+                            didDrag = true // a swipe never counts as a tap
                             offset = min(0, max(-revealWidth * 1.3, value.translation.width + (offset <= -revealWidth ? -revealWidth : 0)))
                         }
                         .onEnded { value in
                             dragging = false
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 200_000_000)
+                                didDrag = false
+                            }
                             withAnimation(.easeOut(duration: 0.2)) {
                                 offset = min(value.translation.width, value.predictedEndTranslation.width) < -revealWidth / 2 ? -revealWidth : 0
                             }
@@ -333,8 +348,8 @@ struct SwipeToDelete: ViewModifier {
 }
 
 extension View {
-    func swipeToDelete(id: String, onDelete: @escaping () -> Void) -> some View {
-        modifier(SwipeToDelete(id: id, onDelete: onDelete))
+    func swipeToDelete(id: String, onTap: (() -> Void)? = nil, onDelete: @escaping () -> Void) -> some View {
+        modifier(SwipeToDelete(id: id, onTap: onTap, onDelete: onDelete))
     }
 }
 

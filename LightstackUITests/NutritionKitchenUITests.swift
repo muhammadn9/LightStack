@@ -328,4 +328,58 @@ final class NutritionKitchenUITests: LightstackUITestCase {
         tap(app.buttons["settings.favoriteUnits"])
         tap(app.buttons["settings.unit.oz"])
     }
+
+    // MARK: - Swipe to delete
+
+    private func swipeRevealsDelete(row: XCUIElement, deleteId: String, editorProbe: XCUIElement) {
+        waitFor(row)
+        waitUntilHittable(row)
+        row.swipeLeft()
+        let delete = app.buttons[deleteId].firstMatch
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, !(delete.exists && delete.isHittable) { Thread.sleep(forTimeInterval: 0.2) }
+        XCTAssertTrue(delete.exists && delete.isHittable, "Swipe did not reveal the delete button \(deleteId)")
+        XCTAssertFalse(editorProbe.exists, "Swiping the row must not open its editor")
+    }
+
+    private func confirmKitchenDelete() {
+        tap(app.alerts.buttons["Delete"].firstMatch)
+    }
+
+    func testSwipeMealRowRevealsDeleteWithoutOpeningEditor() throws {
+        start()
+        openKitchen()
+        let row = app.buttons["kitchen.row.Usual breakfast"]
+        swipeRevealsDelete(row: row, deleteId: "kitchen.swipeDelete.Usual breakfast", editorProbe: app.textFields["meal.name"])
+        tap(app.buttons["kitchen.swipeDelete.Usual breakfast"])
+        confirmKitchenDelete()
+        XCTAssertTrue(row.waitForNonExistence(timeout: 8), "Meal row should be gone after deleting")
+    }
+
+    func testSwipeRecipeRowRevealsDeleteWithoutOpeningEditor() throws {
+        start()
+        openKitchen()
+        let row = app.buttons["kitchen.row.Egg Oat Bowl"]
+        swipeRevealsDelete(row: row, deleteId: "kitchen.swipeDelete.Egg Oat Bowl", editorProbe: app.textFields["recipe.name"])
+        tap(app.buttons["kitchen.swipeDelete.Egg Oat Bowl"])
+        confirmKitchenDelete()
+        XCTAssertTrue(row.waitForNonExistence(timeout: 8), "Recipe row should be gone after deleting")
+    }
+
+    func testSwipeFoodRowDeletesFood() throws {
+        start()
+        openKitchen("Foods")
+        let row = app.buttons["kitchen.food.Egg"]
+        swipeRevealsDelete(row: row, deleteId: "kitchen.swipeDelete.Egg", editorProbe: app.textFields["kitchen.edit.name"])
+        tap(app.buttons["kitchen.swipeDelete.Egg"])
+        confirmKitchenDelete()
+        XCTAssertTrue(row.waitForNonExistence(timeout: 8), "Food row should be gone after deleting")
+    }
+
+    func testTapRowStillOpensEditorAfterSwipeSupport() throws {
+        start()
+        openKitchen()
+        tap(app.buttons["kitchen.row.Usual breakfast"])
+        waitFor(app.textFields["meal.name"], "Tapping a meal row should still open the editor")
+    }
 }
