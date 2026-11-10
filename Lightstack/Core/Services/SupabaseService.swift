@@ -333,6 +333,22 @@ final class SupabaseService {
         try await client.from("nutrition_plans").upsert(plan.cloudRow()).execute()
     }
 
+    func upsertFoodCollection(_ collection: FoodCollection) async throws {
+        try await client.from("food_collections").upsert(collection.cloudRow()).execute()
+    }
+
+    func deleteFoodCollection(id: UUID) async throws {
+        try await client.from("food_collections").delete().eq("id", value: id.uuidString).execute()
+    }
+
+    func upsertFoodCollectionItem(_ item: FoodCollectionItem) async throws {
+        try await client.from("food_collection_items").upsert(item.cloudRow()).execute()
+    }
+
+    func deleteFoodCollectionItem(id: UUID) async throws {
+        try await client.from("food_collection_items").delete().eq("id", value: id.uuidString).execute()
+    }
+
     // MARK: - Tombstones
 
     /// Records that these rows were deleted on this device, so other devices

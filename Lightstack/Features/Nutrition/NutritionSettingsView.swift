@@ -17,6 +17,10 @@ struct NutritionSettingsView: View {
                         Label("Nutrients", systemImage: "chart.bar.doc.horizontal")
                     }
                     .accessibilityIdentifier("nutritionSettings.nutrients")
+                    NavigationLink { FavoriteUnitsSettingsView(viewModel: viewModel) } label: {
+                        Label("Favorite Serving Units", systemImage: "scalemass")
+                    }
+                    .accessibilityIdentifier("settings.favoriteUnits")
                 }
                 .listRowBackground(AppTheme.surface)
 
@@ -42,6 +46,80 @@ struct NutritionSettingsView: View {
             }
         }
         .onDisappear { viewModel.reload() }
+    }
+}
+
+// MARK: - Favorite serving units
+
+/// Pick and order the serving units shown first when logging a food.
+struct FavoriteUnitsSettingsView: View {
+    @ObservedObject var viewModel: NutritionViewModel
+    @State private var order: [NutritionUnit] = []
+    @State private var favorites: Set<NutritionUnit> = []
+
+    private func title(_ unit: NutritionUnit) -> String {
+        switch unit {
+        case .serving: return "Serving"
+        case .g: return "Grams (g)"
+        case .oz: return "Ounces (oz)"
+        case .ml: return "Millilitres (ml)"
+        case .flOz: return "Fluid ounces (fl oz)"
+        case .cup: return "Cups"
+        case .tbsp: return "Tablespoons (tbsp)"
+        case .tsp: return "Teaspoons (tsp)"
+        case .piece: return "Piece"
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(order) { unit in
+                    Button { toggle(unit) } label: {
+                        HStack {
+                            Text(title(unit)).foregroundStyle(AppTheme.textPrimary)
+                            Spacer()
+                            if favorites.contains(unit) {
+                                Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(AppTheme.accent)
+                            }
+                        }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(favorites.contains(unit) ? .isSelected : [])
+                    .accessibilityValue(favorites.contains(unit) ? "Favorite" : "Not a favorite")
+                    .accessibilityIdentifier("settings.unit.\(unit.rawValue)")
+                }
+                .onMove { from, to in
+                    order.move(fromOffsets: from, toOffset: to)
+                    save()
+                }
+            } header: {
+                Text("Units")
+            } footer: {
+                Text("Tap to mark a favorite and drag to reorder. Favorites are listed first when you log a food.")
+            }
+            .listRowBackground(AppTheme.surface)
+        }
+        .environment(\.editMode, .constant(.active))
+        .nutritionFormStyle()
+        .navigationTitle("Favorite Serving Units")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            let saved = viewModel.favoriteServingUnits
+            favorites = Set(saved)
+            order = ServingUnitConverter.ordered(ServingUnitConverter.canonicalOrder, favorites: saved)
+        }
+    }
+
+    private func toggle(_ unit: NutritionUnit) {
+        if favorites.contains(unit) { favorites.remove(unit) } else { favorites.insert(unit) }
+        save()
+    }
+
+    private func save() {
+        viewModel.setFavoriteServingUnits(order.filter { favorites.contains($0) })
     }
 }
 

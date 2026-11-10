@@ -98,6 +98,7 @@ enum UITestMode {
         defaults.removeObject(forKey: "nutritionSelectedTab")
         defaults.removeObject(forKey: "nutritionSetupSkipped")
         defaults.removeObject(forKey: WaterUnit.storageKey)
+        defaults.removeObject(forKey: ServingUnitPreferences.storageKey)
         defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
         CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
@@ -126,17 +127,48 @@ enum UITestMode {
     /// A few saved foods so the add-food flow has something to pick in UI tests.
     private static func seedNutritionFoods(localStorage: LocalStorageService) {
         let stamp = Date()
-        func food(_ name: String, _ label: String, kcal: Double, p: Double, c: Double, f: Double, recent: Bool) -> NutritionFood {
-            var item = NutritionFood.make(userId: userId, name: name, servingLabel: label,
+        func food(_ name: String, _ label: String, kcal: Double, p: Double, c: Double, f: Double, recent: Bool,
+                  unit: String = "serving", amount: Double = 1, grams: Double? = nil) -> NutritionFood {
+            var item = NutritionFood.make(userId: userId, name: name, servingLabel: label, servingUnit: unit,
+                                          servingAmount: amount, servingGrams: grams,
                                           nutrients: NutrientValues(kcal: kcal, protein: p, carbs: c, fat: f), now: stamp)
             if recent { item.lastUsedAt = stamp }
             return item
         }
         [
             food("Egg", "2 large egg", kcal: 140, p: 12, c: 0, f: 10, recent: true),
-            food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true),
-            food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false)
+            food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true, unit: "cup", amount: 1, grams: 245),
+            food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false, grams: 40)
         ].forEach { localStorage.saveFood($0) }
+        seedKitchen(localStorage: localStorage, stamp: stamp)
+    }
+
+    /// One saved meal ("Usual breakfast": 3 eggs + oats) and one recipe ("Egg Oat Bowl", 2 servings, with its
+    /// derived food) so the Kitchen screens have something to show.
+    private static func seedKitchen(localStorage: LocalStorageService, stamp: Date) {
+        let foods = localStorage.fetchFoods(userId: userId)
+        guard let egg = foods.first(where: { $0.name == "Egg" }), let oats = foods.first(where: { $0.name == "Oats" }) else { return }
+
+        let meal = FoodCollection.make(userId: userId, kind: .meal, name: "Usual breakfast", now: stamp)
+        localStorage.saveFoodCollection(meal)
+        localStorage.saveFoodCollectionItems([
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: meal.id, foodId: egg.id, servings: 3,
+                               sortOrder: 0, createdAt: stamp, updatedAt: stamp),
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: meal.id, foodId: oats.id, servings: 1,
+                               sortOrder: 1, createdAt: stamp, updatedAt: stamp)
+        ])
+
+        let recipe = FoodCollection.make(userId: userId, kind: .recipe, name: "Egg Oat Bowl", servingsYield: 2,
+                                         cookedWeightGrams: 500, now: stamp)
+        localStorage.saveFoodCollection(recipe)
+        localStorage.saveFoodCollectionItems([
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: recipe.id, foodId: egg.id, servings: 2,
+                               sortOrder: 0, createdAt: stamp, updatedAt: stamp),
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: recipe.id, foodId: oats.id, servings: 2,
+                               sortOrder: 1, createdAt: stamp, updatedAt: stamp)
+        ])
+        let lines = [PlateItem(food: egg, servings: 2), PlateItem(food: oats, servings: 2)]
+        localStorage.saveFood(RecipeMath.derivedFood(for: recipe, lines: lines, existing: nil, now: stamp))
     }
 
     /// Writes the profile and one past Push workout when the store has no profile yet.

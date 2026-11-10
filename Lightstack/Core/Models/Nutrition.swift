@@ -202,6 +202,8 @@ enum FoodSource: String, Codable {
     case openFoodFacts = "off"
     /// Estimated by the AI from a description or photo (wire value "ai"). Shown with an "AI estimate" marker.
     case ai
+    /// The derived food a recipe owns (wire value "recipe"); its values are recomputed from the recipe's ingredients.
+    case recipe
 }
 
 /// A web page the AI's search grounded an estimate on. Taken from Gemini's grounding metadata, never invented.

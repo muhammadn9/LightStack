@@ -10,6 +10,7 @@ struct AddFoodRoute: Hashable {
 private enum JournalSheet: Identifiable {
     case addMenu, water, targets, settings
     case quickAdd(UUID?), createFood(UUID?), scan(UUID?), barcode(UUID?)
+    case createMeal, createRecipe
     case ai(UUID?, String)
     case editEntry(FoodEntry)
 
@@ -21,6 +22,8 @@ private enum JournalSheet: Identifiable {
         case .settings: return "settings"
         case .quickAdd: return "quickAdd"
         case .createFood: return "createFood"
+        case .createMeal: return "createMeal"
+        case .createRecipe: return "createRecipe"
         case .scan: return "scan"
         case .barcode: return "barcode"
         case .ai: return "ai"
@@ -50,6 +53,8 @@ struct JournalView: View {
     @State private var renameText = ""
     @State private var creatingMeal = false
     @State private var newMealName = ""
+    @State private var savingAsMeal: UUID?
+    @State private var savedMealName = ""
 
     private let scrollSpace = "journalScroll"
 
@@ -122,6 +127,16 @@ struct JournalView: View {
             Button("Add") { viewModel.addMeal(name: newMealName) }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Save as meal", isPresented: Binding(get: { savingAsMeal != nil }, set: { if !$0 { savingAsMeal = nil } })) {
+            TextField("Meal name", text: $savedMealName)
+                .accessibilityIdentifier("journal.saveAsMeal.name")
+            Button("Save") {
+                if let slotId = savingAsMeal { viewModel.saveMeal(name: savedMealName, fromJournalMeal: slotId) }
+                savingAsMeal = nil
+            }
+            .accessibilityIdentifier("journal.saveAsMeal.confirm")
+            Button("Cancel", role: .cancel) { savingAsMeal = nil }
+        } message: { Text("Saves everything in this meal to your Kitchen.") }
         .onAppear { viewModel.reload() }
     }
 
@@ -142,6 +157,8 @@ struct JournalView: View {
                 onWater: { present(.water) },
                 onQuickTrack: { present(.quickAdd(viewModel.defaultSlotId)) },
                 onCreateFood: { present(.createFood(nil)) },
+                onCreateMeal: { present(.createMeal) },
+                onCreateRecipe: { present(.createRecipe) },
                 onBarcode: { present(.barcode(viewModel.defaultSlotId)) },
                 onAI: { query in present(.ai(viewModel.defaultSlotId, query)) }
             )
@@ -156,6 +173,10 @@ struct JournalView: View {
             QuickAddView(viewModel: viewModel, mealSlotId: slotId)
         case .createFood(let slotId):
             CreateFoodView(viewModel: viewModel, mealSlotId: slotId, logByDefault: false)
+        case .createMeal:
+            MealEditorView(viewModel: viewModel)
+        case .createRecipe:
+            RecipeEditorView(viewModel: viewModel)
         case .scan(let slotId):
             ScanFlowView(viewModel: viewModel, mealSlotId: slotId)
         case .barcode(let slotId):
@@ -463,6 +484,11 @@ struct JournalView: View {
                 renameText = slot.name
                 renaming = slot
             },
+            onSaveAsMeal: {
+                guard let slot = meal.slot else { return }
+                savedMealName = slot.name
+                savingAsMeal = slot.id
+            },
             onClear: { if let id = meal.slot?.id { viewModel.clearMeal(slotId: id) } },
             onMoveAll: { target in meal.entries.forEach { viewModel.move($0, toMeal: target) } },
             onRemove: { if let id = meal.slot?.id { viewModel.archiveMeal(id: id) } }
@@ -654,6 +680,7 @@ private struct MealCardView: View {
     let onEditEntry: (FoodEntry) -> Void
     let onDeleteEntry: (FoodEntry) -> Void
     let onRename: () -> Void
+    let onSaveAsMeal: () -> Void
     let onClear: () -> Void
     let onMoveAll: (UUID?) -> Void
     let onRemove: () -> Void
@@ -677,6 +704,8 @@ private struct MealCardView: View {
                     Menu {
                         Button(action: onRename) { Label("Rename meal", systemImage: "pencil") }
                         if !meal.entries.isEmpty {
+                            Button(action: onSaveAsMeal) { Label("Save as meal", systemImage: "square.and.arrow.down") }
+                                .accessibilityIdentifier("journal.saveAsMeal")
                             Menu {
                                 ForEach(otherMeals) { other in
                                     Button(other.name) { onMoveAll(other.id) }
@@ -708,28 +737,27 @@ private struct MealCardView: View {
     }
 
     private func entryRow(_ entry: FoodEntry) -> some View {
-        Button { onEditEntry(entry) } label: {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(entry.name).font(.body.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
-                        .multilineTextAlignment(.leading)
-                    Text("\(NutritionFormat.amount(entry.servings)) × \(entry.servingLabel)")
-                        .font(.caption).foregroundStyle(AppTheme.textSecondary)
-                    MacroSummaryLine(nutrients: entry.total, font: .caption.weight(.semibold))
-                }
-                Spacer(minLength: 6)
-                Text("\(NutritionFormat.whole(entry.total.kcal)) kcal")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.name).font(.body.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
+                    .multilineTextAlignment(.leading)
+                Text(JournalFormat.amountText(for: entry))
+                    .font(.caption).foregroundStyle(AppTheme.textSecondary)
+                MacroSummaryLine(nutrients: entry.total, font: .caption.weight(.semibold))
             }
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppTheme.surface)
-            .contentShape(Rectangle())
+            Spacer(minLength: 6)
+            Text("\(NutritionFormat.whole(entry.total.kcal)) kcal")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.surface)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("journal.entry.\(entry.name)")
         .accessibilityHint("Edit this entry")
-        .swipeToDelete(id: "journal.entry.delete") { onDeleteEntry(entry) }
+        .swipeToDelete(id: "journal.entry.delete", onTap: { onEditEntry(entry) }) { onDeleteEntry(entry) }
     }
 }
 

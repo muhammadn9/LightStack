@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// The "+" sheet: search, quick actions and creators. Unbuilt creators are shown but disabled.
+/// The "+" sheet: search, quick actions and creators.
 struct AddMenuSheet: View {
     let onSearch: (String) -> Void
     let onWater: () -> Void
     let onQuickTrack: () -> Void
     let onCreateFood: () -> Void
+    let onCreateMeal: () -> Void
+    let onCreateRecipe: () -> Void
     let onBarcode: () -> Void
     let onAI: (String) -> Void
 
@@ -55,11 +57,9 @@ struct AddMenuSheet: View {
                 VStack(spacing: 0) {
                     row("carrot", "Create Food", id: "addmenu.createFood", enabled: true, action: onCreateFood)
                     Divider().padding(.leading, 64)
-                    row("fork.knife", "Create Meal", id: "addmenu.createMeal", enabled: false, action: {})
+                    row("fork.knife", "Create Meal", id: "addmenu.createMeal", enabled: true, action: onCreateMeal)
                     Divider().padding(.leading, 64)
-                    row("frying.pan", "Create Recipe", id: "addmenu.createRecipe", enabled: false, action: {})
-                    Divider().padding(.leading, 64)
-                    row("wineglass", "Create Alcoholic Bev", id: "addmenu.createBev", enabled: false, action: {})
+                    row("frying.pan", "Create Recipe", id: "addmenu.createRecipe", enabled: true, action: onCreateRecipe)
                 }
                 .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
