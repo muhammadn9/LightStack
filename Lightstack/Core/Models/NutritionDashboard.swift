@@ -191,6 +191,12 @@ struct NutritionDashboardStats {
         return (0..<7).map { dashboardDay(shift(start, by: $0)) }
     }
 
+    /// `days` days ending on `date` (inclusive), oldest first, each with totals and that day's target.
+    func dailyDays(endingOn date: Date, days: Int) -> [DashboardDay] {
+        let end = day(date)
+        return (0..<max(0, days)).map { dashboardDay(shift(end, by: -(days - 1 - $0))) }
+    }
+
     // MARK: Grids
 
     /// `days` cells ending on `date` (inclusive), oldest first.

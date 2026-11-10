@@ -8,7 +8,7 @@ struct AddFoodRoute: Hashable {
 }
 
 private enum JournalSheet: Identifiable {
-    case addMenu, water, targets, settings
+    case addMenu, water, weight, targets, settings
     case quickAdd(UUID?), createFood(UUID?), scan(UUID?), barcode(UUID?)
     case createMeal, createRecipe
     case ai(UUID?, String)
@@ -18,6 +18,7 @@ private enum JournalSheet: Identifiable {
         switch self {
         case .addMenu: return "addMenu"
         case .water: return "water"
+        case .weight: return "weight"
         case .targets: return "targets"
         case .settings: return "settings"
         case .quickAdd: return "quickAdd"
@@ -155,6 +156,7 @@ struct JournalView: View {
                     path.append(AddFoodRoute(slotId: viewModel.defaultSlotId, focusSearch: true, query: query))
                 },
                 onWater: { present(.water) },
+                onWeight: { present(.weight) },
                 onQuickTrack: { present(.quickAdd(viewModel.defaultSlotId)) },
                 onCreateFood: { present(.createFood(nil)) },
                 onCreateMeal: { present(.createMeal) },
@@ -165,6 +167,8 @@ struct JournalView: View {
             .presentationDetents([.medium, .large])
         case .water:
             WaterSheet(viewModel: viewModel).presentationDetents([.medium])
+        case .weight:
+            WeightSheet(viewModel: viewModel).presentationDetents([.medium, .large])
         case .targets:
             PlanEditorView(viewModel: viewModel, plan: viewModel.plan(for: viewModel.date))
         case .settings:

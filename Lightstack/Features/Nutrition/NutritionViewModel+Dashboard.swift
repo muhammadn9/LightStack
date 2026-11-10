@@ -71,4 +71,11 @@ extension NutritionViewModel {
             range28: stats.rangeSummary(days: 28, endingOn: day),
             range90: stats.rangeSummary(days: 90, endingOn: day))
     }
+
+    /// Per-day totals for the `days` days ending on `date` (default today), oldest first. Feeds the summary chart.
+    func dashboardDays(_ days: Int, endingOn date: Date? = nil) -> [DashboardDay] {
+        guard let userId else { return [] }
+        let end = (date ?? Date()).startOfDay
+        return repository.dashboardStats(userId: userId, endingOn: end).dailyDays(endingOn: end, days: days)
+    }
 }

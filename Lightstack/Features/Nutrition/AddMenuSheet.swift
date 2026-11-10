@@ -4,6 +4,7 @@ import SwiftUI
 struct AddMenuSheet: View {
     let onSearch: (String) -> Void
     let onWater: () -> Void
+    let onWeight: () -> Void
     let onQuickTrack: () -> Void
     let onCreateFood: () -> Void
     let onCreateMeal: () -> Void
@@ -49,7 +50,7 @@ struct AddMenuSheet: View {
                 }
 
                 HStack(spacing: 12) {
-                    tile("scalemass.fill", AppTheme.trackerWater, "Log weight", id: "addmenu.weight", enabled: false, action: {})
+                    tile("scalemass.fill", AppTheme.trackerWater, "Log weight", id: "addmenu.weight", enabled: true, action: onWeight)
                     tile("drop.fill", AppTheme.waterBlue, "Log water", id: "addmenu.water", enabled: true, action: onWater)
                     tile("bolt.fill", AppTheme.quickTrackGreen, "Quick Track", id: "addmenu.quickTrack", enabled: true, action: onQuickTrack)
                 }
