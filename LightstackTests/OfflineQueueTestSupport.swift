@@ -78,6 +78,7 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     private var _nutritionPlans: [UUID: NutritionPlan] = [:]
     private var _foodCollections: [UUID: FoodCollection] = [:]
     private var _foodCollectionItems: [UUID: FoodCollectionItem] = [:]
+    private var _weighIns: [UUID: WeighIn] = [:]
     private var _tombstones: [String] = []
     private var _profiles: [UUID: UserProfile] = [:]
     private var _summaries: [String: AIContextSummary] = [:]
@@ -106,6 +107,7 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
     var nutritionPlans: [UUID: NutritionPlan] { locked { _nutritionPlans } }
     var foodCollections: [UUID: FoodCollection] { locked { _foodCollections } }
     var foodCollectionItems: [UUID: FoodCollectionItem] { locked { _foodCollectionItems } }
+    var weighIns: [UUID: WeighIn] { locked { _weighIns } }
     /// "entity:recordId" for every tombstone written.
     var tombstones: [String] { locked { _tombstones } }
     var renames: [(ids: [UUID], name: String)] { locked { _renames } }
@@ -299,6 +301,19 @@ final class FakeRemote: RemoteWriting, RemoteReading, @unchecked Sendable {
         try await record(.deleteFoodCollectionItem, "")
         locked { _foodCollectionItems[id] = nil }
     }
+    /// Server semantics: UNIQUE (user_id, date) with an upsert on that pair, so a different id for the same day
+    /// replaces the existing row instead of failing.
+    func upsertWeighIn(_ weighIn: WeighIn) async throws {
+        try await record(.upsertWeighIn, "")
+        locked {
+            for (key, row) in _weighIns where row.userId == weighIn.userId && row.date == weighIn.date { _weighIns[key] = nil }
+            _weighIns[weighIn.id] = weighIn
+        }
+    }
+    func deleteWeighIn(id: UUID) async throws {
+        try await record(.deleteWeighIn, "")
+        locked { _weighIns[id] = nil }
+    }
     func insertTombstones(userId: UUID, entity: String, recordIds: [UUID], deletedAt: Date) async throws {
         try await record(.insertTombstone, entity)
         locked {
@@ -346,6 +361,7 @@ extension FakeRemote {
     func seedDayNote(_ n: DayNote) { lock.lock(); _dayNotes[n.id] = n; lock.unlock() }
     func seedFoodCollection(_ c: FoodCollection) { lock.lock(); _foodCollections[c.id] = c; lock.unlock() }
     func seedFoodCollectionItem(_ i: FoodCollectionItem) { lock.lock(); _foodCollectionItems[i.id] = i; lock.unlock() }
+    func seedWeighIn(_ w: WeighIn) { lock.lock(); _weighIns[w.id] = w; lock.unlock() }
     func seedTombstone(_ entity: TombstoneEntity, _ id: UUID) {
         lock.lock(); _tombstones.append("\(entity.rawValue):\(id.uuidString)"); lock.unlock()
     }
@@ -457,6 +473,11 @@ extension FakeRemote {
     func fetchFoodCollectionItems(userId: UUID) async throws -> [FoodCollectionItem] {
         try await read("fetchFoodCollectionItems")
         return lock.withLock { _foodCollectionItems.values.filter { $0.userId == userId } }
+    }
+
+    func fetchWeighIns(userId: UUID) async throws -> [WeighIn] {
+        try await read("fetchWeighIns")
+        return lock.withLock { _weighIns.values.filter { $0.userId == userId } }
     }
 
     func fetchTombstones(userId: UUID) async throws -> [RemoteTombstone] {

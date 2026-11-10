@@ -127,6 +127,7 @@ final class SyncRestoreService {
             || !storage.fetchFoods(userId: userId).isEmpty
             || !storage.fetchAllWaterEntries(userId: userId).isEmpty
             || !storage.fetchAllDayNotes(userId: userId).isEmpty
+            || !storage.fetchAllWeighIns(userId: userId).isEmpty
             || storage.fetchGoalSettings(userId: userId) != nil
             || !storage.fetchNutritionPlans(userId: userId).isEmpty
             || !storage.fetchFoodCollections(userId: userId).isEmpty
@@ -372,6 +373,7 @@ final class SyncRestoreService {
         deleted.waterEntries = tombstones.ids(.waterEntry)
         deleted.foodCollections = tombstones.ids(.foodCollection)
         deleted.foodCollectionItems = tombstones.ids(.foodCollectionItem)
+        deleted.weighIns = tombstones.ids(.weighIn)
         await queue.discardPendingUpserts(for: userId, deleted: deleted)
     }
 
@@ -388,6 +390,7 @@ final class SyncRestoreService {
         removed += storage.deleteNutritionTargets(ids: tombstones.ids(.nutritionTarget))
         removed += storage.deleteFoodEntries(ids: tombstones.ids(.foodEntry))
         removed += storage.deleteWaterEntries(ids: tombstones.ids(.waterEntry))
+        removed += storage.deleteWeighIns(ids: tombstones.ids(.weighIn))
         removed += storage.deleteFoodCollectionItems(ids: tombstones.ids(.foodCollectionItem))
         removed += storage.deleteFoodCollections(ids: tombstones.ids(.foodCollection))
         let deletedFoods = tombstones.ids(.food)
@@ -508,6 +511,9 @@ final class SyncRestoreService {
         var nutritionPlans = Set<UUID>()
         var foodCollections = Set<UUID>()
         var foodCollectionItems = Set<UUID>()
+        var weighIns = Set<UUID>()
+        /// `yyyy-MM-dd` of every cloud weigh-in (one per day; ids can differ between devices).
+        var weighInDays = Set<String>()
     }
 
     /// Applies one kind of nutrition record. Tombstoned and pending-change records are skipped (local wins).
@@ -701,7 +707,45 @@ final class SyncRestoreService {
             queueUpload: { self.queue.submit(.upsertFoodCollectionItem, payload: $0, recordKey: $0.id.uuidString) },
             save: { self.storage.restoreFoodCollectionItems($0) }
         )
+
+        // Weigh-ins: one per day, but two devices can log the same day under different ids (the cloud keeps one
+        // row per (user, day)). Same "table may not exist yet" tolerance as the plans.
+        let weighIns = try await readIfTableExists { try await self.remote.fetchWeighIns(userId: userId) }
+        try ensureUser(userId)
+        pending = try await pendingChanges(userId)
+        ids.weighIns = Set(weighIns.map(\.id))
+        ids.weighInDays = Set(weighIns.map { RemoteDate.dayString($0.date) })
+        summary.nutritionApplied += applyWeighIns(weighIns, userId: userId, tombstones: tombstones,
+                                                  pending: pending, reconcile: reconcile)
         return ids
+    }
+
+    /// Applies the cloud's weigh-ins. A tombstoned or pending-change record is skipped (local wins). When this
+    /// device has a different row for the same day, the newer edit wins: a newer local row is queued (the
+    /// cloud's ON CONFLICT (user_id, date) swaps the row to it), an older one is dropped locally (no tombstone:
+    /// it was never a deletion). First reconciliation keeps local rows and uploads any that differ.
+    private func applyWeighIns(_ records: [WeighIn], userId: UUID, tombstones: TombstoneSet,
+                               pending: PendingChangeIndex, reconcile: Bool) -> Int {
+        var toApply: [WeighIn] = []
+        for record in records where record.userId == userId {
+            if tombstones.contains(.weighIn, record.id) || pending.weighIns.contains(record.id) { continue }
+            if let sameDay = storage.fetchWeighIn(userId: userId, on: record.date), sameDay.id != record.id {
+                let localWins = reconcile || pending.weighIns.contains(sameDay.id) || sameDay.updatedAt > record.updatedAt
+                if localWins {
+                    if !pending.weighIns.contains(sameDay.id) {
+                        queue.submit(.upsertWeighIn, payload: sameDay, recordKey: sameDay.id.uuidString)
+                    }
+                    continue
+                }
+                storage.deleteWeighIns(ids: [sameDay.id])
+            } else if reconcile, let existing = storage.fetchWeighIn(id: record.id) {
+                if existing != record { queue.submit(.upsertWeighIn, payload: existing, recordKey: existing.id.uuidString) }
+                continue
+            }
+            toApply.append(record)
+        }
+        storage.restoreWeighIns(toApply)
+        return toApply.count
     }
 
     private func applyContextSummaries(
@@ -971,6 +1015,13 @@ final class SyncRestoreService {
         where !remoteNutrition.foodCollections.contains(collection.id) && !tombstones.contains(.foodCollection, collection.id)
             && !pending.foodCollections.contains(collection.id) {
             queue.submit(.upsertFoodCollection, payload: collection, recordKey: collection.id.uuidString)
+            summary.repairedNutrition += 1
+        }
+        for weighIn in storage.fetchAllWeighIns(userId: userId)
+        where !remoteNutrition.weighIns.contains(weighIn.id) && !tombstones.contains(.weighIn, weighIn.id)
+            && !pending.weighIns.contains(weighIn.id)
+            && !remoteNutrition.weighInDays.contains(RemoteDate.dayString(weighIn.date)) {
+            queue.submit(.upsertWeighIn, payload: weighIn, recordKey: weighIn.id.uuidString)
             summary.repairedNutrition += 1
         }
         for item in storage.fetchAllFoodCollectionItems(userId: userId)
