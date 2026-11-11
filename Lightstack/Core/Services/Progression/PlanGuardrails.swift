@@ -347,6 +347,23 @@ enum PlanGuardrails {
         return (limit, "more than 10% (or one increment) over the last top set \(wText)")
     }
 
+    /// The fuel backstop: when fuel is low, no work set may be heavier than the lift's last top set. Sets above it
+    /// are lowered to it; sets at or below it are left alone. Returns the weight the lift was held at when anything
+    /// changed. Does nothing without a last top set or without a low-fuel assessment.
+    static func applyFuelHold(
+        _ targets: [SetTarget], lastTopWeight: Double?, hold: FuelAssessment?
+    ) -> (targets: [SetTarget], heldAt: Double?) {
+        guard let hold, hold.isLow, let cap = lastTopWeight, cap > 0 else { return (targets, nil) }
+        var out = targets
+        var changed = false
+        for i in out.indices where out[i].isWarmup != true {
+            guard let weight = Double(out[i].prefillWeight), weight > cap + 0.001 else { continue }
+            out[i].weight = String(format: "%g", cap)
+            changed = true
+        }
+        return (out, changed ? cap : nil)
+    }
+
     /// Checks AI-written sets against the wide safety rails and clamps the small stuff.
     /// Rejected: top weight too far above the last top set (tighter after a gap), any work set above the
     /// recent best e1RM + 5%, or a work weight under half the last top at RIR 2 or less.

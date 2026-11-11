@@ -95,8 +95,13 @@ enum PlanProgressionApplier {
                 let checked = PlanGuardrails.validateCoachSets(name: ex.name, targets: coachSets, ctx: rail)
                 switch checked.verdict {
                 case .accepted(let fixes):
+                    // Fuel backstop: low fuel means hold or reduce, never raise past the last session's top weight.
+                    // An agreed goal attempt due today bypasses the hold; the reason carries a warning instead.
+                    let attempt = goal != nil
+                    let fueled = PlanGuardrails.applyFuelHold(
+                        checked.targets, lastTopWeight: lastTop?.weight, hold: attempt ? nil : coach.fuelHold)
                     let final = PlanGuardrails.withDefaultRest(
-                        checked.targets, cls: cls, focus: coach.focus, restPreference: coach.restPreference)
+                        fueled.targets, cls: cls, focus: coach.focus, restPreference: coach.restPreference)
                     targets[ex.id] = final
                     ex.targetSets = final.count
                     if let top = final.first(where: { $0.role == .top }) ?? final.last(where: { $0.isWarmup != true }) {
@@ -106,14 +111,24 @@ enum PlanProgressionApplier {
                         let weight = Double(top.prefillWeight) != nil ? "\(top.prefillWeight) lbs" : nil
                         ex.coachNote = combinedNote(weight: weight, message: aiNote, cue: plan.cues[ex.id])
                     }
-                    let text = aiReason ?? "No reason given"
+                    var text = aiReason ?? "No reason given"
+                    var fuelFixes: [String] = []
+                    if let held = fueled.heldAt, let why = coach.fuelHold?.primaryReason {
+                        text = "Held at \(String(format: "%g", held)): \(why)"
+                        fuelFixes.append("fuel guard held the top weight at \(String(format: "%g", held)) (\(why))")
+                        safeguards.append("\(ex.name): \(why), so the top weight was held at \(String(format: "%g", held)) instead of rising")
+                    }
+                    if attempt, let why = coach.fuelHold?.primaryReason {
+                        text = "Goal attempt kept; note: \(why)"
+                        fuelFixes.append("goal attempt kept despite low fuel (\(why))")
+                    }
                     evidence[ex.id] = ExerciseEvidence(
                         source: .coach, lastSets: lastSets, lastSessionDate: lastSession?.date, best: bestText,
                         trend: trend, rationale: text, style: nil,
                         warmupCount: final.filter { $0.isWarmup == true }.count,
-                        adjustedByGuardrails: !fixes.isEmpty, guardrailReasons: fixes)
+                        adjustedByGuardrails: !(fixes + fuelFixes).isEmpty, guardrailReasons: fixes + fuelFixes)
                     adjustments.append("\(ex.name): coach set the targets (\(text))")
-                    for fix in fixes { adjustments.append("\(ex.name): guardrail: \(fix)") }
+                    for fix in fixes + fuelFixes { adjustments.append("\(ex.name): guardrail: \(fix)") }
                     reasons.append(CoachExerciseReason(exercise: ex.name, railFallback: false, text: text))
                     coachAccepted.insert(ex.id)
                     acceptedCoach = true

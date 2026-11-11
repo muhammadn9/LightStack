@@ -186,11 +186,16 @@ final class WorkoutSessionService {
                     Self.goalHistory(goalRepository, userId: userId, exercise: name, now: planNow)
                 },
                 now: planNow)
+            // Low fuel (only judged when the athlete shares nutrition): the top weights may not rise today.
+            let fuelAssessment = FuelRules.assess(fuel: context.fuel, meals: context.meals)
             let coach = PlanCoachContext(
                 focus: resolvedFocus, restPreference: RestPreference.defaultSeconds,
                 nextTargets: CoachReviewStore.nextTargets(from: context.recentReviews),
                 recency: context.muscleRecency, now: planNow,
-                goalAllowances: GoalPlanner.allowances(goalItems))
+                goalAllowances: GoalPlanner.allowances(goalItems),
+                fuelHold: fuelAssessment.isLow ? fuelAssessment : nil)
+            let fuelBlock = coachPromptService.fuelBlock(context.fuel)
+            let mealsBlock = coachPromptService.mealsBlock(context.meals)
             let lastExercises = context.recentSessions.first.flatMap { context.recentSessionSets[$0.id] } ?? []
             let draft = PlanDraftBuilder.build(
                 lastSessionExercises: lastExercises, history: history, energy: resolvedEnergy,
@@ -225,7 +230,8 @@ final class WorkoutSessionService {
                     reviews: context.recentReviews, recency: context.muscleRecency, now: coach.now,
                     briefBlock: coachPromptService.briefBlock(
                         briefs: context.briefs(matching: draft), muscleLoad: context.muscleLoad,
-                        fuel: context.fuel, usualMinutes: context.usualMinutes),
+                        usualMinutes: context.usualMinutes),
+                    fuelBlock: fuelBlock, mealsBlock: mealsBlock,
                     memory: context.memory, memoryLifts: memoryLifts,
                     goalsBlock: coachPromptService.goalsBlock(relevantGoals, now: planNow)),
                 aiSetsWeights: aiSetsWeights
@@ -237,7 +243,10 @@ final class WorkoutSessionService {
             if aiSetsWeights { planOptions.schema = CoachPromptService.planResponseSchema }
             CoachDebugStore.shared.recordRequest(
                 userId: userId, workoutType: sanitizedType, model: aiServiceManager.activeProviderName,
-                systemPromptName: "plan", systemPromptLength: systemPrompt.count, userMessage: userMessage)
+                systemPromptName: "plan", systemPromptLength: systemPrompt.count, userMessage: userMessage,
+                nutritionShared: CoachPreferences.shareNutritionSummary,
+                mealsShared: CoachPreferences.sharePreWorkoutMeals,
+                fuelBlock: fuelBlock, mealsBlock: mealsBlock)
 
             aiServiceManager.generateChat(
                 systemPrompt: systemPrompt,
@@ -353,7 +362,8 @@ final class WorkoutSessionService {
 
         Task { @MainActor in
             let context = coachContextBuilder.buildContext(
-                userId: userId, workoutType: workoutType, includeHistory: true, excludingWorkoutId: workoutId)
+                userId: userId, workoutType: workoutType, includeHistory: true, excludingWorkoutId: workoutId,
+                fuelAt: workout.createdAt)
             let history = ExerciseHistoryIndex(
                 sessions: context.recentSessions, exercises: context.recentSessionSets,
                 loggedSets: context.recentLoggedSets, bestSets: context.bestSets,
@@ -363,7 +373,7 @@ final class WorkoutSessionService {
             let analysis = SessionAnalyzer.analyze(
                 logged: logged, prescription: prescription, energy: energy, userNote: workout.userNote,
                 reasons: document.inSessionReasons, previous: context.recentReviews, history: history, focus: focus,
-                now: Date())
+                now: Date(), fuel: FuelRules.assess(fuel: context.fuel, meals: context.meals))
             // The coach's last note per lift: shown to the model to rewrite, and kept if it does not.
             let previousNotes: [String: String] = analysis.exercises.reduce(into: [:]) { result, a in
                 if let note = context.memory.note(for: a.name) { result[a.name] = note }
@@ -378,7 +388,9 @@ final class WorkoutSessionService {
                 previousReviews: context.recentReviews,
                 userNote: workout.userNote,
                 previousNotes: previousNotes,
-                achievedGoals: achievedGoals
+                achievedGoals: achievedGoals,
+                fuelBlock: coachPromptService.fuelBlock(context.fuel),
+                mealsBlock: coachPromptService.mealsBlock(context.meals)
             )
 
             aiServiceManager.generateChat(

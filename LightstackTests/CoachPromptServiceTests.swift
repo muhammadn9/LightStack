@@ -58,7 +58,7 @@ final class CoachPromptServiceTests: XCTestCase {
     func testPromptsAreMuchSmallerThanTheOldSingleSizeFitsAll() {
         // The old prompt was roughly 9,000 characters for every call.
         XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .plan).count, 6_000)
-        XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .postWorkout).count, 2_300)
+        XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .postWorkout).count, 2_800)
         XCTAssertLessThan(service.buildSystemPrompt(profile: nil, task: .chat).count, 4_500)
     }
 
@@ -101,13 +101,11 @@ final class CoachPromptServiceTests: XCTestCase {
     }
 
     func testBriefBlockRendersEveryPart() throws {
-        let fuel = CoachFuelSummary(yesterdayKcal: 2450, targetKcal: 2600, proteinG: 150, targetProteinG: 180,
-                                    goal: "lose", weeklyRate: 0.5)
         let load = ["mid chest": MuscleLoad(thisWeekSets: 6, avgPrior3WeeksSets: 9, daysSince: 2),
                     "triceps": MuscleLoad(thisWeekSets: 5, avgPrior3WeeksSets: 7, daysSince: 4)]
-        let block = try XCTUnwrap(service.briefBlock(briefs: [sampleBrief()], muscleLoad: load, fuel: fuel, usualMinutes: 58))
+        let block = try XCTUnwrap(service.briefBlock(briefs: [sampleBrief()], muscleLoad: load, usualMinutes: 58))
         XCTAssertTrue(block.contains("USUAL SESSION: 58 min"), block)
-        XCTAssertTrue(block.contains("FUEL: yesterday 2450/2600 kcal, protein 150/180 g; goal lose 0.5 lb/wk."), block)
+        XCTAssertFalse(block.contains("FUEL"), "fuel has its own block now")
         XCTAssertTrue(block.contains("mid chest 6/9 2d"), block)
         XCTAssertTrue(block.contains("triceps 5/7 4d"), block)
         XCTAssertTrue(block.contains("- Barbell Bench Press: heavy-low (5-7), last 205x5@1, avg RIR 1.5, e1RM 232>236>239, rest 2:50 (rx 2:00) | 1:30 (rx 1:30), mid chest+front delts+triceps"), block)
@@ -116,13 +114,13 @@ final class CoachPromptServiceTests: XCTestCase {
     func testBriefBlockOmitsFuelWhenNilAndRestWithoutSamples() throws {
         var brief = sampleBrief()
         brief.rest = RestStats()
-        let block = try XCTUnwrap(service.briefBlock(briefs: [brief], muscleLoad: [:], fuel: nil, usualMinutes: nil))
+        let block = try XCTUnwrap(service.briefBlock(briefs: [brief], muscleLoad: [:], usualMinutes: nil))
         XCTAssertFalse(block.contains("FUEL"), block)
         XCTAssertFalse(block.contains("USUAL SESSION"), block)
         XCTAssertFalse(block.contains("MUSCLE LOAD"), block)
         XCTAssertFalse(block.contains("rest 2"), block)
         XCTAssertTrue(block.contains("BRIEF"), block)
-        XCTAssertNil(service.briefBlock(briefs: [], muscleLoad: [:], fuel: nil, usualMinutes: nil))
+        XCTAssertNil(service.briefBlock(briefs: [], muscleLoad: [:], usualMinutes: nil))
     }
 
     func testBriefBlockIsAppendedToThePlanMessageAndPromptMentionsIt() {

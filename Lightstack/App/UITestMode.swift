@@ -57,6 +57,10 @@ enum UITestMode {
     }
     /// `-uiTestingExpiredSession` starts with the signed-out banner showing, as if the session had been revoked.
     static let wantsExpiredSession: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingExpiredSession")
+    /// `-uiTestingFuelSeed` makes the coach's nutrition context rich: a finished nutrition goal (lose 0.5 lb/wk), a
+    /// daily plan that the seeded past days meet, and a breakfast logged today (a few hours before "now"), so the
+    /// PRE-WORKOUT MEALS block is not empty. Off by default: other tests expect an empty Journal today.
+    static let wantsFuelSeed: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingFuelSeed")
     /// `-uiTestingNutritionWizard` lets the nutrition setup wizard open by itself on first visit (it is off in
     /// UI tests otherwise, so the other nutrition tests are not interrupted).
     static let wantsNutritionWizard: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingNutritionWizard")
@@ -100,6 +104,10 @@ enum UITestMode {
         defaults.removeObject(forKey: WaterUnit.storageKey)
         defaults.removeObject(forKey: ServingUnitPreferences.storageKey)
         defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
+        defaults.removeObject(forKey: CoachPreferences.shareNutritionSummaryKey)
+        defaults.removeObject(forKey: CoachPreferences.sharePreWorkoutMealsKey)
+        defaults.removeObject(forKey: TrainingDayPreferences.tipsKey)
+        defaults.removeObject(forKey: TrainingDayPreferences.dismissedDayKey)
         CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
     }
@@ -142,6 +150,30 @@ enum UITestMode {
         ].forEach { localStorage.saveFood($0) }
         seedKitchen(localStorage: localStorage, stamp: stamp)
         seedDashboardHistory(localStorage: localStorage, stamp: stamp)
+        if wantsFuelSeed { seedFuelContext(localStorage: localStorage, stamp: stamp) }
+    }
+
+    /// Only with `-uiTestingFuelSeed`. A finished goal (lose 0.5 lb/wk), one daily plan of 45 P / 55 C / 25 F (625 kcal,
+    /// which the seeded 590 kcal days meet, so fuel reads "good" and not low) and today's breakfast (2 eggs + oats,
+    /// logged up to 90 minutes before now, never before midnight) under the Breakfast slot.
+    private static func seedFuelContext(localStorage: LocalStorageService, stamp: Date) {
+        localStorage.saveGoalSettings(NutritionGoalSettings(
+            id: NutritionGoalSettings.id(userId: userId), userId: userId, goal: .lose, sex: .male, age: 30,
+            heightInches: 70, currentWeightLbs: 180, targetWeightLbs: 170, weeklyRateLbs: 0.5,
+            activityLevel: .active, liftsWeights: true, unit: .lb, completedAt: stamp, createdAt: stamp, updatedAt: stamp))
+        localStorage.saveNutritionPlans([NutritionPlan(
+            id: UUID(), userId: userId, name: "Daily", weekdayMask: WeekdayMask.all, protein: 45, carbs: 55, fat: 25,
+            kcal: 625, kcalOverridden: false, sortOrder: 0, isArchived: false, createdAt: stamp, updatedAt: stamp)])
+
+        let foods = localStorage.fetchFoods(userId: userId)
+        guard let egg = foods.first(where: { $0.name == "Egg" }), let oats = foods.first(where: { $0.name == "Oats" }) else { return }
+        let slot = MealSlot.defaults(userId: userId).first?.id
+        let sinceMidnight = stamp.timeIntervalSince(Calendar.current.startOfDay(for: stamp))
+        let eaten = stamp.addingTimeInterval(-min(90 * 60, max(60, sinceMidnight / 2)))
+        localStorage.saveFoodEntries([
+            FoodEntry.make(from: egg, servings: 2, on: stamp, source: .saved, mealSlotId: slot, now: eaten),
+            FoodEntry.make(from: oats, servings: 1, on: stamp, source: .saved, mealSlotId: slot, now: eaten)
+        ])
     }
 
     /// Dashboard data: diary entries on several past days (never today, so the empty-Journal tests still hold; the

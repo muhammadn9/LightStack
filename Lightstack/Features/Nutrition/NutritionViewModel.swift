@@ -20,6 +20,8 @@ final class NutritionViewModel: ObservableObject {
     /// True once the setup wizard has been finished (on any device).
     @Published private(set) var isSetupComplete = false
     @Published private(set) var plans: [NutritionPlan] = []
+    /// The "Training day" card for today; nil when hidden (no workout, no targets, turned off or dismissed today).
+    @Published private(set) var trainingNudge: TrainingDayNudge?
 
     /// Branded (Open Food Facts) search state for the UI.
     @Published private(set) var brandedState: BrandedSearchState = .idle
@@ -31,6 +33,7 @@ final class NutritionViewModel: ObservableObject {
     private let userIdProvider: () -> UUID?
     private let foodDatabase: OpenFoodFactsServicing?
     private let nutritionAI: NutritionAIServicing?
+    private let trainingDay: TrainingDayProvider?
     private var aiTask: Task<Void, Never>?
     private var aiRequestId = UUID()
     private let brandedDebounce: TimeInterval
@@ -39,7 +42,8 @@ final class NutritionViewModel: ObservableObject {
     /// `foodDatabase` nil = no branded lookups (searches report an error state).
     init(repository: NutritionRepository, userIdProvider: @escaping () -> UUID?,
          foodDatabase: OpenFoodFactsServicing? = nil, nutritionAI: NutritionAIServicing? = nil,
-         brandedDebounce: TimeInterval = 0.4) {
+         brandedDebounce: TimeInterval = 0.4, trainingDay: TrainingDayProvider? = nil) {
+        self.trainingDay = trainingDay
         self.repository = repository
         self.userIdProvider = userIdProvider
         self.foodDatabase = foodDatabase
@@ -83,6 +87,23 @@ final class NutritionViewModel: ObservableObject {
         waterUnit = WaterUnit.current()
         isSetupComplete = repository.isSetupComplete(userId: userId)
         plans = repository.plans(userId: userId)
+        refreshTrainingNudge(userId: userId)
+    }
+
+    // MARK: - Training-day card
+
+    private func refreshTrainingNudge(userId: UUID, now: Date = Date()) {
+        guard isToday, TrainingDayPreferences.tipsEnabled(), !TrainingDayPreferences.isDismissed(on: now),
+              let summary, let trainingDay else { trainingNudge = nil; return }
+        trainingNudge = TrainingDayNudge.make(
+            info: trainingDay(userId, now), target: summary.target, entries: summary.entries,
+            goal: repository.goalSettings(userId: userId)?.goal, now: now)
+    }
+
+    /// Hides the card for the rest of today.
+    func dismissTrainingNudge() {
+        TrainingDayPreferences.dismiss(on: Date())
+        trainingNudge = nil
     }
 
     func setDate(_ day: Date) {

@@ -7,6 +7,8 @@ struct SettingsView: View {
     @AppStorage(RestPreference.key) private var defaultRestSeconds = 90
     @AppStorage("weightUnit") private var weightUnit = "lbs"
     @AppStorage(LiveActivityController.settingKey) private var liveActivityEnabled = true
+    @AppStorage(CoachPreferences.shareNutritionSummaryKey) private var shareNutrition = true
+    @AppStorage(CoachPreferences.sharePreWorkoutMealsKey) private var shareMeals = true
     @State private var unsyncedCount = 0
     @State private var showUnsyncedAlert = false
 
@@ -59,6 +61,8 @@ struct SettingsView: View {
                     }
                     .listRowBackground(AppTheme.surface)
                 }
+
+                CoachNutritionSettingsSection(shareNutrition: $shareNutrition, shareMeals: $shareMeals)
 
                 Section("Backup") {
                     BackupStatusRow()

@@ -84,14 +84,16 @@ enum SessionAnalyzer {
         previous: [CoachReviewEntry],
         history: ExerciseHistoryIndex,
         focus: CoachFocus,
-        now: Date? = nil
+        now: Date? = nil,
+        fuel: FuelAssessment? = nil
     ) -> SessionAnalysis {
         var analyses: [ExerciseAnalysis] = []
         for ex in logged where !ex.sets.isEmpty {
             let pres = prescription.first { ExerciseNameResolver.isMatch($0.name, ex.name) }
             let reason = reasons[ex.name] ?? reasons.first { ExerciseNameResolver.isMatch($0.key, ex.name) }?.value
             analyses.append(analyzeExercise(ex, prescription: pres, energy: energy, userNote: userNote,
-                                            reason: reason, previous: previous, history: history, focus: focus, now: now))
+                                            reason: reason, previous: previous, history: history, focus: focus, now: now,
+                                            fuelNote: fuel?.primaryReason))
         }
         let loggedNames = logged.filter { !$0.sets.isEmpty }.map(\.name)
         let skipped = prescription.filter { p in !loggedNames.contains { ExerciseNameResolver.isMatch($0, p.name) } }.map(\.name)
@@ -101,7 +103,7 @@ enum SessionAnalyzer {
     private static func analyzeExercise(
         _ ex: LoggedExercise, prescription: ExercisePrescription?, energy: Int, userNote: String?,
         reason: String?, previous: [CoachReviewEntry], history: ExerciseHistoryIndex, focus: CoachFocus,
-        now: Date?
+        now: Date?, fuelNote: String? = nil
     ) -> ExerciseAnalysis {
         let working = SetStyleDetector.splitWarmups(ex.sets).working
         let group = history.group(for: ex.name)
@@ -158,7 +160,8 @@ enum SessionAnalyzer {
         var target: NextTarget?
         if outcome == .missed, let pTop, let top = actualTop {
             let m = classifyMiss(shortBy: shortBy, energy: energy, reason: missReason, note: userNote,
-                                 repeated: repeated, pain: pain, loadDropped: loadDropped, afterBreak: brokeBefore)
+                                 repeated: repeated, pain: pain, loadDropped: loadDropped, afterBreak: brokeBefore,
+                                 fuelNote: fuelNote)
             miss = m
             target = missTarget(decision: m.decision, prescribed: pTop, actual: top, shortBy: shortBy,
                                 repeated: repeated, step: step, cause: m.cause)
@@ -216,7 +219,7 @@ enum SessionAnalyzer {
     /// long gap -> a rebuild from today's weight, not lost strength; pain/form -> hold or swap.
     static func classifyMiss(shortBy: Int, energy: Int, reason: MissReason?, note: String?,
                              repeated: Bool, pain: Bool, loadDropped: Bool = false,
-                             afterBreak: Bool = false) -> MissAnalysis {
+                             afterBreak: Bool = false, fuelNote: String? = nil) -> MissAnalysis {
         if pain {
             return MissAnalysis(cause: .painOrForm, decision: .holdOrSwap,
                                 reason: "Pain or form flagged: hold the load or swap the movement, and cue the form.")
@@ -237,6 +240,11 @@ enum SessionAnalyzer {
         if reason == .poorSleep || reason == .underFueled || recoveryWords.contains(where: { text.contains($0) }) {
             return MissAnalysis(cause: .poorRecovery, decision: .retry,
                                 reason: "Sleep or fuel was off: a bad day, not lost strength. Same target again.")
+        }
+        // The food log says fuel was off (a heavy meal just before, a deep deficit, low protein, fast weight loss).
+        if let fuelNote {
+            return MissAnalysis(cause: .poorRecovery, decision: .retry,
+                                reason: "Fuel was off (\(fuelNote)): a bad day, not lost strength. Same target again.")
         }
         if reason == .lowEnergy || energy <= 4 || tiredWords.contains(where: { text.contains($0) }) {
             return MissAnalysis(cause: .lowEnergy, decision: .retry,

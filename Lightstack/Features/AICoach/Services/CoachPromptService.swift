@@ -33,17 +33,17 @@ final class CoachPromptService {
         case .plan:
             if aiSetsWeights {
                 sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
-                            Self.writeRules, Self.planFormatV3,
+                            Self.writeRules, Self.fuelRulesPlan, Self.planFormatV3,
                             "User's preferred rest: \(restSeconds) s (a default for isolation and back-off sets; you set rest per set)."]
             } else {
                 sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples,
-                            Self.reviewRules, Self.planFormat,
+                            Self.reviewRules, Self.fuelRulesPlan, Self.planFormat,
                             "User's preferred rest: \(restSeconds) s (the floor for isolation and back-off rest)."]
             }
         case .chat:
-            sections = [Self.identityShort, profileLine(profile), Self.chatFormat, Self.modificationsRules]
+            sections = [Self.identityShort, profileLine(profile), Self.chatFormat, Self.fuelRulesChat, Self.modificationsRules]
         case .postWorkout:
-            sections = [Self.identityShort, profileLine(profile), Self.postWorkoutRules]
+            sections = [Self.identityShort, profileLine(profile), Self.postWorkoutRules, Self.fuelRulesPost]
         case .monthPlan:
             sections = [Self.identityShort, profileLine(profile), Self.trainingPrinciples]
         }
@@ -81,7 +81,7 @@ final class CoachPromptService {
     - RIR 0 on at most one set per exercise; most working sets RIR 1-2.
     Structure: warm-ups (type "warmup") only where you judge the working weight needs them, usually the first heavy compound. \
     2-4 working sets. No back-off unless it serves today's goal. Isolation 2-3 sets. Never pad sets.
-    Use the BRIEF (rep style, last RIR, e1RM trend, rest actually taken: long rests mean hard sets, muscle load, fuel). \
+    Use the BRIEF (rep style, last RIR, e1RM trend, rest actually taken: long rests mean hard sets, muscle load) and the FUEL and PRE-WORKOUT MEALS blocks. \
     Each exercise gets one "reason" (max 15 words) naming the evidence.
     Heavy compounds first; at most 10 hard sets per muscle; fit the time; keep the athlete's usual exercise selection \
     (the APP BASELINE is the rule-based reference, not a limit). Balance movements and muscles; a missing one (e.g. rear delts on a pull day) is worth adding.
@@ -89,6 +89,37 @@ final class CoachPromptService {
     Use the athlete's notes (pain, form, equipment) to choose exercises.
     Use COACH MEMORY: repeat what worked, change what missed, and say so in the reason.
     ACTIVE GOALS: move toward them; follow today's step when given.
+    """
+
+    /// How the plan call may use the FUEL and PRE-WORKOUT MEALS blocks.
+    static let fuelRulesPlan = """
+    FUEL AND MEALS
+    Use FUEL and PRE-WORKOUT MEALS only to decide how hard to push today.
+    - Be conservative (hold or slightly reduce top-set targets, do not progress) after a large high-fat meal within about 2 h of training, \
+    very low carbs in the last 24 h, a deep deficit (7-day average more than 20% under target), low protein (average under 80% of target), \
+    or weight dropping faster than 1.5x the goal rate.
+    - Well fueled, on target, or in a gaining phase: normal progression is fine.
+    - When fuel changed an exercise's decision, say so in that exercise's one-line reason.
+    - Never moralise about food or give diet advice beyond "eating closer to your targets would help".
+    - If FUEL says the data is unreliable, ignore the intake numbers.
+    """
+
+    /// How the chat may use the FUEL and PRE-WORKOUT MEALS blocks.
+    static let fuelRulesChat = """
+    FUEL AND MEALS
+    When the athlete asks how to eat today, answer from the FUEL numbers and their targets (the day is not over, so judge what is left). \
+    Use fuel and meals to judge how hard to train: be conservative after a heavy high-fat meal within about 2 h, very low carbs, \
+    a deep deficit (more than 20% under target), low protein (under 80%) or fast weight loss; well fueled means normal progression. \
+    Never moralise about food or give diet advice beyond "eating closer to your targets would help". \
+    If FUEL says the data is unreliable, ignore the intake numbers.
+    """
+
+    /// How the post-workout review may use the FUEL and PRE-WORKOUT MEALS blocks.
+    static let fuelRulesPost = """
+    FUEL AND MEALS
+    A miss soon after a heavy meal (within about 2 h) or on low fuel (deep deficit, low protein, fast weight loss) is a bad day, \
+    not lost strength: say so, and keep the same target. Never moralise about food or give diet advice beyond \
+    "eating closer to your targets would help". If FUEL says the data is unreliable, ignore the intake numbers.
     """
 
     static let planFormatV3 = """
@@ -151,7 +182,7 @@ final class CoachPromptService {
     4. Recovery: days since each muscle was trained (given); recently trained muscles get less.
     5. Energy, sleep and fuel, time available, constraints.
     6. Would a coach recommend this structure for the athlete's focus?
-    Use the BRIEF (lift style, effort, rest actually taken, muscle load, fuel) when judging the plan.
+    Use the BRIEF (lift style, effort, rest actually taken, muscle load) and the FUEL and PRE-WORKOUT MEALS blocks when judging the plan.
     Return concrete edits, each with a reason; if the draft is sound say so with no changes. \
     Respect PREVIOUS REVIEWS: a "retry" or "reduceAndRebuild" decision stands, and recurring flags should be addressed.
     ROLLING CONTEXT is background only; never restate its numbers as the plan. Use the athlete's notes (pain, form, equipment) to choose exercises.
@@ -362,7 +393,9 @@ final class CoachPromptService {
         previousReviews: [CoachReviewEntry] = [],
         userNote: String? = nil,
         previousNotes: [String: String] = [:],
-        achievedGoals: [CoachGoal] = []
+        achievedGoals: [CoachGoal] = [],
+        fuelBlock: String? = nil,
+        mealsBlock: String? = nil
     ) -> String {
         var lines: [String] = []
         if let previous = previousSummary?.trimmingCharacters(in: .whitespacesAndNewlines), !previous.isEmpty {
@@ -394,6 +427,8 @@ final class CoachPromptService {
             }
             if !analysis.skipped.isEmpty { lines.append("SKIPPED (prescribed, not done): " + analysis.skipped.joined(separator: ", ")) }
         }
+        if let fuelBlock, !fuelBlock.isEmpty { lines.append("\n" + fuelBlock) }
+        if let mealsBlock, !mealsBlock.isEmpty { lines.append("\n" + mealsBlock) }
         if !previousReviews.isEmpty {
             lines.append("\nPREVIOUS REVIEWS (newest first, same workout type):")
             lines.append(contentsOf: previousReviews.map { reviewLine($0) })
@@ -488,6 +523,10 @@ final class CoachPromptService {
         var now: Date = Date()
         /// Compact per-exercise brief from `briefBlock`, appended after the draft.
         var briefBlock: String?
+        /// The FUEL block from `fuelBlock`; nil when there is no data or sharing is off.
+        var fuelBlock: String?
+        /// The PRE-WORKOUT MEALS block from `mealsBlock`; nil when there are no meals or sharing is off.
+        var mealsBlock: String?
         /// The coach's past calls and notes; rendered as COACH MEMORY for the draft's exercises.
         var memory: CoachMemoryIndex = CoachMemoryIndex()
         /// Lifts outside the baseline whose memory is still worth showing (goal lifts, lifts of this workout type).
@@ -555,6 +594,8 @@ final class CoachPromptService {
             out += "\n  Estimated length of the \(aiSetsWeights ? "baseline" : "draft"): ~\(Int(minutes.rounded())) min."
         }
         if let brief = coach.briefBlock, !brief.isEmpty { out += "\n\n" + brief }
+        if let fuel = coach.fuelBlock, !fuel.isEmpty { out += "\n\n" + fuel }
+        if let meals = coach.mealsBlock, !meals.isEmpty { out += "\n\n" + meals }
         if aiSetsWeights, let memory = memoryBlock(coach.memory, draft: coach.draft, extra: coach.memoryLifts) {
             out += "\n\n" + memory
         }
@@ -652,15 +693,14 @@ final class CoachPromptService {
 
     // MARK: - Brief
 
-    /// The compact BRIEF block (about 60 tokens per exercise): usual session length, fuel, muscle load
+    /// The compact BRIEF block (about 60 tokens per exercise): usual session length, muscle load
     /// and one line per planned exercise. Parts without data are left out; nil when nothing is left.
     func briefBlock(briefs: [ExerciseBrief], muscleLoad: [String: MuscleLoad],
-                    fuel: CoachFuelSummary?, usualMinutes: Int?) -> String? {
+                    usualMinutes: Int?) -> String? {
         var lines: [String] = []
 
         var header: [String] = []
         if let usualMinutes { header.append("USUAL SESSION: \(usualMinutes) min (recent median).") }
-        if let fuel, let text = Self.fuelText(fuel) { header.append("FUEL: \(text)") }
         if !header.isEmpty { lines.append(header.joined(separator: " ")) }
 
         var muscles: [String] = []
@@ -722,23 +762,83 @@ final class CoachPromptService {
         return "rest " + restSide(rest.heavyActual, rest.heavyPrescribed) + " | " + restSide(rest.lightActual, rest.lightPrescribed)
     }
 
-    /// "yesterday 2450/2600 kcal, protein 150/180 g; goal lose 0.5 lb/wk." or nil with nothing to say.
-    static func fuelText(_ fuel: CoachFuelSummary) -> String? {
-        func amount(_ value: Double?, _ target: Double?) -> String? {
-            guard let value else { return nil }
-            let v = String(format: "%.0f", value)
-            return target.map { "\(v)/\(String(format: "%.0f", $0))" } ?? v
+    // MARK: - Fuel
+
+    /// The compact FUEL block (about 60-90 tokens, under 400 characters); nil with nothing to say.
+    /// ```
+    /// FUEL: data good (6/7 days logged)
+    /// Today by 8:10am: 450/2400 kcal, P35/180 so far (day not over); Carbs last 24h: 180 g
+    /// 7d avg of logged days: 2150/2400 kcal, P150/180 C220 F70; on target 4/6 days
+    /// Weight: -0.6 lb/wk (14d), -0.4 lb/wk (30d); goal lose 0.5 lb/wk
+    /// Yesterday: 2450/2600 kcal, P150/180
+    /// ```
+    func fuelBlock(_ fuel: CoachFuelSummary?) -> String? {
+        guard let fuel else { return nil }
+        func n(_ value: Double) -> String { String(format: "%.0f", value) }
+        func pair(_ value: Double, _ target: Double?) -> String { target.map { "\(n(value))/\(n($0))" } ?? n(value) }
+        var lines: [String] = []
+
+        if let week = fuel.last7 {
+            let head = "FUEL: data \(fuel.dataQuality.rawValue) (\(week.loggedDays)/7 days logged)"
+            lines.append(fuel.dataQuality == .unreliable ? head + ": ignore the intake numbers." : head)
+        } else {
+            lines.append(fuel.dataQuality == .unreliable ? "FUEL: data unreliable (0/7 days logged): ignore the intake numbers." : "FUEL:")
         }
-        var intake: [String] = []
-        if let kcal = amount(fuel.yesterdayKcal, fuel.targetKcal) { intake.append("yesterday \(kcal) kcal") }
-        if let protein = amount(fuel.proteinG, fuel.targetProteinG) { intake.append("protein \(protein) g") }
-        var text = intake.joined(separator: ", ")
+        if let today = fuel.today {
+            var line: String
+            if today.hasEntries {
+                line = "Today by \(today.timeLabel): \(pair(today.kcalSoFar, today.targetKcal)) kcal, "
+                    + "P\(pair(today.proteinSoFar, today.targetProteinG)) so far (day not over)"
+            } else {
+                line = "Today by \(today.timeLabel): nothing logged yet (day not over)"
+            }
+            if let carbs = fuel.carbsLast24h { line += "; Carbs last 24h: \(n(carbs)) g" }
+            lines.append(line)
+        }
+        if let week = fuel.last7 {
+            var line = "7d avg of logged days: \(pair(week.avgKcal, week.avgTargetKcal)) kcal, "
+                + "P\(pair(week.avgProtein, week.avgTargetProtein)) C\(n(week.avgCarbs)) F\(n(week.avgFat))"
+            if week.daysWithTarget > 0 { line += "; on target \(week.daysOnTarget)/\(week.daysWithTarget) days" }
+            lines.append(line)
+        }
+        var weight: [String] = []
+        if let t = fuel.weightTrend14 { weight.append(String(format: "%+.1f lb/wk (14d)", t)) }
+        if let t = fuel.weightTrend30 { weight.append(String(format: "%+.1f lb/wk (30d)", t)) }
+        var goalText: String?
         if let goal = fuel.goal, !goal.isEmpty {
-            var goalText = "goal \(goal)"
-            if let rate = fuel.weeklyRate, rate > 0, goal != "maintain" { goalText += " \(String(format: "%g", rate)) lb/wk" }
-            text += text.isEmpty ? goalText : "; " + goalText
+            goalText = "goal \(goal)"
+            if let rate = fuel.weeklyRate, rate > 0, goal != "maintain" { goalText = (goalText ?? "") + " \(String(format: "%g", rate)) lb/wk" }
         }
-        return text.isEmpty ? nil : text + "."
+        if !weight.isEmpty {
+            lines.append("Weight: " + weight.joined(separator: ", ") + (goalText.map { "; " + $0 } ?? ""))
+        } else if let goalText {
+            lines.append("Goal: " + goalText.replacingOccurrences(of: "goal ", with: ""))
+        }
+        if let kcal = fuel.yesterdayKcal {
+            var line = "Yesterday: \(pair(kcal, fuel.targetKcal)) kcal"
+            if let protein = fuel.proteinG { line += ", P\(pair(protein, fuel.targetProteinG))" }
+            lines.append(line)
+        }
+        return lines.count > 1 ? lines.joined(separator: "\n") : nil
+    }
+
+    /// The PRE-WORKOUT MEALS block (about 25 tokens per meal); nil with no meals.
+    /// ```
+    /// PRE-WORKOUT MEALS (newest first):
+    /// - 2.0h before: burger, fries (+1 more) — 1100 kcal P40 C95 F60
+    /// ```
+    func mealsBlock(_ meals: PreWorkoutMeals?) -> String? {
+        guard let meals, !meals.meals.isEmpty else { return nil }
+        var lines = ["PRE-WORKOUT MEALS (newest first):"]
+        for meal in meals.meals {
+            var names = meal.foods.map { sanitize($0) }.filter { !$0.isEmpty }.map { String($0.prefix(24)) }
+            if names.isEmpty { names = ["food"] }
+            var foods = names.joined(separator: ", ")
+            if meal.moreCount > 0 { foods += " (+\(meal.moreCount) more)" }
+            lines.append("- \(String(format: "%.1f", meal.hoursBefore))h before: \(foods) — \(String(format: "%.0f", meal.kcal)) kcal "
+                + "P\(String(format: "%.0f", meal.protein)) C\(String(format: "%.0f", meal.carbs)) F\(String(format: "%.0f", meal.fat))")
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// One block per past review: overall read, per-exercise outcome/decision/target, flags.
