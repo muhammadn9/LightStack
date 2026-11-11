@@ -19,7 +19,7 @@ struct TrainingDayNudge: Equatable {
     /// One tip, or nil when no rule applies.
     var tip: String?
 
-    static let loseTip = "Put more of today's carbs around your workout."
+    static let loseTip = "Eat most of today's carbs in the meals before and after your workout."
     static let carbsTip = "Hit your carbs today to fuel the session."
     static let heavyMealTip = "Heavy meal just now: give it a bit before lifting."
     static let doneTip = "Workout done: a protein-rich meal helps recovery."
