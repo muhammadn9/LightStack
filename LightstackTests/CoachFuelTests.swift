@@ -106,6 +106,14 @@ final class CoachFuelTests: XCTestCase {
         XCTAssertTrue(today.hasEntries)
     }
 
+    func testCarbsLast24hCountsTheWindowEvenWithoutMeals() throws {
+        let entries = [entry("Pasta", on: at(1, 20), created: at(1, 20), kcal: 600, c: 80),
+                       entry("Oats", on: today, created: at(0, 7, 30), kcal: 300, c: 30),
+                       entry("Old", on: at(2, 12), created: at(2, 12), kcal: 600, c: 200)]
+        let fuel = try XCTUnwrap(build(entries))
+        XCTAssertEqual(try XCTUnwrap(fuel.carbsLast24h), 110, accuracy: 0.001)
+    }
+
     func testNoDataAtAllGivesNoSummary() {
         XCTAssertNil(build([]))
         XCTAssertNotNil(build([], goals: goals()), "a finished goal alone is something to say")
@@ -289,14 +297,14 @@ final class CoachFuelTests: XCTestCase {
             today: FuelToday(kcalSoFar: 450, proteinSoFar: 35, targetKcal: 2400, targetProteinG: 180, timeLabel: "8:10am", hasEntries: true),
             last7: FuelWeek(loggedDays: 6, avgKcal: 2150, avgProtein: 150, avgCarbs: 220, avgFat: 70, avgTargetKcal: 2400,
                             avgTargetProtein: 180, daysOnTarget: 4, daysWithTarget: 6),
-            weightTrend14: -0.6, weightTrend30: -0.4, dataQuality: .good)
+            weightTrend14: -0.6, weightTrend30: -0.4, carbsLast24h: 180, dataQuality: .good)
     }
 
     func testFuelBlockContentAndBudget() throws {
         let block = try XCTUnwrap(service.fuelBlock(fullFuel()))
         XCTAssertEqual(block, """
             FUEL: data good (6/7 days logged)
-            Today by 8:10am: 450/2400 kcal, P35/180 so far (day not over)
+            Today by 8:10am: 450/2400 kcal, P35/180 so far (day not over); Carbs last 24h: 180 g
             7d avg of logged days: 2150/2400 kcal, P150/180 C220 F70; on target 4/6 days
             Weight: -0.6 lb/wk (14d), -0.4 lb/wk (30d); goal lose 0.5 lb/wk
             Yesterday: 2450/2600 kcal, P150/180
@@ -326,7 +334,7 @@ final class CoachFuelTests: XCTestCase {
                     PreWorkoutMeal(hoursBefore: 9.5, foods: ["oats", "eggs", "milk"], moreCount: 0, kcal: 520, protein: 32, carbs: 58, fat: 16)],
             carbs24h: 180)))
         XCTAssertEqual(block, """
-            PRE-WORKOUT MEALS (newest first; carbs in the last 24h: 180 g):
+            PRE-WORKOUT MEALS (newest first):
             - 2.0h before: burger, fries (+1 more) — 1100 kcal P40 C95 F60
             - 9.5h before: oats, eggs, milk — 520 kcal P32 C58 F16
             """)
@@ -519,7 +527,7 @@ final class CoachFuelTests: XCTestCase {
     private func missedBench(fuel: FuelAssessment?, energy: Int = 8, reasons: [String: String] = [:]) throws -> ExerciseAnalysis {
         let sets = [HistorySet(160, 3, rir: 4), HistorySet(185, 5, rir: 0)]
         let prescription = ExercisePrescription(name: bench, muscleGroup: "Chest", sets: [
-            PrescribedSet(weight: 185, reps: 6, rir: 1, role: .top, restSeconds: 150)])
+            PrescribedSet(role: .top, weight: 185, reps: 6, rir: 1, restSeconds: 150)])
         let analysis = SessionAnalyzer.analyze(
             logged: [LoggedExercise(name: bench, muscleGroup: "Chest", sets: sets, hitPR: false)],
             prescription: [prescription], energy: energy, userNote: nil, reasons: reasons, previous: [], history: history(),

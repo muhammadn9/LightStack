@@ -120,7 +120,6 @@ struct CoachSawView: View {
                         }
                     }
                 }
-                .accessibilityIdentifier("coachSaw.nutrition")
             }
 
             section("Message sent to the coach") {

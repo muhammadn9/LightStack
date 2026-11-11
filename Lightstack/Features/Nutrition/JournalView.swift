@@ -74,6 +74,7 @@ struct JournalView: View {
                                 }
                                 .frame(height: 0)
                                 JournalWeekStrip(selected: viewModel.date) { viewModel.setDate($0) }
+                                if let nudge = viewModel.trainingNudge { trainingDayCard(nudge) }
                                 macroCard
                                 trackerRow
                                 mealCards
@@ -560,6 +561,39 @@ struct JournalView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+    }
+
+    // MARK: - Training-day card
+
+    private func trainingDayCard(_ nudge: TrainingDayNudge) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "figure.strengthtraining.traditional")
+                .font(.title3).foregroundStyle(AppTheme.accent).frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(nudge.title).font(.headline).foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityIdentifier("journal.trainingDay.title")
+                Text(nudge.proteinLine).font(.subheadline).foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityIdentifier("journal.trainingDay.protein")
+                if let tip = nudge.tip {
+                    Text(tip).font(.subheadline).foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("journal.trainingDay.tip")
+                }
+            }
+            Spacer(minLength: 0)
+            Button { withAnimation(.easeOut(duration: 0.2)) { viewModel.dismissTrainingNudge() } } label: {
+                Image(systemName: "xmark").font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss training day tip")
+            .accessibilityIdentifier("journal.trainingDay.dismiss")
+        }
+        .padding(.leading, 16).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("journal.trainingDay")
     }
 
     // MARK: - Bottom bar

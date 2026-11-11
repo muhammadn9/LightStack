@@ -106,6 +106,8 @@ enum UITestMode {
         defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
         defaults.removeObject(forKey: CoachPreferences.shareNutritionSummaryKey)
         defaults.removeObject(forKey: CoachPreferences.sharePreWorkoutMealsKey)
+        defaults.removeObject(forKey: TrainingDayPreferences.tipsKey)
+        defaults.removeObject(forKey: TrainingDayPreferences.dismissedDayKey)
         CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
     }

@@ -61,6 +61,8 @@ struct CoachFuelSummary: Equatable {
     /// Weight change in lb per week over the last 14 and 30 days (negative = losing); nil without enough weigh-ins.
     var weightTrend14: Double? = nil
     var weightTrend30: Double? = nil
+    /// Carbs of everything logged in the 24 hours up to now (so the "very low carbs" rule works without meals).
+    var carbsLast24h: Double? = nil
     var dataQuality: FuelDataQuality = .good
 }
 
@@ -132,6 +134,7 @@ enum CoachFuelBuilder {
             weeklyRate: settings?.weeklyRateLbs,
             today: todaySoFar, last7: week,
             weightTrend14: trend14, weightTrend30: trend30,
+            carbsLast24h: PreWorkoutMealsBuilder.build(entries: usable, before: now, calendar: calendar)?.carbs24h ?? 0,
             dataQuality: FuelDataQuality.forLoggedDays(logged.count))
     }
 

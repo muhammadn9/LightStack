@@ -408,7 +408,28 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     @MainActor func makeNutritionViewModel() -> NutritionViewModel {
         NutritionViewModel(repository: nutritionRepository, userIdProvider: { [authService] in authService.currentUser()?.userId },
-                           foodDatabase: foodDatabase, nutritionAI: nutritionAI)
+                           foodDatabase: foodDatabase, nutritionAI: nutritionAI,
+                           trainingDay: { [weak self] userId, day in self?.trainingDayInfo(userId: userId, on: day) })
+    }
+
+    /// Today's training as the nutrition Journal sees it: a workout with logged sets (done), else a workout that
+    /// was generated but not started or a non-rest planned session (planned). nil = no workout today.
+    func trainingDayInfo(userId: UUID, on day: Date) -> TrainingDayInfo? {
+        let workouts = localStorageService.fetchWorkoutsForDate(userId: userId, date: day)
+        let logged = workouts.first { workout in
+            guard let id = workout.id else { return false }
+            return localStorageService.loggedSetCount(workoutId: id) > 0
+        }
+        if let logged { return TrainingDayInfo(workoutType: logged.workoutType, workoutDone: true) }
+        if let started = workouts.first { return TrainingDayInfo(workoutType: started.workoutType, workoutDone: false) }
+        for plan in monthPlanRepository.fetchActivePlans(userId: userId) {
+            if let session = monthPlanRepository.fetchSessions(monthPlanId: plan.id).first(where: {
+                !$0.isRestDay && !$0.completed && Calendar.current.isDate($0.plannedDate, inSameDayAs: day)
+            }) {
+                return TrainingDayInfo(workoutType: session.workoutType, workoutDone: false)
+            }
+        }
+        return nil
     }
 
     func makeMonthPlanViewModel() -> MonthPlanViewModel {

@@ -767,7 +767,7 @@ final class CoachPromptService {
     /// The compact FUEL block (about 60-90 tokens, under 400 characters); nil with nothing to say.
     /// ```
     /// FUEL: data good (6/7 days logged)
-    /// Today by 8:10am: 450/2400 kcal, P35/180 so far (day not over)
+    /// Today by 8:10am: 450/2400 kcal, P35/180 so far (day not over); Carbs last 24h: 180 g
     /// 7d avg of logged days: 2150/2400 kcal, P150/180 C220 F70; on target 4/6 days
     /// Weight: -0.6 lb/wk (14d), -0.4 lb/wk (30d); goal lose 0.5 lb/wk
     /// Yesterday: 2450/2600 kcal, P150/180
@@ -785,12 +785,15 @@ final class CoachPromptService {
             lines.append(fuel.dataQuality == .unreliable ? "FUEL: data unreliable (0/7 days logged): ignore the intake numbers." : "FUEL:")
         }
         if let today = fuel.today {
+            var line: String
             if today.hasEntries {
-                lines.append("Today by \(today.timeLabel): \(pair(today.kcalSoFar, today.targetKcal)) kcal, "
-                    + "P\(pair(today.proteinSoFar, today.targetProteinG)) so far (day not over)")
+                line = "Today by \(today.timeLabel): \(pair(today.kcalSoFar, today.targetKcal)) kcal, "
+                    + "P\(pair(today.proteinSoFar, today.targetProteinG)) so far (day not over)"
             } else {
-                lines.append("Today by \(today.timeLabel): nothing logged yet (day not over)")
+                line = "Today by \(today.timeLabel): nothing logged yet (day not over)"
             }
+            if let carbs = fuel.carbsLast24h { line += "; Carbs last 24h: \(n(carbs)) g" }
+            lines.append(line)
         }
         if let week = fuel.last7 {
             var line = "7d avg of logged days: \(pair(week.avgKcal, week.avgTargetKcal)) kcal, "
@@ -821,12 +824,12 @@ final class CoachPromptService {
 
     /// The PRE-WORKOUT MEALS block (about 25 tokens per meal); nil with no meals.
     /// ```
-    /// PRE-WORKOUT MEALS (newest first; carbs in the last 24h: 180 g):
+    /// PRE-WORKOUT MEALS (newest first):
     /// - 2.0h before: burger, fries (+1 more) — 1100 kcal P40 C95 F60
     /// ```
     func mealsBlock(_ meals: PreWorkoutMeals?) -> String? {
         guard let meals, !meals.meals.isEmpty else { return nil }
-        var lines = ["PRE-WORKOUT MEALS (newest first; carbs in the last 24h: \(String(format: "%.0f", meals.carbs24h)) g):"]
+        var lines = ["PRE-WORKOUT MEALS (newest first):"]
         for meal in meals.meals {
             var names = meal.foods.map { sanitize($0) }.filter { !$0.isEmpty }.map { String($0.prefix(24)) }
             if names.isEmpty { names = ["food"] }
