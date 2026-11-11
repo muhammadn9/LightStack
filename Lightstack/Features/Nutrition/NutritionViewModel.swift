@@ -15,6 +15,8 @@ final class NutritionViewModel: ObservableObject {
     @Published internal(set) var foodsVersion = 0
     /// Bumped whenever a saved meal or recipe changes (or a food they use does), so Kitchen refreshes.
     @Published internal(set) var kitchenVersion = 0
+    /// Bumped on every `reload()` (any entry, weight or target change), so the Dashboard refreshes.
+    @Published private(set) var dataVersion = 0
     /// True once the setup wizard has been finished (on any device).
     @Published private(set) var isSetupComplete = false
     @Published private(set) var plans: [NutritionPlan] = []
@@ -72,6 +74,7 @@ final class NutritionViewModel: ObservableObject {
     // MARK: - Day
 
     func reload() {
+        dataVersion += 1
         guard let userId else { summary = nil; return }
         repository.ensureDefaultMealSlots(userId: userId)
         summary = repository.daySummary(userId: userId, on: date)

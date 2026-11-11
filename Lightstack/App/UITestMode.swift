@@ -141,6 +141,30 @@ enum UITestMode {
             food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false, grams: 40)
         ].forEach { localStorage.saveFood($0) }
         seedKitchen(localStorage: localStorage, stamp: stamp)
+        seedDashboardHistory(localStorage: localStorage, stamp: stamp)
+    }
+
+    /// Dashboard data: diary entries on several past days (never today, so the empty-Journal tests still hold; the
+    /// streak runs from yesterday back 3 days, with gaps further back) and five weigh-ins over the last 30 days
+    /// (none today). Written straight to storage, so the profile weight stays 180.
+    private static func seedDashboardHistory(localStorage: LocalStorageService, stamp: Date) {
+        let foods = localStorage.fetchFoods(userId: userId)
+        guard let egg = foods.first(where: { $0.name == "Egg" }), let oats = foods.first(where: { $0.name == "Oats" }) else { return }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: stamp)
+        func day(_ offset: Int) -> Date { calendar.date(byAdding: .day, value: -offset, to: today) ?? today }
+
+        var entries: [FoodEntry] = []
+        for offset in [1, 2, 3, 5, 6, 8, 9, 10, 13, 17, 20, 24] {
+            entries.append(FoodEntry.make(from: egg, servings: 2, on: day(offset), source: .saved, now: stamp))
+            entries.append(FoodEntry.make(from: oats, servings: 1, on: day(offset), source: .saved, now: stamp))
+        }
+        localStorage.saveFoodEntries(entries)
+
+        let weights: [(Int, Double)] = [(2, 179.2), (8, 180.4), (15, 181.0), (22, 181.6), (29, 182.3)]
+        for (offset, lbs) in weights {
+            localStorage.saveWeighIn(WeighIn.make(userId: userId, date: day(offset), weightLbs: lbs, now: stamp))
+        }
     }
 
     /// One saved meal ("Usual breakfast": 3 eggs + oats) and one recipe ("Egg Oat Bowl", 2 servings, with its

@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS sync_tombstones (
   entity     TEXT NOT NULL CHECK (entity IN
                ('workout','exercise','set','personal_record','month_plan','planned_session','rest_day',
                 'nutrition_target','food','food_entry','meal_slot','water_entry','day_note',
-                'food_collection','food_collection_item')),
+                'food_collection','food_collection_item','weigh_in')),
   record_id  UUID NOT NULL,
   deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (user_id, entity, record_id)
@@ -786,3 +786,29 @@ CREATE POLICY "Users manage own food collection items"
     AND EXISTS (SELECT 1 FROM public.foods f WHERE f.id = food_id AND f.user_id = auth.uid())
   );
 GRANT ALL ON public.food_collection_items TO authenticated;
+
+-- ============================================================
+-- NUTRITION PHASE 6: WEIGH-INS
+-- ============================================================
+-- a. weigh_ins: one body-weight log per user per day; weight_lbs is canonical. Clients upsert on (user_id, date).
+CREATE TABLE IF NOT EXISTS public.weigh_ins (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  date        date NOT NULL,
+  weight_lbs  numeric NOT NULL CHECK (weight_lbs > 0),
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_weigh_ins_user_date
+  ON public.weigh_ins(user_id, date);
+
+-- b. RLS: own rows only
+ALTER TABLE public.weigh_ins ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users manage own weigh ins" ON public.weigh_ins;
+CREATE POLICY "Users manage own weigh ins"
+  ON public.weigh_ins FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+GRANT ALL ON public.weigh_ins TO authenticated;
