@@ -48,8 +48,13 @@ struct ActiveWorkoutView: View {
             }
         }
         .onAppear {
-            viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
+            viewModel.startTimer(from: todayViewModel.resolvedElapsed)
             if todayViewModel.timerPaused { viewModel.pauseTimer() }
+            todayViewModel.liveClock = { [weak viewModel] in
+                guard let viewModel else { return nil }
+                viewModel.syncElapsed()
+                return (viewModel.elapsedSeconds, viewModel.isPaused)
+            }
             viewModel.previousHints = todayViewModel.previousHints
             // After a relaunch the display copy is empty; seed it from the
             // authoritative (persisted) copy so logged sets stay logged.
@@ -76,6 +81,8 @@ struct ActiveWorkoutView: View {
         .onDisappear {
             persistSession()
             viewModel.stopTimer()
+            // Stopped clock is frozen; later saves extrapolate from the stamp instead.
+            todayViewModel.liveClock = nil
         }
         .onChange(of: todayViewModel.exerciseListResetToken) { _, _ in
             currentExerciseIndex = 0

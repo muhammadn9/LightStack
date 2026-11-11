@@ -55,7 +55,20 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     let prRepository: PRRepository
     let sessionPersistence: WorkoutSessionPersistence
     private(set) var userId: UUID?
-    var activeWorkoutElapsed: Int = 0
+    /// Elapsed seconds as of `activeWorkoutElapsedStamp`. Read through `resolvedElapsed`, which
+    /// adds the wall-clock time since, so the clock never loses time while the screen is away.
+    var activeWorkoutElapsed: Int = 0 {
+        didSet { activeWorkoutElapsedStamp = Date() }
+    }
+    private(set) var activeWorkoutElapsedStamp: Date?
+    /// Live clock of the on-screen workout (elapsed seconds, paused), when one is attached.
+    /// Lets every save write the true elapsed time instead of a stale snapshot.
+    var liveClock: (() -> (seconds: Int, paused: Bool)?)?
+
+    /// Elapsed time right now: the snapshot plus time since it was taken, unless paused.
+    var resolvedElapsed: Int {
+        Self.restoredElapsed(saved: activeWorkoutElapsed, savedAt: activeWorkoutElapsedStamp, paused: timerPaused)
+    }
 
     init(
         sessionService: WorkoutSessionService,
@@ -116,13 +129,17 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             return
         }
 
+        if let live = liveClock?() {
+            timerPaused = live.paused
+            activeWorkoutElapsed = live.seconds
+        }
         sessionPersistence.saveSession(
             workout: workout,
             exercises: exercises,
             loggedSets: loggedSets,
             phase: phase,
             userNote: nil,
-            elapsedSeconds: activeWorkoutElapsed,
+            elapsedSeconds: resolvedElapsed,
             previousHints: previousHints,
             setTargets: setTargets,
             pendingSets: pendingSetsSnapshot,
@@ -343,6 +360,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         sessionService.recordStartedPlan(exercises: exercises, setTargets: setTargets)
         activeWorkoutElapsed = 0
         phase = .active
+        saveSessionState()
     }
 
     /// Load a previous workout's exercises as a new workout plan, skipping AI generation.

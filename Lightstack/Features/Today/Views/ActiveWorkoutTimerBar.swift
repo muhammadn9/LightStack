@@ -62,6 +62,7 @@ private struct ElapsedClockView: View {
             .font(AppTheme.plexMono(18, weight: .medium))
             .foregroundStyle(AppTheme.textPrimary)
             .monospacedDigit()
+            .accessibilityIdentifier("workout.elapsed")
         Button(action: onTogglePause) {
             Image(systemName: clock.isPaused ? "play.fill" : "pause.fill")
                 .font(.subheadline)

@@ -67,6 +67,7 @@ struct ManualWorkoutEntryView: View {
                     RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                         .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1)
                 )
+                .accessibilityIdentifier("manualWorkoutTypeField")
                 .submitLabel(.done)
                 .onSubmit {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -207,7 +208,11 @@ struct ManualWorkoutEntryView: View {
         todayViewModel.workoutRepository.createWorkout(workout)
         todayViewModel.sessionService.startSession(workout: workout, exercises: exerciseModels)
         todayViewModel.exercises = exerciseModels
+        todayViewModel.timerPaused = false
+        todayViewModel.activeWorkoutElapsed = 0
         todayViewModel.phase = .active
+        // Save at once so the session (and its clock) survives even an abrupt app death.
+        todayViewModel.saveSessionState()
 
         dismiss()
     }
