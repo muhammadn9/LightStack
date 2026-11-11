@@ -19,6 +19,12 @@ struct CoachPlanSnapshot: Codable, Equatable {
     /// Per exercise: who set the numbers and why (the coach's reason, or the safety rail that replaced it).
     /// nil on snapshots saved before coach v3.
     var reasons: [CoachExerciseReason]? = nil
+    /// Whether the athlete shared the nutrition summary / pre-workout meals when this was sent. nil on older snapshots.
+    var nutritionShared: Bool? = nil
+    var mealsShared: Bool? = nil
+    /// The exact FUEL and PRE-WORKOUT MEALS blocks in the message; nil when none was sent.
+    var fuelBlock: String? = nil
+    var mealsBlock: String? = nil
 }
 
 /// One line of "Coach's reasons": an exercise, whether the coach or a safety rail set it, and the text.
@@ -65,13 +71,15 @@ final class CoachDebugStore {
     func recordRequest(
         userId: UUID, workoutType: String, model: String,
         systemPromptName: String, systemPromptLength: Int, userMessage: String,
+        nutritionShared: Bool? = nil, mealsShared: Bool? = nil, fuelBlock: String? = nil, mealsBlock: String? = nil,
         now: Date = Date()
     ) {
         lock.lock(); defer { lock.unlock() }
         store(CoachPlanSnapshot(
             userId: userId.uuidString, timestamp: now, workoutType: workoutType, model: model,
             systemPromptName: systemPromptName, systemPromptLength: systemPromptLength,
-            userMessage: userMessage, rawResponse: nil, adjustments: [], review: nil))
+            userMessage: userMessage, rawResponse: nil, adjustments: [], review: nil,
+            nutritionShared: nutritionShared, mealsShared: mealsShared, fuelBlock: fuelBlock, mealsBlock: mealsBlock))
     }
 
     func recordResponse(userId: UUID, raw: String, adjustments: [String], review: CoachPlanReview? = nil,

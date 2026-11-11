@@ -36,6 +36,33 @@ enum CoachPreferences {
         defaults.object(forKey: aiSetsWeightsKey) as? Bool ?? true
     }
 
+    // MARK: Nutrition sharing
+
+    static let shareNutritionSummaryKey = "coach.shareNutritionSummary"
+    static let sharePreWorkoutMealsKey = "coach.sharePreWorkoutMeals"
+
+    /// Send the nutrition summary (the FUEL block, including yesterday's intake) to the AI coach. On by default.
+    /// Off means no fuel and no meals at all.
+    static var shareNutritionSummary: Bool {
+        get { shareNutritionSummary(in: .standard) }
+        set { UserDefaults.standard.set(newValue, forKey: shareNutritionSummaryKey) }
+    }
+
+    static func shareNutritionSummary(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: shareNutritionSummaryKey) as? Bool ?? true
+    }
+
+    /// Send the foods eaten before the workout (meal names and macros) to the AI coach. On by default; only
+    /// matters while `shareNutritionSummary` is on.
+    static var sharePreWorkoutMeals: Bool {
+        get { sharePreWorkoutMeals(in: .standard) }
+        set { UserDefaults.standard.set(newValue, forKey: sharePreWorkoutMealsKey) }
+    }
+
+    static func sharePreWorkoutMeals(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: sharePreWorkoutMealsKey) as? Bool ?? true
+    }
+
     /// The explicitly chosen focus, if any.
     static func storedFocus(in defaults: UserDefaults = .standard) -> CoachFocus? {
         defaults.string(forKey: focusKey).flatMap(CoachFocus.init(rawValue:))

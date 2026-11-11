@@ -22,6 +22,8 @@ struct CoachContext {
     var muscleLoad: [String: MuscleLoad] = [:]
     /// Yesterday's intake and the athlete's nutrition goal, when the nutrition feature has data.
     var fuel: CoachFuelSummary?
+    /// Meals in the 24 hours before the workout (or before now); nil when none, or when sharing them is off.
+    var meals: PreWorkoutMeals?
     /// The coach's past calls and notes from up to 60 recent workouts (all types), parsed from the stored documents only.
     var memory = CoachMemoryIndex()
 
@@ -46,15 +48,21 @@ final class CoachContextBuilder {
     private let localStorage: LocalStorageService
     private let validationService: ValidationService
     private let fuel: ((UUID, Date) -> CoachFuelSummary?)?
+    private let meals: ((UUID, Date) -> PreWorkoutMeals?)?
+    private let defaults: UserDefaults
 
     init(
         profileRepository: ProfileRepository,
         workoutRepository: WorkoutRepository,
         localStorage: LocalStorageService,
         validationService: ValidationService,
-        fuel: ((UUID, Date) -> CoachFuelSummary?)? = nil
+        fuel: ((UUID, Date) -> CoachFuelSummary?)? = nil,
+        meals: ((UUID, Date) -> PreWorkoutMeals?)? = nil,
+        defaults: UserDefaults = .standard
     ) {
         self.fuel = fuel
+        self.meals = meals
+        self.defaults = defaults
         self.profileRepository = profileRepository
         self.workoutRepository = workoutRepository
         self.localStorage = localStorage
@@ -75,7 +83,8 @@ final class CoachContextBuilder {
     /// History is the last few COMPLETED sessions (at least one logged set), so a
     /// pending, empty or abandoned workout never takes a slot.
     func buildContext(userId: UUID, workoutType: String? = nil, includeHistory: Bool = true,
-                      excludingWorkoutId excluded: UUID? = nil, now: Date = Date()) -> CoachContext {
+                      excludingWorkoutId excluded: UUID? = nil, now: Date = Date(),
+                      fuelAt: Date? = nil) -> CoachContext {
         let profile = profileRepository.fetchProfileSync(userId: userId)
 
         // Fetch rolling summary for this workout type
@@ -160,6 +169,8 @@ final class CoachContextBuilder {
         }
         let recencyWorkouts = windowWorkouts.filter { $0.date >= recencyCutoff }
 
+        // Nutrition goes to the AI only when the athlete shares it (the meals switch only adds the meal names).
+        let shareSummary = CoachPreferences.shareNutritionSummary(in: defaults)
         return CoachContext(
             profile: profile,
             rollingSummary: rollingSummary,
@@ -176,7 +187,8 @@ final class CoachContextBuilder {
             briefs: ExerciseBriefBuilder.briefs(sessions: sessions, exercises: sessionExercises, loggedSets: loggedSets),
             muscleLoad: MuscleLoadBuilder.build(
                 workouts: windowWorkouts, exercises: windowExercises, loggedSets: windowSets, now: now),
-            fuel: fuel?(userId, now),
+            fuel: shareSummary ? fuel?(userId, fuelAt ?? now) : nil,
+            meals: shareSummary && CoachPreferences.sharePreWorkoutMeals(in: defaults) ? meals?(userId, fuelAt ?? now) : nil,
             memory: CoachMemoryIndex(workouts: scanned)
         )
     }
@@ -259,17 +271,6 @@ struct MuscleLoad: Equatable {
     var daysSince: Int?
 }
 
-/// Yesterday's intake and the athlete's nutrition goal.
-struct CoachFuelSummary: Equatable {
-    var yesterdayKcal: Double?
-    var targetKcal: Double?
-    var proteinG: Double?
-    var targetProteinG: Double?
-    /// "lose", "maintain" or "gain".
-    var goal: String?
-    /// Pounds per week (magnitude).
-    var weeklyRate: Double?
-}
 
 /// One past session of one exercise, as the brief builder reads it.
 struct BriefSession {

@@ -92,21 +92,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     // MARK: - Coach fuel
 
-    /// Yesterday's intake against target plus the nutrition goal, for the coach's plan brief.
-    /// nil when there is neither a logged day nor a finished goal setup.
+    /// The coach's nutrition summary (today so far, last 7 days, weight trend, goal); nil without any data.
     static func fuelSummary(_ nutrition: NutritionRepository, userId: UUID, now: Date) -> CoachFuelSummary? {
-        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now) else { return nil }
-        let day = nutrition.dailyNutrition(userId: userId, on: yesterday)
-        let settings = nutrition.goalSettings(userId: userId).flatMap { $0.isComplete ? $0 : nil }
-        let logged = !day.entries.isEmpty
-        guard logged || settings != nil else { return nil }
-        return CoachFuelSummary(
-            yesterdayKcal: logged ? day.totals.kcal : nil,
-            targetKcal: day.target?.kcal,
-            proteinG: logged ? day.totals.protein : nil,
-            targetProteinG: day.target?.protein,
-            goal: settings?.goal.rawValue,
-            weeklyRate: settings?.weeklyRateLbs)
+        nutrition.coachFuel(userId: userId, now: now)
     }
 
     // MARK: - Init
@@ -253,7 +241,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             workoutRepository: workoutRepository,
             localStorage: localStorageService,
             validationService: validationService,
-            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) }
+            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) },
+            meals: { userId, start in nutrition.coachPreWorkoutMeals(userId: userId, before: start) }
         )
 
         self.workoutSessionService = WorkoutSessionService(

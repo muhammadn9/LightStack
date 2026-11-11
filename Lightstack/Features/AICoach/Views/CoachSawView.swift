@@ -95,6 +95,34 @@ struct CoachSawView: View {
                 .accessibilityIdentifier("coachSaw.reasons")
             }
 
+            if let shared = s.nutritionShared {
+                section("Nutrition sent to the coach") {
+                    if !shared {
+                        Text(Self.nutritionOffText)
+                            .font(AppTheme.caveat(14))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .accessibilityIdentifier("coachSaw.nutritionOff")
+                    } else {
+                        if let fuel = s.fuelBlock { mono(fuel).accessibilityIdentifier("coachSaw.fuel") }
+                        if s.mealsShared == false {
+                            Text(Self.mealsOffText)
+                                .font(AppTheme.caveat(14))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .accessibilityIdentifier("coachSaw.mealsOff")
+                        } else if let meals = s.mealsBlock {
+                            mono(meals).accessibilityIdentifier("coachSaw.meals")
+                        }
+                        if s.fuelBlock == nil, s.mealsBlock == nil, s.mealsShared != false {
+                            Text(Self.noNutritionText)
+                                .font(AppTheme.caveat(14))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .accessibilityIdentifier("coachSaw.nutritionNone")
+                        }
+                    }
+                }
+                .accessibilityIdentifier("coachSaw.nutrition")
+            }
+
             section("Message sent to the coach") {
                 mono(s.userMessage).accessibilityIdentifier("coachSaw.userMessage")
             }
@@ -133,6 +161,21 @@ struct CoachSawView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    static let nutritionOffText = "Nutrition sharing is off"
+    static let mealsOffText = "Pre-workout meal sharing is off"
+    static let noNutritionText = "No nutrition data was available"
+
+    /// The nutrition part of the copied text: the exact blocks sent, or why nothing was.
+    static func nutritionText(_ s: CoachPlanSnapshot) -> [String] {
+        guard let shared = s.nutritionShared else { return [] }
+        var parts = ["", "NUTRITION SENT"]
+        guard shared else { return parts + [nutritionOffText] }
+        if let fuel = s.fuelBlock { parts.append(fuel) }
+        if s.mealsShared == false { parts.append(mealsOffText) } else if let meals = s.mealsBlock { parts.append(meals) }
+        if s.fuelBlock == nil, s.mealsBlock == nil, s.mealsShared != false { parts.append(noNutritionText) }
+        return parts
+    }
+
     /// Who set the numbers, from the adjustment line the plan builder wrote.
     static func kind(of line: String) -> String {
         if line.contains("safety rail rejected") { return "Safety rail: rule-based" }
@@ -154,6 +197,7 @@ struct CoachSawView: View {
         if let reasons = s.reasons, !reasons.isEmpty {
             parts += ["", "COACH'S REASONS"] + reasons.map { "- \($0.exercise) [\($0.label)]: \($0.text)" }
         }
+        parts += nutritionText(s)
         parts += ["", "MESSAGE SENT", s.userMessage, "", "RAW REPLY", s.rawResponse ?? "(none)"]
         return parts.joined(separator: "\n")
     }

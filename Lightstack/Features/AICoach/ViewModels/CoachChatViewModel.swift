@@ -347,6 +347,7 @@ final class CoachChatViewModel: ObservableObject {
         if let summary = context.rollingSummary { info += "\n\nRecent history: \(summary)" }
         if let compact = seed?.compactSummary { info += "\n\nToday's plan: \(compact)" }
         if let goals = goalsLine() { info += "\n\n\(goals)" }
+        if let nutrition = nutritionBlocks(context) { info += "\n\n" + nutrition }
         let contextMessage = ChatMessage(role: .user, content: info)
 
         if let seed {
@@ -389,6 +390,7 @@ final class CoachChatViewModel: ObservableObject {
         let recent = context.recentSessions.prefix(5).map { "\($0.workoutType) \($0.date.formatted(.dateTime.month(.abbreviated).day()))" }
         if !recent.isEmpty { info += "\n\nRecent sessions: " + recent.joined(separator: ", ") }
         if let goals = goalsLine() { info += "\n\n\(goals)" }
+        if let nutrition = nutritionBlocks(context) { info += "\n\n" + nutrition }
         let contextMessage = ChatMessage(role: .user, content: info)
 
         if continuing {
@@ -411,6 +413,12 @@ final class CoachChatViewModel: ObservableObject {
         if messages.count == 1 {
             messages.append(ChatMessage(role: .coach, content: "I can see your current session. What would you like to know about your workout?"))
         }
+    }
+
+    /// The FUEL and PRE-WORKOUT MEALS blocks for the hidden context message; nil when sharing is off or there is no data.
+    private func nutritionBlocks(_ context: CoachContext) -> String? {
+        let blocks = [coachPromptService.fuelBlock(context.fuel), coachPromptService.mealsBlock(context.meals)].compactMap { $0 }
+        return blocks.isEmpty ? nil : blocks.joined(separator: "\n\n")
     }
 
     /// Builds the profile-based system prompt and the list of lift names the athlete could mean.
