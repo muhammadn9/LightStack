@@ -92,21 +92,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     // MARK: - Coach fuel
 
-    /// Yesterday's intake against target plus the nutrition goal, for the coach's plan brief.
-    /// nil when there is neither a logged day nor a finished goal setup.
+    /// The coach's nutrition summary (today so far, last 7 days, weight trend, goal); nil without any data.
     static func fuelSummary(_ nutrition: NutritionRepository, userId: UUID, now: Date) -> CoachFuelSummary? {
-        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now) else { return nil }
-        let day = nutrition.dailyNutrition(userId: userId, on: yesterday)
-        let settings = nutrition.goalSettings(userId: userId).flatMap { $0.isComplete ? $0 : nil }
-        let logged = !day.entries.isEmpty
-        guard logged || settings != nil else { return nil }
-        return CoachFuelSummary(
-            yesterdayKcal: logged ? day.totals.kcal : nil,
-            targetKcal: day.target?.kcal,
-            proteinG: logged ? day.totals.protein : nil,
-            targetProteinG: day.target?.protein,
-            goal: settings?.goal.rawValue,
-            weeklyRate: settings?.weeklyRateLbs)
+        nutrition.coachFuel(userId: userId, now: now)
     }
 
     // MARK: - Init
@@ -253,7 +241,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             workoutRepository: workoutRepository,
             localStorage: localStorageService,
             validationService: validationService,
-            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) }
+            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) },
+            meals: { userId, start in nutrition.coachPreWorkoutMeals(userId: userId, before: start) }
         )
 
         self.workoutSessionService = WorkoutSessionService(
@@ -419,7 +408,28 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     @MainActor func makeNutritionViewModel() -> NutritionViewModel {
         NutritionViewModel(repository: nutritionRepository, userIdProvider: { [authService] in authService.currentUser()?.userId },
-                           foodDatabase: foodDatabase, nutritionAI: nutritionAI)
+                           foodDatabase: foodDatabase, nutritionAI: nutritionAI,
+                           trainingDay: { [weak self] userId, day in self?.trainingDayInfo(userId: userId, on: day) })
+    }
+
+    /// Today's training as the nutrition Journal sees it: a workout with logged sets (done), else a workout that
+    /// was generated but not started or a non-rest planned session (planned). nil = no workout today.
+    func trainingDayInfo(userId: UUID, on day: Date) -> TrainingDayInfo? {
+        let workouts = localStorageService.fetchWorkoutsForDate(userId: userId, date: day)
+        let logged = workouts.first { workout in
+            guard let id = workout.id else { return false }
+            return localStorageService.loggedSetCount(workoutId: id) > 0
+        }
+        if let logged { return TrainingDayInfo(workoutType: logged.workoutType, workoutDone: true) }
+        if let started = workouts.first { return TrainingDayInfo(workoutType: started.workoutType, workoutDone: false) }
+        for plan in monthPlanRepository.fetchActivePlans(userId: userId) {
+            if let session = monthPlanRepository.fetchSessions(monthPlanId: plan.id).first(where: {
+                !$0.isRestDay && !$0.completed && Calendar.current.isDate($0.plannedDate, inSameDayAs: day)
+            }) {
+                return TrainingDayInfo(workoutType: session.workoutType, workoutDone: false)
+            }
+        }
+        return nil
     }
 
     func makeMonthPlanViewModel() -> MonthPlanViewModel {

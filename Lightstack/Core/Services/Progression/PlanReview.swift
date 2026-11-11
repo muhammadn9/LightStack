@@ -128,6 +128,8 @@ struct PlanCoachContext {
     var now: Date = Date()
     /// Goal attempts due today (one per lift); the safety rails let those lifts reach the goal weight.
     var goalAllowances: [GoalAllowance] = []
+    /// Low fuel today (and why): the coach's top-set weights may not rise above the last session's. nil = no hold.
+    var fuelHold: FuelAssessment?
 
     func goalAllowance(for name: String) -> GoalAllowance? {
         goalAllowances.first { ExerciseNameResolver.isMatch($0.name, name) }
