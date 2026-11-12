@@ -1,0 +1,40 @@
+name: Claude PR Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify Claude API secret
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: test -n "$ANTHROPIC_API_KEY" || { echo "::error::Set ANTHROPIC_API_KEY in repository Actions secrets"; exit 1; }
+      - name: Review current head
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Review PR #${{ github.event.pull_request.number }} at head ${{ github.event.pull_request.head.sha }} against its base.
+            Focus on correctness, security, Swift/iOS concurrency and lifecycle, Core Data/Supabase offline persistence, AI proxy behavior, and regression tests.
+            Only report concrete actionable defects. Rank P0 critical, P1 high, P2 medium, P3 low.
+            Cite exact file paths and lines; include concise reproduction scenarios and Claude Code-ready repair instructions.
+            Do not repeat existing findings already posted for this same commit. If there are no findings, post no comment.
+            If findings exist, post one PR comment beginning with:
+            <!-- lightstack-ai-review head=${{ github.event.pull_request.head.sha }} -->
+            Follow with findings and tests needed. Do not approve, merge, modify files, or push.
+          claude_args: "--max-turns 15"

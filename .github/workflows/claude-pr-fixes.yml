@@ -1,0 +1,63 @@
+name: Claude PR Fixes
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+concurrency:
+  group: claude-fix-${{ github.event.issue.number }}
+  cancel-in-progress: false
+jobs:
+  fix:
+    if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '<!-- lightstack-ai-review head=') && github.event.comment.user.type == 'Bot' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate review, head and retry budget
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/$REPO/pulls/$PR")
+          head=$(echo "$pr" | jq -r '.head.sha')
+          branch=$(echo "$pr" | jq -r '.head.ref')
+          same_repo=$(echo "$pr" | jq -r '.head.repo.full_name')
+          draft=$(echo "$pr" | jq -r '.draft')
+          [ "$same_repo" = "$REPO" ] && [ "$draft" = false ] || exit 0
+          [[ "$COMMENT" == *"head=$head"* ]] || exit 0
+          # At most two automated repair rounds per PR. Comments are paginated.
+          count=$(gh api --paginate "repos/$REPO/issues/$PR/comments?per_page=100" --jq '.[] | select(.body | contains("<!-- lightstack-ai-review head=")) | .id' | wc -l | tr -d ' ')
+          [ "$count" -le 2 ] || { echo "Repair budget exhausted"; exit 0; }
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "head=$head" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          ref: ${{ steps.guard.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify Claude API secret
+        if: steps.guard.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: test -n "$ANTHROPIC_API_KEY" || { echo "::error::Set ANTHROPIC_API_KEY"; exit 1; }
+      - name: Fix reviewed findings
+        if: steps.guard.outputs.run == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Address only the actionable findings in GitHub PR #${{ github.event.issue.number }} review comment ${{ github.event.comment.id }}.
+            Check that the PR HEAD is still ${{ steps.guard.outputs.head }} before editing or pushing; if it changed, stop.
+            Add regression tests and run available checks. Follow CLAUDE.md code style, but this workflow is explicitly authorized to push repairs without an additional owner approval; never merge.
+            Commit only validated changes to the PR branch ${{ steps.guard.outputs.branch }}.
+            If validation cannot run, explain that clearly in a PR comment instead of claiming success.
+          claude_args: "--max-turns 20"
