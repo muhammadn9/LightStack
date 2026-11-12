@@ -245,4 +245,47 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertFalse(LiveActivityActions.apply(.skipRest, setKey: next.setKey, active: active, today: today),
                        "nothing to skip")
     }
+
+    // MARK: - Anchor guard (never show a smaller elapsed time)
+
+    private func anchorState(elapsed: Int, paused: Bool = false, now: Date) -> LightstackWorkoutAttributes.ContentState {
+        LiveActivityMapper.contentState(
+            exercises: [], loggedSets: [:], pendingSets: [:], setTargets: [:], activeRestExerciseId: nil,
+            restTargetDates: [:], elapsedSeconds: elapsed, isPaused: paused, unit: "lb", now: now)
+    }
+
+    func testGuardIgnoresStaleSmallerElapsed() {
+        let t0 = Date()
+        let shown = anchorState(elapsed: 100, now: t0)
+        // 30s later the app wrongly reports a stale 70s: truth would be 130s.
+        let stale = anchorState(elapsed: 70, now: t0.addingTimeInterval(30))
+        let anchor = LiveActivityMapper.guardedAnchor(new: stale, previous: shown, sameSession: true)
+        XCTAssertEqual(anchor, shown.elapsedAnchor)
+    }
+
+    func testGuardAllowsGrowingElapsed() {
+        let t0 = Date()
+        let shown = anchorState(elapsed: 100, now: t0)
+        let fresh = anchorState(elapsed: 140, now: t0.addingTimeInterval(30))   // earlier anchor
+        XCTAssertEqual(LiveActivityMapper.guardedAnchor(new: fresh, previous: shown, sameSession: true), fresh.elapsedAnchor)
+    }
+
+    func testGuardAppliesPauseAndResumeShift() {
+        let t0 = Date()
+        let running = anchorState(elapsed: 100, now: t0)
+        let paused = anchorState(elapsed: 100, paused: true, now: t0.addingTimeInterval(10))
+        XCTAssertEqual(LiveActivityMapper.guardedAnchor(new: paused, previous: running, sameSession: true), paused.elapsedAnchor)
+        // Resume after a 60s pause: anchor shifts later than the one shown before pausing.
+        let resumed = anchorState(elapsed: 100, now: t0.addingTimeInterval(70))
+        XCTAssertGreaterThan(resumed.elapsedAnchor, running.elapsedAnchor)
+        XCTAssertEqual(LiveActivityMapper.guardedAnchor(new: resumed, previous: paused, sameSession: true), resumed.elapsedAnchor)
+    }
+
+    func testGuardResetsForNewWorkout() {
+        let t0 = Date()
+        let old = anchorState(elapsed: 3000, now: t0)
+        let fresh = anchorState(elapsed: 0, now: t0.addingTimeInterval(5))
+        XCTAssertEqual(LiveActivityMapper.guardedAnchor(new: fresh, previous: old, sameSession: false), fresh.elapsedAnchor)
+        XCTAssertEqual(LiveActivityMapper.guardedAnchor(new: fresh, previous: nil, sameSession: true), fresh.elapsedAnchor)
+    }
 }

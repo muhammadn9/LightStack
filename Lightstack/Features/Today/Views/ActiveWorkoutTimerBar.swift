@@ -25,7 +25,7 @@ struct ActiveWorkoutTimerBar: View {
                     .accessibilityIdentifier("cancelWorkoutButton")
                     .accessibilityLabel("Cancel workout")
                     .accessibilityHint("Ends the current workout session")
-                    ElapsedClockView(clock: viewModel.clock, onTogglePause: { viewModel.togglePause() })
+                    ElapsedClockView(viewModel: viewModel, clock: viewModel.clock, onTogglePause: { viewModel.togglePause() })
                 }
             }
 
@@ -54,15 +54,20 @@ struct ActiveWorkoutTimerBar: View {
 
 /// Elapsed time + pause button. Owns the per-second observation of the clock.
 private struct ElapsedClockView: View {
+    let viewModel: ActiveWorkoutViewModel
     @ObservedObject var clock: WorkoutClock
     let onTogglePause: () -> Void
 
     var body: some View {
-        Text(clock.formattedElapsedTime)
-            .font(AppTheme.plexMono(18, weight: .medium))
-            .foregroundStyle(AppTheme.textPrimary)
-            .monospacedDigit()
-            .accessibilityIdentifier("workout.elapsed")
+        // Reads the clock's anchor on every redraw, so the display is right even if the tick stalled.
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let seconds = viewModel.elapsed(at: context.date)
+            Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
+                .font(AppTheme.plexMono(18, weight: .medium))
+                .foregroundStyle(AppTheme.textPrimary)
+                .monospacedDigit()
+                .accessibilityIdentifier("workout.elapsed")
+        }
         Button(action: onTogglePause) {
             Image(systemName: clock.isPaused ? "play.fill" : "pause.fill")
                 .font(.subheadline)

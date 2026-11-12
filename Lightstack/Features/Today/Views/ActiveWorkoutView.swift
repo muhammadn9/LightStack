@@ -48,8 +48,7 @@ struct ActiveWorkoutView: View {
             }
         }
         .onAppear {
-            viewModel.startTimer(from: todayViewModel.resolvedElapsed)
-            if todayViewModel.timerPaused { viewModel.pauseTimer() }
+            viewModel.startTimer(from: todayViewModel.resolvedElapsed, paused: todayViewModel.timerPaused)
             todayViewModel.liveClock = { [weak viewModel] in
                 guard let viewModel else { return nil }
                 viewModel.syncElapsed()
@@ -81,8 +80,6 @@ struct ActiveWorkoutView: View {
         .onDisappear {
             persistSession()
             viewModel.stopTimer()
-            // Stopped clock is frozen; later saves extrapolate from the stamp instead.
-            todayViewModel.liveClock = nil
         }
         .onChange(of: todayViewModel.exerciseListResetToken) { _, _ in
             currentExerciseIndex = 0
