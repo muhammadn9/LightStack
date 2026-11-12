@@ -37,6 +37,17 @@ enum LiveActivityMapper {
     }
 
     /// Builds the Live Activity content for the session as it stands right now.
+    /// Anchor to show for a running workout. A later anchor than the one already on screen would make the
+    /// displayed elapsed time jump backwards, so the earlier one is kept. A new anchor is taken when there
+    /// is nothing shown yet, either side is paused (pause/resume legitimately shifts it), the anchor moved
+    /// earlier (elapsed grew), or it is a different workout.
+    static func guardedAnchor(new: LightstackWorkoutAttributes.ContentState,
+                              previous: LightstackWorkoutAttributes.ContentState?,
+                              sameSession: Bool) -> Date {
+        guard let previous, sameSession, !new.isPaused, !previous.isPaused else { return new.elapsedAnchor }
+        return new.elapsedAnchor > previous.elapsedAnchor ? previous.elapsedAnchor : new.elapsedAnchor
+    }
+
     static func contentState(
         exercises: [Exercise],
         loggedSets: [UUID: [WorkoutSet]],

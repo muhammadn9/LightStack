@@ -48,8 +48,12 @@ struct ActiveWorkoutView: View {
             }
         }
         .onAppear {
-            viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
-            if todayViewModel.timerPaused { viewModel.pauseTimer() }
+            viewModel.startTimer(from: todayViewModel.resolvedElapsed, paused: todayViewModel.timerPaused)
+            todayViewModel.liveClock = { [weak viewModel] in
+                guard let viewModel else { return nil }
+                viewModel.syncElapsed()
+                return (viewModel.elapsedSeconds, viewModel.isPaused)
+            }
             viewModel.previousHints = todayViewModel.previousHints
             // After a relaunch the display copy is empty; seed it from the
             // authoritative (persisted) copy so logged sets stay logged.
