@@ -5,6 +5,8 @@ import SceneKit
 struct GuideSceneView: UIViewRepresentable {
     let controller: GuideSceneController
     var isDark: Bool
+    /// Called when the user starts dragging or pinching the scene.
+    var onInteraction: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
 
@@ -29,6 +31,12 @@ struct GuideSceneView: UIViewRepresentable {
         doubleTap.numberOfTapsRequired = 2
         doubleTap.delegate = context.coordinator
         view.addGestureRecognizer(doubleTap)
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.interacted(_:)))
+        pan.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.interacted(_:)))
+        pinch.delegate = context.coordinator
+        view.addGestureRecognizer(pinch)
         controller.attachedView = view
         if UIAccessibility.isReduceMotionEnabled { controller.isPlaying = false }
         // Static scenes still need one frame.
@@ -38,6 +46,7 @@ struct GuideSceneView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: SCNView, context: Context) {
+        context.coordinator.onInteraction = onInteraction
         controller.setAppearance(GuideSceneAppearance(isDark: isDark))
         view.backgroundColor = controller.appearance.background
         let size = view.bounds.size
@@ -53,7 +62,12 @@ struct GuideSceneView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         let controller: GuideSceneController
+        var onInteraction: (() -> Void)?
         init(controller: GuideSceneController) { self.controller = controller }
+
+        @objc func interacted(_ g: UIGestureRecognizer) {
+            if g.state == .began { onInteraction?() }
+        }
 
         @objc func doubleTap() { controller.setCamera(controller.cameraPreset, animated: true) }
 
