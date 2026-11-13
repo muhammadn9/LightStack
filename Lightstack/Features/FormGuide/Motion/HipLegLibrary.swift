@@ -37,17 +37,21 @@ enum HipLegLibrary {
             let kneeL = V3(0.09, 0.55, -0.43)
             let kappa = Ease.rad(Ease.lerp(4, 100, d))
             let sd = V3(0, sin(kappa), -cos(kappa))
-            let foot = V3(0, cos(kappa), sin(kappa))
+            let posterior = V3(0, cos(kappa), sin(kappa))
+            // Foot: toes point to the front of the shin with a little dorsiflexion, so the sole faces the roller side.
+            let foot = FigureSolver.safeNormalize(-posterior * cos(Ease.rad(15)) - sd * sin(Ease.rad(15)))
             let a = kneeL + sd * FigureProportions.shin
             s.leftLeg = .plant(ankle: a, pole: V3(0, -1, -0.3), footDir: foot)
             s.rightLeg = .plant(ankle: V3(-a.x, a.y, a.z), pole: V3(0, -1, -0.3), footDir: foot)
             s.leftArm = .reach(hand: V3(0.30, 0.50, 0.86), pole: V3(0.6, -0.2, 0), handDir: nil)
             s.rightArm = .reach(hand: V3(-0.30, 0.50, 0.86), pole: V3(-0.6, -0.2, 0), handDir: nil)
             var props = Props.flatBench(padTop: 0.45, zMin: -0.40, zMax: 1.00, width: 0.34)
-            props.append(Props.rod(V3(-0.2, a.y + 0.06, a.z - 0.02), V3(0.2, a.y + 0.06, a.z - 0.02), 0.04, .pad))
-            props.append(Props.rod(V3(0.24, 0.40, -0.45), V3(0.24, a.y + 0.06, a.z - 0.02), 0.025))
-            props.append(Props.rod(V3(-0.24, 0.40, -0.45), V3(-0.24, a.y + 0.06, a.z - 0.02), 0.025))
-            props.append(Props.box(V3(0, 0.30, -0.75), V3(0.40, 0.55, 0.25), simd_quatf(angle: 0, axis: V3(0, 1, 0)), .weightStack))
+            // Roller sits on the back of the lower leg just above the heels.
+            let roller = a - sd * 0.07 + posterior * 0.075
+            props.append(Props.rod(V3(-0.2, roller.y, roller.z), V3(0.2, roller.y, roller.z), 0.035, .pad))
+            props.append(Props.rod(V3(0.24, 0.62, -0.50), V3(0.24, roller.y, roller.z), 0.02))
+            props.append(Props.rod(V3(-0.24, 0.62, -0.50), V3(-0.24, roller.y, roller.z), 0.02))
+            props.append(Props.box(V3(0, 0.30, -1.30), V3(0.40, 0.60, 0.25), simd_quatf(angle: 0, axis: V3(0, 1, 0)), .weightStack))
             return makeFrame(s, props)
         }
     }
@@ -85,12 +89,16 @@ enum HipLegLibrary {
             let chest = base.position(.chest)
             let front = base.chestRotation.act(V3(0, 0, 1))
             let blend = Ease.ramp(d, from: 0.9, to: 1.0) * 0.0
-            var chestFront = chest + front * 0.20 + V3(0.10, -0.20, 0.0)
+            var chestFront = chest + front * 0.20 + V3(0.17, -0.20, 0.0)
             chestFront.y = max(chestFront.y, 0.05)
-            let hand = Ease.lerp(chestFront, V3(0.22, 0.05, chest.z + 0.24), blend)
+            let hand = Ease.lerp(chestFront, V3(0.17, 0.05, chest.z + 0.24), blend)
             let hd = FigureSolver.safeNormalize(Ease.lerp(V3(-1, 0, 0), V3(0, 0, 1), blend))
-            s.leftArm = .reach(hand: hand, pole: V3(0.5, 0.2, -0.5), handDir: hd)
-            s.rightArm = .reach(hand: mirrorX(hand), pole: V3(-0.5, 0.2, -0.5), handDir: mirrorX(hd))
+            let nordicHand = V3(hand.x, hand.y, hand.z)
+            s.leftArm = .reach(hand: nordicHand, pole: V3(0.2, 0.3, -1), handDir: V3(0, 0, 1))
+            s.rightArm = .reach(hand: mirrorX(nordicHand), pole: V3(-0.2, 0.3, -1), handDir: V3(0, 0, 1))
+            s.leftGrip = V3(1, 0, 0)
+            s.rightGrip = V3(1, 0, 0)
+            _ = hd
             let props: [GuideProp] = [
                 Props.floorMat(center: V3(0, 0.01, 0.2), size: SIMD2<Float>(0.8, 1.6)),
                 Props.box(V3(0, 0.0 + 0.19, -0.42), V3(0.5, 0.06, 0.10), simd_quatf(angle: 0, axis: V3(0, 1, 0)), .pad),

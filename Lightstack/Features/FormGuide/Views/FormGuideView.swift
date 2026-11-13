@@ -28,7 +28,7 @@ struct FormGuideView: View {
             GeometryReader { geo in
                 VStack(spacing: 0) {
                     if let controller = model.controller {
-                        stage(controller, height: min(max(geo.size.height * 0.46, 310), geo.size.height * 0.6))
+                        stage(controller, height: min(max(geo.size.height * 0.5, 330), geo.size.height * 0.6))
                     }
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {

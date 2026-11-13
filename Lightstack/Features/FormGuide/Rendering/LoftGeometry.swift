@@ -115,6 +115,88 @@ enum LoftBuilder {
         return geometry(rings: rings, segments: segments)
     }
 
+    /// Ring function of a tapered limb (same shape as `limb(...)`), including its end caps for y outside 0...length.
+    static func limbSurface(length: Float, profile: [(t: Float, rx: Float, rz: Float, cz: Float)],
+                            startCap: Float, endCap: Float) -> (Float) -> LoftRing {
+        let rxKeys = profile.map { (t: $0.t, v: $0.rx) }
+        let rzKeys = profile.map { (t: $0.t, v: $0.rz) }
+        let czKeys = profile.map { (t: $0.t, v: $0.cz) }
+        return { y in
+            if y < 0, startCap > 0 {
+                let c = sqrt(max(1 - min(-y / startCap, 1) * min(-y / startCap, 1), 0))
+                return LoftRing(y: y, rx: rxKeys[0].v * c, rz: rzKeys[0].v * c, cz: czKeys[0].v)
+            }
+            if y > length, endCap > 0 {
+                let k = min((y - length) / endCap, 1)
+                let c = sqrt(max(1 - k * k, 0))
+                return LoftRing(y: y, rx: rxKeys[rxKeys.count - 1].v * c, rz: rzKeys[rzKeys.count - 1].v * c,
+                                cz: czKeys[czKeys.count - 1].v)
+            }
+            let t = min(max(y / length, 0), 1)
+            return LoftRing(y: y, rx: smoothSample(rxKeys, at: t), rz: smoothSample(rzKeys, at: t), cz: smoothSample(czKeys, at: t))
+        }
+    }
+
+    /// Ring function from key rings along y (torso, head).
+    static func keyedSurface(_ keys: [(y: Float, rx: Float, rz: Float, cz: Float)]) -> (Float) -> LoftRing {
+        let rx = keys.map { (t: $0.y, v: $0.rx) }
+        let rz = keys.map { (t: $0.y, v: $0.rz) }
+        let cz = keys.map { (t: $0.y, v: $0.cz) }
+        return { y in LoftRing(y: y, rx: smoothSample(rx, at: y), rz: smoothSample(rz, at: y), cz: smoothSample(cz, at: y)) }
+    }
+
+    /// A muscle patch: a grid laid on the body surface (angles in degrees around the section; 0 = front (+Z), 90 = +X,
+    /// 180 = back). It rises `height` above the surface in the middle and sinks below it at the border, so it reads as a
+    /// soft relief that is flush with the body. `widthScale` tapers the angular width from the bottom (y0) to the top (y1).
+    static func patch(surface: (Float) -> LoftRing, aCenter: Float, aHalf: Float, y0: Float, y1: Float,
+                      height: Float, widthScale: (bottom: Float, top: Float) = (1, 1),
+                      columns: Int = 12, rows: Int = 16) -> SCNGeometry {
+        func env(_ x: Float) -> Float { pow(max(sin(.pi * x), 0), 0.55) }
+        let sink: Float = 0.004
+        var pos: [SIMD3<Float>] = [], nrm: [SIMD3<Float>] = []
+        func point(_ i: Int, _ j: Int) -> (p: SIMD3<Float>, n: SIMD3<Float>) {
+            let v = Float(i) / Float(rows), u = Float(j) / Float(columns)
+            let y = y0 + (y1 - y0) * v
+            let r = surface(y)
+            let half = aHalf * (widthScale.bottom + (widthScale.top - widthScale.bottom) * v)
+            let a = (aCenter + half * (2 * u - 1)) * .pi / 180
+            let h = -sink + (height + sink) * env(u) * env(v)
+            let n = simd_normalize(SIMD3(sin(a) / max(r.rx, 1e-4), 0, cos(a) / max(r.rz, 1e-4)))
+            let base = SIMD3(r.cx + r.rx * sin(a), y, r.cz + r.rz * cos(a))
+            return (base + n * h, n)
+        }
+        var grid: [[SIMD3<Float>]] = [], outward: [[SIMD3<Float>]] = []
+        for i in 0...rows {
+            var row: [SIMD3<Float>] = [], nr: [SIMD3<Float>] = []
+            for j in 0...columns { let q = point(i, j); row.append(q.p); nr.append(q.n) }
+            grid.append(row); outward.append(nr)
+        }
+        // Smooth normals from the grid, oriented outwards.
+        var flipWinding = false
+        for i in 0...rows {
+            for j in 0...columns {
+                let i0 = max(i - 1, 0), i1 = min(i + 1, rows), j0 = max(j - 1, 0), j1 = min(j + 1, columns)
+                let tv = grid[i1][j] - grid[i0][j], tu = grid[i][j1] - grid[i][j0]
+                var n = simd_cross(tu, tv)
+                if simd_length(n) < 1e-12 { n = outward[i][j] } else { n = simd_normalize(n) }
+                if i == rows / 2, j == columns / 2 { flipWinding = simd_dot(n, outward[i][j]) < 0 }
+                pos.append(grid[i][j]); nrm.append(n)
+            }
+        }
+        if flipWinding { nrm = nrm.map { -$0 } }
+        var idx: [Int32] = []
+        let w = columns + 1
+        for i in 0..<rows {
+            for j in 0..<columns {
+                let a = Int32(i * w + j), b = Int32(i * w + j + 1), c = Int32((i + 1) * w + j), d = Int32((i + 1) * w + j + 1)
+                if flipWinding { idx.append(contentsOf: [a, c, b, b, c, d]) } else { idx.append(contentsOf: [a, b, c, b, d, c]) }
+            }
+        }
+        let vs = SCNGeometrySource(vertices: pos.map { SCNVector3($0.x, $0.y, $0.z) })
+        let ns = SCNGeometrySource(normals: nrm.map { SCNVector3($0.x, $0.y, $0.z) })
+        return SCNGeometry(sources: [vs, ns], elements: [SCNGeometryElement(indices: idx, primitiveType: .triangles)])
+    }
+
     /// A closed ellipsoid centred at the origin.
     static func ellipsoid(rx: Float, ry: Float, rz: Float, rings: Int = 14, segments: Int = 24) -> SCNGeometry {
         var out: [LoftRing] = []

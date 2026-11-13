@@ -8,16 +8,18 @@ struct MannequinPalette {
     var muscle: UIColor
     var primary: UIColor
     var secondary: UIColor
-    var visor: UIColor
+    var accentEdge: UIColor
 
     static func make(dark: Bool) -> MannequinPalette {
         let trait = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
         let accent = UIColor(AppTheme.accent).resolvedColor(with: trait)
-        let body = UIColor(red: 0.70, green: 0.73, blue: 0.77, alpha: 1)
-        let muscle = UIColor(red: 0.63, green: 0.67, blue: 0.72, alpha: 1)
-        return MannequinPalette(body: body, muscle: muscle, primary: accent,
-                                secondary: mix(accent, UIColor(red: 0.86, green: 0.89, blue: 0.88, alpha: 1), 0.62),
-                                visor: UIColor(red: 0.10, green: 0.11, blue: 0.13, alpha: 1))
+        // Warm neutral "clay": light enough to read on the dark stage, mid enough to hold shape on the light stage.
+        let body = dark ? UIColor(red: 0.80, green: 0.78, blue: 0.76, alpha: 1) : UIColor(red: 0.67, green: 0.65, blue: 0.63, alpha: 1)
+        let muscle = mix(body, .black, dark ? 0.10 : 0.14)
+        let primary = dark ? mix(accent, .white, 0.0) : mix(accent, UIColor(red: 0.10, green: 0.75, blue: 0.25, alpha: 1), 0.45)
+        let secondary = dark ? mix(accent, UIColor(red: 0.92, green: 0.93, blue: 0.90, alpha: 1), 0.58)
+                             : mix(accent, UIColor(red: 0.90, green: 0.93, blue: 0.88, alpha: 1), 0.55)
+        return MannequinPalette(body: body, muscle: muscle, primary: primary, secondary: secondary, accentEdge: accent)
     }
 
     static func mix(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
@@ -30,6 +32,7 @@ struct MannequinPalette {
 }
 
 /// A stylised training mannequin built from lofted meshes. `apply(_:)` only moves nodes; no geometry is rebuilt.
+/// Muscles are lofted relief patches laid exactly on the body surface (tone-on-tone until highlighted).
 final class MannequinNode: SCNNode {
 
     enum SegmentKind: String {
@@ -49,10 +52,10 @@ final class MannequinNode: SCNNode {
 
     private(set) var segments: [Segment] = []
     private var segmentNodes: [SegmentKind: SCNNode] = [:]
+    private var surfaces: [SegmentKind: (Float) -> LoftRing] = [:]
     private var muscleMaterials: [MuscleGroup: SCNMaterial] = [:]
     private var muscleNodes: [MuscleGroup: [SCNNode]] = [:]
     private let bodyMaterial = SCNMaterial()
-    private let visorMaterial = SCNMaterial()
     private(set) var palette: MannequinPalette
     private(set) var primaryHighlight: Set<MuscleGroup> = []
     private(set) var secondaryHighlight: Set<MuscleGroup> = []
@@ -81,14 +84,10 @@ final class MannequinNode: SCNNode {
     private func configureMaterials() {
         bodyMaterial.lightingModel = .physicallyBased
         bodyMaterial.diffuse.contents = palette.body
-        bodyMaterial.roughness.contents = 0.52
+        bodyMaterial.roughness.contents = 0.62
         bodyMaterial.metalness.contents = 0.0
-        visorMaterial.lightingModel = .physicallyBased
-        visorMaterial.diffuse.contents = palette.visor
-        visorMaterial.roughness.contents = 0.22
-        visorMaterial.metalness.contents = 0.0
         for group in MuscleGroup.allCases {
-            let m = Self.pbr(palette.muscle, roughness: 0.5)
+            let m = Self.pbr(palette.muscle, roughness: 0.6)
             m.name = "muscle.\(group.rawValue)"
             muscleMaterials[group] = m
         }
@@ -104,7 +103,6 @@ final class MannequinNode: SCNNode {
     func setPalette(_ new: MannequinPalette) {
         palette = new
         bodyMaterial.diffuse.contents = new.body
-        visorMaterial.diffuse.contents = new.visor
         refreshHighlightColours(animated: false)
     }
 
@@ -123,16 +121,16 @@ final class MannequinNode: SCNNode {
             guard let m = muscleMaterials[group] else { continue }
             if primaryHighlight.contains(group) {
                 m.diffuse.contents = palette.primary
-                m.emission.contents = MannequinPalette.mix(palette.primary, .black, 0.80)
-                m.roughness.contents = 0.38
+                m.emission.contents = MannequinPalette.mix(palette.primary, .black, 0.72)
+                m.roughness.contents = 0.42
             } else if secondaryHighlight.contains(group) {
                 m.diffuse.contents = palette.secondary
                 m.emission.contents = MannequinPalette.mix(palette.secondary, .black, 0.85)
-                m.roughness.contents = 0.45
+                m.roughness.contents = 0.5
             } else {
                 m.diffuse.contents = palette.muscle
                 m.emission.contents = UIColor.black
-                m.roughness.contents = 0.5
+                m.roughness.contents = 0.6
             }
         }
         SCNTransaction.commit()
@@ -141,157 +139,133 @@ final class MannequinNode: SCNNode {
     // MARK: Construction
 
     private func addSegment(_ kind: SegmentKind, from: GuideJoint, to: GuideJoint, length: Float,
-                            geometry: SCNGeometry, material: SCNMaterial? = nil) -> SCNNode {
-        geometry.materials = [material ?? bodyMaterial]
+                            geometry: SCNGeometry, surface: ((Float) -> LoftRing)? = nil) {
+        geometry.materials = [bodyMaterial]
         let node = SCNNode(geometry: geometry)
         node.name = kind.rawValue
         addChildNode(node)
         segments.append(Segment(kind: kind, node: node, from: from, to: to, length: length))
         segmentNodes[kind] = node
-        return node
+        if let surface { surfaces[kind] = surface }
     }
 
-    private func attachEllipsoid(_ group: MuscleGroup, to parent: SCNNode, center: SIMD3<Float>, radii: SIMD3<Float>) {
-        guard let material = muscleMaterials[group] else { return }
-        let sphere = SCNSphere(radius: 1)
-        sphere.segmentCount = 22
-        sphere.materials = [material]
-        let node = SCNNode(geometry: sphere)
-        // Sink the shape slightly into the body so it reads as a soft relief, not a blob.
-        var c = center
-        let radial = SIMD2<Float>(center.x, center.z)
-        let rl = simd_length(radial)
-        if rl > 0.02 { let k = max(rl - 0.007, 0) / rl; c.x *= k; c.z *= k }
-        node.simdPosition = c
-        node.simdScale = radii
-        node.name = "m.\(group.rawValue)"
-        parent.addChildNode(node)
-        muscleNodes[group, default: []].append(node)
+    /// Lays a muscle patch on a segment. Angles: 0 = front, 90 = body left (+X) for the torso, 180 = back.
+    private func patch(_ group: MuscleGroup, _ kind: SegmentKind, a: Float, half: Float, y0: Float, y1: Float,
+                       h: Float, taper: (Float, Float) = (1, 1)) {
+        guard let node = segmentNodes[kind], let surface = surfaces[kind], let material = muscleMaterials[group] else { return }
+        let geo = LoftBuilder.patch(surface: surface, aCenter: a, aHalf: half, y0: y0, y1: y1, height: h,
+                                    widthScale: (taper.0, taper.1))
+        geo.materials = [material]
+        let n = SCNNode(geometry: geo)
+        n.name = "m.\(group.rawValue)"
+        node.addChildNode(n)
+        muscleNodes[group, default: []].append(n)
     }
 
-    /// Adds a muscle shape to a limb. `x` is "outward positive"; limb frames point down, so local x is flipped per side.
-    private func attachLimbMuscle(_ group: MuscleGroup, kinds: (left: SegmentKind, right: SegmentKind),
-                                  out: Float, y: Float, z: Float, radii: SIMD3<Float>) {
-        if let l = segmentNodes[kinds.left] {
-            attachEllipsoid(group, to: l, center: SIMD3(-out, y, z), radii: radii)
-        }
-        if let r = segmentNodes[kinds.right] {
-            attachEllipsoid(group, to: r, center: SIMD3(out, y, z), radii: radii)
-        }
+    /// Torso patch on both sides (angle `a` is for the body's left; the right side mirrors it).
+    private func torsoPatch(_ group: MuscleGroup, _ kind: SegmentKind, a: Float, half: Float, y0: Float, y1: Float,
+                            h: Float, taper: (Float, Float) = (1, 1)) {
+        patch(group, kind, a: a, half: half, y0: y0, y1: y1, h: h, taper: taper)
+        patch(group, kind, a: -a, half: half, y0: y0, y1: y1, h: h, taper: taper)
     }
 
-    private func attachTorsoMuscle(_ group: MuscleGroup, kind: SegmentKind, x: Float, y: Float, z: Float,
-                                   radii: SIMD3<Float>, mirrored: Bool = true) {
-        guard let node = segmentNodes[kind] else { return }
-        attachEllipsoid(group, to: node, center: SIMD3(x, y, z), radii: radii)
-        if mirrored, abs(x) > 1e-5 {
-            attachEllipsoid(group, to: node, center: SIMD3(-x, y, z), radii: radii)
-        }
+    /// Limb patch on both limbs. Angles are given for the right limb (90 = outer side); the left limb mirrors them,
+    /// because limb frames point down, so local +X is outwards on the right and inwards on the left.
+    private func limbPatch(_ group: MuscleGroup, _ kinds: (left: SegmentKind, right: SegmentKind), a: Float, half: Float,
+                           y0: Float, y1: Float, h: Float, taper: (Float, Float) = (1, 1)) {
+        patch(group, kinds.right, a: a, half: half, y0: y0, y1: y1, h: h, taper: taper)
+        patch(group, kinds.left, a: -a, half: half, y0: y0, y1: y1, h: h, taper: taper)
     }
 
     private func build() {
         typealias P = FigureProportions
         typealias L = LoftBuilder
 
-        // Torso, in two overlapping pieces so the spine can bend.
-        func torso(_ keys: [(y: Float, rx: Float, rz: Float, cz: Float)], rings: Int) -> SCNGeometry {
+        func torso(_ keys: [(y: Float, rx: Float, rz: Float, cz: Float)], rings: Int) -> (SCNGeometry, (Float) -> LoftRing) {
+            let surface = L.keyedSurface(keys)
             let yMin = keys.first?.y ?? 0, yMax = keys.last?.y ?? 1
-            let rx = keys.map { (t: $0.y, v: $0.rx) }
-            let rz = keys.map { (t: $0.y, v: $0.rz) }
-            let cz = keys.map { (t: $0.y, v: $0.cz) }
             var out: [LoftRing] = []
-            for i in 0...rings {
-                let y = yMin + (yMax - yMin) * Float(i) / Float(rings)
-                out.append(LoftRing(y: y, rx: L.smoothSample(rx, at: y), rz: L.smoothSample(rz, at: y), cz: L.smoothSample(cz, at: y)))
-            }
-            return L.geometry(rings: out, segments: 36)
+            for i in 0...rings { out.append(surface(yMin + (yMax - yMin) * Float(i) / Float(rings))) }
+            return (L.geometry(rings: out, segments: 40), surface)
         }
-        let lowerTorso = addSegment(.lowerTorso, from: .pelvis, to: .spineMid, length: P.spineLower,
-            geometry: torso([(-0.118, 0.012, 0.012, 0), (-0.108, 0.05, 0.04, 0), (-0.09, 0.098, 0.07, -0.004),
-                             (-0.05, 0.138, 0.092, -0.010), (0.0, 0.155, 0.10, -0.012), (0.07, 0.152, 0.100, -0.006),
-                             (0.16, 0.140, 0.094, 0.0), (0.22, 0.134, 0.090, 0.004), (0.255, 0.134, 0.090, 0.006),
-                             (0.285, 0.07, 0.05, 0.006)], rings: 22))
-        let upperTorso = addSegment(.upperTorso, from: .spineMid, to: .chest, length: P.spineUpper,
-            geometry: torso([(-0.03, 0.095, 0.07, 0.0), (0.0, 0.134, 0.090, 0.004), (0.07, 0.148, 0.098, 0.008),
-                             (0.14, 0.166, 0.105, 0.012), (0.20, 0.176, 0.110, 0.012), (0.245, 0.168, 0.098, 0.004),
-                             (0.275, 0.128, 0.078, -0.006), (0.30, 0.074, 0.060, -0.010),
-                             (0.322, 0.046, 0.046, -0.010), (0.333, 0.016, 0.016, -0.010)], rings: 26))
-        _ = lowerTorso; _ = upperTorso
+        // Torso in two overlapping pieces so the spine can bend. Wide shoulders and lats, clear waist, deep chest.
+        let lower = torso([(-0.118, 0.012, 0.012, 0), (-0.108, 0.05, 0.04, 0), (-0.09, 0.104, 0.074, -0.004),
+                           (-0.05, 0.150, 0.098, -0.010), (0.0, 0.164, 0.106, -0.012), (0.07, 0.150, 0.102, -0.006),
+                           (0.16, 0.128, 0.094, 0.0), (0.22, 0.126, 0.092, 0.004), (0.255, 0.130, 0.092, 0.006),
+                           (0.285, 0.07, 0.05, 0.006)], rings: 24)
+        addSegment(.lowerTorso, from: .pelvis, to: .spineMid, length: P.spineLower, geometry: lower.0, surface: lower.1)
+        let upper = torso([(-0.03, 0.095, 0.07, 0.0), (0.0, 0.130, 0.090, 0.004), (0.07, 0.160, 0.102, 0.008),
+                           (0.14, 0.184, 0.112, 0.014), (0.20, 0.190, 0.118, 0.016), (0.245, 0.178, 0.106, 0.008),
+                           (0.275, 0.140, 0.086, -0.004), (0.30, 0.088, 0.068, -0.010),
+                           (0.322, 0.054, 0.056, -0.008), (0.333, 0.020, 0.020, -0.008)], rings: 28)
+        addSegment(.upperTorso, from: .spineMid, to: .chest, length: P.spineUpper, geometry: upper.0, surface: upper.1)
 
-        _ = addSegment(.neck, from: .chest, to: .head, length: 0.20,
-            geometry: L.limb(length: 0.20, profile: [(0, 0.052, 0.054, -0.004), (0.5, 0.047, 0.049, 0.0), (1, 0.046, 0.048, 0.006)],
+        addSegment(.neck, from: .chest, to: .head, length: 0.20,
+            geometry: L.limb(length: 0.20, profile: [(0, 0.058, 0.060, -0.004), (0.5, 0.050, 0.052, 0.0), (1, 0.048, 0.050, 0.006)],
                              startCap: 0, endCap: 0, bodyRings: 6))
 
-        let headGeo: SCNGeometry = {
-            let keys: [(t: Float, v: Float)] = [(-0.118, 0.012), (-0.108, 0.034), (-0.09, 0.052), (-0.05, 0.070), (0, 0.078),
-                                                (0.05, 0.078), (0.09, 0.067), (0.113, 0.042), (0.125, 0.012)]
-            let zKeys: [(t: Float, v: Float)] = [(-0.118, 0.012), (-0.108, 0.04), (-0.09, 0.066), (-0.05, 0.086), (0, 0.097),
-                                                 (0.05, 0.095), (0.09, 0.083), (0.113, 0.052), (0.125, 0.014)]
-            let cKeys: [(t: Float, v: Float)] = [(-0.118, 0.03), (-0.09, 0.026), (-0.05, 0.012), (0, 0.0), (0.05, -0.002),
-                                                 (0.09, -0.004), (0.125, -0.006)]
-            var rings: [LoftRing] = []
-            for i in 0...24 {
-                let y = -0.118 + 0.243 * Float(i) / 24
-                rings.append(LoftRing(y: y, rx: L.smoothSample(keys, at: y), rz: L.smoothSample(zKeys, at: y),
-                                      cz: L.smoothSample(cKeys, at: y)))
+        let headKeys: [(y: Float, rx: Float, rz: Float, cz: Float)] = [
+            (-0.118, 0.012, 0.012, 0.03), (-0.108, 0.034, 0.040, 0.03), (-0.09, 0.052, 0.066, 0.026), (-0.05, 0.068, 0.084, 0.012),
+            (0, 0.076, 0.095, 0), (0.05, 0.076, 0.094, -0.002), (0.09, 0.066, 0.082, -0.004), (0.113, 0.042, 0.052, -0.006),
+            (0.125, 0.012, 0.014, -0.006)]
+        let headSurface = L.keyedSurface(headKeys)
+        var headRings: [LoftRing] = []
+        for i in 0...26 { headRings.append(headSurface(-0.118 + 0.243 * Float(i) / 26)) }
+        addSegment(.head, from: .head, to: .head, length: 0, geometry: L.geometry(rings: headRings, segments: 36), surface: headSurface)
+        if let head = segmentNodes[.head] {
+            // Neutral face: a soft brow ridge and a nose make the facing direction readable.
+            func feature(_ name: String, _ rx: Float, _ ry: Float, _ rz: Float, at p: SIMD3<Float>, pitch: Float = 0) {
+                let n = SCNNode(geometry: L.ellipsoid(rx: rx, ry: ry, rz: rz, rings: 10, segments: 20))
+                n.geometry?.materials = [bodyMaterial]
+                n.simdPosition = p
+                n.simdEulerAngles = SIMD3(pitch, 0, 0)
+                n.name = name
+                head.addChildNode(n)
             }
-            return L.geometry(rings: rings, segments: 32)
-        }()
-        let head = addSegment(.head, from: .head, to: .head, length: 0, geometry: headGeo)
-        // Face: a dark visor band and a soft nose make the facing direction obvious.
-        let visor = SCNNode(geometry: L.ellipsoid(rx: 0.071, ry: 0.030, rz: 0.060, rings: 12, segments: 24))
-        visor.geometry?.materials = [visorMaterial]
-        visor.simdPosition = SIMD3(0, 0.014, 0.044)
-        visor.simdEulerAngles = SIMD3(0.10, 0, 0)
-        visor.name = "visor"
-        head.addChildNode(visor)
-        let nose = SCNNode(geometry: L.ellipsoid(rx: 0.010, ry: 0.020, rz: 0.015, rings: 8, segments: 14))
-        nose.geometry?.materials = [bodyMaterial]
-        nose.simdPosition = SIMD3(0, -0.028, 0.092)
-        nose.simdEulerAngles = SIMD3(-0.35, 0, 0)
-        nose.name = "nose"
-        head.addChildNode(nose)
+            feature("brow", 0.058, 0.011, 0.020, at: SIMD3(0, 0.030, 0.074), pitch: -0.1)
+            feature("nose", 0.011, 0.024, 0.017, at: SIMD3(0, -0.012, 0.092), pitch: -0.30)
+            feature("chin", 0.026, 0.016, 0.020, at: SIMD3(0, -0.085, 0.060), pitch: 0.2)
+            feature("earL", 0.008, 0.024, 0.016, at: SIMD3(0.075, -0.010, -0.004))
+            feature("earR", 0.008, 0.024, 0.016, at: SIMD3(-0.075, -0.010, -0.004))
+        }
 
-        for (side, prefix) in [(Float(1), "left"), (Float(-1), "right")] {
-            _ = side
-            let thighKind: SegmentKind = prefix == "left" ? .leftThigh : .rightThigh
-            let shinKind: SegmentKind = prefix == "left" ? .leftShin : .rightShin
-            let footKind: SegmentKind = prefix == "left" ? .leftFoot : .rightFoot
-            let upperKind: SegmentKind = prefix == "left" ? .leftUpperArm : .rightUpperArm
-            let foreKind: SegmentKind = prefix == "left" ? .leftForearm : .rightForearm
-            let handKind: SegmentKind = prefix == "left" ? .leftHand : .rightHand
-            let hip: GuideJoint = prefix == "left" ? .leftHip : .rightHip
-            let knee: GuideJoint = prefix == "left" ? .leftKnee : .rightKnee
-            let ankle: GuideJoint = prefix == "left" ? .leftAnkle : .rightAnkle
-            let toe: GuideJoint = prefix == "left" ? .leftToe : .rightToe
-            let shoulder: GuideJoint = prefix == "left" ? .leftShoulder : .rightShoulder
-            let elbow: GuideJoint = prefix == "left" ? .leftElbow : .rightElbow
-            let wrist: GuideJoint = prefix == "left" ? .leftWrist : .rightWrist
-            let hand: GuideJoint = prefix == "left" ? .leftHand : .rightHand
+        for prefix in ["left", "right"] {
+            let l = prefix == "left"
+            let thighKind: SegmentKind = l ? .leftThigh : .rightThigh
+            let shinKind: SegmentKind = l ? .leftShin : .rightShin
+            let footKind: SegmentKind = l ? .leftFoot : .rightFoot
+            let upperKind: SegmentKind = l ? .leftUpperArm : .rightUpperArm
+            let foreKind: SegmentKind = l ? .leftForearm : .rightForearm
+            let handKind: SegmentKind = l ? .leftHand : .rightHand
+            let hip: GuideJoint = l ? .leftHip : .rightHip
+            let knee: GuideJoint = l ? .leftKnee : .rightKnee
+            let ankle: GuideJoint = l ? .leftAnkle : .rightAnkle
+            let toe: GuideJoint = l ? .leftToe : .rightToe
+            let shoulder: GuideJoint = l ? .leftShoulder : .rightShoulder
+            let elbow: GuideJoint = l ? .leftElbow : .rightElbow
+            let wrist: GuideJoint = l ? .leftWrist : .rightWrist
+            let hand: GuideJoint = l ? .leftHand : .rightHand
 
-            _ = addSegment(thighKind, from: hip, to: knee, length: P.thigh,
-                geometry: L.limb(length: P.thigh, profile: [(0, 0.078, 0.082, 0), (0.22, 0.075, 0.080, 0.004),
-                                                             (0.6, 0.063, 0.067, 0.002), (1, 0.050, 0.051, 0)],
-                                 startCap: 0.078, endCap: 0.050))
-            _ = addSegment(shinKind, from: knee, to: ankle, length: P.shin,
-                geometry: L.limb(length: P.shin, profile: [(0, 0.050, 0.051, 0), (0.12, 0.051, 0.054, -0.002),
-                                                            (0.30, 0.050, 0.060, -0.010), (0.55, 0.041, 0.044, -0.004),
-                                                            (1, 0.030, 0.031, 0)],
-                                 startCap: 0.050, endCap: 0.031))
-            _ = addSegment(footKind, from: ankle, to: toe, length: P.foot, geometry: Self.footGeometry())
-            _ = addSegment(upperKind, from: shoulder, to: elbow, length: P.upperArm,
-                geometry: L.limb(length: P.upperArm, profile: [(0, 0.056, 0.057, 0), (0.30, 0.050, 0.053, 0),
-                                                                (0.65, 0.043, 0.046, 0), (1, 0.039, 0.039, 0)],
-                                 startCap: 0.056, endCap: 0.039))
-            _ = addSegment(foreKind, from: elbow, to: wrist, length: P.forearm,
-                geometry: L.limb(length: P.forearm, profile: [(0, 0.039, 0.040, 0), (0.25, 0.044, 0.046, 0),
-                                                              (0.6, 0.035, 0.035, 0), (1, 0.027, 0.025, 0)],
-                                 startCap: 0.039, endCap: 0.027))
+            func limb(_ kind: SegmentKind, _ from: GuideJoint, _ to: GuideJoint, _ length: Float,
+                      _ profile: [(t: Float, rx: Float, rz: Float, cz: Float)], _ startCap: Float, _ endCap: Float) {
+                addSegment(kind, from: from, to: to, length: length,
+                           geometry: L.limb(length: length, profile: profile, startCap: startCap, endCap: endCap, bodyRings: 16),
+                           surface: L.limbSurface(length: length, profile: profile, startCap: startCap, endCap: endCap))
+            }
+            limb(thighKind, hip, knee, P.thigh, [(0, 0.086, 0.090, 0), (0.18, 0.086, 0.091, 0.004), (0.5, 0.072, 0.077, 0.004),
+                                                 (0.8, 0.058, 0.062, 0.002), (1, 0.052, 0.054, 0)], 0.086, 0.052)
+            limb(shinKind, knee, ankle, P.shin, [(0, 0.052, 0.054, 0), (0.12, 0.054, 0.058, -0.002), (0.30, 0.052, 0.064, -0.012),
+                                                 (0.55, 0.042, 0.048, -0.006), (1, 0.031, 0.033, 0)], 0.052, 0.033)
+            addSegment(footKind, from: ankle, to: toe, length: P.foot, geometry: Self.footGeometry())
+            limb(upperKind, shoulder, elbow, P.upperArm, [(0, 0.062, 0.064, 0), (0.30, 0.058, 0.062, 0), (0.62, 0.049, 0.053, 0),
+                                                          (1, 0.041, 0.042, 0)], 0.064, 0.041)
+            limb(foreKind, elbow, wrist, P.forearm, [(0, 0.041, 0.042, 0), (0.22, 0.048, 0.050, 0), (0.6, 0.038, 0.038, 0),
+                                                     (1, 0.028, 0.026, 0)], 0.041, 0.028)
             // Hand: a mitten that wraps the grip axis (local X = grip axis, local Y = wrist to grip centre).
             let handGeo = L.limb(length: P.hand + 0.015,
-                                 profile: [(0, 0.028, 0.021, 0), (0.35, 0.040, 0.027, 0), (0.75, 0.047, 0.033, 0), (1, 0.044, 0.032, 0)],
-                                 startCap: 0.022, endCap: 0.030, bodyRings: 8, capRings: 5, segments: 24)
-            _ = addSegment(handKind, from: wrist, to: hand, length: P.hand, geometry: handGeo)
+                                 profile: [(0, 0.030, 0.023, 0), (0.35, 0.042, 0.029, 0), (0.75, 0.049, 0.034, 0), (1, 0.046, 0.033, 0)],
+                                 startCap: 0.024, endCap: 0.031, bodyRings: 8, capRings: 5, segments: 24)
+            addSegment(handKind, from: wrist, to: hand, length: P.hand, geometry: handGeo)
         }
 
         addMuscles()
@@ -325,39 +299,36 @@ final class MannequinNode: SCNNode {
         let shins = (left: SegmentKind.leftShin, right: SegmentKind.rightShin)
         let arms = (left: SegmentKind.leftUpperArm, right: SegmentKind.rightUpperArm)
         let fores = (left: SegmentKind.leftForearm, right: SegmentKind.rightForearm)
+        let upper = SegmentKind.upperTorso, lower = SegmentKind.lowerTorso
 
-        // Legs
-        attachLimbMuscle(.quads, kinds: thighs, out: 0.0, y: 0.215, z: 0.047, radii: SIMD3(0.036, 0.150, 0.030))
-        attachLimbMuscle(.quads, kinds: thighs, out: 0.041, y: 0.205, z: 0.022, radii: SIMD3(0.034, 0.140, 0.034))
-        attachLimbMuscle(.quads, kinds: thighs, out: -0.036, y: 0.325, z: 0.030, radii: SIMD3(0.027, 0.072, 0.027))
-        attachLimbMuscle(.hamstrings, kinds: thighs, out: 0.0, y: 0.21, z: -0.046, radii: SIMD3(0.050, 0.150, 0.030))
-        attachLimbMuscle(.adductors, kinds: thighs, out: -0.048, y: 0.17, z: -0.004, radii: SIMD3(0.028, 0.120, 0.042))
-        attachLimbMuscle(.calves, kinds: shins, out: 0.020, y: 0.115, z: -0.050, radii: SIMD3(0.027, 0.095, 0.033))
-        attachLimbMuscle(.calves, kinds: shins, out: -0.020, y: 0.115, z: -0.050, radii: SIMD3(0.027, 0.095, 0.033))
+        // Legs (right-limb angles: 0 front, 90 outer, 180 back, -90 inner)
+        limbPatch(.quads, thighs, a: 10, half: 62, y0: 0.05, y1: 0.40, h: 0.014, taper: (0.75, 1))
+        limbPatch(.hamstrings, thighs, a: 180, half: 62, y0: 0.06, y1: 0.40, h: 0.012, taper: (0.85, 1))
+        limbPatch(.adductors, thighs, a: -88, half: 30, y0: 0.04, y1: 0.33, h: 0.010, taper: (1, 0.6))
+        limbPatch(.calves, shins, a: 180, half: 60, y0: 0.04, y1: 0.32, h: 0.014, taper: (1, 0.8))
 
-        // Arms (upper arm local y runs shoulder to elbow)
-        attachLimbMuscle(.frontDelts, kinds: arms, out: 0.004, y: 0.05, z: 0.040, radii: SIMD3(0.036, 0.066, 0.030))
-        attachLimbMuscle(.sideDelts, kinds: arms, out: 0.044, y: 0.05, z: 0.0, radii: SIMD3(0.028, 0.066, 0.040))
-        attachLimbMuscle(.rearDelts, kinds: arms, out: 0.004, y: 0.05, z: -0.042, radii: SIMD3(0.036, 0.062, 0.030))
-        attachLimbMuscle(.biceps, kinds: arms, out: 0.0, y: 0.125, z: 0.032, radii: SIMD3(0.028, 0.075, 0.026))
-        attachLimbMuscle(.triceps, kinds: arms, out: 0.0, y: 0.125, z: -0.034, radii: SIMD3(0.032, 0.090, 0.028))
-        attachLimbMuscle(.triceps, kinds: arms, out: 0.026, y: 0.115, z: -0.010, radii: SIMD3(0.022, 0.080, 0.030))
-        attachLimbMuscle(.forearms, kinds: fores, out: 0.0, y: 0.085, z: 0.026, radii: SIMD3(0.040, 0.100, 0.026))
-        attachLimbMuscle(.forearms, kinds: fores, out: 0.010, y: 0.095, z: -0.024, radii: SIMD3(0.034, 0.090, 0.028))
+        // Arms
+        limbPatch(.frontDelts, arms, a: -5, half: 38, y0: -0.035, y1: 0.15, h: 0.012, taper: (0.7, 1))
+        limbPatch(.sideDelts, arms, a: 86, half: 38, y0: -0.035, y1: 0.15, h: 0.012, taper: (0.7, 1))
+        limbPatch(.rearDelts, arms, a: 178, half: 38, y0: -0.035, y1: 0.15, h: 0.012, taper: (0.7, 1))
+        limbPatch(.biceps, arms, a: -5, half: 40, y0: 0.09, y1: 0.26, h: 0.011, taper: (0.9, 0.75))
+        limbPatch(.triceps, arms, a: 175, half: 62, y0: 0.07, y1: 0.27, h: 0.011, taper: (1, 0.8))
+        limbPatch(.forearms, fores, a: 0, half: 62, y0: 0.02, y1: 0.20, h: 0.008, taper: (1, 0.7))
+        limbPatch(.forearms, fores, a: 180, half: 62, y0: 0.02, y1: 0.20, h: 0.008, taper: (1, 0.7))
 
-        // Torso (local X is the body's left; mirrored)
-        attachTorsoMuscle(.chest, kind: .upperTorso, x: 0.082, y: 0.186, z: 0.092, radii: SIMD3(0.088, 0.064, 0.030))
-        attachTorsoMuscle(.lats, kind: .upperTorso, x: 0.118, y: 0.095, z: -0.068, radii: SIMD3(0.052, 0.130, 0.032))
-        attachTorsoMuscle(.traps, kind: .upperTorso, x: 0.065, y: 0.258, z: -0.062, radii: SIMD3(0.082, 0.062, 0.030))
-        attachTorsoMuscle(.upperBack, kind: .upperTorso, x: 0.050, y: 0.155, z: -0.088, radii: SIMD3(0.062, 0.075, 0.022))
-        attachTorsoMuscle(.lowerBack, kind: .lowerTorso, x: 0.046, y: 0.150, z: -0.080, radii: SIMD3(0.042, 0.100, 0.022))
-        for (i, y) in [Float(0.035), 0.095, 0.155, 0.215].enumerated() {
-            let w: Float = i == 3 ? 0.028 : 0.031
-            attachTorsoMuscle(.abs, kind: .lowerTorso, x: 0.0335, y: y, z: 0.090, radii: SIMD3(w, 0.031, 0.016))
+        // Torso (angles for the body's left; mirrored)
+        torsoPatch(.chest, upper, a: 41, half: 40, y0: 0.115, y1: 0.235, h: 0.016, taper: (0.85, 1))
+        torsoPatch(.lats, upper, a: 128, half: 30, y0: -0.02, y1: 0.20, h: 0.014, taper: (0.5, 1))
+        torsoPatch(.lats, lower, a: 130, half: 24, y0: 0.17, y1: 0.265, h: 0.010, taper: (0.8, 0.5))
+        torsoPatch(.traps, upper, a: 143, half: 38, y0: 0.19, y1: 0.325, h: 0.014, taper: (1, 0.55))
+        torsoPatch(.upperBack, upper, a: 163, half: 18, y0: 0.04, y1: 0.19, h: 0.012)
+        torsoPatch(.lowerBack, lower, a: 166, half: 14, y0: 0.04, y1: 0.25, h: 0.011)
+        for (y0, y1) in [(Float(0.03), Float(0.085)), (0.09, 0.145), (0.15, 0.205), (0.21, 0.258)] {
+            torsoPatch(.abs, lower, a: 9, half: 8.5, y0: y0, y1: y1, h: 0.009)
         }
-        attachTorsoMuscle(.obliques, kind: .lowerTorso, x: 0.118, y: 0.150, z: 0.010, radii: SIMD3(0.030, 0.090, 0.068))
-        attachTorsoMuscle(.glutes, kind: .lowerTorso, x: 0.068, y: -0.030, z: -0.082, radii: SIMD3(0.066, 0.068, 0.040))
-        attachTorsoMuscle(.hipFlexors, kind: .lowerTorso, x: 0.078, y: 0.0, z: 0.080, radii: SIMD3(0.036, 0.062, 0.028))
+        torsoPatch(.obliques, lower, a: 56, half: 24, y0: 0.05, y1: 0.255, h: 0.010, taper: (0.8, 1))
+        torsoPatch(.glutes, lower, a: 142, half: 38, y0: -0.105, y1: 0.03, h: 0.018, taper: (0.8, 1))
+        torsoPatch(.hipFlexors, lower, a: 36, half: 18, y0: -0.07, y1: 0.03, h: 0.009)
     }
 
     // MARK: Posing

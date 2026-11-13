@@ -84,6 +84,27 @@ final class GuideRendererTests: XCTestCase {
         }
     }
 
+    func testFramingFillsTheStageForStandingLyingSeatedAndHanging() throws {
+        let aspect = CameraFraming.stageAspect
+        for name in ["Barbell Squat", "Barbell Bench Press", "Leg Extension", "Pull-Up"] {
+            let m = try motion(name)
+            let points = CameraFraming.samplePoints(of: m)
+            for preset in GuideCameraPreset.allCases {
+                let r = CameraFraming.frame(points: points, preset: preset, focusHeight: m.focusHeight, aspect: aspect)
+                let fill = CameraFraming.fillFraction(points: points, result: r, aspect: aspect)
+                XCTAssertGreaterThan(fill, 0.78, "\(name) \(preset) fill \(fill)")
+                XCTAssertLessThan(fill, 0.92, "\(name) \(preset) fill \(fill)")
+            }
+        }
+    }
+
+    func testTallEquipmentDoesNotDriveFraming() throws {
+        let m = try motion("Barbell Squat")
+        let points = CameraFraming.samplePoints(of: m)
+        // Rack uprights reach 1.3+ m; framing points stay within the figure + bar envelope.
+        XCTAssertLessThan(points.map(\.y).max() ?? 0, 2.1)
+    }
+
     // MARK: Props
 
     func testPropNodeCountsAndReuse() {
@@ -167,5 +188,31 @@ final class GuideRendererTests: XCTestCase {
         for group in MuscleGroup.allCases {
             XCTAssertGreaterThanOrEqual(mannequin.muscleShapeCounts[group] ?? 0, 2, "\(group) needs both sides")
         }
+    }
+}
+
+final class GuideProjectionCalibrationTests: XCTestCase {
+    func testSceneKitProjectionMatchesFramingMath() throws {
+        let device = try XCTUnwrap(MTLCreateSystemDefaultDevice())
+        let c = GuideSceneController(startsPlaying: false)
+        c.updateAspect(CameraFraming.stageAspect)
+        let m = try XCTUnwrap(ExerciseMotionLibrary.all.first { $0.exerciseName == "Barbell Bench Press" })
+        c.load(motion: m, animatedHighlight: false)
+        c.setCamera(.side, animated: false)
+        let r = SCNRenderer(device: device, options: nil)
+        r.scene = c.scene
+        r.pointOfView = c.cameraNode
+        let size = CGSize(width: 640, height: 400)
+        _ = r.snapshot(atTime: 0, with: size, antialiasingMode: .none)
+        let pts = CameraFraming.samplePoints(of: m)
+        var lo = SIMD2<Float>(repeating: .greatestFiniteMagnitude), hi = SIMD2<Float>(repeating: -.greatestFiniteMagnitude)
+        for p in pts {
+            let q = r.projectPoint(SCNVector3(p.x, p.y, p.z))
+            lo = simd_min(lo, SIMD2(q.x, q.y)); hi = simd_max(hi, SIMD2(q.x, q.y))
+        }
+        print("PROJ extents px:", hi.x - lo.x, hi.y - lo.y, "of", size.width, size.height, "fov", c.cameraNode.camera?.fieldOfView ?? 0)
+        let fill = max(Float(hi.x - lo.x) / Float(size.width), Float(hi.y - lo.y) / Float(size.height))
+        XCTAssertGreaterThan(fill, 0.78, "real SceneKit fill \(fill)")
+        XCTAssertLessThan(fill, 0.92, "real SceneKit fill \(fill)")
     }
 }

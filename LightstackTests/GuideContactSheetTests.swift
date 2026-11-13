@@ -8,7 +8,7 @@ import UIKit
 /// GUIDE_SHEETS_FILTER limits it to exercises whose id or name contains the text; GUIDE_SHEETS_DARK=0 renders light.
 final class GuideContactSheetTests: XCTestCase {
 
-    private var tile: CGFloat = 360
+    private var tile: CGFloat = 540
     private let headerHeight: CGFloat = 64
 
     func testRenderContactSheets() throws {
@@ -18,7 +18,7 @@ final class GuideContactSheetTests: XCTestCase {
         let dark = env["GUIDE_SHEETS_DARK"] != "0"
         if let t = env["GUIDE_SHEETS_TILE"].flatMap({ Double($0) }) { tile = CGFloat(t) }
 
-        let dir = URL(fileURLWithPath: "/tmp/guide-sheets", isDirectory: true)
+        let dir = URL(fileURLWithPath: env["GUIDE_SHEETS_DIR"] ?? "/tmp/guide-sheets", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let device = try XCTUnwrap(MTLCreateSystemDefaultDevice(), "No Metal device")
@@ -27,6 +27,7 @@ final class GuideContactSheetTests: XCTestCase {
         renderer.scene = controller.scene
         renderer.pointOfView = controller.cameraNode
         renderer.autoenablesDefaultLighting = false
+        controller.updateAspect(CameraFraming.stageAspect)
 
         let angles = ExerciseMotionLibrary.all.map { GuideMotionDebug.describe($0) }.joined(separator: "\n")
         try angles.write(to: dir.appendingPathComponent("angles.txt"), atomically: true, encoding: .utf8)
@@ -39,10 +40,11 @@ final class GuideContactSheetTests: XCTestCase {
             try autoreleasepool {
                 controller.load(motion: motion, animatedHighlight: false)
                 let tiles: [(GuideCameraPreset, Float, String)] = [
-                    (.side, 0, "SIDE  0.00"), (.side, 0.25, "SIDE  0.25"), (.side, 0.5, "SIDE  0.50"),
-                    (.front, 0.5, "FRONT  0.50"), (.threeQuarter, 0, "3/4  0.00"), (.threeQuarter, 0.5, "3/4  0.50")
+                    (.side, 0, "SIDE  0.00"), (.side, 0.5, "SIDE  0.50"),
+                    (.front, 0.5, "FRONT  0.50"), (.back, 0.5, "BACK  0.50"), (.threeQuarter, 0, "3/4  0.00"), (.threeQuarter, 0.5, "3/4  0.50")
                 ]
-                let size = CGSize(width: tile * 3, height: headerHeight + tile * 2)
+                let tileH = (tile / CGFloat(CameraFraming.stageAspect)).rounded()
+                let size = CGSize(width: tile * 2, height: headerHeight + tileH * 3)
                 let format = UIGraphicsImageRendererFormat()
                 format.scale = 1
                 let image = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
@@ -55,9 +57,9 @@ final class GuideContactSheetTests: XCTestCase {
                     for (i, t) in tiles.enumerated() {
                         controller.setProgress(t.1)
                         controller.setCamera(t.0, animated: false)
-                        let snap = renderer.snapshot(atTime: 0, with: CGSize(width: tile, height: tile), antialiasingMode: .multisampling4X)
-                        let origin = CGPoint(x: CGFloat(i % 3) * tile, y: headerHeight + CGFloat(i / 3) * tile)
-                        snap.draw(in: CGRect(origin: origin, size: CGSize(width: tile, height: tile)))
+                        let snap = renderer.snapshot(atTime: 0, with: CGSize(width: tile, height: tileH), antialiasingMode: .multisampling4X)
+                        let origin = CGPoint(x: CGFloat(i % 2) * tile, y: headerHeight + CGFloat(i / 2) * tileH)
+                        snap.draw(in: CGRect(origin: origin, size: CGSize(width: tile, height: tileH)))
                         (t.2 as NSString).draw(at: CGPoint(x: origin.x + 8, y: origin.y + 6),
                                                withAttributes: [.font: UIFont.boldSystemFont(ofSize: 14), .foregroundColor: UIColor(white: 0.7, alpha: 1)])
                     }

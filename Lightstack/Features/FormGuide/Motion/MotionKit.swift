@@ -155,6 +155,23 @@ enum Props {
          box(V3(x, pulleyY, z), V3(0.10, 0.10, 0.10), simd_quatf(angle: 0, axis: V3(0, 1, 0)), .frame)]
     }
 
+    /// Bicycle wheel in the Y-Z plane: tyre ring, hub and spokes built from thin rods.
+    static func spokedWheel(center: V3, radius: Float, segments: Int = 28, spokes: Int = 8) -> [GuideProp] {
+        var out: [GuideProp] = []
+        func pt(_ i: Int, _ r: Float) -> V3 {
+            let a = Float(i) / Float(segments) * 2 * .pi
+            return center + V3(0, r * sin(a), r * cos(a))
+        }
+        for i in 0..<segments { out.append(rod(pt(i, radius), pt(i + 1, radius), 0.016, .frame)) }
+        for i in 0..<segments where i % 2 == 0 { out.append(rod(pt(i, radius * 0.93), pt(i + 1, radius * 0.93), 0.006, .pad)) }
+        for k in 0..<spokes {
+            let i = k * segments / spokes
+            out.append(rod(center, pt(i, radius * 0.95), 0.004, .frame))
+        }
+        out.append(.cylinder(from: center + V3(0.03, 0, 0), to: center + V3(-0.03, 0, 0), radius: 0.035, kind: .frame))
+        return out
+    }
+
     static func floorMat(center: V3 = V3(0, 0.01, 0), size: SIMD2<Float> = SIMD2<Float>(0.9, 2.0)) -> GuideProp {
         .mat(center: center, size: size)
     }

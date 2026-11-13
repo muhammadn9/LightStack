@@ -22,6 +22,8 @@ enum Rigs {
         let py = pelvisY ?? (incline < -5 ? 0.80 : 0.55)
         s.pelvis = V3(0, py, 0)
         s.pelvisPitch = theta
+        // Shoulder blades pinched back into the pad: the shoulder joints sit lower than the chest line.
+        if incline < 5 { s.shoulderLift = -0.05 }
         if abs(incline) < 5 {
             // Slight arch: lift the mid back a little while shoulders and hips stay on the pad.
             s.spineLower = 0.08

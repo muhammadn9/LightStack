@@ -48,6 +48,8 @@ enum CameraFraming {
     }
 
     static let fieldOfView: Float = 35
+    /// Typical width / height of the 3D view inside the stage (contact sheets and tests use it).
+    static let stageAspect: Float = 1.6
     static let elevationDegrees: Float = 11
 
     /// Direction from the target towards the camera (unit).
@@ -63,7 +65,9 @@ enum CameraFraming {
         return SIMD3(sin(a) * cos(e), sin(e), cos(a) * cos(e))
     }
 
-    /// Points covering the figure (with body thickness) and props over sampled frames of the motion.
+    /// Points that drive the framing over sampled frames: the figure's joints (with body thickness), held equipment
+    /// (bars, dumbbells, handles) and the support the body touches (pads, seats, platforms, mats).
+    /// Racks, cable towers, machine frames and weight stacks are left out so they never shrink the figure (they may be cropped).
     static func samplePoints(of motion: ExerciseGuideMotion, samples: Int = 24) -> [SIMD3<Float>] {
         var out: [SIMD3<Float>] = []
         func add(_ p: SIMD3<Float>, pad: Float) {
@@ -73,14 +77,19 @@ enum CameraFraming {
                 out.append(p + axis * pad); out.append(p - axis * pad)
             }
         }
-        // Tall equipment (cable towers, racks) must not shrink the figure: prop points are capped just above the figure.
-        var figureTop: Float = 0
         let frames = (0...samples).map { motion.frame(at: Float($0) / Float(samples)) }
-        for frame in frames { for j in GuideJoint.allCases { figureTop = max(figureTop, frame.pose.position(j).y + 0.12) } }
-        let cap = figureTop + 0.25
         for frame in frames {
-            for joint in GuideJoint.allCases { add(frame.pose.position(joint), pad: joint == .head ? 0.13 : 0.07) }
-            for prop in frame.props { addPoints(of: prop) { p, pad in add(SIMD3(p.x, min(p.y, cap), p.z), pad: pad) } }
+            for joint in GuideJoint.allCases {
+                let pad: Float
+                switch joint {
+                case .head: pad = 0.12
+                case .leftToe, .rightToe, .leftAnkle, .rightAnkle: pad = 0.05
+                case .pelvis, .spineMid, .chest: pad = 0.13
+                default: pad = 0.07
+                }
+                add(frame.pose.position(joint), pad: pad)
+            }
+            for prop in frame.props { addPoints(of: prop, add) }
         }
         add(SIMD3(0, 0, 0), pad: 0.05)
         return out
@@ -90,38 +99,60 @@ enum CameraFraming {
         switch prop {
         case let .barbell(center, axis, length, plate):
             let a = FigureSolver.safeNormalize(axis, fallback: SIMD3(1, 0, 0))
-            add(center + a * (length / 2), max(plate, 0.03))
-            add(center - a * (length / 2), max(plate, 0.03))
+            let half = min(length / 2, 0.85)
+            add(center + a * half, max(plate, 0.03))
+            add(center - a * half, max(plate, 0.03))
         case let .ezBar(center, axis):
             let a = FigureSolver.safeNormalize(axis, fallback: SIMD3(1, 0, 0))
-            add(center + a * 0.5, 0.1)
-            add(center - a * 0.5, 0.1)
-        case let .dumbbell(center, _): add(center, 0.15)
-        case let .kettlebell(center): add(center, 0.2)
-        case let .cable(from, to): add(from, 0.02); add(to, 0.02)
+            add(center + a * 0.4, 0.06)
+            add(center - a * 0.4, 0.06)
+        case let .dumbbell(center, _): add(center, 0.1)
+        case let .kettlebell(center): add(center, 0.14)
+        case .cable: break
         case let .handle(center, axis, length):
             let a = FigureSolver.safeNormalize(axis, fallback: SIMD3(1, 0, 0))
             add(center + a * (length / 2), 0.03); add(center - a * (length / 2), 0.03)
-        case let .box(center, size, rotation, _):
+        case let .box(center, size, rotation, kind):
+            guard kind == .pad || kind == .platform else { return }
             for sx: Float in [-0.5, 0.5] { for sy: Float in [-0.5, 0.5] { for sz: Float in [-0.5, 0.5] {
                 add(center + rotation.act(SIMD3(size.x * sx, size.y * sy, size.z * sz)), 0)
             } } }
-        case let .cylinder(from, to, radius, _): add(from, radius); add(to, radius)
+        case let .cylinder(from, to, radius, kind):
+            guard kind == .pad || kind == .platform else { return }
+            add(from, radius); add(to, radius)
         case let .mat(center, size):
             add(center + SIMD3(size.x / 2, 0, size.y / 2), 0); add(center - SIMD3(size.x / 2, 0, size.y / 2), 0)
         }
     }
 
-    /// Camera that frames the whole bounding box from `preset`, looking near `focusHeight`.
+    /// Fraction (0...1+) of the view's limiting dimension that `points` occupy when seen through `result`.
+    static func fillFraction(points: [SIMD3<Float>], result: Result, aspect: Float,
+                             fieldOfViewDegrees: Float = fieldOfView) -> Float {
+        let forward = simd_normalize(result.target - result.position)
+        let right = simd_normalize(simd_cross(forward, SIMD3(0, 1, 0)))
+        let up = simd_cross(right, forward)
+        let ky = tan(fieldOfViewDegrees * .pi / 360), kx = ky * aspect
+        var lx: Float = .greatestFiniteMagnitude, hx: Float = -.greatestFiniteMagnitude
+        var ly = lx, hy = hx
+        for p in points {
+            let d = p - result.position
+            let z = max(simd_dot(d, forward), 0.05)
+            let nx = simd_dot(d, right) / z / kx, ny = simd_dot(d, up) / z / ky
+            lx = min(lx, nx); hx = max(hx, nx); ly = min(ly, ny); hy = max(hy, ny)
+        }
+        return max(hx - lx, hy - ly) / 2
+    }
+
+    /// Fraction of the view the framed content should fill along its limiting dimension.
+    static let targetFill: Float = 0.85
+
+    /// Camera that frames all `points` from `preset` so they fill about `targetFill` of the limiting dimension, centred.
     static func frame(points: [SIMD3<Float>], preset: GuideCameraPreset, focusHeight: Float,
-                      aspect: Float, fieldOfViewDegrees: Float = fieldOfView, margin: Float = 1.08) -> Result {
+                      aspect: Float, fieldOfViewDegrees: Float = fieldOfView, margin: Float = 1 / targetFill) -> Result {
         var lo = SIMD3<Float>(repeating: .greatestFiniteMagnitude), hi = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
         for p in points { lo = simd_min(lo, p); hi = simd_max(hi, p) }
         if points.isEmpty { lo = .zero; hi = SIMD3(0, 1.8, 0) }
-        let centre = (lo + hi) / 2
-        let height = hi.y - lo.y
-        let focusY = min(max(focusHeight, centre.y - 0.15 * height), centre.y + 0.15 * height)
-        let target = SIMD3(centre.x, focusY, centre.z)
+        var target = (lo + hi) / 2
         let toCamera = direction(for: preset)
         let forward = -toCamera
         let right = simd_normalize(simd_cross(forward, SIMD3(0, 1, 0)))
@@ -129,12 +160,26 @@ enum CameraFraming {
         let ky = tan(fieldOfViewDegrees * .pi / 360)
         let kx = ky * max(aspect, 0.2)
         var distance: Float = 1.2
-        for p in points {
-            let d = p - target
-            let depth = simd_dot(d, forward)
-            let needX = abs(simd_dot(d, right)) * margin / kx - depth
-            let needY = abs(simd_dot(d, up)) * margin / ky - depth
-            distance = max(distance, needX, needY)
+        for _ in 0..<4 {
+            distance = 1.2
+            for p in points {
+                let d = p - target
+                let depth = simd_dot(d, forward)
+                let needX = abs(simd_dot(d, right)) * margin / kx - depth
+                let needY = abs(simd_dot(d, up)) * margin / ky - depth
+                distance = max(distance, needX, needY)
+            }
+            // Re-centre on the projected extents (perspective shifts the visual centre).
+            let cam = target + toCamera * distance
+            var lx: Float = .greatestFiniteMagnitude, hx: Float = -.greatestFiniteMagnitude
+            var ly = lx, hy = hx
+            for p in points {
+                let d = p - cam
+                let z = max(simd_dot(d, forward), 0.05)
+                let nx = simd_dot(d, right) / z, ny = simd_dot(d, up) / z
+                lx = min(lx, nx); hx = max(hx, nx); ly = min(ly, ny); hy = max(hy, ny)
+            }
+            target += right * ((lx + hx) / 2 * distance) + up * ((ly + hy) / 2 * distance)
         }
         return Result(position: target + toCamera * distance, target: target, distance: distance)
     }
@@ -179,6 +224,7 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
     private var samplePoints: [SIMD3<Float>] = []
     private var floorNode = SCNNode()
     private var shadowFloorNode = SCNNode()
+    private var rimNodes: [SCNNode] = []
 
     var isPlaying: Bool {
         didSet { if oldValue != isPlaying { lastRenderTime = nil; syncView() } }
@@ -214,9 +260,14 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         scene.background.contents = appearance.background
         scene.lightingEnvironment.contents = Self.environmentImage()
         scene.lightingEnvironment.intensity = 0.55
+        // Distance fog in the background colour fades the floor and grid out, so there is no visible horizon edge.
+        scene.fogColor = appearance.background
+        scene.fogStartDistance = 4.6
+        scene.fogEndDistance = 8.5
+        scene.fogDensityExponent = 1.4
 
         floorNode = SCNNode()
-        let plane = SCNPlane(width: 14, height: 14)
+        let plane = SCNPlane(width: 24, height: 24)
         let floorMat = SCNMaterial()
         floorMat.lightingModel = .constant
         floorMat.diffuse.contents = Self.floorTexture(background: appearance.background, dark: appearance.isDark)
@@ -230,7 +281,7 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         floorNode.name = "floor"
         scene.rootNode.addChildNode(floorNode)
 
-        let shadowPlane = SCNPlane(width: 14, height: 14)
+        let shadowPlane = SCNPlane(width: 24, height: 24)
         let shadowMat = SCNMaterial()
         shadowMat.lightingModel = .shadowOnly
         shadowMat.writesToDepthBuffer = false
@@ -252,6 +303,7 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         cameraNode.camera = camera
         cameraNode.name = "camera"
         scene.rootNode.addChildNode(cameraNode)
+        rimNodes.forEach { cameraNode.addChildNode($0) }
         cameraNode.simdPosition = SIMD3(-3, 1.4, 2)
         cameraNode.simdLook(at: SIMD3(0, 0.9, 0), up: SIMD3(0, 1, 0), localFront: SIMD3(0, 0, -1))
     }
@@ -285,11 +337,19 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         fill.temperature = 8200
         scene.rootNode.addChildNode(node(fill, from: SIMD3(3.0, 1.8, 2.2), name: "fill"))
 
-        let rim = SCNLight()
-        rim.type = .directional
-        rim.intensity = 700
-        rim.temperature = 7400
-        scene.rootNode.addChildNode(node(rim, from: SIMD3(1.4, 3.0, -3.2), name: "rim"))
+        // Rim lights ride with the camera and shine from behind the figure towards it, so the silhouette separates
+        // from the background from every angle.
+        for (i, dir) in [SIMD3<Float>(-0.55, -0.30, 0.78), SIMD3<Float>(0.55, -0.25, 0.80)].enumerated() {
+            let rim = SCNLight()
+            rim.type = .directional
+            rim.intensity = i == 0 ? 900 : 650
+            rim.temperature = 7600
+            let n = SCNNode()
+            n.light = rim
+            n.name = "rim\(i)"
+            n.simdLook(at: dir, up: SIMD3(0, 1, 0), localFront: SIMD3(0, 0, -1))
+            rimNodes.append(n)
+        }
 
         let ambient = SCNLight()
         ambient.type = .ambient
@@ -330,14 +390,14 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         background.getRed(&r, green: &g, blue: &b, alpha: &a)
         let inner = UIColor(red: min(max(r + lighten, 0), 1), green: min(max(g + lighten, 0), 1),
                             blue: min(max(b + lighten * 1.1, 0), 1), alpha: 1)
-        let line = dark ? UIColor(white: 1, alpha: 0.07) : UIColor(white: 0, alpha: 0.07)
+        let line = dark ? UIColor(white: 1, alpha: 0.055) : UIColor(white: 0, alpha: 0.06)
         return renderer.image { ctx in
             let cg = ctx.cgContext
             background.setFill()
             cg.fill(CGRect(x: 0, y: 0, width: side, height: side))
-            // Grid every 0.5 m (14 m plane over 1024 px).
-            let step = side / 28
-            cg.setLineWidth(1.4)
+            // Grid every 0.5 m (24 m plane over 1024 px).
+            let step = side / 48
+            cg.setLineWidth(1.2)
             line.setStroke()
             var x: CGFloat = 0
             while x <= side {
@@ -360,6 +420,7 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         guard new != appearance else { return }
         appearance = new
         scene.background.contents = new.background
+        scene.fogColor = new.background
         floorNode.geometry?.firstMaterial?.diffuse.contents = Self.floorTexture(background: new.background, dark: new.isDark)
         mannequin.setPalette(.make(dark: new.isDark))
     }
@@ -429,27 +490,54 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         if motion != nil { setCamera(cameraPreset, animated: false) }
     }
 
+    // Orbit state relative to the preset framing (the controller owns the camera; SceneKit's own camera control is off).
+    private var presetDistance: Float = 4
+    private var orbitAzimuth: Float = 0
+    private var orbitElevation: Float = 0
+    private var zoom: Float = 1
+
     func setCamera(_ preset: GuideCameraPreset, animated: Bool) {
         cameraPreset = preset
         let focus = motion?.focusHeight ?? 0.9
         let framing = CameraFraming.frame(points: samplePoints, preset: preset, focusHeight: focus, aspect: viewAspect)
         cameraTarget = framing.target
+        presetDistance = framing.distance
+        orbitAzimuth = 0; orbitElevation = 0; zoom = 1
         minDistance = max(framing.distance * 0.45, 0.9)
         maxDistance = framing.distance * 2.2
-        let orientation = Self.lookOrientation(from: framing.position, to: framing.target)
+        placeCamera(animated: animated)
+    }
+
+    /// Turntable orbit by screen-space deltas (radians).
+    func orbit(deltaAzimuth: Float, deltaElevation: Float) {
+        orbitAzimuth += deltaAzimuth
+        orbitElevation = min(max(orbitElevation + deltaElevation, -0.3), 1.2)
+        placeCamera(animated: false)
+    }
+
+    func pinch(scale: Float) {
+        guard scale.isFinite, scale > 0 else { return }
+        zoom = min(max(zoom / scale, 0.45), 2.2)
+        placeCamera(animated: false)
+    }
+
+    private func placeCamera(animated: Bool) {
+        let d = CameraFraming.direction(for: cameraPreset)
+        let az = atan2(d.x, d.z) + orbitAzimuth
+        let el = min(max(asin(d.y) + orbitElevation, 0.02), 1.3)
+        let dir = SIMD3<Float>(sin(az) * cos(el), sin(el), cos(az) * cos(el))
+        let pos = cameraTarget + dir * (presetDistance * zoom)
+        let orientation = Self.lookOrientation(from: pos, to: cameraTarget)
         if animated {
             SCNTransaction.begin()
             SCNTransaction.animationDuration = 0.45
             SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            cameraNode.simdPosition = framing.position
+            cameraNode.simdPosition = pos
             cameraNode.simdOrientation = orientation
             SCNTransaction.commit()
         } else {
-            cameraNode.simdPosition = framing.position
+            cameraNode.simdPosition = pos
             cameraNode.simdOrientation = orientation
-        }
-        if let view = attachedView {
-            view.defaultCameraController.target = SCNVector3(framing.target.x, framing.target.y, framing.target.z)
         }
     }
 
@@ -478,25 +566,5 @@ final class GuideSceneController: NSObject, SCNSceneRendererDelegate {
         let dt = lastRenderTime.map { min(max(time - $0, 0), 0.1) } ?? 0
         lastRenderTime = time
         if isPlaying, dt > 0 { advance(by: dt) }
-        clampCameraDistance()
-    }
-
-    /// Keeps pinch zoom within sensible limits and the camera above the floor.
-    private func clampCameraDistance() {
-        let target = cameraTarget
-        let pos = cameraNode.simdWorldPosition
-        let offset = pos - target
-        let dist = simd_length(offset)
-        guard dist > 1e-4 else { return }
-        var clamped = min(max(dist, minDistance), maxDistance)
-        var newPos = target + offset / dist * clamped
-        if newPos.y < 0.12 {
-            newPos.y = 0.12
-            clamped = simd_length(newPos - target)
-        }
-        if abs(clamped - dist) > 1e-3 || newPos.y != pos.y {
-            cameraNode.simdWorldPosition = newPos
-            cameraNode.simdOrientation = Self.lookOrientation(from: newPos, to: target)
-        }
     }
 }

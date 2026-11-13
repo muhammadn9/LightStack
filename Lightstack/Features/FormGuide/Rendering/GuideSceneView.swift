@@ -1,6 +1,15 @@
 import SwiftUI
 import SceneKit
 
+/// SCNView that reports its size after every layout pass, so the camera framing always uses the real aspect ratio.
+final class GuideSCNView: SCNView {
+    var onLayout: ((CGSize) -> Void)?
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?(bounds.size)
+    }
+}
+
 /// SceneKit view for a `GuideSceneController`: turntable orbit, pinch zoom, double-tap to reset the camera preset.
 struct GuideSceneView: UIViewRepresentable {
     let controller: GuideSceneController
@@ -11,7 +20,11 @@ struct GuideSceneView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
 
     func makeUIView(context: Context) -> SCNView {
-        let view = SCNView(frame: .zero)
+        let view = GuideSCNView(frame: .zero)
+        let controller = self.controller
+        view.onLayout = { size in
+            if size.width > 1, size.height > 1 { controller.updateAspect(Float(size.width / size.height)) }
+        }
         view.scene = controller.scene
         view.pointOfView = controller.cameraNode
         view.delegate = controller
@@ -20,21 +33,15 @@ struct GuideSceneView: UIViewRepresentable {
         view.isJitteringEnabled = true
         view.autoenablesDefaultLighting = false
         view.backgroundColor = controller.appearance.background
-        view.allowsCameraControl = true
-        let cc = view.defaultCameraController
-        cc.interactionMode = .orbitTurntable
-        cc.inertiaEnabled = true
-        cc.minimumVerticalAngle = 1
-        cc.maximumVerticalAngle = 80
-        cc.target = SCNVector3(controller.cameraTarget.x, controller.cameraTarget.y, controller.cameraTarget.z)
+        view.allowsCameraControl = false
         let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap))
         doubleTap.numberOfTapsRequired = 2
         doubleTap.delegate = context.coordinator
         view.addGestureRecognizer(doubleTap)
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.interacted(_:)))
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
         pan.delegate = context.coordinator
         view.addGestureRecognizer(pan)
-        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.interacted(_:)))
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pinch(_:)))
         pinch.delegate = context.coordinator
         view.addGestureRecognizer(pinch)
         controller.attachedView = view
@@ -67,6 +74,19 @@ struct GuideSceneView: UIViewRepresentable {
 
         @objc func interacted(_ g: UIGestureRecognizer) {
             if g.state == .began { onInteraction?() }
+        }
+
+        @objc func pan(_ g: UIPanGestureRecognizer) {
+            if g.state == .began { onInteraction?() }
+            let t = g.translation(in: g.view)
+            g.setTranslation(.zero, in: g.view)
+            controller.orbit(deltaAzimuth: -Float(t.x) * 0.012, deltaElevation: Float(t.y) * 0.008)
+        }
+
+        @objc func pinch(_ g: UIPinchGestureRecognizer) {
+            if g.state == .began { onInteraction?() }
+            controller.pinch(scale: Float(g.scale))
+            g.scale = 1
         }
 
         @objc func doubleTap() { controller.setCamera(controller.cameraPreset, animated: true) }

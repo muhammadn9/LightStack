@@ -222,8 +222,11 @@ enum CardioLibrary {
                 Props.rod(V3(0, 0.95, 0.55), V3(0, 1.06, 0.50), 0.025),
                 Props.rod(V3(-0.22, 1.06, 0.50), V3(0.22, 1.06, 0.50), 0.015)
             ]
-            props.append(.cylinder(from: V3(0.04, 0.34, 0.80), to: V3(-0.04, 0.34, 0.80), radius: 0.34, kind: .frame))
-            props.append(.cylinder(from: V3(0.04, 0.34, -0.55), to: V3(-0.04, 0.34, -0.55), radius: 0.34, kind: .frame))
+            props.append(contentsOf: Props.spokedWheel(center: V3(0, 0.34, 0.80), radius: 0.34))
+            props.append(contentsOf: Props.spokedWheel(center: V3(0, 0.34, -0.55), radius: 0.34))
+            // Forks and frame stays to the hubs.
+            props.append(Props.rod(V3(0, 0.34, 0.80), V3(0, 0.95, 0.55), 0.02))
+            props.append(Props.rod(V3(0, 0.34, -0.55), V3(0, 0.30, 0.18), 0.02))
             return makeFrame(s, props)
         }
     }
@@ -258,18 +261,21 @@ enum CardioLibrary {
             let hand = V3(0.32, 1.02 + 0.07 * sin(ang), 0.10 + 0.07 * cos(ang))
             s.leftArm = .reach(hand: hand, pole: V3(0.3, -1, -0.2), handDir: nil)
             s.rightArm = .reach(hand: mirrorX(hand), pole: V3(-0.3, -1, -0.2), handDir: nil)
-            // Rope: a loop swinging around the body, drawn as short taut segments.
-            var props: [GuideProp] = []
-            let n = 20
+            // Rope: a smooth loop swinging around the body between the two handles.
+            var props: [GuideProp] = [
+                .handle(center: hand, axis: V3(0, 1, 0), length: 0.14),
+                .handle(center: mirrorX(hand), axis: V3(0, 1, 0), length: 0.14)
+            ]
+            let n = 40
             let centre = V3(0, 1.0, 0.0)
             let psi0 = ang + .pi
             var prev = hand
             for k in 1...n {
                 let u = Float(k) / Float(n)
-                let psi = psi0 + (1 - 2 * u) * (Float.pi - 0.35)
-                let radius = 0.95 * pow(sin(.pi * u), 0.35)
+                let psi = psi0 + (1 - 2 * u) * (Float.pi - 0.2)
+                let radius = 0.95 * pow(sin(.pi * u), 0.5)
                 let x = 0.32 * cos(.pi * u)
-                let p = V3(x, centre.y + radius * cos(psi) , centre.z + radius * sin(psi))
+                let p = V3(x, centre.y + radius * cos(psi), centre.z + radius * sin(psi))
                 let end = k == n ? mirrorX(hand) : p
                 props.append(.cable(from: prev, to: end))
                 prev = end

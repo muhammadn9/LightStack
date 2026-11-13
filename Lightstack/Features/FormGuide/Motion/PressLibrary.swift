@@ -7,7 +7,7 @@ enum PressLibrary {
     static func all() -> [ExerciseGuideMotion] {
         var out: [ExerciseGuideMotion] = []
         out.append(lyingPress(name: "Barbell Bench Press", id: "barbell-bench-press", incline: 0, dumbbells: false,
-                              halfGrip: 0.35, template: .benchPress,
+                              halfGrip: 0.37, template: .benchPress,
                               muscles: ([.chest], [.frontDelts, .triceps]),
                               setup: ["Lie back so your eyes sit under the bar and plant your feet flat.",
                                       "Pull your shoulder blades together and keep a slight arch.",
@@ -106,8 +106,8 @@ enum PressLibrary {
         traits.drivingJoint = .leftWrist
         let rig = Rigs.lying(incline: incline)
         let close = halfGrip < 0.2 && !dumbbells
-        let bottom = rig.chest + rig.front * 0.135 - rig.up * (close ? 0.24 : (incline > 10 ? 0.15 : 0.18))
-        let top = V3(0, rig.chest.y + 0.62, rig.chest.z + (incline > 10 ? -0.04 : 0.0))
+        let bottom = rig.chest + rig.front * 0.135 - rig.up * (close ? 0.24 : (incline > 10 ? 0.16 : 0.21))
+        let top = V3(0, rig.chest.y + (incline < 5 ? 0.575 : 0.62), rig.chest.z + (incline > 10 ? -0.04 : 0.0))
         let axisAngle = Ease.rad(incline > 10 ? 35 : 8)
         return motion(name, id: id, duration: 4.2,
                       phases: [(0, "Arms locked out"), (0.5, "Bar at chest")],

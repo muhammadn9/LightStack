@@ -158,11 +158,11 @@ enum SquatLibrary {
             s.rightArm = .reach(hand: V3(-hand.x, hand.y, hand.z), pole: V3(-0.5, -1, -0.2), handDir: V3(0, 0, 1))
             let up = base.pelvisRotation.act(V3(0, 1, 0))
             let front = base.pelvisRotation.act(V3(0, 0, 1))
-            let padCenter = s.pelvis + up * 0.30 - front * 0.14
+            let padCenter = s.pelvis + up * 0.24 - front * 0.14
             var props: [GuideProp] = [
-                Props.box(padCenter, V3(0.40, 0.95, 0.08), base.pelvisRotation),
-                Props.box(chest + rot.act(V3(0.19, 0.10, -0.02)), V3(0.14, 0.10, 0.18), rot, .pad),
-                Props.box(chest + rot.act(V3(-0.19, 0.10, -0.02)), V3(0.14, 0.10, 0.18), rot, .pad),
+                Props.box(padCenter, V3(0.40, 0.78, 0.08), base.pelvisRotation),
+                Props.box(chest + rot.act(V3(0.27, 0.0, -0.03)), V3(0.12, 0.08, 0.16), rot, .pad),
+                Props.box(chest + rot.act(V3(-0.27, 0.0, -0.03)), V3(0.12, 0.08, 0.16), rot, .pad),
                 Props.box(V3(0, 0.03, 0.15), V3(0.80, 0.06, 0.55), simd_quatf(angle: 0, axis: V3(0, 1, 0)), .platform),
                 Props.rod(V3(0.38, 0.0, -0.75), V3(0.38, 1.9, -1.2), 0.035),
                 Props.rod(V3(-0.38, 0.0, -0.75), V3(-0.38, 1.9, -1.2), 0.035),
@@ -211,10 +211,10 @@ enum SquatLibrary {
             s.rightArm = .reach(hand: pelvis + V3(-0.30, 0.12, 0.12), pole: V3(-0.5, 0, -1), handDir: nil)
             let base = FigureSolver.solve(s)
             var props = Props.backSupport(pelvis: pelvis, pelvisRot: base.pelvisRotation, length: 0.95, width: 0.40)
-            let plateCenter = V3(0, a.y, a.z) + u * 0.10
-            props.append(Props.box(plateCenter, V3(0.70, 0.55, 0.04), Props.orient(y: w, zHint: u), .platform))
-            props.append(Props.rod(V3(0.38, 0.02, -0.55) , V3(0.38, plateCenter.y + 0.2, plateCenter.z + 0.2), 0.03))
-            props.append(Props.rod(V3(-0.38, 0.02, -0.55), V3(-0.38, plateCenter.y + 0.2, plateCenter.z + 0.2), 0.03))
+            let plateCenter = V3(0, a.y, a.z) + u * 0.10 + w * 0.08
+            props.append(Props.box(plateCenter, V3(0.74, 0.80, 0.04), Props.orient(y: w, zHint: u), .platform))
+            props.append(Props.rod(V3(0.38, 0.02, -0.55) , V3(0.38, plateCenter.y + 0.2, plateCenter.z + 0.2), 0.018))
+            props.append(Props.rod(V3(-0.38, 0.02, -0.55), V3(-0.38, plateCenter.y + 0.2, plateCenter.z + 0.2), 0.018))
             props.append(Props.box(V3(0, 0.55, 0.95), V3(0.5, 0.5, 0.3), simd_quatf(angle: 0, axis: V3(0, 1, 0)), .weightStack))
             return makeFrame(s, props)
         }
