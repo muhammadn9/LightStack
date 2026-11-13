@@ -607,7 +607,9 @@ final class UITestFakeAIProvider: AIProvider {
     ) {
         let last = messages.last?.content ?? ""
         let reply: String
-        if last.contains("completed sets") {
+        if options.task == .formFeedback {
+            reply = Self.formFeedbackJSON
+        } else if last.contains("completed sets") {
             // The merged post-workout call: progression note + rolling summary.
             reply = Self.postWorkoutJSON
         } else if expectsJSON {
@@ -623,6 +625,16 @@ final class UITestFakeAIProvider: AIProvider {
         }
         DispatchQueue.main.async { completion(.success(reply)) }
     }
+
+    static let formFeedbackJSON = """
+    {"verdict": "Steady set with a clear range, but the last reps got shorter.",
+     "positives": ["Smooth, controlled lowering"],
+     "fixes": [{"title": "Reps got shorter late", "why": "Reps 4 and 5 stopped well below the height of your first reps.",
+                "cue": "Lift to the same height on every rep.", "reps": [4, 5]},
+               {"title": "Rushed the lowering", "why": "Rep 2 dropped quickly instead of coming down under control.",
+                "cue": "Count two seconds on the way down.", "reps": [2]}],
+     "estimatedReps": null}
+    """
 
     static let postWorkoutJSON = """
     {"note": "Solid session. Everything moved well, so add 5 lbs to the first lift next time.",

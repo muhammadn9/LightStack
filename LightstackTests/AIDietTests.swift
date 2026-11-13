@@ -57,7 +57,7 @@ final class AIDietTests: XCTestCase {
         XCTAssertEqual(caps[.chat], 1000)
         XCTAssertEqual(caps[.postWorkout], 800)
         XCTAssertEqual(caps[.monthPlan], 4000)
-        XCTAssertEqual(caps[.formFeedback], 600)
+        XCTAssertEqual(caps[.formFeedback], 1200)
         XCTAssertEqual(caps[.other], 8192)
         for task in AITask.allCases { XCTAssertLessThanOrEqual(caps[task] ?? 0, 8192) }
     }

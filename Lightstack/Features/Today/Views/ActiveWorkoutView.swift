@@ -30,6 +30,9 @@ struct ActiveWorkoutView: View {
     @State private var formFeedbackResult: FormSessionResult?
     @State private var formDemoExercise: Exercise?
     @State private var formViewModel: FormAnalysisViewModel?
+    /// The exercise of the recording whose results are showing, and whether "Record again" was chosen.
+    @State private var formResultExercise: Exercise?
+    @State private var formRecordAgainRequested = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -109,12 +112,28 @@ struct ActiveWorkoutView: View {
         .fullScreenCover(item: $formCaptureExercise) { exercise in
             if let vm = formViewModel {
                 FormCaptureView(viewModel: vm, exerciseName: exercise.name) { result in
+                    formResultExercise = exercise
                     formFeedbackResult = result
                 }
             }
         }
-        .sheet(item: $formFeedbackResult, onDismiss: { formViewModel?.discardResult() }) { result in
-            FormResultsView(result: result) { formFeedbackResult = nil }
+        .sheet(item: $formFeedbackResult, onDismiss: {
+            formViewModel?.discardResult()
+            // Reopen the recorder only once the results sheet is fully gone, skipping the demo.
+            if formRecordAgainRequested {
+                formRecordAgainRequested = false
+                formCaptureExercise = formResultExercise
+            }
+        }) { result in
+            FormResultsView(
+                result: result,
+                feedbackProvider: FormFeedbackService(aiServiceManager: environment.aiServiceManager),
+                onRecordAgain: {
+                    formRecordAgainRequested = true
+                    formFeedbackResult = nil
+                },
+                onClose: { formFeedbackResult = nil }
+            )
         }
         .sheet(isPresented: $showAddExercise) {
             ExerciseCatalogPicker(loadYourExercises: { todayViewModel.historyExercises() }) { name, muscleGroup in

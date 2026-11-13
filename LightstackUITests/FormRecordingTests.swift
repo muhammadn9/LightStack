@@ -38,7 +38,40 @@ final class FormRecordingTests: LightstackUITestCase {
         XCTAssertGreaterThanOrEqual(findings.count, 1, "No findings shown")
         shot("04-results")
 
-        tap(app.buttons["formResults.done"])
-        XCTAssertTrue(app.staticTexts["formResults.repCount"].waitForNonExistence(timeout: 10))
+        // Coach feedback (canned by the UI-test fake AI).
+        let verdict = app.staticTexts["formResults.verdict"]
+        waitFor(verdict, "Coach verdict did not appear", timeout: 20)
+        XCTAssertTrue(verdict.label.contains("Steady set"), "Verdict: \(verdict.label)")
+        let fixes = ["formResults.fix.0", "formResults.fix.1"].map { app.descendants(matching: .any)[$0] }
+        for fix in fixes { waitFor(fix, "A fix card is missing") }
+        XCTAssertFalse(app.descendants(matching: .any)["formResults.coachUnavailable"].exists)
+
+        // Replay controls exist and respond.
+        let playPause = app.buttons["formResults.playPause"]
+        XCTAssertTrue(playPause.exists)
+        XCTAssertTrue(app.buttons["formResults.speed"].exists)
+        tap(app.buttons["formResults.speed"])
+        tap(playPause)
+
+        // Rep strip: at least 3 bars; tapping one and a fix card must not break the screen.
+        let bars = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'formResults.rep.'"))
+        XCTAssertGreaterThanOrEqual(bars.count, 3, "Rep strip should show a bar per rep")
+        tap(app.buttons["formResults.rep.2"])
+        tap(fixes[0])
+        XCTAssertTrue(playPause.exists, "Results screen still up after seeking")
+        shot("05-after-seek")
+
+        // Measured section.
+        let scroll = app.scrollViews.firstMatch
+        for _ in 0..<4 where !findings.firstMatch.isHittable { scroll.swipeUp() }
+        shot("06-measured")
+
+        // Record again returns to the capture setup screen.
+        tap(app.buttons["formResults.recordAgain"])
+        waitFor(app.buttons["formCapture.start"], "Record again did not reopen the capture screen", timeout: 20)
+        waitFor(app.descendants(matching: .any)["formCapture.setupStatus"], "Setup status card missing after Record again")
+        shot("07-record-again")
+        tap(app.buttons["formCapture.close"])
+        XCTAssertTrue(app.buttons["formCapture.start"].waitForNonExistence(timeout: 10))
     }
 }

@@ -8,7 +8,7 @@ struct SkeletonOverlayView: View {
     let aspectRatio: Double
     let highlighted: Set<BodyJoint>
 
-    private static let bones: [(BodyJoint, BodyJoint)] = [
+    static let bones: [(BodyJoint, BodyJoint)] = [
         (.nose, .neck),
         (.leftShoulder, .rightShoulder),
         (.leftShoulder, .leftElbow), (.leftElbow, .leftWrist),

@@ -55,7 +55,7 @@ struct AIRequestOptions: Equatable {
         case .chat: return AIRequestOptions(task: task, maxOutputTokens: 1000, thinking: .minimal)
         case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, thinking: .minimal)
         case .monthPlan: return AIRequestOptions(task: task, maxOutputTokens: 4000, thinking: .minimal)
-        case .formFeedback: return AIRequestOptions(task: task, maxOutputTokens: 600, thinking: .minimal)
+        case .formFeedback: return AIRequestOptions(task: task, maxOutputTokens: 1200, temperature: 0.3, thinking: .minimal)
         case .nutrition: return AIRequestOptions(task: task, maxOutputTokens: 3000, temperature: 0.2, thinking: .low)
         case .other: return .default
         }
