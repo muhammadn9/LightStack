@@ -154,6 +154,7 @@ struct ExerciseHeaderView: View {
                     if FeatureFlags.formAnalysisEnabled {
                         Button(action: onFormDemo) { Label("Form guide", systemImage: "figure.stand") }
                         Button(action: onRecordForm) { Label("Record form", systemImage: "camera.fill") }
+                            .accessibilityIdentifier("recordFormButton")
                     }
                 } label: {
                     iconLabel("ellipsis")

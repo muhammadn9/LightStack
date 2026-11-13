@@ -27,9 +27,12 @@ struct ActiveWorkoutView: View {
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
-    @State private var formFeedbackResult: FormAnalysisResult?
+    @State private var formFeedbackResult: FormSessionResult?
     @State private var formDemoExercise: Exercise?
     @State private var formViewModel: FormAnalysisViewModel?
+    /// The exercise of the recording whose results are showing, and whether "Record again" was chosen.
+    @State private var formResultExercise: Exercise?
+    @State private var formRecordAgainRequested = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,11 +73,7 @@ struct ActiveWorkoutView: View {
             }
             LiveActivityController.shared.attach(active: viewModel, today: todayViewModel)
             if formViewModel == nil {
-                formViewModel = FormAnalysisViewModel(
-                    poseService: PoseEstimationService(),
-                    repCounter: RepCounterService(),
-                    feedbackService: FormFeedbackService(aiServiceManager: environment.aiServiceManager)
-                )
+                formViewModel = makeFormViewModel()
             }
         }
         .onDisappear {
@@ -113,12 +112,28 @@ struct ActiveWorkoutView: View {
         .fullScreenCover(item: $formCaptureExercise) { exercise in
             if let vm = formViewModel {
                 FormCaptureView(viewModel: vm, exerciseName: exercise.name) { result in
+                    formResultExercise = exercise
                     formFeedbackResult = result
                 }
             }
         }
-        .sheet(item: $formFeedbackResult) { result in
-            FormFeedbackView(result: result)
+        .sheet(item: $formFeedbackResult, onDismiss: {
+            formViewModel?.discardResult()
+            // Reopen the recorder only once the results sheet is fully gone, skipping the demo.
+            if formRecordAgainRequested {
+                formRecordAgainRequested = false
+                formCaptureExercise = formResultExercise
+            }
+        }) { result in
+            FormResultsView(
+                result: result,
+                feedbackProvider: FormFeedbackService(aiServiceManager: environment.aiServiceManager),
+                onRecordAgain: {
+                    formRecordAgainRequested = true
+                    formFeedbackResult = nil
+                },
+                onClose: { formFeedbackResult = nil }
+            )
         }
         .sheet(isPresented: $showAddExercise) {
             ExerciseCatalogPicker(loadYourExercises: { todayViewModel.historyExercises() }) { name, muscleGroup in
@@ -730,6 +745,18 @@ struct ActiveWorkoutView: View {
 
     private func exerciseIndex(of exercise: Exercise) -> Int {
         todayViewModel.exercises.firstIndex { $0.id == exercise.id } ?? 0
+    }
+
+    private func makeFormViewModel() -> FormAnalysisViewModel {
+        #if DEBUG
+        if UITestMode.isActive {
+            // The simulator has no camera: a synthetic figure doing lateral raises stands in for it.
+            let model = FormAnalysisViewModel(source: SyntheticPoseSource())
+            model.analysisNameOverride = SyntheticPoseSource.syntheticExerciseName
+            return model
+        }
+        #endif
+        return FormAnalysisViewModel(source: CameraPoseSource())
     }
 
     private func clampPageIndex() {
