@@ -181,7 +181,8 @@ final class FormKeyFrameSelectionTests: XCTestCase {
         XCTAssertEqual(Array(jpeg.prefix(2)), [0xFF, 0xD8])
         let image = try XCTUnwrap(UIImage(data: jpeg))
         XCTAssertEqual(image.size.width, 3 * 160, accuracy: 1)   // three tiles in one row
-        XCTAssertEqual(image.size.height, 288, accuracy: 1)
+        XCTAssertGreaterThan(image.size.height, 288)   // frame plus its label strip
+        XCTAssertLessThan(image.size.height, 288 + 40)
     }
 
     func testRenderReturnsNilForMissingMovie() async {

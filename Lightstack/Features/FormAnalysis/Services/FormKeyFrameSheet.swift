@@ -131,11 +131,13 @@ enum FormKeyFrameSheet {
         guard tileSize.width > 0, tileSize.height > 0 else { return nil }
         let cols = min(columns, tiles.count)
         let rows = (tiles.count + columns - 1) / columns
-        let sheetSize = CGSize(width: tileSize.width * CGFloat(cols), height: tileSize.height * CGFloat(rows))
+        // The label strip sits above each frame, so it never hides the top of the picture (arms overhead).
+        let stripHeight = max(22, tileSize.height * 0.07).rounded()
+        let cellHeight = tileSize.height + stripHeight
+        let sheetSize = CGSize(width: tileSize.width * CGFloat(cols), height: cellHeight * CGFloat(rows))
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
-        let stripHeight = max(22, tileSize.height * 0.07)
         let font = UIFont.systemFont(ofSize: stripHeight * 0.66, weight: .bold)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
@@ -148,24 +150,24 @@ enum FormKeyFrameSheet {
             context.fill(CGRect(origin: .zero, size: sheetSize))
             let cg = context.cgContext
             for (index, tile) in tiles.enumerated() {
-                let origin = CGPoint(x: CGFloat(index % columns) * tileSize.width,
-                                     y: CGFloat(index / columns) * tileSize.height)
-                let rect = CGRect(origin: origin, size: tileSize)
+                let cell = CGPoint(x: CGFloat(index % columns) * tileSize.width,
+                                   y: CGFloat(index / columns) * cellHeight)
+                let rect = CGRect(x: cell.x, y: cell.y + stripHeight, width: tileSize.width, height: tileSize.height)
                 UIImage(cgImage: tile.image).draw(in: rect)
 
                 if let frame = track.nearestFrame(to: tile.moment.time, maxGap: 0.5) {
                     drawSkeleton(frame, in: rect, highlighted: highlighted, context: cg)
                 }
 
-                let strip = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: stripHeight)
-                UIColor.black.withAlphaComponent(0.8).setFill()
+                let strip = CGRect(x: cell.x, y: cell.y, width: tileSize.width, height: stripHeight)
+                UIColor.black.setFill()
                 cg.fill(strip)
                 let textRect = strip.insetBy(dx: 2, dy: (stripHeight - font.lineHeight) / 2)
                 (tile.moment.label as NSString).draw(in: textRect, withAttributes: attributes)
 
                 UIColor.white.withAlphaComponent(0.5).setStroke()
                 cg.setLineWidth(1)
-                cg.stroke(rect)
+                cg.stroke(CGRect(x: cell.x, y: cell.y, width: tileSize.width, height: cellHeight))
             }
         }
         return image.jpegData(compressionQuality: jpegQuality)
