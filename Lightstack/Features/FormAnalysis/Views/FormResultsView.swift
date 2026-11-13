@@ -1,0 +1,121 @@
+import SwiftUI
+
+/// Placeholder results screen: rep count, score, tracking status and findings. A later change replaces it.
+struct FormResultsView: View {
+
+    let result: FormSessionResult
+    let onClose: () -> Void
+
+    private var analysis: FormAnalysis { result.analysis }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppTheme.sectionSpacing) {
+                    summary
+                    trackingNote
+                    findingsSection
+                }
+                .padding(20)
+            }
+            .background(AppTheme.backgroundGradient.ignoresSafeArea())
+            .navigationTitle(result.exerciseName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: onClose)
+                        .foregroundStyle(AppTheme.accent)
+                        .accessibilityIdentifier("formResults.done")
+                }
+            }
+        }
+    }
+
+    private var summary: some View {
+        HStack(spacing: 12) {
+            stat(value: "\(analysis.repCount)", label: "Reps", id: "formResults.repCount")
+            stat(value: analysis.score.map { "\($0)" } ?? "–", label: "Form score", id: "formResults.score")
+        }
+    }
+
+    private func stat(value: String, label: String, id: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.accent)
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+                .accessibilityIdentifier(id)
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+    }
+
+    private var trackingNote: some View {
+        let (text, color): (String, Color) = {
+            switch analysis.detection.status {
+            case .good: return ("Tracking: good. I could see you clearly.", AppTheme.success)
+            case .partial: return ("Tracking: partial. Some of the set was out of view.", AppTheme.warning)
+            case .insufficient: return ("Tracking: poor. I couldn't follow the movement reliably.", AppTheme.destructive)
+            }
+        }()
+        return Label(text, systemImage: "viewfinder")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(color)
+            .accessibilityIdentifier("formResults.tracking")
+    }
+
+    private var findingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Findings")
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+            ForEach(analysis.findings) { finding in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: icon(for: finding.severity))
+                            .foregroundStyle(color(for: finding.severity))
+                        Text(finding.title)
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.textPrimary)
+                    }
+                    Text(finding.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.textSecondary)
+                    if !finding.cue.isEmpty {
+                        Text(finding.cue)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(AppTheme.cardPadding)
+                .background(AppTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("formResults.finding.\(finding.id)")
+            }
+        }
+    }
+
+    private func icon(for severity: FindingSeverity) -> String {
+        switch severity {
+        case .good: return "checkmark.circle.fill"
+        case .minor: return "exclamationmark.circle.fill"
+        case .major: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func color(for severity: FindingSeverity) -> Color {
+        switch severity {
+        case .good: return AppTheme.success
+        case .minor: return AppTheme.warning
+        case .major: return AppTheme.destructive
+        }
+    }
+}

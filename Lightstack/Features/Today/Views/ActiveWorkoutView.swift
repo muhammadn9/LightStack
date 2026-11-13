@@ -27,7 +27,7 @@ struct ActiveWorkoutView: View {
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
-    @State private var formFeedbackResult: FormAnalysisResult?
+    @State private var formFeedbackResult: FormSessionResult?
     @State private var formDemoExercise: Exercise?
     @State private var formViewModel: FormAnalysisViewModel?
 
@@ -70,11 +70,7 @@ struct ActiveWorkoutView: View {
             }
             LiveActivityController.shared.attach(active: viewModel, today: todayViewModel)
             if formViewModel == nil {
-                formViewModel = FormAnalysisViewModel(
-                    poseService: PoseEstimationService(),
-                    repCounter: RepCounterService(),
-                    feedbackService: FormFeedbackService(aiServiceManager: environment.aiServiceManager)
-                )
+                formViewModel = makeFormViewModel()
             }
         }
         .onDisappear {
@@ -117,8 +113,8 @@ struct ActiveWorkoutView: View {
                 }
             }
         }
-        .sheet(item: $formFeedbackResult) { result in
-            FormFeedbackView(result: result)
+        .sheet(item: $formFeedbackResult, onDismiss: { formViewModel?.discardResult() }) { result in
+            FormResultsView(result: result) { formFeedbackResult = nil }
         }
         .sheet(isPresented: $showAddExercise) {
             ExerciseCatalogPicker(loadYourExercises: { todayViewModel.historyExercises() }) { name, muscleGroup in
@@ -730,6 +726,18 @@ struct ActiveWorkoutView: View {
 
     private func exerciseIndex(of exercise: Exercise) -> Int {
         todayViewModel.exercises.firstIndex { $0.id == exercise.id } ?? 0
+    }
+
+    private func makeFormViewModel() -> FormAnalysisViewModel {
+        #if DEBUG
+        if UITestMode.isActive {
+            // The simulator has no camera: a synthetic figure doing lateral raises stands in for it.
+            let model = FormAnalysisViewModel(source: SyntheticPoseSource())
+            model.analysisNameOverride = SyntheticPoseSource.syntheticExerciseName
+            return model
+        }
+        #endif
+        return FormAnalysisViewModel(source: CameraPoseSource())
     }
 
     private func clampPageIndex() {

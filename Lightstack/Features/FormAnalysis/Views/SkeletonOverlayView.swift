@@ -1,86 +1,63 @@
 import SwiftUI
-import Vision
 
-/// Renders joint dots and bone connections over the camera preview.
-/// Coordinates are normalized (0-1) from Vision; mirrored on X for front camera.
+/// Bones and joints drawn over a camera preview or a video replay. Independent of the camera: it only
+/// needs the frame, the real aspect ratio of the image underneath (aspect-fill) and which joints to highlight.
 struct SkeletonOverlayView: View {
 
-    let pose: BodyPose?
+    let frame: PoseFrame?
+    let aspectRatio: Double
+    let highlighted: Set<BodyJoint>
 
-    private let bones: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = [
+    private static let bones: [(BodyJoint, BodyJoint)] = [
+        (.nose, .neck),
         (.leftShoulder, .rightShoulder),
-        (.leftShoulder, .leftElbow),    (.leftElbow, .leftWrist),
-        (.rightShoulder, .rightElbow),  (.rightElbow, .rightWrist),
-        (.leftShoulder, .leftHip),      (.rightShoulder, .rightHip),
+        (.leftShoulder, .leftElbow), (.leftElbow, .leftWrist),
+        (.rightShoulder, .rightElbow), (.rightElbow, .rightWrist),
+        (.leftShoulder, .leftHip), (.rightShoulder, .rightHip),
         (.leftHip, .rightHip),
-        (.leftHip, .leftKnee),          (.leftKnee, .leftAnkle),
-        (.rightHip, .rightKnee),        (.rightKnee, .rightAnkle)
+        (.leftHip, .leftKnee), (.leftKnee, .leftAnkle),
+        (.rightHip, .rightKnee), (.rightKnee, .rightAnkle)
     ]
 
     var body: some View {
-        GeometryReader { geo in
-            Canvas { ctx, size in
-                guard let pose else { return }
+        Canvas { context, size in
+            guard let frame else { return }
+            func point(_ joint: BodyJoint) -> CGPoint? {
+                guard let p = PoseGeometry.point(frame, joint) else { return nil }
+                return Self.point(for: p, aspectRatio: aspectRatio, in: size)
+            }
 
-                // Draw bones
-                for (a, b) in bones {
-                    guard
-                        let ptA = convert(joint: a, pose: pose, size: size),
-                        let ptB = convert(joint: b, pose: pose, size: size),
-                        (pose.confidences[a] ?? 0) > 0.15,
-                        (pose.confidences[b] ?? 0) > 0.15
-                    else { continue }
-
-                    var path = Path()
-                    path.move(to: ptA)
-                    path.addLine(to: ptB)
-                    ctx.stroke(path, with: .color(.green.opacity(0.75)), lineWidth: 2.5)
-                }
-
-                // Draw joints
-                for (name, _) in pose.joints {
-                    guard (pose.confidences[name] ?? 0) > 0.15,
-                          let pt = convert(joint: name, pose: pose, size: size)
-                    else { continue }
-                    let rect = CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)
-                    ctx.fill(Path(ellipseIn: rect), with: .color(.green))
-                }
+            for (a, b) in Self.bones {
+                guard let pa = point(a), let pb = point(b) else { continue }
+                let on = highlighted.contains(a) && highlighted.contains(b)
+                var path = Path()
+                path.move(to: pa)
+                path.addLine(to: pb)
+                context.stroke(path,
+                               with: .color(on ? AppTheme.accent : Color.white.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: on ? 6 : 3, lineCap: .round))
+            }
+            for joint in BodyJoint.allCases {
+                guard let p = point(joint) else { continue }
+                let on = highlighted.contains(joint)
+                let r: CGFloat = on ? 8 : 5
+                let dot = Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2))
+                context.fill(dot, with: .color(on ? AppTheme.accent : Color.white.opacity(0.7)))
             }
         }
+        .accessibilityHidden(true)
         .allowsHitTesting(false)
     }
 
-    // MARK: - Coordinate Conversion
-
-    /// Vision: x=0 left, y=0 bottom, normalized. SwiftUI: x=0 left, y=0 top.
-    /// .leftMirrored orientation passed to VNImageRequestHandler already corrects for
-    /// front camera landscape buffers, so no X-mirror needed here.
-    ///
-    /// The camera preview uses `.resizeAspectFill` with a portrait 9:16 buffer, so the
-    /// image is scaled up to fill the view and cropped on one axis. We replicate that
-    /// scaling/offset here so skeleton points line up with the displayed video.
-    private func convert(
-        joint: VNHumanBodyPoseObservation.JointName,
-        pose: BodyPose,
-        size: CGSize
-    ) -> CGPoint? {
-        guard let p = pose.joints[joint] else { return nil }
-
-        let imageAspect: CGFloat = 9.0 / 16.0
-        let viewAspect = size.width / size.height
-        var drawn = size
-        var offset = CGPoint.zero
-        if viewAspect > imageAspect {            // view wider → fill width, crop top/bottom
-            drawn = CGSize(width: size.width, height: size.width / imageAspect)
-            offset.y = (drawn.height - size.height) / 2
-        } else {                                  // view taller → fill height, crop sides
-            drawn = CGSize(width: size.height * imageAspect, height: size.height)
-            offset.x = (drawn.width - size.width) / 2
-        }
-
-        return CGPoint(
-            x: p.x * drawn.width - offset.x,           // no mirror — .leftMirrored handles it
-            y: (1 - p.y) * drawn.height - offset.y     // flip Y (Vision y=0=bottom, SwiftUI y=0=top)
-        )
+    /// Maps a normalized image point (top-left origin) into a view of `size` that shows the image with
+    /// aspect-fill: the image is scaled until it covers the view and centred, so the overflow is cropped.
+    static func point(for p: PosePoint, aspectRatio: Double, in size: CGSize) -> CGPoint {
+        let aspect = aspectRatio > 0 ? aspectRatio : 9.0 / 16.0
+        // The image is `aspect` wide and 1 tall in its own units.
+        let scale = max(Double(size.width) / aspect, Double(size.height))
+        let shownWidth = aspect * scale, shownHeight = scale
+        let offsetX = (Double(size.width) - shownWidth) / 2
+        let offsetY = (Double(size.height) - shownHeight) / 2
+        return CGPoint(x: offsetX + p.x * shownWidth, y: offsetY + p.y * shownHeight)
     }
 }
