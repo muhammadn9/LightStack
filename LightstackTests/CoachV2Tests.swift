@@ -190,7 +190,8 @@ final class CoachReviewDocumentTests: XCTestCase {
 
 final class SessionAnalyzerTests: XCTestCase {
 
-    private let missedByOne = "95x10@5, 150x10@2, 185x6@1, 170x8@2"
+    /// Two reps short of the planned 185x7 (one rep short is now "close", not a miss: see CoachEngineNumbersTests).
+    private let missedByOne = "95x10@5, 150x10@2, 185x5@1, 170x8@2"
 
     private func bench(_ a: SessionAnalysis, file: StaticString = #filePath, line: UInt = #line) throws -> ExerciseAnalysis {
         try XCTUnwrap(a.exercises.first, file: file, line: line)
@@ -213,7 +214,7 @@ final class SessionAnalyzerTests: XCTestCase {
     func testOneOffMissOnABadDayRetriesTheSameTarget() throws {
         for energy in [2, 3, 4] {
             let a = try bench(V2.analyze(missedByOne, energy: energy))
-            XCTAssertEqual(a.shortBy, 1)
+            XCTAssertEqual(a.shortBy, 2)
             XCTAssertEqual(a.outcome, .missed)
             XCTAssertEqual(a.miss?.decision, .retry, "energy \(energy)")
             XCTAssertEqual(a.miss?.cause, .lowEnergy)
@@ -375,7 +376,7 @@ final class SessionAnalyzerTests: XCTestCase {
 
     func testPromptLineSaysPrescribedVsActual() throws {
         let line = try bench(V2.analyze(missedByOne, energy: 3)).promptLine
-        XCTAssertTrue(line.contains("TOP SET MISSED by 1 rep"), line)
+        XCTAssertTrue(line.contains("TOP SET MISSED by 2 reps"), line)
         XCTAssertTrue(line.contains("185x7@1"), line)
         XCTAssertTrue(line.contains("retry"), line)
     }
@@ -440,8 +441,8 @@ final class SessionAnalyzerTests: XCTestCase {
         XCTAssertEqual(hit.first?.outcome?.rir, 1)
         let miss = CoachReviewStore.applyOutcomes(V2.analyze(missedByOne), to: decisions)
         XCTAssertEqual(miss.first?.outcome?.hit, false)
-        XCTAssertEqual(miss.first?.outcome?.shortBy, 1)
-        XCTAssertEqual(miss.first?.outcome?.actualTop, "185x6@1")
+        XCTAssertEqual(miss.first?.outcome?.shortBy, 2)
+        XCTAssertEqual(miss.first?.outcome?.actualTop, "185x5@1")
         XCTAssertEqual(miss.first?.outcome?.result, .missed)
         // A decision for a lift that was not done stays open.
         let other = CoachDecision(name: "Lat Pulldown", muscle: "Back", target: top, sets: nil, reason: "r",
@@ -587,11 +588,11 @@ final class CoachPlanReviewTests: XCTestCase {
         let logged = [95.0, 150, 185, 170].enumerated().map { i, w in
             WorkoutSet.create(exerciseId: ex.id, setNumber: i + 1, weightLbs: w, reps: i == 2 ? 6 : 8, rir: 1)
         }
-        let analysis = V2.analyze("95x8@1, 150x8@1, 185x6@1, 170x8@1", energy: 4, note: "slept badly")
+        let analysis = V2.analyze("95x8@1, 150x8@1, 185x5@1, 170x8@1", energy: 4, note: "slept badly")
         let message = service.buildPostWorkoutMessage(
             workoutType: "Push", exercises: [ex], sets: [ex.id: logged], analysis: analysis,
             previousReviews: [V2.review(V2.bench, outcome: .hold)], userNote: "slept badly")
-        for needle in ["completed sets", "PRESCRIBED vs ACTUAL", "TOP SET MISSED by 1 rep", "Energy today: 4/10",
+        for needle in ["completed sets", "PRESCRIBED vs ACTUAL", "TOP SET MISSED by 2 reps", "Energy today: 4/10",
                        "Athlete note: slept badly", "PREVIOUS REVIEWS", "Return the review JSON"] {
             XCTAssertTrue(message.contains(needle), "missing \(needle)\n\(message)")
         }

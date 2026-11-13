@@ -68,7 +68,7 @@ struct CoachPlanReview: Codable, Equatable {
                 percent: JSONReply.double(raw["percent"])))
         }
         return CoachPlanReview(verdict: verdict,
-                               summary: String(summary.prefix(400)), changes: Array(changes.prefix(12)))
+                               summary: InputSanitizer.clipAtWord(summary, limit: 400), changes: Array(changes.prefix(12)))
     }
 }
 

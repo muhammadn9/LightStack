@@ -445,7 +445,7 @@ final class WorkoutSessionService {
         if let parsed = ModelReview.parse(text) { return parsed }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.hasPrefix("{"), !trimmed.hasPrefix("[") else { return nil }
-        return ModelReview(exercises: [], overallRead: String(trimmed.prefix(600)), recurringFlags: [])
+        return ModelReview(exercises: [], overallRead: InputSanitizer.clipAtWord(trimmed, limit: 600), recurringFlags: [])
     }
 
     // MARK: - Save Completed Workout
@@ -802,10 +802,10 @@ final class WorkoutSessionService {
             if !targets.isEmpty { perSetTargets[exercise.id] = targets }
             if isCoachSets { coachSetIds.insert(exercise.id) }
             if let reason = aiEx.reason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty {
-                reasons[exercise.id] = String(sanitizeLabel(reason).prefix(200))
+                reasons[exercise.id] = InputSanitizer.sanitizeSentence(reason, limit: 200)
             }
             if let cue = aiEx.cue?.trimmingCharacters(in: .whitespacesAndNewlines), !cue.isEmpty {
-                cues[exercise.id] = sanitizeLabel(cue)
+                cues[exercise.id] = InputSanitizer.sanitizeSentence(cue, limit: 160)
             }
         }
         // Members of a label are pulled together; out-of-range groups are dropped.
@@ -817,7 +817,7 @@ final class WorkoutSessionService {
                           cues: cues.filter { kept.contains($0.key) },
                           reasons: reasons.filter { kept.contains($0.key) },
                           coachSetIds: coachSetIds.intersection(kept),
-                          summary: summary?.isEmpty == false ? summary.map { String($0.prefix(400)) } : nil)
+                          summary: summary?.isEmpty == false ? summary.map { InputSanitizer.clipAtWord($0, limit: 400) } : nil)
     }
 
     /// The coach's numeric sets as targets. Warm-ups stay warm-ups; the heaviest work set is the top set,

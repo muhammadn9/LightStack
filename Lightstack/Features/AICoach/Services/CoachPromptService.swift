@@ -422,7 +422,7 @@ final class CoachPromptService {
             if let note = clipped(userNote ?? analysis.userNote, 300) { lines.append("Athlete note: \(note)") }
             let prescribed = analysis.exercises.filter { $0.prescribedTop != nil }
             if !prescribed.isEmpty {
-                lines.append("\nPRESCRIBED vs ACTUAL (analysed by the app; MISSED = top set short of plan):")
+                lines.append("\nPRESCRIBED vs ACTUAL (analysed by the app; MISSED = top set short of plan; CLOSE = one rep short, counts as on target):")
                 for a in prescribed { lines.append("- " + a.promptLine) }
             }
             if !analysis.skipped.isEmpty { lines.append("SKIPPED (prescribed, not done): " + analysis.skipped.joined(separator: ", ")) }
@@ -471,7 +471,7 @@ final class CoachPromptService {
         let clean = sanitize(text).replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return nil }
-        return clean.count > limit ? String(clean.prefix(limit)) + "…" : clean
+        return InputSanitizer.clipAtWord(clean, limit: limit)
     }
 
     private func formatCardioSet(_ s: WorkoutSet) -> String {
@@ -615,7 +615,7 @@ final class CoachPromptService {
             var line = "\(sanitize(goal.exerciseName)) \(goal.targetText)"
             if let deadline = goal.deadline { line += " by \(Self.goalDate.string(from: deadline))" }
             if let a = item.assessment {
-                line += " (e1RM \(String(format: "%.0f", a.currentE1RM)) -> need \(String(format: "%.0f", a.targetE1RM)))"
+                line += " (now ~\(String(format: "%.0f", a.currentE1RM)) e1RM, goal needs ~\(String(format: "%.0f", a.targetE1RM)))"
             } else {
                 line += " (no logged history)"
             }
@@ -686,8 +686,11 @@ final class CoachPromptService {
     private func memoryEntry(_ line: CoachMemoryLine) -> String {
         let d = line.decision
         var text = "\(Self.trendDate.string(from: line.date)) \(d.target.text)"
-        if let reason = clipped(d.reason, 80) { text += " \"\(reason)\"" }
-        if let outcome = d.outcome { text += " -> \(outcome.actualTop) \(outcome.hit ? "HIT" : "MISS")" }
+        if let reason = clipped(d.reason, 140) { text += " \"\(reason)\"" }
+        if let outcome = d.outcome {
+            let verdict = outcome.result == .close ? "CLOSE (on target)" : (outcome.hit ? "HIT" : "MISS")
+            text += " -> \(outcome.actualTop) \(verdict)"
+        }
         return text
     }
 

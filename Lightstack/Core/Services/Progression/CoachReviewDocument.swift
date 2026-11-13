@@ -18,6 +18,17 @@ struct NextTarget: Codable, Equatable {
 
 enum ExerciseOutcome: String, Codable, Equatable, CaseIterable {
     case pr, hold, regression, missed, new
+    /// The top set was one rep short of a plan of 5+ reps, at the planned weight: counts as on target, retry the
+    /// same numbers. Added with the "close" rule; older documents never contain it.
+    case close
+
+    /// An unknown stored value (a case from a newer build) reads as `hold` rather than failing the whole document.
+    /// Old stored values all still decode as themselves. Builds from before `close` existed drop a review that
+    /// contains it (the document decodes each part with `try?`), they do not crash.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ExerciseOutcome(rawValue: raw) ?? .hold
+    }
 }
 
 enum MissCause: String, Codable, Equatable, CaseIterable {

@@ -527,7 +527,7 @@ final class CoachFuelTests: XCTestCase {
     private func missedBench(fuel: FuelAssessment?, energy: Int = 8, reasons: [String: String] = [:]) throws -> ExerciseAnalysis {
         let sets = [HistorySet(160, 3, rir: 4), HistorySet(185, 5, rir: 0)]
         let prescription = ExercisePrescription(name: bench, muscleGroup: "Chest", sets: [
-            PrescribedSet(role: .top, weight: 185, reps: 6, rir: 1, restSeconds: 150)])
+            PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150)])
         let analysis = SessionAnalyzer.analyze(
             logged: [LoggedExercise(name: bench, muscleGroup: "Chest", sets: sets, hitPR: false)],
             prescription: [prescription], energy: energy, userNote: nil, reasons: reasons, previous: [], history: history(),

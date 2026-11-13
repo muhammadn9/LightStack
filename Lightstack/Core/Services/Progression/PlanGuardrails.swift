@@ -26,7 +26,8 @@ enum PlanGuardrails {
         targets: [SetTarget],
         allowWarmups: Bool,
         bestWeight: Double?,
-        workingSetCap: Int? = nil
+        workingSetCap: Int? = nil,
+        ladder: WeightIncrements? = nil
     ) -> (targets: [SetTarget], report: GuardrailReport) {
         var report = GuardrailReport()
         guard !targets.isEmpty else { return (targets, report) }
@@ -63,9 +64,9 @@ enum PlanGuardrails {
         // 2. Weights well above the best logged set are clamped down.
         if let best = bestWeight, best > 0 {
             let limit = best * (1 + weightTolerance)
-            let step = ExerciseTraits.roundingStep(name)
-            var clamp = ExerciseTraits.round(best, step: step)
-            if clamp > limit { clamp = ExerciseTraits.floorStep(limit, step: step) }
+            let rungs = ladder ?? WeightIncrements.fallback(for: name)
+            var clamp = rungs.snap(best)
+            if clamp > limit { clamp = rungs.snap(limit, direction: .down) }
             var changed = false
             for i in rows.indices {
                 guard let w = Double(rows[i].target.prefillWeight), w > limit else { continue }
@@ -108,7 +109,8 @@ enum PlanGuardrails {
         }
 
         // 5. Never more than two heavy sets (95%+ of the heaviest) per lift.
-        let heavy = capHeavySets(rows.filter { !$0.warm }.map(\.target), step: ExerciseTraits.roundingStep(name))
+        let heavy = capHeavySets(rows.filter { !$0.warm }.map(\.target), step: ExerciseTraits.roundingStep(name),
+                                 ladder: ladder)
         if heavy.changed {
             var queue = heavy.targets[...]
             for i in rows.indices where !rows[i].warm {
@@ -126,7 +128,8 @@ enum PlanGuardrails {
     }
 
     /// Sets beyond the second one at 95%+ of the heaviest weight are lowered to about 90% of it.
-    static func capHeavySets(_ working: [SetTarget], step: Double) -> (targets: [SetTarget], changed: Bool) {
+    static func capHeavySets(_ working: [SetTarget], step: Double,
+                             ladder: WeightIncrements? = nil) -> (targets: [SetTarget], changed: Bool) {
         let weights = working.map { Double($0.prefillWeight) ?? 0 }
         guard let top = weights.max(), top > 0 else { return (working, false) }
         var out = working
@@ -135,8 +138,8 @@ enum PlanGuardrails {
         for i in out.indices where weights[i] >= top * 0.95 {
             heavySeen += 1
             guard heavySeen > maxHeavySets else { continue }
-            var lowered = ExerciseTraits.round(top * 0.9, step: step)
-            if lowered >= top { lowered = max(step, top - step) }
+            var lowered = ladder?.snap(top * 0.9) ?? ExerciseTraits.round(top * 0.9, step: step)
+            if lowered >= top { lowered = ladder?.stepDown(from: top) ?? max(step, top - step) }
             out[i].weight = String(format: "%g", lowered)
             changed = true
         }
@@ -158,13 +161,17 @@ enum PlanGuardrails {
         var nextTarget: NextTarget?
         /// The back-off was dropped on purpose (muscle trained in the last 48 h).
         var backoffDropped: Bool = false
+        /// The weights the lift can be loaded with (nil = the class default).
+        var ladder: WeightIncrements? = nil
+        /// Working sets of the lift's last session, for the rep-jump rule.
+        var lastWork: [HistorySet] = []
     }
 
     /// The highest top-set weight a plan may carry: max(+5%, one increment) over the MOST RECENT session's
     /// top set, or the review's target when that stays within the recent-best e1RM limit.
     static func topWeightLimit(_ ctx: StructureContext) -> Double? {
         guard let last = ctx.lastTop, last > 0 else { return nil }
-        let step = ExerciseTraits.increment(ctx.name)
+        let step = ctx.ladder?.increment ?? ExerciseTraits.increment(ctx.name)
         var limit = max(last * (1 + weightTolerance), last + step)
         if let t = ctx.nextTarget, t.weight > limit, let e1 = ctx.bestE1RM, e1 > 0,
            t.weight * (1 + Double(t.reps) / 30) <= e1 * 1.03 {
@@ -181,7 +188,7 @@ enum PlanGuardrails {
         guard ExerciseTraits.classify(ctx.name) != .isolation,
               targets.contains(where: { $0.resolvedRole == .top }) else { return (targets, []) }
         var reasons: [String] = []
-        let step = ExerciseTraits.roundingStep(ctx.name)
+        let rungs = ctx.ladder ?? WeightIncrements.fallback(for: ctx.name)
         let warm = targets.filter { $0.isWarmup == true }
         var ramps = targets.filter { $0.isWarmup != true && $0.resolvedRole == .ramp }
         var tops = targets.filter { $0.isWarmup != true && $0.resolvedRole == .top }
@@ -198,7 +205,7 @@ enum PlanGuardrails {
         // Top weight limit.
         func weight(_ t: SetTarget) -> Double { Double(t.prefillWeight) ?? 0 }
         if let limit = topWeightLimit(ctx), let topW = tops.map(weight).max(), topW > limit {
-            let clamp = ExerciseTraits.floorStep(limit, step: step)
+            let clamp = rungs.snap(limit, direction: .down)
             for i in tops.indices where weight(tops[i]) > clamp { tops[i].weight = String(format: "%g", clamp) }
             reasons.append("Top set limited to \(String(format: "%g", clamp)) (more than +5% over your last top set)")
         }
@@ -208,7 +215,7 @@ enum PlanGuardrails {
         // Set 1: lighter than the top set, never fewer reps.
         for i in ramps.indices {
             if topW > 0, weight(ramps[i]) >= topW * 0.95 || weight(ramps[i]) >= topW {
-                ramps[i].weight = String(format: "%g", ExerciseTraits.floorStep(topW * 0.8, step: step))
+                ramps[i].weight = String(format: "%g", rungs.snap(topW * 0.8, direction: .down))
             }
             if let r = Int(ramps[i].prefillReps), r < topReps { ramps[i].reps = String(topReps) }
         }
@@ -220,8 +227,8 @@ enum PlanGuardrails {
         }
         for i in backs.indices {
             if topW > 0, weight(backs[i]) >= topW * 0.95 {
-                var w = ExerciseTraits.round(topW * ProgressionEngine.backoffShare, step: step)
-                if w >= topW * 0.95 { w = max(step, ExerciseTraits.floorStep(topW * 0.95 - 0.001, step: step)) }
+                var w = rungs.snap(topW * ProgressionEngine.backoffShare)
+                if w >= topW * 0.95 { w = max(rungs.step, rungs.snap(topW * 0.95 - 0.001, direction: .down)) }
                 backs[i].weight = String(format: "%g", w)
             }
             if let r = Int(backs[i].prefillReps), r < topReps { backs[i].reps = String(topReps) }
@@ -307,10 +314,15 @@ enum PlanGuardrails {
         var goalAllowance: Double?
         /// Reps of that attempt; its estimated one-rep max is the e1RM ceiling the allowance lifts.
         var goalReps: Int
+        /// The weights the lift can be loaded with (nil = the class default).
+        var ladder: WeightIncrements?
+        /// Working sets of the lift's last session, for the rep-jump rule.
+        var lastWork: [HistorySet]
 
         init(name: String, cls: ExerciseClass, focus: CoachFocus, lastTop: HistorySet? = nil,
              daysSinceLast: Int? = nil, capBestE1RM: Double? = nil, prWeight: Double? = nil,
-             goalAllowance: Double? = nil, goalReps: Int = 1) {
+             goalAllowance: Double? = nil, goalReps: Int = 1,
+             ladder: WeightIncrements? = nil, lastWork: [HistorySet] = []) {
             self.name = name
             self.cls = cls
             self.focus = focus
@@ -320,6 +332,8 @@ enum PlanGuardrails {
             self.prWeight = prWeight
             self.goalAllowance = goalAllowance
             self.goalReps = goalReps
+            self.ladder = ladder
+            self.lastWork = lastWork
         }
     }
 
@@ -333,7 +347,7 @@ enum PlanGuardrails {
     /// The highest top-set weight the rails allow, with the rule that set it.
     static func coachTopLimit(_ ctx: RailContext) -> (limit: Double, rule: String)? {
         guard let last = ctx.lastTop, last.weight >= 0 else { return nil }
-        let inc = ExerciseTraits.increment(ctx.name)
+        let inc = ctx.ladder?.increment ?? ExerciseTraits.increment(ctx.name)
         let w = last.weight
         let wText = String(format: "%g", w)
         if let days = ctx.daysSinceLast, days > ProgressionEngine.layoffAfterDays {
@@ -406,7 +420,24 @@ enum PlanGuardrails {
             }
         }
         let roled = assignCoachRoles(fixed.targets, isolation: ctx.cls == .isolation)
-        return (roled, .accepted(softFixes: fixed.fixes))
+        let jumps = capRepJumps(roled, last: ctx.lastWork, ladder: ctx.ladder ?? WeightIncrements.fallback(for: name))
+        return (jumps.targets, .accepted(softFixes: fixed.fixes + jumps.reasons))
+    }
+
+    /// The rep-jump rule on per-set targets (see `RepJumpRule`): every working set, top, back-off or isolation.
+    static func capRepJumps(_ targets: [SetTarget], last: [HistorySet],
+                            ladder: WeightIncrements) -> (targets: [SetTarget], reasons: [String]) {
+        guard !last.isEmpty else { return (targets, []) }
+        var out = targets
+        var reasons: [String] = []
+        for i in out.indices where out[i].isWarmup != true && out[i].role != .warmup {
+            guard let weight = Double(out[i].prefillWeight), let reps = Int(out[i].prefillReps),
+                  let cap = RepJumpRule.maxReps(weight: weight, rir: Int(out[i].prefillRir) ?? 2, last: last, ladder: ladder),
+                  reps > cap.reps else { continue }
+            out[i].reps = String(max(1, cap.reps))
+            reasons.append("\(String(format: "%g", weight)) reps held at \(cap.reps) (last time \(cap.basis.text))")
+        }
+        return (out, reasons)
     }
 
     /// Clamps the small stuff in AI-written sets. Returns the sets (warm-ups first) and what changed.

@@ -14,6 +14,8 @@ struct AppliedPlan {
     var safeguards: [String] = []
     /// Per exercise: the coach's reason, or the safety rail that replaced the coach's sets.
     var reasons: [CoachExerciseReason] = []
+    /// Set when the workout's primary muscles were trained hard hours ago ("You trained chest and arms about 5 hours ago.").
+    var recencyWarning: RecencyWarning?
 }
 
 /// Coach v3 (`aiSetsWeights`): the coach's own sets stand when they pass `PlanGuardrails.validateCoachSets`;
@@ -63,6 +65,8 @@ enum PlanProgressionApplier {
             let aiNote = ex.coachNoteParts.message
             let muscle = MuscleGroups.canonical(forExercise: ex.name, muscleGroup: ex.muscleGroup)
             let fresh = coach.isFresh(muscle: muscle)
+            let ladder = WeightIncrements.learned(name: ex.name, group: group)
+            let lastWork = group?.sessions.first.map { SetStyleDetector.splitWarmups($0.sets).working } ?? []
 
             let engine = group.flatMap {
                 ProgressionEngine.plan(ProgressionInput(
@@ -70,7 +74,10 @@ enum PlanProgressionApplier {
                     feedback: group?.sessions.first?.feedback ?? feedback, energy: energy, allowWarmups: allowWarmups,
                     focus: coach.focus, restPreference: coach.restPreference,
                     nextTarget: coach.nextTarget(for: ex.name, lastSessionDate: $0.sessions.first?.date),
-                    recentlyTrained: fresh, now: coach.now, lastSameTypeSessionDate: $0.latestSessionDate))
+                    recentlyTrained: fresh, now: coach.now, lastSameTypeSessionDate: $0.latestSessionDate,
+                    muscleVeryRecent: coach.isVeryRecent(muscle: muscle),
+                    fuelLow: coach.fuelHold?.isLow ?? false, fuelReason: coach.fuelHold?.primaryReason,
+                    increments: ladder))
             }
 
             let lastSession = group?.sessions.first
@@ -91,7 +98,7 @@ enum PlanProgressionApplier {
                 let rail = PlanGuardrails.RailContext(
                     name: ex.name, cls: cls, focus: coach.focus, lastTop: lastTop, daysSinceLast: days,
                     capBestE1RM: group.capBest?.e1RM, prWeight: allTimeBest?.weight ?? bestLookup(ex.name),
-                    goalAllowance: goal?.weight, goalReps: goal?.reps ?? 1)
+                    goalAllowance: goal?.weight, goalReps: goal?.reps ?? 1, ladder: ladder, lastWork: lastWork)
                 let checked = PlanGuardrails.validateCoachSets(name: ex.name, targets: coachSets, ctx: rail)
                 switch checked.verdict {
                 case .accepted(let fixes):
@@ -162,6 +169,10 @@ enum PlanProgressionApplier {
                     safeguards.append("\(ex.name): the coach's sets broke a safety rail (\(why)), so the rule-based baseline was used")
                     reasons.append(CoachExerciseReason(exercise: ex.name, railFallback: true, text: "Safety rail: \(why)"))
                 }
+                if let held = engine.noProgressReason {
+                    safeguards.append("\(ex.name): not progressed (\(held)), weight and reps stay at or under the last top set")
+                }
+                for cap in engine.repCaps { adjustments.append("\(ex.name): \(cap)") }
                 if engine.recencyApplied {
                     recencyHeld.insert(ex.id)
                     safeguards.append("\(ex.name): \(muscle) trained hard in the last 48 h, so the load is held at RIR 2 and the back-off is dropped")
@@ -183,7 +194,7 @@ enum PlanProgressionApplier {
                             ? PlanGuardrails.softFixCoachSets(existing, focus: coach.focus) : (existing, [])
                         let guarded = PlanGuardrails.apply(
                             name: ex.name, targets: soft.targets, allowWarmups: allowWarmups, bestWeight: bestWeight,
-                            workingSetCap: cap)
+                            workingSetCap: cap, ladder: ladder)
                         report = guarded.report
                         report.reasons.insert(contentsOf: soft.fixes, at: 0)
                         if let why = railRejection { report.reasons.insert("Safety rail: \(why)", at: 0) }
@@ -225,7 +236,8 @@ enum PlanProgressionApplier {
         }
 
         // The coach's review edits, inside the guardrails.
-        let handled = applyChanges(changes, exercises: &exercises, targets: &targets, adjustments: &adjustments)
+        let handled = applyChanges(changes, exercises: &exercises, targets: &targets, adjustments: &adjustments,
+                                   ladderFor: { WeightIncrements.learned(name: $0, group: history.group(for: $0)) })
 
         // Per-muscle hard-set cap, then the per-lift heavy-set cap on everything.
         safeguards.append(contentsOf: capMuscleVolume(&exercises, targets: &targets, adjustments: &adjustments))
@@ -233,7 +245,9 @@ enum PlanProgressionApplier {
             // Straight sets at one weight are a legitimate coach choice: coach-accepted exercises skip this cap.
             guard !coachAccepted.contains(ex.id), let list = targets[ex.id], !list.isEmpty else { continue }
             let working = list.filter { $0.isWarmup != true }
-            let capped = PlanGuardrails.capHeavySets(working, step: ExerciseTraits.roundingStep(ex.name))
+            let capped = PlanGuardrails.capHeavySets(
+                working, step: ExerciseTraits.roundingStep(ex.name),
+                ladder: WeightIncrements.learned(name: ex.name, group: history.group(for: ex.name)))
             guard capped.changed else { continue }
             var queue = capped.targets[...]
             targets[ex.id] = list.map { t in t.isWarmup == true ? t : (queue.popFirst() ?? t) }
@@ -247,15 +261,19 @@ enum PlanProgressionApplier {
             guard ex.trackingType != .cardio, !coachAccepted.contains(ex.id),
                   let list = targets[ex.id], !list.isEmpty else { continue }
             let group = history.group(for: ex.name)
-            let lastTop = group?.sessions.first.flatMap {
-                ProgressionEngine.referenceTop(SetStyleDetector.splitWarmups($0.sets).working)
-            }
+            let lastWork = group?.sessions.first.map { SetStyleDetector.splitWarmups($0.sets).working } ?? []
+            let lastTop = ProgressionEngine.referenceTop(lastWork)
+            let ladder = WeightIncrements.learned(name: ex.name, group: group)
             let ctx = PlanGuardrails.StructureContext(
                 name: ex.name, focus: coach.focus, restPreference: coach.restPreference,
                 lastTop: lastTop?.weight, bestE1RM: group?.capBest?.e1RM,
                 nextTarget: coach.nextTarget(for: ex.name, lastSessionDate: group?.sessions.first?.date),
-                backoffDropped: recencyHeld.contains(ex.id))
-            let fixed = PlanGuardrails.enforceMainLiftStructure(list, ctx: ctx)
+                backoffDropped: recencyHeld.contains(ex.id), ladder: ladder, lastWork: lastWork)
+            var fixed = PlanGuardrails.enforceMainLiftStructure(list, ctx: ctx)
+            // The rep-jump rule covers every working set: top, back-off and isolation work alike.
+            let jumps = PlanGuardrails.capRepJumps(fixed.targets, last: lastWork, ladder: ladder)
+            fixed.targets = jumps.targets
+            fixed.reasons += jumps.reasons
             guard !fixed.reasons.isEmpty || fixed.targets != list else { continue }
             targets[ex.id] = fixed.targets
             for reason in fixed.reasons {
@@ -272,10 +290,12 @@ enum PlanProgressionApplier {
             evidence[exercises[i].id]?.warmupCount = (targets[exercises[i].id] ?? []).filter { $0.isWarmup == true }.count
         }
         let kept = Set(exercises.map(\.id))
+        let warning = coach.recencyWarning(forLifts: exercises.filter { $0.trackingType != .cardio }.map { ($0.name, $0.muscleGroup) })
         return AppliedPlan(exercises: exercises, setTargets: targets.filter { kept.contains($0.key) },
                            evidence: evidence.filter { kept.contains($0.key) }, adjustments: adjustments,
                            changes: handled, safeguards: safeguards,
-                           reasons: reasons.filter { r in exercises.contains { $0.name == r.exercise } })
+                           reasons: reasons.filter { r in exercises.contains { $0.name == r.exercise } },
+                           recencyWarning: warning)
     }
 
     // MARK: - Notes
@@ -318,7 +338,7 @@ enum PlanProgressionApplier {
 
     private static func applyChanges(
         _ changes: [PlanChange], exercises: inout [Exercise], targets: inout [UUID: [SetTarget]],
-        adjustments: inout [String]
+        adjustments: inout [String], ladderFor: (String) -> WeightIncrements
     ) -> [PlanChange] {
         var out: [PlanChange] = []
         for var change in changes {
@@ -339,7 +359,7 @@ enum PlanProgressionApplier {
                 if index == nil { change.note = "The exercise did not make it into the plan" }
             case .loadAdjust:
                 guard let i = index else { change.note = "Exercise not in the plan"; break }
-                applyLoad(&change, exercise: &exercises[i], targets: &targets)
+                applyLoad(&change, exercise: &exercises[i], targets: &targets, ladder: ladderFor(exercises[i].name))
             case .setCount:
                 guard let i = index else { change.note = "Exercise not in the plan"; break }
                 applySetCount(&change, exercise: &exercises[i], targets: &targets)
@@ -350,20 +370,21 @@ enum PlanProgressionApplier {
         return out
     }
 
-    private static func applyLoad(_ change: inout PlanChange, exercise: inout Exercise, targets: inout [UUID: [SetTarget]]) {
+    private static func applyLoad(_ change: inout PlanChange, exercise: inout Exercise, targets: inout [UUID: [SetTarget]],
+                                  ladder: WeightIncrements) {
         guard var list = targets[exercise.id], !list.isEmpty else { change.note = "No per-set numbers to adjust"; return }
         guard let requested = change.percent ?? percent(in: change.detail) else { change.note = "No percentage given"; return }
         let clamp = PlanGuardrails.clampLoadAdjustment(requested)
         guard abs(clamp.percent) >= 0.5 else { change.note = "Change too small"; return }
-        let step = ExerciseTraits.roundingStep(exercise.name)
         let factor = 1 + clamp.percent / 100
         var moved = false
         for i in list.indices {
             guard let w = Double(list[i].prefillWeight), w > 0 else { continue }
-            // Round toward the unchanged weight so the edit never goes beyond what was allowed.
+            // Round toward the unchanged weight so the edit never goes beyond what was allowed, and only to
+            // weights the lift can actually be loaded with.
             let new = clamp.percent < 0
-                ? (w * factor / step).rounded(.up) * step
-                : ExerciseTraits.floorStep(w * factor, step: step)
+                ? ladder.snap(w * factor, direction: .up)
+                : ladder.snap(w * factor, direction: .down)
             if (clamp.percent < 0 ? new >= w : new <= w) { continue }
             list[i].weight = String(format: "%g", new)
             moved = true
@@ -553,7 +574,10 @@ enum PlanDraftBuilder {
                 allowWarmups: warmupIndexes.contains(i), focus: coach.focus, restPreference: coach.restPreference,
                 nextTarget: coach.nextTarget(for: ex.name, lastSessionDate: group.sessions.first?.date),
                 recentlyTrained: coach.isFresh(muscle: muscle),
-                now: coach.now, lastSameTypeSessionDate: group.latestSessionDate)
+                now: coach.now, lastSameTypeSessionDate: group.latestSessionDate,
+                muscleVeryRecent: coach.isVeryRecent(muscle: muscle),
+                fuelLow: coach.fuelHold?.isLow ?? false, fuelReason: coach.fuelHold?.primaryReason,
+                increments: WeightIncrements.learned(name: ex.name, group: group))
             if let result = ProgressionEngine.plan(input) {
                 draft.append(DraftExercise(name: ex.name, muscleGroup: ex.muscleGroup, result: result))
             }
@@ -563,6 +587,11 @@ enum PlanDraftBuilder {
             while draft.count > 2, estimatedMinutes(draft) > Double(limit) * 1.1 { draft.removeLast() }
         }
         return draft
+    }
+
+    /// The session-level heads-up for the requested workout (nil when its muscles are rested).
+    static func recencyWarning(for draft: [DraftExercise], coach: PlanCoachContext) -> RecencyWarning? {
+        coach.recencyWarning(forLifts: draft.map { ($0.name, $0.muscleGroup) })
     }
 
     /// Rough session length: 40 s of work per set plus the prescribed rest, and a few minutes of setup.

@@ -34,8 +34,23 @@ struct ExerciseAnalysis: Equatable {
     /// The rules' target for next time.
     var target: NextTarget?
     var note: String
+    /// The planned top weight is not on the lift's weight ladder (a cable stack with no 52.5), and the athlete
+    /// used the nearest lower weight that exists. Not a miss.
+    var plannedWeightUnavailable: Bool = false
+    /// Days since the lift's previous session when that was more than `ProgressionEngine.holdAfterDays`
+    /// ("first session back after N days"). A shortfall then is a return from a layoff, not lost strength.
+    var layoffDays: Int?
+    /// The weights the lift can be loaded with, as learned from its history (nil when unknown).
+    var ladder: WeightIncrements?
 
     var isMiss: Bool { miss != nil }
+    /// The top set was within one rep of the plan: counts as on target.
+    var isClose: Bool { outcome == .close }
+    /// "did 50x12; planned 52.5x12": what happened, when the weight differs from plan.
+    var weightDiffers: Bool {
+        guard let planned = prescribedTop, let top = actualTop else { return false }
+        return abs(planned.weight - top.weight) > 0.001
+    }
     var harderThanPlanned: Bool { (rirDelta ?? 0) <= -1 }
 
     /// "Cable row machine: planned W 90x10@5 · TOP 180x6@1 ... | did 160x8@1, 180x5@1 | TOP MISSED by 1 rep ..."
@@ -45,12 +60,20 @@ struct ExerciseAnalysis: Equatable {
         } ?? "no prescription"
         let did = actual.map(\.text).joined(separator: ", ")
         var verdict: String
+        let plannedText = prescribedTop?.text ?? "?"
         if prescribedTop == nil { verdict = "outcome \(outcome.rawValue)" }
-        else if let top = actualTop, shortBy > 0 {
-            verdict = loadDropped
-                ? "TOP SET MISSED: lifted \(top.text) vs \(prescribedTop?.text ?? "?") planned (lighter load)"
-                : "TOP SET MISSED by \(shortBy) rep\(shortBy == 1 ? "" : "s"): \(top.text) vs \(prescribedTop?.text ?? "?")"
+        else if let top = actualTop, plannedWeightUnavailable {
+            verdict = "top set on target: did \(top.text); planned \(plannedText), a weight this equipment does not have"
+        } else if let top = actualTop, outcome == .close {
+            verdict = "top set CLOSE (1 rep short, counts as on target): \(top.text) vs \(plannedText)"
+        } else if let top = actualTop, outcome == .missed || shortBy > 0 {
+            if weightDiffers {
+                verdict = "TOP SET MISSED: did \(top.text); planned \(plannedText)" + (loadDropped ? " (lighter load)" : "")
+            } else {
+                verdict = "TOP SET MISSED by \(shortBy) rep\(shortBy == 1 ? "" : "s"): \(top.text) vs \(plannedText)"
+            }
         } else { verdict = "top set on target (\(actualTop?.text ?? "?"))" }
+        if let days = layoffDays { verdict += ", first session back after \(days) days" }
         if let d = rirDelta, d < 0 { verdict += ", RIR \(-d) lower than planned" }
         if repeatedMiss { verdict += ", ALSO MISSED LAST TIME" }
         if let r = inSessionReason { verdict += ", athlete says: \(r)" }
@@ -67,11 +90,17 @@ struct SessionAnalysis: Equatable {
     var userNote: String?
 
     var missedCount: Int { exercises.filter(\.isMiss).count }
+    /// Lifts that count as on target in the summary: everything that is not a miss (close included).
+    var onTargetCount: Int { exercises.count - missedCount }
+    var closeCount: Int { exercises.filter(\.isClose).count }
 }
 
 /// Deterministic review rules: prescribed vs actual, miss classification, next targets, and the
 /// merge with the model's JSON (the model never overrides a rule-detected miss or a pain flag).
 enum SessionAnalyzer {
+
+    /// A top set one rep short is "close" only when the plan asked for at least this many reps.
+    static let closeMinPlannedReps = 5
 
     // MARK: - Analysis
 
@@ -117,41 +146,73 @@ enum SessionAnalyzer {
             guard let now = now, let p = prev else { return false }
             return now.timeIntervalSince(p.date) > Double(ProgressionEngine.holdAfterDays) * 86_400
         }()
-        let step = ExerciseTraits.roundingStep(ex.name)
+        let ladder = WeightIncrements.learned(name: ex.name, group: group)
+        let step = ladder.step
         let actualTop = matchTop(working: working, prescribed: prescription)
         let pTop = prescription?.topSet
+
+        // More than 14 days since the lift's previous session: today is the first session back.
+        let layoffDays: Int? = {
+            guard let now = now, let p = prev else { return nil }
+            // Calendar days (10/28 to 11/12 is 15), not 24-hour blocks.
+            let calendar = Calendar.current
+            let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: p.date),
+                                               to: calendar.startOfDay(for: now)).day ?? 0
+            return days > ProgressionEngine.holdAfterDays ? days : nil
+        }()
 
         // Prescribed vs actual on the top set.
         var shortBy = 0
         var loadDropped = false
+        var plannedUnavailable = false
         var rirDelta: Int?
         if let pTop, let top = actualTop {
             if top.weight < pTop.weight * 0.97 {
-                loadDropped = true
+                // Lighter than planned. When the planned weight does not exist on this equipment and the athlete took
+                // the nearest lower one that does, hitting the planned reps is on target, not a miss.
+                let nearestBelow = ladder.nearestBelow(pTop.weight)
+                if ladder.isConfident, !ladder.isOnLadder(pTop.weight),
+                   abs(top.weight - nearestBelow) <= WeightIncrements.noise {
+                    plannedUnavailable = true
+                    shortBy = max(0, pTop.reps - top.reps)
+                    loadDropped = shortBy > 0
+                } else {
+                    loadDropped = true
+                    let equivalent = Int(((top.e1RM / pTop.weight) - 1) * 30)
+                    shortBy = max(1, pTop.reps - equivalent)
+                }
+            } else if top.weight > pTop.weight * 1.03 {
+                // Heavier than planned: judged on the reps that load is worth at the planned weight.
                 let equivalent = Int(((top.e1RM / pTop.weight) - 1) * 30)
-                shortBy = max(1, pTop.reps - equivalent)
+                shortBy = max(0, pTop.reps - equivalent)
             } else {
                 shortBy = max(0, pTop.reps - top.reps)
             }
             if let rir = top.rir { rirDelta = rir - pTop.rir }
         }
+        if plannedUnavailable, shortBy > 0 { plannedUnavailable = false }
 
-        // Repeat misses and signals.
+        // Repeat misses and signals. A return from a layoff never counts as a repeated miss.
         let lastReview = previous.lazy.compactMap { $0.document.review?.review(for: ex.name) }.first
-        let repeated = lastReview?.outcome == .missed
+        let repeated = layoffDays == nil && lastReview?.outcome == .missed
         // A planned drop / back-off is not a problem: treat it as no reason.
         let missReason = reason.flatMap(MissReason.from).flatMap { $0 == .plannedDrop ? nil : $0 }
         let pain = painSignal(reason: missReason, note: userNote, exerciseName: ex.name, muscle: ex.muscleGroup)
 
-        // Outcome.
+        // Outcome. One rep short at the planned weight (plan of 5+ reps) is "close": on target, retry.
+        let isClose: Bool = {
+            guard let pTop, let top = actualTop, shortBy == 1, !loadDropped, pTop.reps >= closeMinPlannedReps,
+                  abs(top.weight - pTop.weight) <= pTop.weight * 0.03 else { return false }
+            return true
+        }()
         let outcome: ExerciseOutcome
-        if pTop != nil, actualTop != nil, shortBy > 0 { outcome = .missed }
+        if pTop != nil, actualTop != nil, shortBy > 0 { outcome = isClose ? .close : .missed }
         else if let top = actualTop {
             // `hitPR`: the PR record was beaten when the set was logged (before it was overwritten).
             if prev != nil, ex.hitPR { outcome = .pr }
             else if let b = best, top.e1RM > b.e1RM * 1.001 { outcome = .pr }
             else if prev == nil { outcome = .new }
-            else if let p = prev, ProgressionEngine.strength(HistorySession(date: Date(), sets: ex.sets)) < 0.95 * ProgressionEngine.strength(p) { outcome = .regression }
+            else if !plannedUnavailable, let p = prev, ProgressionEngine.strength(HistorySession(date: Date(), sets: ex.sets)) < 0.95 * ProgressionEngine.strength(p) { outcome = .regression }
             else { outcome = .hold }
         } else { outcome = .new }
 
@@ -161,16 +222,20 @@ enum SessionAnalyzer {
         if outcome == .missed, let pTop, let top = actualTop {
             let m = classifyMiss(shortBy: shortBy, energy: energy, reason: missReason, note: userNote,
                                  repeated: repeated, pain: pain, loadDropped: loadDropped, afterBreak: brokeBefore,
-                                 fuelNote: fuelNote)
+                                 fuelNote: fuelNote, layoffDays: layoffDays)
             miss = m
             target = missTarget(decision: m.decision, prescribed: pTop, actual: top, shortBy: shortBy,
-                                repeated: repeated, step: step, cause: m.cause)
+                                repeated: repeated, step: step, cause: m.cause, ladder: ladder)
+        } else if outcome == .close, let pTop {
+            var note = "Close: one rep short, retry the same target"
+            if let days = layoffDays { note = "First session back after \(days) days: retry the same target" }
+            target = NextTarget(weight: pTop.weight, reps: pTop.reps, note: note)
         } else if let top = actualTop, top.weight > 0 {
             if (rirDelta ?? 0) <= -1, outcome != .pr {
                 target = NextTarget(weight: top.weight, reps: top.reps, note: "Hit it but harder than planned: repeat before adding")
             } else {
                 let next = ProgressionEngine.nextTopTarget(name: ex.name, after: top, focus: focus, best: recentBest,
-                                                           history: group?.sessions ?? [])
+                                                           history: group?.sessions ?? [], increments: ladder)
                 let note = next.weight > top.weight ? "Make the jump" : "Add a rep"
                 target = NextTarget(weight: next.weight, reps: next.reps, note: note)
             }
@@ -180,7 +245,9 @@ enum SessionAnalyzer {
             shortBy: shortBy, loadDropped: loadDropped, rirDelta: rirDelta, outcome: outcome, repeatedMiss: repeated,
             inSessionReason: reason, painOrFormSignal: pain, miss: miss, target: target,
             note: deterministicNote(name: ex.name, top: actualTop, pTop: pTop, shortBy: shortBy, outcome: outcome,
-                                    miss: miss, target: target))
+                                    miss: miss, target: target, plannedUnavailable: plannedUnavailable,
+                                    layoffDays: layoffDays),
+            plannedWeightUnavailable: plannedUnavailable, layoffDays: layoffDays, ladder: ladder)
     }
 
     /// The logged working set that answers the prescribed top set.
@@ -219,10 +286,16 @@ enum SessionAnalyzer {
     /// long gap -> a rebuild from today's weight, not lost strength; pain/form -> hold or swap.
     static func classifyMiss(shortBy: Int, energy: Int, reason: MissReason?, note: String?,
                              repeated: Bool, pain: Bool, loadDropped: Bool = false,
-                             afterBreak: Bool = false, fuelNote: String? = nil) -> MissAnalysis {
+                             afterBreak: Bool = false, fuelNote: String? = nil,
+                             layoffDays: Int? = nil) -> MissAnalysis {
         if pain {
             return MissAnalysis(cause: .painOrForm, decision: .holdOrSwap,
                                 reason: "Pain or form flagged: hold the load or swap the movement, and cue the form.")
+        }
+        // First session back after a layoff: whatever the shortfall, it is a rebuild, not lost strength.
+        if let days = layoffDays {
+            return MissAnalysis(cause: .afterBreak, decision: .retry,
+                                reason: "First session back after \(days) days: a rebuild, not lost strength. Retry from today's weight.")
         }
         if loadDropped, afterBreak {
             return MissAnalysis(cause: .afterBreak, decision: .retry,
@@ -264,37 +337,50 @@ enum SessionAnalyzer {
 
     /// The target that follows from a decision.
     static func missTarget(decision: MissDecision, prescribed: PrescribedSet, actual: HistorySet,
-                           shortBy: Int, repeated: Bool, step: Double, cause: MissCause? = nil) -> NextTarget {
+                           shortBy: Int, repeated: Bool, step: Double, cause: MissCause? = nil,
+                           ladder: WeightIncrements? = nil) -> NextTarget {
+        let rungs = ladder ?? WeightIncrements(weights: [], fallbackStep: step)
         switch decision {
         case .retry:
             if cause == .afterBreak, actual.weight > 0 {
                 // Rebuild from what was actually lifted today, one rep more, never above the old rep goal.
                 let reps = max(1, min(prescribed.reps, actual.reps + 1))
-                return NextTarget(weight: ExerciseTraits.round(actual.weight, step: step), reps: reps,
+                return NextTarget(weight: rungs.snap(actual.weight), reps: reps,
                                   note: "Rebuild from today's weight")
             }
             return NextTarget(weight: prescribed.weight, reps: prescribed.reps, note: "Retry the same target")
         case .reduceAndRebuild:
             let pct = shortBy >= 3 ? 10.0 : (repeated ? 7.5 : 5.0)
-            var w = ExerciseTraits.floorStep(prescribed.weight * (1 - pct / 100), step: step)
-            if w >= prescribed.weight { w = max(step, prescribed.weight - step) }
+            var w = rungs.snap(prescribed.weight * (1 - pct / 100), direction: .down)
+            if w >= prescribed.weight { w = rungs.stepDown(from: prescribed.weight) }
             return NextTarget(weight: w, reps: prescribed.reps, note: "Down \(String(format: "%g", pct))%, rebuild from here")
         case .holdOrSwap:
-            let w = ExerciseTraits.round(min(prescribed.weight, actual.weight), step: step)
+            let w = rungs.snap(min(prescribed.weight, actual.weight))
             return NextTarget(weight: w, reps: max(1, actual.reps), note: "Hold, watch form and pain")
         }
     }
 
     private static func deterministicNote(name: String, top: HistorySet?, pTop: PrescribedSet?, shortBy: Int,
-                                          outcome: ExerciseOutcome, miss: MissAnalysis?, target: NextTarget?) -> String {
+                                          outcome: ExerciseOutcome, miss: MissAnalysis?, target: NextTarget?,
+                                          plannedUnavailable: Bool = false, layoffDays: Int? = nil) -> String {
         var parts: [String] = []
         if let top, let pTop {
-            parts.append(shortBy > 0
-                ? "Top set \(top.text) vs \(pTop.text) planned, short by \(shortBy) rep\(shortBy == 1 ? "" : "s")."
-                : "Top set \(top.text) on target (\(pTop.text) planned).")
+            let differs = abs(pTop.weight - top.weight) > 0.001
+            if plannedUnavailable {
+                parts.append("Did \(top.text); planned \(pTop.text): \(String(format: "%g", pTop.weight)) is not a weight this equipment has, so the nearest lower one was right. On target.")
+            } else if shortBy > 0, outcome == .close {
+                parts.append("Close: top set \(top.text) vs \(pTop.text) planned, one rep short. Counts as on target.")
+            } else if shortBy > 0, differs {
+                parts.append("Did \(top.text); planned \(pTop.text).")
+            } else if shortBy > 0 {
+                parts.append("Top set \(top.text) vs \(pTop.text) planned, short by \(shortBy) rep\(shortBy == 1 ? "" : "s").")
+            } else {
+                parts.append("Top set \(top.text) on target (\(pTop.text) planned).")
+            }
         } else if let top {
             parts.append("Best set \(top.text).")
         }
+        if let days = layoffDays { parts.append("First session back after \(days) days.") }
         switch outcome {
         case .pr: parts.append("New best.")
         case .regression: parts.append("Down on last session.")
@@ -324,13 +410,15 @@ enum SessionAnalyzer {
         let total = analysis.exercises.count
         let missed = analysis.exercises.filter(\.isMiss).map(\.name)
         let prs = analysis.exercises.filter { $0.outcome == .pr }.map(\.name)
+        let close = analysis.exercises.filter(\.isClose).map(\.name)
         var read = "\(workoutType): \(total - missed.count) of \(total) lifts on target"
+        if !close.isEmpty { read += " (close on \(close.joined(separator: ", ")))" }
         if !missed.isEmpty { read += ", missed \(missed.joined(separator: ", "))" }
         if !prs.isEmpty { read += ", best ever on \(prs.joined(separator: ", "))" }
         read += ". Energy \(analysis.energy)/10."
         if let first = analysis.exercises.first(where: \.isMiss), let t = first.target {
             read += " Next for \(first.name): \(t.text), no added load."
-        } else if missed.isEmpty, total > 0 { read += " Everything hit target." }
+        } else if missed.isEmpty, total > 0 { read += close.isEmpty ? " Everything hit target." : " No lift fell short." }
         return read
     }
 
@@ -361,7 +449,8 @@ enum SessionAnalyzer {
 
             // Outcome: a rule-detected miss stands; the model may not invent one.
             var outcome = a.outcome
-            if a.outcome != .missed, let mo = m?.outcome, mo != .missed { outcome = mo }
+            // The rules' "close" also stands: one rep short is not for the model to turn into something else.
+            if a.outcome != .missed, a.outcome != .close, let mo = m?.outcome, mo != .missed, mo != .close { outcome = mo }
 
             // Miss decision: the model's, unless it breaks a hard rule.
             var miss = a.miss
@@ -385,13 +474,14 @@ enum SessionAnalyzer {
             if let miss, let pTop = a.prescribedTop, let top = a.actualTop {
                 let step = ExerciseTraits.roundingStep(a.name)
                 var t = missTarget(decision: miss.decision, prescribed: pTop, actual: top, shortBy: a.shortBy,
-                                   repeated: a.repeatedMiss, step: step, cause: miss.cause)
+                                   repeated: a.repeatedMiss, step: step, cause: miss.cause,
+                                   ladder: a.ladder)
                 if let note = m?.nextTarget?.note, !note.isEmpty { t.note = note }
                 target = t
-            } else if let mt = m?.nextTarget, let top = a.actualTop, top.weight > 0,
+            } else if a.outcome != .close, let mt = m?.nextTarget, let top = a.actualTop, top.weight > 0,
                       mt.weight >= top.weight * 0.95, mt.weight <= top.weight * 1.06, (1...30).contains(mt.reps),
                       !(a.harderThanPlanned && mt.weight > top.weight) {
-                target = NextTarget(weight: ExerciseTraits.round(mt.weight, step: ExerciseTraits.roundingStep(a.name)),
+                target = NextTarget(weight: (a.ladder ?? WeightIncrements.fallback(for: a.name)).snap(mt.weight),
                                     reps: mt.reps, note: mt.note ?? a.target?.note)
             }
             // The model rewrites the memory note; without one, the previous note stays.
@@ -409,7 +499,7 @@ enum SessionAnalyzer {
         if !missed.isEmpty, !missed.contains(where: { read.lowercased().contains($0.lowercased()) }) {
             read = deterministicOverallRead(analysis, workoutType: workoutType)
         }
-        return SessionReview(exercises: exercises, overallRead: String(read.prefix(600)),
+        return SessionReview(exercises: exercises, overallRead: InputSanitizer.clipAtWord(read, limit: 600),
                              recurringFlags: Array(flags.prefix(6)), createdAt: now, aiAuthored: true)
     }
 
@@ -435,7 +525,7 @@ enum SessionAnalyzer {
             .joined()
         let collapsed = cleaned.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
         guard !collapsed.isEmpty else { return nil }
-        let clipped = String(collapsed.prefix(limit)).trimmingCharacters(in: .whitespaces)
+        let clipped = InputSanitizer.clipAtWord(collapsed, limit: limit).trimmingCharacters(in: .whitespaces)
         return clipped.isEmpty ? nil : clipped
     }
 
@@ -451,9 +541,9 @@ enum SessionAnalyzer {
         var text = "\(workoutType): \(review.overallRead)"
         if !review.recurringFlags.isEmpty { text += " Flags: " + review.recurringFlags.joined(separator: "; ") + "." }
         if let prev = previous?.trimmingCharacters(in: .whitespacesAndNewlines), !prev.isEmpty {
-            text += " Earlier: " + String(prev.prefix(300))
+            text += " Earlier: " + InputSanitizer.clipAtWord(prev, limit: 300)
         }
-        return String(text.prefix(700))
+        return InputSanitizer.clipAtWord(text, limit: 700)
     }
 }
 
@@ -492,15 +582,15 @@ struct ModelReview: Equatable {
             let miss = raw["miss"] as? [String: Any]
             return Exercise(
                 name: name,
-                notes: JSONReply.string(raw["notes"]).map { String($0.prefix(400)) },
+                notes: JSONReply.string(raw["notes"]).map { InputSanitizer.clipAtWord($0, limit: 400) },
                 outcome: JSONReply.string(raw["outcome"]).flatMap { ExerciseOutcome(rawValue: $0.lowercased()) },
                 nextTarget: target,
                 cause: JSONReply.string(miss?["cause"]).flatMap(MissCause.init(rawValue:)),
                 decision: JSONReply.string(miss?["decision"]).flatMap(MissDecision.init(rawValue:)),
-                reason: JSONReply.string(miss?["reason"]).map { String($0.prefix(300)) },
+                reason: JSONReply.string(miss?["reason"]).map { InputSanitizer.clipAtWord($0, limit: 300) },
                 memoryNote: JSONReply.string(raw["memory_note"]).flatMap(SessionAnalyzer.cleanMemoryNote))
         }
-        let flags = ((object["recurring_flags"] as? [Any]) ?? []).compactMap { JSONReply.string($0) }.map { String($0.prefix(120)) }
-        return ModelReview(exercises: exercises, overallRead: read.map { String($0.prefix(600)) }, recurringFlags: Array(flags.prefix(6)))
+        let flags = ((object["recurring_flags"] as? [Any]) ?? []).compactMap { JSONReply.string($0) }.map { InputSanitizer.clipAtWord($0, limit: 120) }
+        return ModelReview(exercises: exercises, overallRead: read.map { InputSanitizer.clipAtWord($0, limit: 600) }, recurringFlags: Array(flags.prefix(6)))
     }
 }

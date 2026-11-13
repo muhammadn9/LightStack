@@ -121,7 +121,7 @@ final class CoachReviewStore {
         let clean = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         return update(workoutId: workoutId) { doc in
             if clean.isEmpty { doc.inSessionReasons.removeValue(forKey: exercise) }
-            else { doc.inSessionReasons[exercise] = String(clean.prefix(200)) }
+            else { doc.inSessionReasons[exercise] = InputSanitizer.clipAtWord(clean, limit: 200) }
         }
     }
 
@@ -165,6 +165,9 @@ final class CoachReviewStore {
 
     // MARK: - Decisions
 
+    /// The stored reason keeps the whole sentence (cut at a word boundary only past this length).
+    static let decisionReasonLimit = 200
+
     /// The coach's calls for a finished plan: one per exercise with a top set, with the reason the plan
     /// carried (or the safety rail that replaced it), who set the numbers and what the coach saw.
     static func decisions(prescription: [ExercisePrescription], exercises: [Exercise],
@@ -191,7 +194,7 @@ final class CoachReviewStore {
             if let energy { parts.append("energy \(energy)") }
             result.append(CoachDecision(
                 name: ex.name, muscle: ex.muscleGroup, target: top, sets: pres.workingSets,
-                reason: SessionAnalyzer.cleanLine(reasonText, limit: 140) ?? "",
+                reason: SessionAnalyzer.cleanLine(reasonText, limit: CoachReviewStore.decisionReasonLimit) ?? "",
                 context: SessionAnalyzer.cleanLine(parts.joined(separator: ", "), limit: 120) ?? "",
                 source: source, outcome: nil))
         }
@@ -206,7 +209,7 @@ final class CoachReviewStore {
             var updated = decision
             let rirText = top.rir.map { "@\($0)" } ?? ""
             updated.outcome = DecisionOutcome(
-                hit: a.shortBy == 0 && a.outcome != .missed,
+                hit: a.outcome == .close || (a.shortBy == 0 && a.outcome != .missed),
                 actualTop: "\(String(format: "%g", top.weight))x\(top.reps)\(rirText)",
                 rir: top.rir, shortBy: a.shortBy, result: a.outcome)
             return updated

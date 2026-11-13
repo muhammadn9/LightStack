@@ -18,7 +18,7 @@ struct HistorySet: Equatable {
     }
 
     /// Epley estimated one-rep max.
-    var e1RM: Double { weight * (1 + Double(reps) / 30) }
+    var e1RM: Double { OneRepMax.estimate(weight: weight, reps: reps) }
 
     /// "185×6@1" (RIR omitted when unknown).
     var text: String {
@@ -123,12 +123,22 @@ struct ProgressionInput {
     var now: Date?
     /// Date of the newest same-type session, whether or not it contained this lift. nil switches the skip rule off.
     var lastSameTypeSessionDate: Date?
+    /// The lift's primary muscle had 2+ hard sets within `ProgressionEngine.muscleRecentHours`: never progress, and a
+    /// main lift comes down a notch (`RecencyWarning` tells the athlete why).
+    var muscleVeryRecent: Bool
+    /// Deep deficit or other low fuel (`FuelAssessment.isLow`): hold or reduce, never progress.
+    var fuelLow: Bool
+    var fuelReason: String?
+    /// The weights the lift can be loaded with. nil = learned from `sessions` (the usual case).
+    var increments: WeightIncrements?
 
     init(name: String, sessions: [HistorySession], best: HistorySet? = nil,
          feedback: SessionFeedback? = nil, energy: Int = CoachPreferences.neutralEnergy, allowWarmups: Bool = false,
          focus: CoachFocus = .hypertrophy, restPreference: Int = RestPreference.fallbackSeconds,
          nextTarget: NextTarget? = nil, recentlyTrained: Bool = false,
-         now: Date? = nil, lastSameTypeSessionDate: Date? = nil) {
+         now: Date? = nil, lastSameTypeSessionDate: Date? = nil,
+         muscleVeryRecent: Bool = false, fuelLow: Bool = false, fuelReason: String? = nil,
+         increments: WeightIncrements? = nil) {
         self.name = name
         self.sessions = sessions
         self.best = best
@@ -141,6 +151,10 @@ struct ProgressionInput {
         self.recentlyTrained = recentlyTrained
         self.now = now
         self.lastSameTypeSessionDate = lastSameTypeSessionDate
+        self.muscleVeryRecent = muscleVeryRecent
+        self.fuelLow = fuelLow
+        self.fuelReason = fuelReason
+        self.increments = increments
     }
 }
 
@@ -153,6 +167,10 @@ struct ProgressionResult: Equatable {
     var trend: ProgressionTrend
     var usedNextTarget: Bool = false
     var recencyApplied: Bool = false
+    /// Why the lift was not allowed to progress (trained hours ago, low fuel); nil when it was free to.
+    var noProgressReason: String?
+    /// Reps held back by the "no rep jumps at a weight just done" rule, one line each.
+    var repCaps: [String] = []
 
     var workingSets: [ProgressionSet] { sets.filter { !$0.isWarmup } }
     var warmupCount: Int { sets.filter(\.isWarmup).count }

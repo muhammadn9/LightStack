@@ -17,7 +17,7 @@ struct PersonalRecordsListView: View {
     /// Epley estimate; nil when weight or reps is zero.
     static func estimatedOneRepMax(weight: Double, reps: Int) -> Double? {
         guard weight > 0, reps > 0 else { return nil }
-        return weight * (1 + Double(reps) / 30)
+        return OneRepMax.estimate(weight: weight, reps: reps)
     }
 
     /// Grouping key for an exercise name: case, spacing, punctuation, plurals and

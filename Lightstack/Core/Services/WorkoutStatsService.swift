@@ -122,7 +122,7 @@ final class WorkoutStatsService {
                     let weight = cdSet.weightLbs
                     let reps = Double(cdSet.reps)
                     guard weight > 0, reps > 0 else { continue }
-                    let e1rm = weight * (1 + reps / 30) // Epley formula
+                    let e1rm = OneRepMax.estimate(weight: weight, reps: reps)
                     bestE1RM = max(bestE1RM, e1rm)
                 }
             }
@@ -143,7 +143,7 @@ final class WorkoutStatsService {
                     let weight = cdSet.weightLbs
                     let reps = Double(cdSet.reps)
                     guard weight > 0, reps > 0 else { continue }
-                    let e1rm = weight * (1 + reps / 30) // Epley formula
+                    let e1rm = OneRepMax.estimate(weight: weight, reps: reps)
                     bestByExercise[name] = max(bestByExercise[name] ?? 0, e1rm)
                 }
             }

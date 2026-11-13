@@ -287,7 +287,7 @@ final class CoachPromptServiceTests: XCTestCase {
     func testGoalsBlockRendersNumbersDateAndTodaysStep() throws {
         let block = try XCTUnwrap(service.goalsBlock(goalItems(attempt: false)))
         XCTAssertTrue(block.hasPrefix("ACTIVE GOALS:"), block)
-        XCTAssertTrue(block.contains("Bench Press 225x1 by 11/07 (e1RM 227 -> need 233)"), block)
+        XCTAssertTrue(block.contains("Bench Press 225x1 by 11/07 (now ~227 e1RM, goal needs ~233)"), block)
         XCTAssertTrue(block.contains("Today's step: top single 215x1 @1, then 2 work sets."), block)
         XCTAssertTrue(block.contains("Build toward them within the rails."), block)
         XCTAssertFalse(block.contains("Attempt day"), block)

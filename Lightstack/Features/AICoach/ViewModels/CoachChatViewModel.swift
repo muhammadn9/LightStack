@@ -662,7 +662,7 @@ final class CoachChatViewModel: ObservableObject {
     }
 
     static func truncated(_ text: String, _ limit: Int) -> String {
-        text.count <= limit ? text : String(text.prefix(max(0, limit - 1))) + "…"
+        InputSanitizer.clipAtWord(text, limit: limit)
     }
 
     // MARK: - Helpers
