@@ -114,13 +114,13 @@ final class GeminiService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue(anonKey, forHTTPHeaderField: "apikey")
             request.httpBody = httpBody
-            // Just above the proxy's 55s upstream cap, so a slow model surfaces the
-            // proxy's own 504 (which does not trigger the model fallback).
-            request.timeoutInterval = 58
+            // Standard tasks wait just above the proxy's 55s upstream cap; interactive tasks use a shorter
+            // per-attempt timeout (see AIRetryPolicy). A timeout or 504 makes the manager try another model.
+            request.timeoutInterval = options.retryPolicy.attemptTimeout
             #if DEBUG
             AIUsageTracker.shared.recordCall(task: options.task)
             #endif
-            performWithRetry(request: request, attempt: 0, task: options.task,
+            performWithRetry(request: request, attempt: 0, task: options.task, maxBackoffRetries: options.retryPolicy.sameModel503Retries,
                              thinkingFallbackBody: plainBody, expectsJSON: expectsJSON, completion: completion)
         }
     }
@@ -131,11 +131,12 @@ final class GeminiService {
         NSError(domain: proxyErrorDomain, code: status, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
-    /// Executes the request, retrying on 503 with exponential backoff: 1s, 2s, 4s.
+    /// Executes the request, retrying on 503 with exponential backoff (1s, 2s, 4s) up to `maxBackoffRetries` times.
     private func performWithRetry(
         request: URLRequest,
         attempt: Int,
         task: AITask,
+        maxBackoffRetries: Int,
         thinkingFallbackBody: Data?,
         expectsJSON: Bool,
         completion: @escaping (Result<AIReply, Error>) -> Void
@@ -151,6 +152,13 @@ final class GeminiService {
             let http = response as? HTTPURLResponse
             let httpStatus = http?.statusCode ?? 200
 
+            // The proxy's own 504 (upstream timeout) and 502 (could not reach Gemini) mean "busy", not "refused":
+            // another model may answer.
+            if http?.value(forHTTPHeaderField: "x-ai-proxy-error") != nil, httpStatus == 502 || httpStatus == 504 {
+                DispatchQueue.main.async { completion(.failure(AITransientError(cause: .busy(httpStatus)))) }
+                return
+            }
+
             // ai-proxy's own refusals (rate limit, signed out, …): surface the message.
             if http?.value(forHTTPHeaderField: "x-ai-proxy-error") != nil {
                 let message = data.flatMap(Self.proxyMessage(from:)) ?? "The AI coach is unavailable right now."
@@ -164,20 +172,25 @@ final class GeminiService {
                 var plain = request
                 plain.httpBody = fallback
                 self.logger.debug("400 mentioning thinking, retrying without thinkingConfig")
-                self.performWithRetry(request: plain, attempt: attempt, task: task,
+                self.performWithRetry(request: plain, attempt: attempt, task: task, maxBackoffRetries: maxBackoffRetries,
                                       thinkingFallbackBody: nil, expectsJSON: expectsJSON, completion: completion)
                 return
             }
 
-            // Retry on 503 with exponential backoff: 1s → 2s → 4s (max 3 retries)
-            if httpStatus == 503 && attempt < 3 {
+            // Retry on 503 with exponential backoff: 1s → 2s → 4s (standard policy only).
+            if httpStatus == 503 && attempt < maxBackoffRetries {
                 let delay = pow(2.0, Double(attempt))   // 1, 2, 4 seconds
-                self.logger.debug("503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/3)")
+                self.logger.debug("503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/\(maxBackoffRetries))")
                 DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
-                    self?.performWithRetry(request: request, attempt: attempt + 1, task: task,
+                    self?.performWithRetry(request: request, attempt: attempt + 1, task: task, maxBackoffRetries: maxBackoffRetries,
                                            thinkingFallbackBody: thinkingFallbackBody, expectsJSON: expectsJSON,
                                            completion: completion)
                 }
+                return
+            }
+            // Still overloaded (or the upstream is down): a typed error so the manager can move to another model.
+            if httpStatus == 503 || httpStatus == 502 || httpStatus == 504 {
+                DispatchQueue.main.async { completion(.failure(AITransientError(cause: .busy(httpStatus)))) }
                 return
             }
 

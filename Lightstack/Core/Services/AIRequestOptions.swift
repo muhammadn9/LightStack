@@ -30,6 +30,8 @@ struct AIRequestOptions: Equatable {
     var googleSearch: Bool = false
     /// Optional Gemini response schema. Only sent when the call expects JSON, and not sent when googleSearch is on.
     var schema: AIResponseSchema?
+    /// Per-attempt timeout and how a transient failure (503, 504, timeout) moves between models.
+    var retryPolicy: AIRetryPolicy = .standard
 
     /// The ai-proxy accepts thinkingBudget 0...4096 or thinkingLevel minimal/low/medium.
     enum ThinkingEffort: Equatable {
@@ -55,7 +57,8 @@ struct AIRequestOptions: Equatable {
         case .chat: return AIRequestOptions(task: task, maxOutputTokens: 1000, thinking: .minimal)
         case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, thinking: .minimal)
         case .monthPlan: return AIRequestOptions(task: task, maxOutputTokens: 4000, thinking: .minimal)
-        case .formFeedback: return AIRequestOptions(task: task, maxOutputTokens: 1200, temperature: 0.3, thinking: .minimal)
+        case .formFeedback:
+            return AIRequestOptions(task: task, maxOutputTokens: 2500, temperature: 0.2, thinking: .low, retryPolicy: .fastFailover)
         case .nutrition: return AIRequestOptions(task: task, maxOutputTokens: 3000, temperature: 0.2, thinking: .low)
         case .other: return .default
         }

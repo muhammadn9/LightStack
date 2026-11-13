@@ -1,24 +1,25 @@
 import SwiftUI
 
-/// The AI coach: loading row, then verdict, what went well and up to three numbered fixes.
+/// The AI coach (what it saw in the video): loading row, then verdict, what went well and up to three numbered
+/// fixes, or a calm "nothing extra" row when it sees nothing beyond the measurements.
 struct FormCoachSection: View {
 
     let feedback: FormFeedback?
     let isLoading: Bool
-    let failed: Bool
+    let failure: AIFailureReason?
     let onSelectFix: (FormFix) -> Void
     let canSeek: (FormFix) -> Bool
     let onRetry: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            FormSectionHeader(title: "Coach", systemImage: "sparkles")
+            FormSectionHeader(title: "Coach (from your video)", systemImage: "sparkles")
             if isLoading {
                 loadingRow
             } else if let feedback {
                 content(feedback)
-            } else if failed {
-                unavailableRow
+            } else if let failure {
+                unavailableRow(failure)
             }
         }
     }
@@ -38,9 +39,9 @@ struct FormCoachSection: View {
         .accessibilityIdentifier("formResults.coachLoading")
     }
 
-    private var unavailableRow: some View {
+    private func unavailableRow(_ reason: AIFailureReason) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Coach feedback unavailable right now. Measurements below are from on-device tracking.")
+            Text("Coach feedback unavailable. \(reason.message) The measurements below are from on-device tracking.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.textSecondary)
             Button(action: onRetry) {
@@ -76,6 +77,19 @@ struct FormCoachSection: View {
             }
         }
         .formCard()
+
+        if feedback.fixes.isEmpty {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.seal.fill").foregroundStyle(AppTheme.success)
+                Text("Nothing extra spotted in the frames")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Spacer(minLength: 0)
+            }
+            .formCard()
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("formResults.nothingExtra")
+        }
 
         ForEach(Array(feedback.fixes.enumerated()), id: \.element.id) { index, fix in
             FixCard(number: index + 1, fix: fix, canSeek: canSeek(fix)) { onSelectFix(fix) }

@@ -6,6 +6,8 @@ struct FormFix: Identifiable, Equatable, Codable {
     let why: String
     let cue: String
     let reps: [Int]
+    /// Label of the key frame the coach saw this in ("Rep 6 peak"), used to seek the replay.
+    var frame: String? = nil
 }
 
 struct FormFeedback: Equatable, Codable {
@@ -15,13 +17,24 @@ struct FormFeedback: Equatable, Codable {
     let estimatedReps: Int?      // only when the tracker could not count
 }
 
-/// Anything that can produce coach feedback for a recorded set (lets the results screen be tested).
-protocol FormFeedbackProviding {
-    func feedback(for result: FormSessionResult) async -> FormFeedback?
+/// What asking the coach produced: feedback, or the reason there is none.
+enum FormFeedbackResult: Equatable {
+    case success(FormFeedback)
+    case failure(AIFailureReason)
+
+    var feedback: FormFeedback? {
+        if case .success(let f) = self { return f }
+        return nil
+    }
 }
 
-/// Sends the measurements and a contact sheet of the recorded set to the AI and turns the reply into
-/// short, specific feedback. Never throws: any failure is `nil` and the screen shows measurements only.
+/// Anything that can produce coach feedback for a recorded set (lets the results screen be tested).
+protocol FormFeedbackProviding {
+    func feedback(for result: FormSessionResult) async -> FormFeedbackResult
+}
+
+/// Sends the rep table and a contact sheet of the recorded set to the AI and turns the reply into short,
+/// specific feedback. Never throws: any failure is `.failure(reason)` and the screen shows measurements only.
 final class FormFeedbackService: FormFeedbackProviding {
 
     private let aiServiceManager: AIServiceManager
@@ -30,71 +43,85 @@ final class FormFeedbackService: FormFeedbackProviding {
         self.aiServiceManager = aiServiceManager
     }
 
-    func feedback(for result: FormSessionResult) async -> FormFeedback? {
-        let image = await FormKeyFrameSheet.sheet(for: result)
-        guard !Task.isCancelled else { return nil }
-        let prompt = Self.buildUserPrompt(analysis: result.analysis, hasImage: image != nil)
-        let message = ChatMessage(role: .user, content: prompt, imageJPEG: image)
+    func feedback(for result: FormSessionResult) async -> FormFeedbackResult {
+        let sheet = await FormKeyFrameSheet.makeSheet(for: result)
+        guard !Task.isCancelled else { return .failure(.other) }
+        let prompt = Self.buildUserPrompt(analysis: result.analysis, hasImage: sheet != nil,
+                                          frameLabels: sheet?.moments.map(\.label) ?? [])
+        let message = ChatMessage(role: .user, content: prompt, imageJPEG: sheet?.data)
         var options = AIRequestOptions.forTask(.formFeedback)
         options.schema = Self.responseSchema
 
-        let text: String? = await withCheckedContinuation { continuation in
+        let reply: Result<String, Error> = await withCheckedContinuation { continuation in
             aiServiceManager.generateChat(systemPrompt: Self.systemPrompt, messages: [message],
                                           expectsJSON: true, options: options) { reply in
-                continuation.resume(returning: try? reply.get())
+                continuation.resume(returning: reply)
             }
         }
-        guard let text else { return nil }
-        return Self.parse(text)
+        switch reply {
+        case .failure(let error):
+            return .failure(AIFailureReason.classify(error))
+        case .success(let text):
+            guard let feedback = Self.parse(text) else { return .failure(.other) }
+            return .success(feedback)
+        }
     }
 
     // MARK: Prompt
 
+    static let measuredNote = "The lifter already sees the measured range, tempo, left/right and sway results on screen. "
+        + "Do NOT restate them or anything derivable from the table. Your job is what the numbers cannot show."
+
     static let systemPrompt = """
-    You are an experienced strength coach reviewing ONE recorded set of a named exercise for a lifter who \
-    will read your feedback between sets. Be specific, short and easy to act on.
+    You are an experienced strength coach looking at frames from ONE recorded set of a named exercise. The \
+    lifter reads your notes between sets. Your only job is to say what the numbers cannot: what your eyes \
+    see in the frames.
 
-    You are given two things:
-    1. MEASUREMENTS from on-device body tracking of the video. They come from 2D tracking of a single camera \
-    angle. They are reliable for rep count, range of motion and tempo. They are weaker for anything that \
-    depends on depth or the other side of the body.
-    2. An IMAGE: one grid of frames from the video, in time order. Each frame is labelled ("Rep 3 start", \
-    "Rep 3 peak", or a timestamp such as "0:07") and has the tracked skeleton drawn on it (green lines are \
-    the joints that drive this exercise).
+    You are given:
+    1. A short MEASUREMENT summary from on-device body tracking: the rep count, a per-rep table, and which \
+    reps the tracker flagged. The lifter already sees the measured range, tempo, left/right and sway results \
+    on screen. Do NOT restate them or anything derivable from the table (rep count, range, timing, "reps got \
+    shorter", "rushed", "uneven sides"). The flagged reps only tell you where to look.
+    2. An IMAGE: one grid of frames in up to 3 columns by 2 rows, all cropped the same way around the lifter \
+    so they can be compared. Each frame is labelled ("Rep 3 start", "Rep 3 peak", or a time such as "0:07"). \
+    A thin, semi-transparent skeleton from the tracker is drawn on each (green lines are the joints that \
+    drive this exercise).
+    3. WHAT TO LOOK FOR on this movement: the visual checks only eyes can make.
 
-    Use the frames for what numbers cannot show: joint positions, bar or dumbbell path, torso angle, \
-    elbow, knee and wrist alignment, range at the peak, bracing and setup. Judge only what is actually \
-    visible from this camera angle. If a joint or the weight is hidden, do not guess about it. Treat the \
-    skeleton as a hint, not as the truth: trust your own eyes where they disagree.
-
-    The REFERENCE STANDARD in the user message lists what good form looks like on this movement. Compare \
-    what you see against it.
+    How to judge:
+    - Judge only what is visible from this camera angle. If a joint, the bar or the weight is hidden, do not \
+    guess about it. The skeleton is a hint, not the truth: trust your own eyes where they disagree.
+    - Compare the same joint across frames (first rep against the worst and the last).
+    - Every fix must cite the frame it was seen in. Set "frame" to that frame's exact label (for example \
+    "Rep 6 peak") and start "why" with the label and a colon, for example "Rep 6 peak: the elbow flares wide \
+    of the ribs." Never cite a frame that is not in the image.
+    - No generic advice. Do not repeat a cue the lifter is already doing correctly. Never invent a problem.
+    - If you see nothing worth changing beyond what the measurements already show, return NO fixes and a \
+    short honest verdict such as "Nothing extra to fix from this angle". You may add what camera angle \
+    would let you judge more.
 
     Rules:
     - Never contradict the measured rep count when the tracking status is good or partial.
     - When the tracking status is insufficient, or the exercise is not tracked, estimate the number of reps \
     from the frames only if you can actually see it. Otherwise set estimatedReps to null. When the tracking \
     status is good or partial, always set estimatedReps to null.
-    - Never invent a problem. If the form looks good, return no fixes and say so in the verdict.
-    - At most 3 fixes, most important first. Only include a fix you can point to in the frames or the \
-    measurements.
-    - Each fix has: "title" (6 words or fewer, plain language), "why" (one sentence saying what you saw and on \
-    which reps), "cue" (one short instruction the lifter can think about on the next set, 12 words or \
-    fewer), and "reps" (the rep numbers it applies to, or an empty list when it applies to all reps or you \
-    cannot tell).
-    - "verdict" is one sentence of 20 words or fewer summarising the set.
-    - "positives" has 0 to 2 items of 10 words or fewer each: things the lifter did well.
+    - At most 3 fixes, most important first. Only include a fix you can point to in a frame.
+    - Each fix has: "title" (6 words or fewer, plain language), "why" (one sentence: the frame label, then \
+    what you saw), "cue" (one short instruction the lifter can think about on the next set, 12 words or \
+    fewer), "reps" (the rep numbers it applies to, or an empty list when it applies to all reps or you \
+    cannot tell) and "frame" (the label of the frame it was seen in).
+    - "verdict" is one sentence of 20 words or fewer summarising what you saw.
+    - "positives" has 0 to 2 items of 10 words or fewer each: things you can see the lifter doing well.
     - No medical claims or injury diagnoses. No jargon without a plain explanation. No hedging filler such \
     as "it seems" or "maybe". No markdown. No em dashes.
-    - If the image is missing, or the lifter cannot be seen in it, say so in the verdict and base the fixes \
-    only on the measurements.
+    - If the image is missing, or the lifter cannot be seen in it, say so in the verdict and return no fixes.
 
     Reply with ONE JSON object and nothing else, exactly this shape:
     {"verdict": string, "positives": [string], "fixes": [{"title": string, "why": string, "cue": string, \
-    "reps": [integer]}], "estimatedReps": integer or null}
+    "reps": [integer], "frame": string}], "estimatedReps": integer or null}
     """
 
-    static func buildUserPrompt(analysis: FormAnalysis, hasImage: Bool) -> String {
+    static func buildUserPrompt(analysis: FormAnalysis, hasImage: Bool, frameLabels: [String] = []) -> String {
         var lines: [String] = []
         lines.append("Exercise: \(analysis.exerciseName)")
         lines.append("Tracking status: \(analysis.detection.status.rawValue)")
@@ -108,22 +135,28 @@ final class FormFeedbackService: FormFeedbackProviding {
             lines.append("This exercise is not tracked, so there is no measured rep count.")
         }
         lines.append("")
-        lines.append("MEASUREMENTS (on-device 2D body tracking, one camera angle):")
-        lines.append(analysis.summaryForPrompt())
+        lines.append(measuredNote)
         lines.append("")
-        lines.append("REFERENCE STANDARD for good form on this movement:")
-        if analysis.profile.isTracked {
-            for cue in analysis.profile.cues { lines.append("- \(cue)") }
-        } else {
-            lines.append("- None on file for this exercise. Use general good technique for it.")
+        lines.append("PER-REP TABLE (on-device 2D body tracking, one camera angle):")
+        lines.append(analysis.summaryForPrompt(includeFindings: false))
+        let flagged = analysis.reps.filter { !$0.isClean }.map(\.rep.number)
+        if !analysis.reps.isEmpty {
+            lines.append(flagged.isEmpty
+                ? "The tracker flagged no reps."
+                : "The tracker flagged \(FormAnalyzer.repLabel(flagged)). Look at those frames first, but do not restate why.")
         }
         lines.append("")
+        lines.append("WHAT TO LOOK FOR on this movement (judge each from the frames, skip any you cannot see):")
+        for check in analysis.profile.visualChecks { lines.append("- \(check)") }
+        lines.append("")
         if hasImage {
-            lines.append("IMAGE: attached. It is a grid of frames from the video in time order, each labelled, "
-                         + "with the tracked skeleton drawn on.")
+            var text = "IMAGE: attached. A grid of frames from the video, each labelled and cropped to the lifter, "
+                + "with the tracked skeleton drawn thinly on."
+            if !frameLabels.isEmpty { text += " Frame labels: " + frameLabels.joined(separator: ", ") + "." }
+            lines.append(text)
         } else {
-            lines.append("IMAGE: none. No video frames are available, so base your fixes only on the measurements "
-                         + "and say in the verdict that you could not see the set.")
+            lines.append("IMAGE: none. No video frames are available, so you cannot see the set: say so in the verdict "
+                         + "and return no fixes.")
         }
         lines.append("")
         lines.append("Return the JSON now.")
@@ -135,7 +168,7 @@ final class FormFeedbackService: FormFeedbackProviding {
         let fix: [String: Any] = [
             "type": "OBJECT",
             "properties": [
-                "title": string, "why": string, "cue": string,
+                "title": string, "why": string, "cue": string, "frame": string,
                 "reps": ["type": "ARRAY", "items": ["type": "INTEGER"]] as [String: Any]
             ] as [String: Any],
             "required": ["title", "why", "cue", "reps"]
@@ -174,7 +207,9 @@ final class FormFeedbackService: FormFeedbackProviding {
             let title = clean(raw["title"]), why = clean(raw["why"]), cue = clean(raw["cue"])
             guard !title.isEmpty, !(why.isEmpty && cue.isEmpty) else { continue }
             let reps = Array(Set(((raw["reps"] as? [Any]) ?? []).compactMap(int))).filter { $0 > 0 }.sorted()
-            fixes.append(FormFix(id: "fix-\(fixes.count + 1)", title: title, why: why, cue: cue, reps: reps))
+            let frame = clean(raw["frame"])
+            fixes.append(FormFix(id: "fix-\(fixes.count + 1)", title: title, why: why, cue: cue, reps: reps,
+                                 frame: frame.isEmpty ? nil : frame))
             if fixes.count == maxFixes { break }
         }
         guard !verdict.isEmpty || !fixes.isEmpty else { return nil }

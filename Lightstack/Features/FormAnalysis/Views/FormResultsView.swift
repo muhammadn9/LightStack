@@ -6,6 +6,7 @@ struct FormResultsView: View {
     @StateObject private var model: FormResultsViewModel
     let onRecordAgain: () -> Void
     let onClose: () -> Void
+    @State private var showingShareData = false
 
     init(result: FormSessionResult, feedbackProvider: FormFeedbackProviding,
          onRecordAgain: @escaping () -> Void, onClose: @escaping () -> Void) {
@@ -29,7 +30,7 @@ struct FormResultsView: View {
                             FormSummaryRow(repDisplay: model.repDisplay, score: model.analysis.score,
                                            status: model.analysis.detection.status)
                             FormCoachSection(feedback: model.feedback, isLoading: model.isLoadingFeedback,
-                                             failed: model.feedbackFailed,
+                                             failure: model.failureReason,
                                              onSelectFix: { model.seek(to: $0) },
                                              canSeek: { model.seekTime(for: $0) != nil },
                                              onRetry: { model.retryFeedback() })
@@ -41,6 +42,13 @@ struct FormResultsView: View {
                                                 cameraTip: model.analysis.profile.cameraTip,
                                                 onSelect: { model.seek(to: $0) },
                                                 onRecordAgain: onRecordAgain)
+                            Button { showingShareData = true } label: {
+                                Label("Something off? Share tracking data", systemImage: "square.and.arrow.up")
+                                    .font(.footnote)
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchSize)
+                            }
+                            .accessibilityIdentifier("formResults.shareData")
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
@@ -59,6 +67,10 @@ struct FormResultsView: View {
             model.loadFeedbackIfNeeded()
         }
         .onDisappear { model.teardown() }
+        .sheet(isPresented: $showingShareData) {
+            FormShareDataSheet(model: model)
+                .presentationDetents([.medium])
+        }
     }
 
     private var footer: some View {
