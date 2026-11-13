@@ -68,6 +68,7 @@ final class FormAnalysisViewModel: ObservableObject {
     private var frames: [PoseFrame] = []
     private var lastFrameTime: TimeInterval?
     private var detecting = false
+    private var liveDetectionTask: Task<Void, Never>?
     private var lastDetectTime: TimeInterval = 0
 
     /// Frames kept for the current recording (for tests and diagnostics).
@@ -235,17 +236,30 @@ final class FormAnalysisViewModel: ObservableObject {
     private func runLiveDetection() {
         detecting = true
         lastDetectTime = elapsed
+        liveDetectionTask = Task { await applyLiveDetection() }
+    }
+
+    /// Detects reps on a snapshot of the frames so far (off the main actor) and publishes a higher count.
+    private func applyLiveDetection() async {
         let snapshot = PoseTrack(frames: frames, aspectRatio: source.aspectRatio)
         let profile = profile
-        Task {
-            let count = await Task.detached(priority: .userInitiated) {
-                RepDetector.detect(track: snapshot, profile: profile).reps.count
-            }.value
-            detecting = false
-            guard phase == .recording, count > liveRepCount else { return }
-            liveRepCount = count
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
+        let count = await Task.detached(priority: .userInitiated) {
+            RepDetector.detect(track: snapshot, profile: profile).reps.count
+        }.value
+        detecting = false
+        guard phase == .recording, count > liveRepCount else { return }
+        liveRepCount = count
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Waits for any in-flight live detection, then runs one more over all frames so far.
+    /// Production relies on the frame-driven cadence; tests await this instead of racing it.
+    func refreshLiveRepCount() async {
+        await liveDetectionTask?.value
+        guard phase == .recording, profile.isTracked else { return }
+        detecting = true
+        lastDetectTime = elapsed
+        await applyLiveDetection()
     }
 
     // MARK: Finishing
