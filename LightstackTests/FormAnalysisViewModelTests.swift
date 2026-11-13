@@ -147,9 +147,8 @@ final class FormAnalysisViewModelTests: XCTestCase {
         await record(model)
         for t in stride(from: 0.0, through: 9, by: 1 / SyntheticPoseSource.frameRate) {
             source.send(SyntheticPoseSource.frame(at: t))
-            if Int(t * 15) % 5 == 0 { await Task.yield() }
         }
-        await waitUntil { model.liveRepCount >= 1 }
+        await model.refreshLiveRepCount()
         XCTAssertGreaterThanOrEqual(model.liveRepCount, 1)
     }
 
