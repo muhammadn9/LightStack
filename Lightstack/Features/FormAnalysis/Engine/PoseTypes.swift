@@ -94,3 +94,28 @@ enum PoseGeometry {
         return angle(a, b, c, aspect: aspect)
     }
 }
+
+/// What kind of signal carried the reps.
+enum SignalKind: String, Codable {
+    /// A joint angle in degrees (unsigned, 2D).
+    case angle
+    /// The working limb's end joint relative to its root, projected on its main axis of motion,
+    /// in percent of a stable body length. Moves one way through a rep even when angles fold.
+    case displacement
+}
+
+/// Which limb's end joint is tracked relative to its root for the displacement signal.
+enum DisplacementLimb: String, Codable {
+    case arm     // wrist relative to same-side shoulder
+    case leg     // ankle relative to same-side hip
+    case trunk   // same-side shoulder relative to same-side hip
+
+    func joints(_ side: BodySide) -> (root: BodyJoint, end: BodyJoint) {
+        let l = side == .left
+        switch self {
+        case .arm: return l ? (.leftShoulder, .leftWrist) : (.rightShoulder, .rightWrist)
+        case .leg: return l ? (.leftHip, .leftAnkle) : (.rightHip, .rightAnkle)
+        case .trunk: return l ? (.leftHip, .leftShoulder) : (.rightHip, .rightShoulder)
+        }
+    }
+}

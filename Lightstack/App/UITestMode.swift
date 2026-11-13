@@ -627,12 +627,12 @@ final class UITestFakeAIProvider: AIProvider {
     }
 
     static let formFeedbackJSON = """
-    {"verdict": "Steady set with a clear range, but the last reps got shorter.",
+    {"verdict": "Steady set, with two small form details worth fixing.",
      "positives": ["Smooth, controlled lowering"],
-     "fixes": [{"title": "Reps got shorter late", "why": "Reps 4 and 5 stopped well below the height of your first reps.",
-                "cue": "Lift to the same height on every rep.", "reps": [4, 5]},
-               {"title": "Rushed the lowering", "why": "Rep 2 dropped quickly instead of coming down under control.",
-                "cue": "Count two seconds on the way down.", "reps": [2]}],
+     "fixes": [{"title": "Elbows drift forward", "why": "Rep 4 peak: the elbows sit well in front of the ribs.",
+                "cue": "Pin your elbows beside your ribs.", "reps": [4, 5], "frame": "Rep 4 peak"},
+               {"title": "Shoulders shrug up", "why": "Rep 2 peak: the shoulders rise toward the ears.",
+                "cue": "Keep your shoulders down and long.", "reps": [2], "frame": "Rep 2 peak"}],
      "estimatedReps": null}
     """
 

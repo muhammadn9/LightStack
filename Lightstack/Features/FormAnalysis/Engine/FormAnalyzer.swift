@@ -31,24 +31,28 @@ struct FormAnalysis: Equatable {
     var repCount: Int { reps.count }
 
     /// Compact plain-text block for the AI prompt.
-    func summaryForPrompt() -> String {
+    func summaryForPrompt(includeFindings: Bool = true) -> String {
         var lines: [String] = []
         lines.append("Exercise: \(exerciseName)")
         let quality = Int((detection.trackingQuality * 100).rounded())
-        lines.append("Tracking: \(detection.status.rawValue) (\(quality)% of frames visible, \(detection.angle.rawValue) angle"
+        let signalName = detection.kind == .angle ? "\(detection.angle.rawValue) angle" : "limb displacement"
+        lines.append("Tracking: \(detection.status.rawValue) (\(quality)% of frames visible, \(signalName)"
                      + (detection.side.map { ", \($0.rawValue) side" } ?? "") + ")")
         if reps.isEmpty {
             lines.append("Reps detected: none")
         } else {
             lines.append("Reps detected: \(reps.count)" + (score.map { ", form score \($0)/100" } ?? ""))
-            lines.append("Rep | start s | peak s | end s | range deg | % of best | flags")
+            // Degrees only make sense for an angle signal; a displacement signal is reported as % of best only.
+            let inDegrees = detection.kind == .angle
+            lines.append("Rep | start s | peak s | end s | " + (inDegrees ? "range deg | " : "") + "% of best | flags")
             for r in reps {
                 let flags = r.flags.isEmpty ? "clean" : r.flags.map(\.rawValue).joined(separator: ",")
                 lines.append("\(r.rep.number) | \(fmt(r.rep.start)) | \(fmt(r.rep.peak)) | \(fmt(r.rep.end)) | "
-                             + "\(Int(r.rep.amplitudeDegrees.rounded())) | \(Int(r.rangePercent.rounded()))% | \(flags)")
+                             + (inDegrees ? "\(Int(r.rep.amplitudeDegrees.rounded())) | " : "")
+                             + "\(Int(r.rangePercent.rounded()))% | \(flags)")
             }
         }
-        if !findings.isEmpty {
+        if includeFindings, !findings.isEmpty {
             lines.append("Findings:")
             for f in findings { lines.append("- [\(f.severity.rawValue)] \(f.title): \(f.detail)") }
         }
@@ -113,8 +117,8 @@ enum FormAnalyzer {
                 findings.append(FormFinding(
                     id: "rangeConsistency", kind: .rangeConsistency, severity: major ? .major : .minor,
                     title: "\(shortLabel(remaining)) cut short",
-                    detail: "\(repLabel(remaining)) only reached \(Int((worst / best * 100).rounded()))% of your best range "
-                        + "(\(Int(worst.rounded())) vs \(Int(best.rounded())) degrees).",
+                    detail: "\(repLabel(remaining)) only reached \(Int((worst / best * 100).rounded()))% of your best range"
+                        + (detection.kind == .angle ? " (\(Int(worst.rounded())) vs \(Int(best.rounded())) degrees)." : "."),
                     cue: "Go through the same full range on every rep.",
                     reps: remaining, time: remaining.first.flatMap(time(of:))))
             } else if fatigueReps.isEmpty {
@@ -142,19 +146,21 @@ enum FormAnalyzer {
             }
         }
 
-        // Left vs right.
+        // Left vs right. Only judged when the camera is front-on or back-on: from the side the far limb is
+        // partly hidden and foreshortened, so it "moves less" for no real reason.
         if checks.contains(.sideImbalance), let used = detection.side, let other = detection.otherSide,
            detection.trackingQuality >= 0.75, other.visibility >= 0.75,
-           other.reps.count >= max(2, n / 2) {
+           other.reps.count >= max(2, n / 2),
+           isFrontOrBackOn(track: track, reps: reps) {
             let usedMean = amps.reduce(0, +) / Double(n)
             let otherMean = other.reps.map(\.amplitudeDegrees).reduce(0, +) / Double(other.reps.count)
             let bigger = max(usedMean, otherMean)
             if bigger > 0 {
                 let diff = abs(usedMean - otherMean) / bigger
-                if diff > 0.15 {
+                if diff > 0.20, repsDifferConsistently(reps, other.reps, usedIsWeaker: usedMean < otherMean) {
                     let weaker = usedMean < otherMean ? used : other.side
                     findings.append(FormFinding(
-                        id: "sideImbalance", kind: .sideImbalance, severity: diff > 0.25 ? .major : .minor,
+                        id: "sideImbalance", kind: .sideImbalance, severity: diff > 0.30 ? .major : .minor,
                         title: "\(weaker.rawValue.capitalized) side moves less",
                         detail: "Your \(weaker.rawValue) side moved about \(Int((diff * 100).rounded()))% less than your \(weaker.other.rawValue) side.",
                         cue: "Focus on matching both sides, and start with the weaker side.",
@@ -169,8 +175,9 @@ enum FormAnalyzer {
             for r in reps {
                 if let d = torsoSwing(in: track, from: r.start, to: r.end) { swings.append((r.number, d)) }
             }
-            let minor = swings.filter { $0.degrees > 12 }
-            let major = swings.filter { $0.degrees > 20 }
+            // Rows allow some torso movement; strict isolation lifts do not.
+            let minor = swings.filter { $0.degrees > profile.swayMinorDegrees }
+            let major = swings.filter { $0.degrees > profile.swayMajorDegrees }
             if !swings.isEmpty, minor.count * 3 >= swings.count {
                 let numbers = minor.map(\.rep)
                 flag(numbers, .torsoSway)
@@ -179,8 +186,8 @@ enum FormAnalyzer {
                     id: "torsoSway", kind: .torsoSway,
                     severity: major.count * 3 >= swings.count ? .major : .minor,
                     title: "Body swinging on reps",
-                    detail: "Your torso swung up to \(Int(worst.rounded())) degrees during \(repLabel(numbers)), which means momentum is doing some of the work.",
-                    cue: "Stand tight and lower the weight so you can lift without swinging.",
+                    detail: "Your torso moved up to \(Int(worst.rounded())) degrees during \(repLabel(numbers)), which means momentum is doing some of the work.",
+                    cue: "Keep your torso still and let your arms do the work. Drop the weight if you have to swing.",
                     reps: numbers, time: numbers.first.flatMap(time(of:))))
             }
         }
@@ -199,7 +206,9 @@ enum FormAnalyzer {
                     id: "lockout", kind: .lockout,
                     severity: numbers.count * 3 >= n ? .major : .minor,
                     title: "\(shortLabel(numbers)) not fully reset",
-                    detail: "\(repLabel(numbers)) did not return to the start position, finishing up to \(Int(worst.rounded())) degrees short.",
+                    detail: "\(repLabel(numbers)) did not return to the start position, finishing "
+                        + (detection.kind == .angle ? "up to \(Int(worst.rounded())) degrees short."
+                                                    : "up to about \(Int((best > 0 ? worst / best * 100 : 0).rounded()))% of your range short."),
                     cue: "Return all the way to the start before the next rep.",
                     reps: numbers, time: numbers.first.flatMap(time(of:))))
             }
@@ -225,6 +234,60 @@ enum FormAnalyzer {
 
         return FormAnalysis(exerciseName: exerciseName, profile: profile, detection: detection,
                             reps: summaries, findings: findings, score: score)
+    }
+
+    // MARK: Viewpoint and left/right
+
+    /// True when the camera sees the lifter roughly front-on or back-on: the median shoulder separation
+    /// (aspect corrected) is at least 0.55 x the median torso length over the active span. Falls back to
+    /// hip separation vs thigh length (0.4) when the shoulders are not both visible. Unknown = false.
+    static func isFrontOrBackOn(track: PoseTrack, reps: [DetectedRep]) -> Bool {
+        guard let from = reps.map(\.start).min(), let to = reps.map(\.end).max() else { return false }
+        let aspect = track.aspectRatio > 0 ? track.aspectRatio : 1
+        var shoulderSep: [Double] = [], torso: [Double] = [], hipSep: [Double] = [], thigh: [Double] = []
+        for f in track.frames where f.time >= from && f.time <= to {
+            let ls = PoseGeometry.point(f, .leftShoulder), rs = PoseGeometry.point(f, .rightShoulder)
+            let lh = PoseGeometry.point(f, .leftHip), rh = PoseGeometry.point(f, .rightHip)
+            if let ls, let rs { shoulderSep.append(abs(ls.x - rs.x) * aspect) }
+            if let lh, let rh { hipSep.append(abs(lh.x - rh.x) * aspect) }
+            let sh = [ls, rs].compactMap { $0 }, hp = [lh, rh].compactMap { $0 }
+            if !sh.isEmpty, !hp.isEmpty {
+                let sx = sh.map(\.x).reduce(0, +) / Double(sh.count), sy = sh.map(\.y).reduce(0, +) / Double(sh.count)
+                let hx = hp.map(\.x).reduce(0, +) / Double(hp.count), hy = hp.map(\.y).reduce(0, +) / Double(hp.count)
+                torso.append(hypot((sx - hx) * aspect, sy - hy))
+            }
+            for (h, k) in [(BodyJoint.leftHip, BodyJoint.leftKnee), (.rightHip, .rightKnee)] {
+                if let a = PoseGeometry.point(f, h), let b = PoseGeometry.point(f, k) {
+                    thigh.append(hypot((a.x - b.x) * aspect, a.y - b.y))
+                }
+            }
+        }
+        let minSamples = 5
+        if shoulderSep.count >= minSamples, torso.count >= minSamples {
+            let length = RepDetector.median(torso)
+            return length > 0.02 && RepDetector.median(shoulderSep) >= 0.55 * length
+        }
+        if hipSep.count >= minSamples, thigh.count >= minSamples {
+            let length = RepDetector.median(thigh)
+            return length > 0.02 && RepDetector.median(hipSep) >= 0.4 * length
+        }
+        return false
+    }
+
+    /// The weaker side must trail the stronger one by more than 20% on at least 60% of the paired reps.
+    private static func repsDifferConsistently(_ used: [DetectedRep], _ other: [DetectedRep], usedIsWeaker: Bool) -> Bool {
+        let medDuration = RepDetector.median(used.map(\.duration))
+        var paired = 0, differing = 0
+        for r in used {
+            guard let o = other.min(by: { abs($0.peak - r.peak) < abs($1.peak - r.peak) }),
+                  abs(o.peak - r.peak) <= max(0.6 * medDuration, 0.3) else { continue }
+            paired += 1
+            let weak = usedIsWeaker ? r.amplitudeDegrees : o.amplitudeDegrees
+            let strong = usedIsWeaker ? o.amplitudeDegrees : r.amplitudeDegrees
+            if strong > 0, (strong - weak) / strong > 0.20 { differing += 1 }
+        }
+        return paired >= max(2, Int((0.6 * Double(used.count)).rounded(.up)))
+            && Double(differing) >= 0.6 * Double(paired)
     }
 
     // MARK: Torso sway

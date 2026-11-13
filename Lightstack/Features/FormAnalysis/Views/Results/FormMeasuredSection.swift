@@ -11,7 +11,7 @@ struct FormMeasuredSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            FormSectionHeader(title: "From tracking", systemImage: "viewfinder")
+            FormSectionHeader(title: "Measured by tracking", systemImage: "viewfinder")
             if let untrackable {
                 untrackableCard(untrackable)
             } else {
