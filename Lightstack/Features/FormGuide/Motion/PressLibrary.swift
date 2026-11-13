@@ -7,7 +7,7 @@ enum PressLibrary {
     static func all() -> [ExerciseGuideMotion] {
         var out: [ExerciseGuideMotion] = []
         out.append(lyingPress(name: "Barbell Bench Press", id: "barbell-bench-press", incline: 0, dumbbells: false,
-                              halfGrip: 0.33, template: .benchPress,
+                              halfGrip: 0.35, template: .benchPress,
                               muscles: ([.chest], [.frontDelts, .triceps]),
                               setup: ["Lie back so your eyes sit under the bar and plant your feet flat.",
                                       "Pull your shoulder blades together and keep a slight arch.",
@@ -19,7 +19,7 @@ enum PressLibrary {
                                          "Bouncing the bar off your chest.",
                                          "Lifting your hips or feet off the floor."]))
         out.append(lyingPress(name: "Incline Barbell Press", id: "incline-barbell-press", incline: 40, dumbbells: false,
-                              halfGrip: 0.33, template: .other,
+                              halfGrip: 0.35, template: .other,
                               muscles: ([.chest, .frontDelts], [.triceps]),
                               setup: ["Set the bench to about 40 degrees and plant your feet.",
                                       "Pull your shoulder blades back and down against the pad.",
@@ -31,7 +31,7 @@ enum PressLibrary {
                                          "Lowering the bar to your neck or face.",
                                          "Lifting your head and hips off the bench."]))
         out.append(lyingPress(name: "Decline Bench Press", id: "decline-bench-press", incline: -20, dumbbells: false,
-                              halfGrip: 0.33, template: .other,
+                              halfGrip: 0.35, template: .other,
                               muscles: ([.chest], [.triceps, .frontDelts]),
                               setup: ["Lock your legs under the pads and lie back on the decline bench.",
                                       "Pull your shoulder blades together against the pad.",
@@ -106,7 +106,7 @@ enum PressLibrary {
         traits.drivingJoint = .leftWrist
         let rig = Rigs.lying(incline: incline)
         let close = halfGrip < 0.2 && !dumbbells
-        let bottom = rig.chest + rig.front * 0.12 - rig.up * (close ? 0.20 : 0.06)
+        let bottom = rig.chest + rig.front * 0.135 - rig.up * (close ? 0.24 : (incline > 10 ? 0.15 : 0.18))
         let top = V3(0, rig.chest.y + 0.62, rig.chest.z + (incline > 10 ? -0.04 : 0.0))
         let axisAngle = Ease.rad(incline > 10 ? 35 : 8)
         return motion(name, id: id, duration: 4.2,
@@ -117,7 +117,7 @@ enum PressLibrary {
             let d = Ease.profile(t, hold: 0.08)
             var s = rig.spec
             let c = Ease.lerp(top, bottom, d)
-            let poleL = V3(0.6 * (1 - d), -1, 0.4 * (1 - d))
+            let poleL = V3(0.6 * (1 - d) + (close ? 0.1 : 0.25) * d, -1, 0.4 * (1 - d))
             var props = rig.props
             if dumbbells {
                 let x = Ease.lerp(0.21, 0.32, d)
