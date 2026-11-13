@@ -104,7 +104,7 @@ struct ActiveWorkoutView: View {
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
         }
         .sheet(item: $formDemoExercise) { exercise in
-            ExerciseFormDemoView(exerciseName: exercise.name) {
+            FormGuideView(exerciseName: exercise.name) {
                 formDemoExercise = nil
                 formCaptureExercise = exercise
             }
