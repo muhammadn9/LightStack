@@ -1,74 +1,172 @@
 import Foundation
 
-enum PlanChangeType: String, Codable, Equatable, CaseIterable {
-    case reorder, swap, drop, add, setCount, loadAdjust
-}
+/// What the coach decided for one lift. The app turns it into sets; the coach never writes numbers for a lift with history.
+enum CoachMove: String, Codable, Equatable, CaseIterable {
+    case asPlanned = "as_planned"
+    case push
+    case ease
+    case goalStep = "goal_step"
+    case swap
+    case add
+    case drop
 
-/// One edit the coach proposed while reviewing the draft, and what the app did with it.
-struct PlanChange: Codable, Equatable {
-    var type: PlanChangeType
-    var exercise: String
-    var detail: String
-    var reason: String
-    /// For `setCount`: the working-set count asked for.
-    var sets: Int?
-    /// For `loadAdjust`: relative change in percent (-10 = ten percent lighter).
-    var percent: Double?
-    /// True when the plan now reflects the change (possibly clamped, see `note`).
-    var applied: Bool = false
-    /// What the app did, e.g. "clamped to -15%", or why it was refused.
-    var note: String?
-}
-
-/// The coach's review of the draft structure, shown on the plan screen.
-struct CoachPlanReview: Codable, Equatable {
-    enum Verdict: String, Codable, Equatable { case sound, adjusted }
-
-    var verdict: Verdict
-    var summary: String
-    var changes: [PlanChange]
-    /// Deterministic rules that fired regardless of the AI (recency, set caps, ordering).
-    var safeguards: [String] = []
-
-    static let empty = CoachPlanReview(verdict: .sound, summary: "", changes: [])
-
-    var isEmpty: Bool { summary.isEmpty && changes.isEmpty && safeguards.isEmpty }
-    /// Changes that are reflected in the plan.
-    var appliedChanges: [PlanChange] { changes.filter(\.applied) }
-
-    /// One line per applied change or safeguard, for the debug screen.
-    var logLines: [String] {
-        var lines: [String] = []
-        if !summary.isEmpty { lines.append("Review (\(verdict.rawValue)): \(summary)") }
-        for c in changes {
-            lines.append("Change \(c.type.rawValue) \(c.exercise): \(c.detail) — \(c.reason) [\(c.applied ? "applied" : "not applied")\(c.note.map { ": \($0)" } ?? "")]")
+    /// Reads the model's word for a decision, forgiving case, spaces and dashes. nil for anything unknown.
+    static func parse(_ text: String?) -> CoachMove? {
+        guard let raw = text?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        let key = raw.replacingOccurrences(of: "-", with: "_").replacingOccurrences(of: " ", with: "_")
+        switch key {
+        case "as_planned", "asplanned", "as-planned", "keep", "hold": return .asPlanned
+        case "push": return .push
+        case "ease", "reduce", "lighten": return .ease
+        case "goal_step", "goalstep", "goal": return .goalStep
+        case "swap", "replace": return .swap
+        case "add": return .add
+        case "drop", "remove": return .drop
+        default: return nil
         }
-        lines.append(contentsOf: safeguards.map { "Safeguard: \($0)" })
-        return lines
     }
 
-    // MARK: - Parsing the model's reply
-
-    /// Reads `{"review": {...}}` out of a plan reply. nil when there is no review object.
-    static func parse(fromReply text: String) -> CoachPlanReview? {
-        guard let object = JSONReply.object(from: text),
-              let review = object["review"] as? [String: Any] else { return nil }
-        let verdict = (review["verdict"] as? String).flatMap { Verdict(rawValue: $0.lowercased()) } ?? .sound
-        let summary = JSONReply.string(review["summary"]) ?? ""
-        var changes: [PlanChange] = []
-        for raw in (review["changes"] as? [[String: Any]]) ?? [] {
-            guard let typeText = JSONReply.string(raw["type"]),
-                  let type = PlanChangeType(rawValue: typeText) ?? PlanChangeType.allCases.first(where: { $0.rawValue.lowercased() == typeText.lowercased() }),
-                  let exercise = JSONReply.string(raw["exercise"]), !exercise.isEmpty else { continue }
-            changes.append(PlanChange(
-                type: type, exercise: exercise,
-                detail: JSONReply.string(raw["detail"]) ?? "",
-                reason: JSONReply.string(raw["reason"]) ?? "",
-                sets: JSONReply.int(raw["sets"]),
-                percent: JSONReply.double(raw["percent"])))
+    /// Used in "Coach wanted to push; held: ...".
+    var verb: String {
+        switch self {
+        case .push: return "push"
+        case .ease: return "ease"
+        case .goalStep: return "take the goal step"
+        case .swap: return "swap"
+        case .add: return "add"
+        case .drop: return "drop"
+        case .asPlanned: return "change"
         }
-        return CoachPlanReview(verdict: verdict,
-                               summary: InputSanitizer.clipAtWord(summary, limit: 400), changes: Array(changes.prefix(12)))
+    }
+
+    /// Decisions that change the engine's numbers for a lift that has history.
+    var changesDraft: Bool { self == .push || self == .ease || self == .goalStep || self == .swap }
+}
+
+/// One lift's decision after the app applied it: what was asked, what happened, and why.
+struct LiftDecision: Codable, Equatable {
+    var name: String
+    /// What was applied to the plan.
+    var move: CoachMove
+    /// What the coach asked for when the app could not do it (a push held back); nil when the request was applied.
+    var requested: CoachMove?
+    /// For `ease`: the reduction applied, in percent (negative).
+    var percent: Double?
+    /// For `swap`: the draft lift this one replaces.
+    var replaces: String?
+    /// Why a requested move was held back, e.g. "you trained chest about 5 hours ago".
+    var held: String?
+    /// The reason shown to the athlete: the coach's, with the app's evidence line appended when the coach named none.
+    var reason: String
+    /// The engine's top set before the decision, e.g. "175x5@2"; nil for a lift with no history.
+    var draftTop: String?
+    /// The top set in the final plan.
+    var finalTop: String?
+
+    /// "As planned", "Pushed by coach", "Eased by coach −5%", "Goal step", "Swapped in for X", "Added",
+    /// or "Coach wanted to push; held: <why>".
+    var label: String {
+        if let held, let requested { return "Coach wanted to \(requested.verb); held: \(held)" }
+        switch move {
+        case .asPlanned: return "As planned"
+        case .push: return "Pushed by coach"
+        case .ease:
+            let text = percent.map { " \(Self.percentText($0))" } ?? ""
+            return "Eased by coach\(text)"
+        case .goalStep: return "Goal step"
+        case .swap: return replaces.map { "Swapped in for \($0)" } ?? "Swapped in"
+        case .add: return "Added"
+        case .drop: return "Dropped"
+        }
+    }
+
+    /// "−5%" (a real minus sign), "+5%".
+    static func percentText(_ percent: Double) -> String {
+        let magnitude = String(format: "%g", abs(percent))
+        return (percent < 0 ? "\u{2212}" : "+") + magnitude + "%"
+    }
+
+    /// True when the coach changed something (or was refused): worth a line of its own on the plan screen.
+    var isNotable: Bool { move != .asPlanned || held != nil }
+}
+
+/// One check the app ran over the finished plan, and what it had to change to make it pass.
+struct PlanCheck: Codable, Equatable {
+    var id: String
+    var title: String
+    /// What the app changed so the plan passes; empty when the plan passed as built.
+    var adjustments: [String] = []
+
+    var passed: Bool { adjustments.isEmpty }
+    var adjusted: Bool { !adjustments.isEmpty }
+
+    enum CodingKeys: String, CodingKey { case id, title, adjustments }
+}
+
+/// The coach's plan as shown on the plan screen: summary, one decision per lift, the checks that ran.
+struct CoachPlanReview: Codable, Equatable {
+    var summary: String
+    /// One short coaching sentence from the coach (the old `coaching_notes`).
+    var notes: String?
+    var decisions: [LiftDecision]
+    var checks: [PlanCheck]
+    /// "You trained chest, shoulders and arms about 5 hours ago, so today's targets are held or lighter."
+    var recencyMessage: String?
+    /// True when the coach's reply was missing or unusable and the plan is the app's own, straight from the log.
+    var engineOnly: Bool
+
+    init(summary: String = "", notes: String? = nil, decisions: [LiftDecision] = [], checks: [PlanCheck] = [],
+         recencyMessage: String? = nil, engineOnly: Bool = false) {
+        self.summary = summary
+        self.notes = notes
+        self.decisions = decisions
+        self.checks = checks
+        self.recencyMessage = recencyMessage
+        self.engineOnly = engineOnly
+    }
+
+    enum CodingKeys: String, CodingKey { case summary, notes, decisions, checks, recencyMessage, engineOnly }
+
+    /// Lenient: documents stored by older builds (verdict, changes, safeguards) decode with empty decisions and checks.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        summary = (try? c.decodeIfPresent(String.self, forKey: .summary)) ?? ""
+        notes = (try? c.decodeIfPresent(String.self, forKey: .notes)) ?? nil
+        decisions = (try? c.decodeIfPresent([LiftDecision].self, forKey: .decisions)) ?? []
+        checks = (try? c.decodeIfPresent([PlanCheck].self, forKey: .checks)) ?? []
+        recencyMessage = (try? c.decodeIfPresent(String.self, forKey: .recencyMessage)) ?? nil
+        engineOnly = (try? c.decodeIfPresent(Bool.self, forKey: .engineOnly)) ?? false
+    }
+
+    var isEmpty: Bool { summary.isEmpty && decisions.isEmpty && checks.isEmpty && recencyMessage == nil && !engineOnly }
+
+    var passedCount: Int { checks.filter(\.passed).count }
+    var adjustedChecks: [PlanCheck] { checks.filter(\.adjusted) }
+
+    /// "Checks: 5 of 6 passed, 1 adjusted" ("Checks: 6 of 6 passed" when nothing was adjusted).
+    var checksLine: String {
+        guard !checks.isEmpty else { return "" }
+        var line = "Checks: \(passedCount) of \(checks.count) passed"
+        if !adjustedChecks.isEmpty { line += ", \(adjustedChecks.count) adjusted" }
+        return line
+    }
+
+    func decision(for name: String) -> LiftDecision? {
+        decisions.first { ExerciseNameResolver.isMatch($0.name, name) }
+    }
+
+    /// One line per lift decision, check and note, for the debug screen.
+    var logLines: [String] {
+        var lines: [String] = []
+        if engineOnly { lines.append("Coach unavailable: plan built from your log") }
+        if !summary.isEmpty { lines.append("Summary: \(summary)") }
+        if let recencyMessage { lines.append("Recency: \(recencyMessage)") }
+        for d in decisions { lines.append("\(d.name): \(d.label) — \(d.reason)") }
+        if !checks.isEmpty {
+            lines.append(checksLine)
+            for check in adjustedChecks { lines.append("Adjusted \(check.title): " + check.adjustments.joined(separator: "; ")) }
+        }
+        return lines
     }
 }
 
@@ -98,7 +196,8 @@ enum JSONReply {
         if let n = value as? NSNumber { return n.doubleValue }
         if let s = value as? String {
             let cleaned = s.replacingOccurrences(of: "%", with: "").replacingOccurrences(of: "lbs", with: "")
-                .replacingOccurrences(of: "lb", with: "").trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "lb", with: "").replacingOccurrences(of: "\u{2212}", with: "-")
+                .trimmingCharacters(in: .whitespaces)
             return Double(cleaned)
         }
         return nil
@@ -126,9 +225,9 @@ struct PlanCoachContext {
     /// Muscle (canonical) -> last trained.
     var recency: [String: MuscleRecency] = [:]
     var now: Date = Date()
-    /// Goal attempts due today (one per lift); the safety rails let those lifts reach the goal weight.
+    /// Goal attempts due today (one per lift); the e1RM ceiling for those lifts is the attempt's.
     var goalAllowances: [GoalAllowance] = []
-    /// Low fuel today (and why): the coach's top-set weights may not rise above the last session's. nil = no hold.
+    /// Low fuel today (and why): no lift may progress. nil = no hold.
     var fuelHold: FuelAssessment?
 
     func goalAllowance(for name: String) -> GoalAllowance? {

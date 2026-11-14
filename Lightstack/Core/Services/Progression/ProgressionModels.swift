@@ -101,7 +101,16 @@ struct ProgressionSet: Equatable {
     }
 }
 
-struct ProgressionInput {
+/// A top set the coach's decision asks for (push, ease, goal step). The engine builds the rest of the structure
+/// around it exactly as it would around its own top set.
+struct TopOverride: Equatable {
+    var weight: Double
+    var reps: Int
+    /// What the plan "why" says about it, e.g. "coach push to 185×7".
+    var text: String
+}
+
+struct ProgressionInput: Equatable {
     var name: String
     /// Newest first: the last session plus up to 4 earlier same-type sessions.
     var sessions: [HistorySession]
@@ -131,6 +140,8 @@ struct ProgressionInput {
     var fuelReason: String?
     /// The weights the lift can be loaded with. nil = learned from `sessions` (the usual case).
     var increments: WeightIncrements?
+    /// Replaces the chosen top set (after every hold and recency rule) when the coach's decision changed it.
+    var topOverride: TopOverride?
 
     init(name: String, sessions: [HistorySession], best: HistorySet? = nil,
          feedback: SessionFeedback? = nil, energy: Int = CoachPreferences.neutralEnergy, allowWarmups: Bool = false,
@@ -138,7 +149,8 @@ struct ProgressionInput {
          nextTarget: NextTarget? = nil, recentlyTrained: Bool = false,
          now: Date? = nil, lastSameTypeSessionDate: Date? = nil,
          muscleVeryRecent: Bool = false, fuelLow: Bool = false, fuelReason: String? = nil,
-         increments: WeightIncrements? = nil) {
+         increments: WeightIncrements? = nil, topOverride: TopOverride? = nil) {
+        self.topOverride = topOverride
         self.name = name
         self.sessions = sessions
         self.best = best
@@ -161,6 +173,8 @@ struct ProgressionInput {
 struct ProgressionResult: Equatable {
     var sets: [ProgressionSet]
     var rationale: String
+    /// "Last: 185×5@1 → hold 185×5": the evidence line the athlete always sees.
+    var evidenceLine: String = ""
     /// How the athlete structured this lift in their log (informational; the output is the standard structure).
     var style: SetStyle
     var repRange: RepRange
@@ -183,16 +197,10 @@ struct ProgressionResult: Equatable {
 /// What the UI can show next to an exercise's targets, keyed by exercise id.
 struct ExerciseEvidence: Equatable {
     enum Source: String, Equatable {
-        /// Set targets computed by `ProgressionEngine` from logged history.
+        /// Set targets computed by `ProgressionEngine` from logged history (the coach only decided how).
         case engine
-        /// No usable history: the AI's numbers, untouched by the guardrails.
-        case ai
-        /// No usable history: the AI's numbers after `PlanGuardrails` changed something.
-        case aiGuarded
-        /// The coach wrote the sets and they passed the safety rails (possibly after small clamps).
-        case coach
-        /// The coach's sets broke a safety rail, so the rule-based baseline for this exercise was used.
-        case engineFallback
+        /// No usable history: the coach's starting sets after the app's checks, or the app's default.
+        case newLift
     }
 
     var source: Source
@@ -208,4 +216,8 @@ struct ExerciseEvidence: Equatable {
     var warmupCount: Int
     var adjustedByGuardrails: Bool
     var guardrailReasons: [String]
+    /// The coach's decision for this lift: "As planned", "Pushed by coach", "Eased by coach −5%", ...
+    var decisionLabel: String = ""
+    /// The reason shown for the lift (names evidence).
+    var reason: String = ""
 }

@@ -51,9 +51,10 @@ struct AIRequestOptions: Equatable {
     /// Caps are the largest realistic output for each task, plus headroom.
     static func forTask(_ task: AITask) -> AIRequestOptions {
         switch task {
-        case .plan: return AIRequestOptions(task: task, maxOutputTokens: 8192, thinking: .medium)
+        // Decisions are simpler than writing sets: low thinking, and room for it plus the compact JSON.
+        case .plan: return AIRequestOptions(task: task, maxOutputTokens: 3000, temperature: 0.2, thinking: .low)
         case .chat: return AIRequestOptions(task: task, maxOutputTokens: 1000, thinking: .minimal)
-        case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, thinking: .minimal)
+        case .postWorkout: return AIRequestOptions(task: task, maxOutputTokens: 800, temperature: 0.3, thinking: .minimal)
         case .monthPlan: return AIRequestOptions(task: task, maxOutputTokens: 4000, thinking: .minimal)
         case .formFeedback: return AIRequestOptions(task: task, maxOutputTokens: 600, thinking: .minimal)
         case .nutrition: return AIRequestOptions(task: task, maxOutputTokens: 3000, temperature: 0.2, thinking: .low)

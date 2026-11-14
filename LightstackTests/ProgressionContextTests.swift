@@ -81,47 +81,10 @@ final class ProgressionContextTests: XCTestCase {
             recentSessionExercises: ctx.recentSessionSets, recentLoggedSets: ctx.recentLoggedSets,
             bestSets: ctx.bestSets)
         XCTAssertTrue(message.contains("Bench Press: 135x10@3, 155x8@2, 165x6@1"), message)
-        XCTAssertTrue(message.contains("Athlete note: left shoulder tweaky"))
+        XCTAssertTrue(message.contains("Athlete note after the last session: left shoulder tweaky"), message)
         XCTAssertTrue(message.contains("note: plan only"))
         XCTAssertFalse(message.contains("Estimate target_weight"))
         XCTAssertFalse(message.contains("sets x"), "planned targets are no longer rendered")
-    }
-
-    func testPlanJSONWithSetTargetsParsesPerSet() throws {
-        let json = """
-        {"exercises":[{"name":"Bench Press","muscle_group":"Chest","sets":9,"rest_seconds":120,
-          "coach_note":"Hit 8@2 -> +5 lb",
-          "set_targets":[{"weight":"95","reps":"10","rir":"4"},{"weight":"135","reps":8,"rir":"2-3"},{"weight":"145","reps":"6","rir":"1"}]},
-          {"name":"Curl","muscle_group":"Biceps","sets":3,"target_weight":"25 lbs","reps":"10-12","rir":"2"}],
-         "coaching_notes":"x"}
-        """
-        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: json, workoutId: UUID(), sanitizeLabel: { $0 }))
-        let bench = try XCTUnwrap(plan.exercises.first { $0.name == "Bench Press" })
-        let targets = try XCTUnwrap(plan.setTargets[bench.id])
-        XCTAssertEqual(bench.targetSets, 3, "sets follows set_targets.count")
-        XCTAssertEqual(targets.map(\.prefillWeight), ["95", "135", "145"])
-        XCTAssertEqual(targets.map(\.prefillReps), ["10", "8", "6"])
-        XCTAssertEqual(targets.map(\.prefillRir), ["4", "2", "1"])
-        XCTAssertEqual(bench.coachNoteParts.weight, "145 lbs")
-
-        let curl = try XCTUnwrap(plan.exercises.first { $0.name == "Curl" })
-        XCTAssertNil(plan.setTargets[curl.id])
-    }
-
-    func testPlanJSONWithoutSetTargetsParsesAsBefore() throws {
-        let json = #"{"exercises":[{"name":"Squat","muscle_group":"Legs","sets":4,"target_weight":"185 lbs","reps":"5","rir":"2"}]}"#
-        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: json, workoutId: UUID(), sanitizeLabel: { $0 }))
-        XCTAssertTrue(plan.setTargets.isEmpty)
-        XCTAssertEqual(plan.exercises.first?.targetSets, 4)
-        XCTAssertEqual(plan.exercises.first?.targetReps, "5")
-        XCTAssertEqual(plan.exercises.first?.coachNoteParts.weight, "185 lbs")
-    }
-
-    func testMalformedSetTargetsFallBackToSingleFields() throws {
-        let json = #"{"exercises":[{"name":"Row","muscle_group":"Back","sets":3,"set_targets":"oops"}]}"#
-        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: json, workoutId: UUID(), sanitizeLabel: { $0 }))
-        XCTAssertEqual(plan.exercises.first?.targetSets, 3)
-        XCTAssertTrue(plan.setTargets.isEmpty)
     }
 
     func testPostWorkoutMessageIncludesPreviousSummary() {

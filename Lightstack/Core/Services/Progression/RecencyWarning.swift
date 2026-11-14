@@ -10,6 +10,8 @@ struct RecencyWarning: Equatable {
     var hoursAgo: Int
     /// "You trained chest, shoulders and arms about 5 hours ago."
     var message: String
+    /// "about 5 hours" (no "ago").
+    var hoursText: String = ""
 
     /// Hard sets (RIR 3 or less) a muscle needs before it counts.
     static var minHardSets: Int { ProgressionEngine.muscleRecentMinHardSets }
@@ -37,7 +39,18 @@ struct RecencyWarning: Equatable {
         let rounded = max(0, Int(hours.rounded()))
         return RecencyWarning(
             muscles: labels, hoursAgo: rounded,
-            message: "You trained \(list(labels)) \(hoursPhrase(hours)) ago.")
+            message: "You trained \(list(labels)) \(hoursPhrase(hours)) ago.", hoursText: hoursPhrase(hours))
+    }
+
+    /// For the athlete: "You trained chest, shoulders and arms about 5 hours ago, so today's targets are held or lighter."
+    var athleteText: String {
+        (message.hasSuffix(".") ? String(message.dropLast()) : message) + ", so today's targets are held or lighter."
+    }
+
+    /// The first line of the coach's message: "NOTE: chest, shoulders and arms were trained about 5 hours ago; the app
+    /// has already held or reduced those lifts."
+    var promptNote: String {
+        "NOTE: \(Self.list(muscles)) \(muscles.count == 1 ? "was" : "were") trained \(hoursText) ago; the app has already held or reduced those lifts."
     }
 
     /// "5 hours", "1 hour", "less than an hour" (with "about" where it is a rounded number).
@@ -47,11 +60,13 @@ struct RecencyWarning: Equatable {
         return "about \(n) hour\(n == 1 ? "" : "s")"
     }
 
+    static func displayLabel(for muscle: String) -> String { label(for: muscle) }
+
     private static func label(for muscle: String) -> String {
         ["triceps", "biceps", "forearms"].contains(muscle) ? "arms" : muscle
     }
 
-    private static func list(_ items: [String]) -> String {
+    static func list(_ items: [String]) -> String {
         switch items.count {
         case 0: return ""
         case 1: return items[0]

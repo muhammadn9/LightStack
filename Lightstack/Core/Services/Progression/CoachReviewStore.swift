@@ -168,21 +168,19 @@ final class CoachReviewStore {
     /// The stored reason keeps the whole sentence (cut at a word boundary only past this length).
     static let decisionReasonLimit = 200
 
-    /// The coach's calls for a finished plan: one per exercise with a top set, with the reason the plan
-    /// carried (or the safety rail that replaced it), who set the numbers and what the coach saw.
+    /// The coach's calls for a finished plan: one per exercise with a top set. Each keeps the engine's draft top, the
+    /// decision, the final top (the prescription's), the reason shown and what the coach saw.
     static func decisions(prescription: [ExercisePrescription], exercises: [Exercise],
-                          evidence: [UUID: ExerciseEvidence], reasons: [CoachExerciseReason],
-                          energy: Int?) -> [CoachDecision] {
+                          lifts: [LiftDecision], evidence: [UUID: ExerciseEvidence],
+                          energy: Int?, engineOnly: Bool = false) -> [CoachDecision] {
         var result: [CoachDecision] = []
         for ex in exercises.sorted(by: { $0.orderIndex < $1.orderIndex }) {
             guard let pres = prescription.first(where: { $0.name == ex.name }), let top = pres.topSet else { continue }
             let ev = evidence[ex.id]
-            var source = "coach"
-            if let kind = ev?.source {
-                if kind == .engine { source = "engine" }
-                if kind == .engineFallback { source = "fallback" }
-            }
-            let reasonText = reasons.first { $0.exercise == ex.name }?.text ?? ev?.rationale ?? ""
+            let lift = lifts.first { ExerciseNameResolver.isMatch($0.name, ex.name) }
+            let move = lift?.move ?? .asPlanned
+            let source = (engineOnly || (move == .asPlanned && lift?.draftTop != nil)) ? "engine" : "coach"
+            let reasonText = lift?.reason ?? ev?.reason ?? ev?.rationale ?? ""
             var parts: [String] = []
             if let last = ev?.lastSets.last {
                 parts.append("last " + last.replacingOccurrences(of: "\u{00D7}", with: "x"))
@@ -196,7 +194,7 @@ final class CoachReviewStore {
                 name: ex.name, muscle: ex.muscleGroup, target: top, sets: pres.workingSets,
                 reason: SessionAnalyzer.cleanLine(reasonText, limit: CoachReviewStore.decisionReasonLimit) ?? "",
                 context: SessionAnalyzer.cleanLine(parts.joined(separator: ", "), limit: 120) ?? "",
-                source: source, outcome: nil))
+                source: source, outcome: nil, draftTop: lift?.draftTop, move: move.rawValue))
         }
         return result
     }
@@ -306,6 +304,16 @@ struct CoachMemoryIndex: Equatable {
             }
         }
         return found
+    }
+
+    /// How the lift's newest remembered call turned out (nil when nothing is remembered).
+    func lastOutcome(for name: String) -> DecisionOutcome? {
+        for record in records {
+            if let d = record.document.decisions.first(where: { $0.outcome != nil && ExerciseNameResolver.isMatch($0.name, name) }) {
+                return d.outcome
+            }
+        }
+        return nil
     }
 
     /// The newest memory note for a lift.

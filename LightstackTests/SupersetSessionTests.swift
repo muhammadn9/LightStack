@@ -104,28 +104,6 @@ final class SupersetSessionTests: XCTestCase {
         XCTAssertNil(ids[5], "a label used once is not a superset")
     }
 
-    func testGenerationJSONMapsLabelsToGroupsAndPullsMembersTogether() throws {
-        let json = """
-        {"exercises":[
-          {"name":"Bench","muscle_group":"Chest","sets":3,"superset":"A"},
-          {"name":"Squat","muscle_group":"Legs","sets":3},
-          {"name":"Row","muscle_group":"Back","sets":3,"superset":"A"}
-        ],"coaching_notes":"x"}
-        """
-        let list = try XCTUnwrap(WorkoutSessionService.exercises(fromPlanJSON: json, workoutId: workoutId, sanitizeLabel: { $0 }))
-        XCTAssertEqual(list.map(\.name), ["Bench", "Row", "Squat"])
-        XCTAssertEqual(list.map(\.orderIndex), [0, 1, 2])
-        XCTAssertNotNil(list[0].supersetGroupId)
-        XCTAssertEqual(list[0].supersetGroupId, list[1].supersetGroupId)
-        XCTAssertNil(list[2].supersetGroupId)
-    }
-
-    func testGenerationJSONWithoutSupersetKeyHasNoGroups() throws {
-        let json = #"{"exercises":[{"name":"Bench","muscle_group":"Chest","sets":3}],"coaching_notes":""}"#
-        let list = try XCTUnwrap(WorkoutSessionService.exercises(fromPlanJSON: json, workoutId: workoutId, sanitizeLabel: { $0 }))
-        XCTAssertNil(list[0].supersetGroupId)
-    }
-
     func testModificationJSONLabelsProduceOneGroupPerLabel() throws {
         let text = """
         ```json

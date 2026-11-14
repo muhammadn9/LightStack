@@ -5,7 +5,9 @@ import Foundation
 /// moves in fives. Pure and deterministic.
 ///
 /// Inference needs evidence: at least 3 distinct logged weights whose gaps agree on one step. With less,
-/// the exercise falls back to the class default (`ExerciseTraits.roundingStep`), exactly as before.
+/// the exercise falls back to the class default (`ExerciseTraits.roundingStep`), exactly as before. One exception:
+/// a cable or machine stack with exactly 2 distinct weights across at least 4 sessions and a plausible stack gap
+/// (5, 7.5, 10, 12.5 or 15 lb) that is wider than the class default is believed (50 and 57.5 on a cable has no 52.5).
 struct WeightIncrements: Equatable {
 
     enum Direction: Equatable { case nearest, down, up }
@@ -25,14 +27,24 @@ struct WeightIncrements: Equatable {
     static let maxStepMultiple = 3.0
     /// Smallest step ever inferred (microplates stop here).
     static let minStep = 1.25
+    /// Stack gaps (lb) believed from just two weights on selectorised equipment.
+    static let plausibleStackGaps: [Double] = [5, 7.5, 10, 12.5, 15]
+    /// Sessions needed before two weights on a stack count as a ladder.
+    static let minSessionsForTwoWeights = 4
 
     // MARK: - Building
 
-    init(weights: [Double], fallbackStep: Double, plateLoaded: Bool = false) {
+    init(weights: [Double], fallbackStep: Double, plateLoaded: Bool = false, selectorised: Bool = false, sessionCount: Int = 0) {
         self.fallbackStep = fallbackStep
         let clean = Self.cluster(weights.filter { $0 > 0 })
         anchors = clean
         var step = Self.infer(clean)
+        // Two weights on a stack, seen often enough: the gap is the step.
+        if step == nil, selectorised, !plateLoaded, clean.count == 2, sessionCount >= Self.minSessionsForTwoWeights,
+           let gap = Self.plausibleStackGaps.first(where: { abs($0 - (clean[1] - clean[0])) <= Self.noise }), gap > fallbackStep + 0.001 {
+            inferredStep = gap
+            return
+        }
         // Wider than a few class steps is more likely a coincidence of the loads chosen (140, 160, 180 on a stack that
         // moves in fives) than a real ladder: do not trust it.
         if let s = step, s > Self.maxStepMultiple * fallbackStep + 0.001 { step = nil }
@@ -45,7 +57,9 @@ struct WeightIncrements: Equatable {
     init(name: String, sessions: [HistorySession]) {
         self.init(weights: sessions.flatMap { $0.sets.map(\.weight) },
                   fallbackStep: ExerciseTraits.roundingStep(name),
-                  plateLoaded: ExerciseTraits.isPlateLoaded(name))
+                  plateLoaded: ExerciseTraits.isPlateLoaded(name),
+                  selectorised: ExerciseTraits.isSelectorised(name),
+                  sessionCount: sessions.filter { $0.sets.contains { $0.weight > 0 } }.count)
     }
 
     /// No history: the class default only.
@@ -176,6 +190,13 @@ struct WeightIncrements: Equatable {
 }
 
 extension ExerciseTraits {
+
+    /// A cable or selectorised machine: weights come from a pin stack, not from plates.
+    static func isSelectorised(_ name: String) -> Bool {
+        let n = name.lowercased()
+        guard !isPlateLoaded(name), !n.contains("dumbbell"), !n.contains("dumbell") else { return false }
+        return n.contains("cable") || n.contains("machine") || n.contains("pec deck") || n.contains("selector")
+    }
 
     /// Barbell and Smith / plate-loaded machines take any plate combination, so their weights are not a fixed ladder.
     /// A cable, dumbbell or selectorized machine is.

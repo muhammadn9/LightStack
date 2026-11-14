@@ -329,19 +329,6 @@ final class CoachTextClippingTests: XCTestCase {
         XCTAssertEqual(InputSanitizer.clipAtWord("short", limit: 60), "short")
     }
 
-    func testParsedPlanStoresTheFullReasonAndCue() throws {
-        let reason = "Progressing bench press stability and strength after a lighter week, so the load holds and the reps build."
-        let cue = "Keep a steady cadence and squeeze at full contraction."
-        let json = """
-        {"exercises":[{"name":"Bench Press","sets":3,"reps":"8","rir":"2","reason":"\(reason)","cue":"\(cue)"}]}
-        """
-        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: json, workoutId: UUID(),
-                                                            sanitizeLabel: { InputSanitizer.sanitizeLabel($0) }))
-        let id = try XCTUnwrap(plan.exercises.first?.id)
-        XCTAssertEqual(plan.reasons[id], reason)
-        XCTAssertEqual(plan.cues[id], cue)
-    }
-
     func testStoredDecisionReasonAndPromptLinesCutOnWordsNotMidWord() {
         let reason = "Safety rail: top weight 195 is above the limit of 185 (15 days since the last session, so no increase over 185)"
         XCTAssertEqual(SessionAnalyzer.cleanLine(reason, limit: CoachReviewStore.decisionReasonLimit), reason)

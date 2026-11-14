@@ -162,9 +162,9 @@ final class LiveActivityTests: XCTestCase {
                                          supabaseService: SupabaseServiceFactory.unreachable(),
                                          offlineQueueManager: stack.queue)
         let plan = """
-        {"exercises": [
-         {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets": 3, "reps": "8", "target_weight": "135 lbs"},
-         {"name": "Cable Fly", "muscle_group": "Chest", "sets": 2, "reps": "12", "target_weight": "30 lbs"}]}
+        {"summary": "Light push day.", "exercises": [
+         {"name": "Barbell Bench Press", "decision": "add", "reason": "No log yet: start at 135 for 8.", "starting_sets": [{"type":"work","weight":135,"reps":8,"rir":2,"rest":90},{"type":"work","weight":135,"reps":8,"rir":2,"rest":90},{"type":"work","weight":135,"reps":8,"rir":2,"rest":90}]},
+         {"name": "Cable Fly", "decision": "add", "reason": "No log yet: start at 30 for 12.", "starting_sets": [{"type":"work","weight":30,"reps":12,"rir":2,"rest":90},{"type":"work","weight":30,"reps":12,"rir":2,"rest":90}]}]}
         """
         let service = WorkoutSessionService(
             aiServiceManager: AIServiceManager(providers: [LAStubProvider(plan)]),

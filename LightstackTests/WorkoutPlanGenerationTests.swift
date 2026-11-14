@@ -158,20 +158,16 @@ final class WorkoutPlanGenerationTests: XCTestCase {
         XCTAssertEqual(localWorkoutCount(), 0)
     }
 
-    // MARK: - Coach v3 (the coach sets the weights)
+    // MARK: - Coach decides, the engine sets the numbers
 
-    private let v3Reply = """
-    {"summary":"Heavy day.","coaching_notes":"x","exercises":[
-     {"name":"Barbell Bench Press","muscle_group":"Chest","superset":null,"cue":null,"reason":"No history yet: start moderate.",
-      "sets":[{"type":"warmup","weight":65,"reps":8,"rir":4,"rest":60},{"type":"work","weight":115,"reps":8,"rir":2,"rest":120},
-              {"type":"work","weight":135,"reps":6,"rir":1,"rest":150}]}]}
+    private let decisionReply = """
+    {"summary":"Steady day.","coaching_notes":"x","exercises":[
+     {"name":"Cable Crossover","decision":"add","reason":"No log yet: start light with RIR 3 on the first set.",
+      "starting_sets":[{"type":"work","weight":30,"reps":12,"rir":3,"rest":75},{"type":"work","weight":30,"reps":10,"rir":2,"rest":75}]}]}
     """
 
-    func testPlanRequestCarriesTheSchemaAndTheV3Prompt() async {
-        let previous = CoachPreferences.aiSetsWeights
-        CoachPreferences.aiSetsWeights = true
-        defer { CoachPreferences.aiSetsWeights = previous }
-        let provider = CapturingAIProvider(reply: v3Reply)
+    func testPlanRequestCarriesTheSchemaLowThinkingAndTheDecisionPrompt() async {
+        let provider = CapturingAIProvider(reply: decisionReply)
         let service = makeService(provider: provider)
         let done = expectation(description: "plan")
         delegate.onPlan = { _ in done.fulfill() }
@@ -179,66 +175,32 @@ final class WorkoutPlanGenerationTests: XCTestCase {
         await fulfillment(of: [done], timeout: 5)
         XCTAssertEqual(provider.captured?.task, .plan)
         XCTAssertEqual(provider.captured?.schema, CoachPromptService.planResponseSchema)
-        XCTAssertEqual(provider.captured?.thinking, .medium)
-        XCTAssertTrue(provider.capturedSystemPrompt?.contains("WRITE TODAY'S PLAN") ?? false)
+        XCTAssertEqual(provider.captured?.thinking, .low)
+        XCTAssertEqual(provider.captured?.temperature, 0.2)
+        XCTAssertEqual(provider.captured?.maxOutputTokens, 3000)
+        XCTAssertTrue(provider.capturedSystemPrompt?.contains("DECIDE ON THE APP'S DRAFT") ?? false)
+        XCTAssertFalse(provider.capturedSystemPrompt?.contains("WRITE TODAY'S PLAN") ?? true)
     }
 
-    func testRollbackSwitchSendsTheV2PromptWithoutASchema() async {
-        let previous = CoachPreferences.aiSetsWeights
-        CoachPreferences.aiSetsWeights = false
-        defer { CoachPreferences.aiSetsWeights = previous }
-        let provider = CapturingAIProvider(reply: v3Reply)
-        let service = makeService(provider: provider)
+    func testStartingSetsOfANewLiftBecomeThePlan() async throws {
+        let service = makeService(provider: StubAIProvider(.success(decisionReply)))
+        var planned: [Exercise] = []
         let done = expectation(description: "plan")
-        delegate.onPlan = { _ in done.fulfill() }
+        delegate.onPlan = { planned = $0; done.fulfill() }
         service.generatePlan(userId: stack.userId, workoutType: "Push", time: 45, energy: 6, notes: nil)
         await fulfillment(of: [done], timeout: 5)
-        XCTAssertNil(provider.captured?.schema)
-        XCTAssertTrue(provider.capturedSystemPrompt?.contains("REVIEW THE DRAFT") ?? false)
+        let crossover = try XCTUnwrap(planned.first)
+        XCTAssertEqual(crossover.name, "Cable Crossover")
+        XCTAssertEqual(crossover.targetSets, 2)
+        XCTAssertTrue(crossover.coachNoteParts.weight?.hasPrefix("30") ?? false, crossover.coachNote ?? "")
     }
 
-    func testNumericSetsParseWithWeightsRepsRirRestAndReason() throws {
-        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: v3Reply, workoutId: UUID(), sanitizeLabel: { $0 }))
-        let bench = try XCTUnwrap(plan.exercises.first)
-        let targets = try XCTUnwrap(plan.setTargets[bench.id])
-        XCTAssertEqual(targets.map(\.prefillWeight), ["65", "115", "135"])
-        XCTAssertEqual(targets.map(\.prefillReps), ["8", "8", "6"])
-        XCTAssertEqual(targets.map(\.prefillRir), ["4", "2", "1"])
-        XCTAssertEqual(targets.compactMap(\.restSeconds), [60, 120, 150])
-        XCTAssertEqual(plan.reasons[bench.id], "No history yet: start moderate.")
-        XCTAssertEqual(plan.summary, "Heavy day.")
-        XCTAssertEqual(bench.targetSets, 3)
-    }
-
-    private func derivedRoles(_ name: String, _ sets: [String]) throws -> [SetRole] {
-        let json = #"{"exercises":[{"name":"\#(name)","muscle_group":"Chest","reason":"r","sets":[\#(sets.joined(separator: ","))]}]}"#
-        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: json, workoutId: UUID(), sanitizeLabel: { $0 }))
-        let id = try XCTUnwrap(plan.exercises.first?.id)
-        return try XCTUnwrap(plan.setTargets[id]).map(\.resolvedRole)
-    }
-
-    private func workJSON(_ weight: Double) -> String {
-        #"{"type":"work","weight":\#(weight),"reps":8,"rir":2,"rest":90}"#
-    }
-
-    func testRolesAreDerivedFromTheNumbers() throws {
-        let warm = #"{"type":"warmup","weight":45,"reps":10,"rir":5,"rest":60}"#
-        // The heaviest work set is the top set; Set 1 only when it is more than 10% lighter.
-        XCTAssertEqual(try derivedRoles("Barbell Bench Press", [warm, workJSON(100), workJSON(135), workJSON(125)]),
-                       [.warmup, .ramp, .top, .straight])
-        XCTAssertEqual(try derivedRoles("Barbell Bench Press", [workJSON(125), workJSON(135), workJSON(130)]),
-                       [.straight, .top, .straight])
-        XCTAssertEqual(try derivedRoles("Barbell Bench Press", [workJSON(135), workJSON(135), workJSON(135)]),
-                       [.top, .straight, .straight])
-        // Isolation work is all straight sets; weight 0 is bodyweight.
-        XCTAssertEqual(try derivedRoles("Cable Fly", [workJSON(30), workJSON(30)]), [.straight, .straight])
-        XCTAssertEqual(try derivedRoles("Pull Up", [workJSON(0), workJSON(0)]), [.straight, .straight])
-    }
-
-    func testBodyweightSetsKeepBW() throws {
-        let json = #"{"exercises":[{"name":"Pull Up","muscle_group":"Back","reason":"r","sets":[{"type":"work","weight":0,"reps":8,"rir":2,"rest":90}]}]}"#
-        let plan = try XCTUnwrap(WorkoutSessionService.plan(fromPlanJSON: json, workoutId: UUID(), sanitizeLabel: { $0 }))
-        let id = try XCTUnwrap(plan.exercises.first?.id)
-        XCTAssertEqual(plan.setTargets[id]?.first?.prefillWeight, "BW")
+    func testAnUnreadableReplyWithNothingToFallBackOnFailsInsteadOfSavingAnEmptyWorkout() async {
+        let service = makeService(provider: StubAIProvider(.success("Here is a plan: bench 3x8")))
+        let failed = expectation(description: "failed")
+        delegate.onFail = { _ in failed.fulfill() }
+        service.generatePlan(userId: stack.userId, workoutType: "Push", time: 45, energy: 6, notes: nil)
+        await fulfillment(of: [failed], timeout: 5)
+        XCTAssertEqual(localWorkoutCount(), 0)
     }
 }

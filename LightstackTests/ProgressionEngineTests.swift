@@ -410,19 +410,6 @@ final class ProgressionEngineTests: XCTestCase {
         XCTAssertTrue(ok.usedNextTarget)
     }
 
-    func testTopLimitUsesTheMostRecentTopNotTheHeaviestOfThree() {
-        let ctx = PlanGuardrails.StructureContext(name: seedBench, focus: .hypertrophy, restPreference: 90,
-                                                  lastTop: 160, bestE1RM: 222)
-        XCTAssertEqual(PlanGuardrails.topWeightLimit(ctx) ?? 0, 168, accuracy: 0.001, "max(160 x 1.05, 160 + 5)")
-        let raw = [SetTarget(weight: "130", reps: "10", rir: "2", role: .ramp), SetTarget(weight: "180", reps: "4", rir: "1", role: .top),
-                   SetTarget(weight: "165", reps: "5", rir: "2", role: .backoff)]
-        let fixed = PlanGuardrails.enforceMainLiftStructure(raw, ctx: ctx).targets
-        XCTAssertEqual(fixed.first { $0.resolvedRole == .top }?.prefillWeight, "165")
-        var light = ctx
-        light.lastTop = 20
-        XCTAssertEqual(PlanGuardrails.topWeightLimit(light) ?? 0, 25, accuracy: 0.001, "at least one increment")
-    }
-
     func testLiftNotDoneForMoreThanTwoWeeksHoldsTheLoad() throws {
         let normal = try XCTUnwrap(gapPlan(now: day(10, 28)))
         XCTAssertEqual(normal.topSet?.weight, 190, "8 days: normal progression")
@@ -456,20 +443,6 @@ final class ProgressionEngineTests: XCTestCase {
         XCTAssertTrue(g.skippedLastSession)
         g.latestSessionDate = day(10, 20)
         XCTAssertFalse(g.skippedLastSession)
-    }
-
-    func testAppliedPlanHoldsALiftSkippedLastTime() {
-        let e = Exercise.create(workoutId: UUID(), name: bench, muscleGroup: "Chest", orderIndex: 0, targetSets: 3,
-                                targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        let h = [session(10, 20, "185x10@2, 185x10@2, 185x10@2")]
-        var group = ExerciseHistoryGroup(names: [bench], sessions: h, best: HistorySet(230, 1))
-        group.latestSessionDate = day(10, 24)
-        let applied = PlanProgressionApplier.apply(
-            plan: .init(exercises: [e], setTargets: [:]), history: ExerciseHistoryIndex(groups: [group]),
-            energy: 6, feedback: nil, coach: PlanCoachContext(now: day(10, 26)))
-        let top = applied.setTargets[applied.exercises[0].id]?.first { $0.resolvedRole == .top }
-        XCTAssertEqual(top?.prefillWeight, "185")
-        XCTAssertTrue(applied.evidence[applied.exercises[0].id]?.rationale.contains("skipped") ?? false)
     }
 
     func testNoHistoryReturnsNil() {
@@ -589,142 +562,16 @@ final class ProgressionEngineTests: XCTestCase {
 
     // MARK: - Applier
 
-    func testApplierReplacesAIWithEngineAndGuardsTheRest() {
-        let workoutId = UUID()
-        let benchEx = Exercise.create(workoutId: workoutId, name: "Smith Machine Flat Bench Press", muscleGroup: "Chest", orderIndex: 0,
-                                      targetSets: 4, targetReps: "5", targetRir: "1", restSeconds: 120,
-                                      coachNote: "Target: 230 lbs — Drive your feet")
-        let newEx = Exercise.create(workoutId: workoutId, name: "Cable Crossover", muscleGroup: "Chest", orderIndex: 1,
-                                    targetSets: 3, targetReps: "10", targetRir: "1", restSeconds: 60, coachNote: nil)
-        let parsed = WorkoutSessionService.ParsedPlan(
-            exercises: [benchEx, newEx],
-            setTargets: [benchEx.id: [t("230", "5", "0")],
-                         newEx.id: [t("40", "10", "5"), t("40", "10", "1"), t("40", "10", "0")]])
-        let group = ExerciseHistoryGroup(names: ["Smith Machine Flat Bench Press"], sessions: benchHistory,
-                                         best: HistorySet(230, 1))
-        let applied = PlanProgressionApplier.apply(
-            plan: parsed, history: ExerciseHistoryIndex(groups: [group]), energy: 6, feedback: nil,
-            coach: PlanCoachContext(now: day(10, 21)))
-
-        let b = applied.exercises[0]
-        let targets = applied.setTargets[b.id] ?? []
-        XCTAssertEqual(targets.filter { $0.isWarmup == true }.count, 1)
-        XCTAssertEqual(targets.map(\.role), [.warmup, .ramp, .top, .backoff])
-        XCTAssertEqual(targets.map(\.restSeconds), [60, 90, 120, 90])
-        XCTAssertEqual(targets.map(\.prefillWeight), ["95", "150", "185", "170"])
-        XCTAssertEqual(b.targetSets, targets.count)
-        XCTAssertEqual(b.coachNoteParts.message, "Drive your feet")
-        XCTAssertEqual(b.coachNoteParts.weight, "185 lbs")
-        XCTAssertEqual(b.restSeconds, 120)
-        let evidence = applied.evidence[b.id]
-        XCTAssertEqual(evidence?.source, .engine)
-        XCTAssertEqual(evidence?.best, "230×1")
-        XCTAssertEqual(evidence?.lastSets.first, "160×3@4")
-        XCTAssertFalse(evidence?.rationale.isEmpty ?? true)
-
-        let n = applied.exercises[1]
-        let nTargets = applied.setTargets[n.id] ?? []
-        XCTAssertEqual(applied.evidence[n.id]?.source, .aiGuarded)
-        XCTAssertEqual(applied.evidence[n.id]?.adjustedByGuardrails, true)
-        XCTAssertTrue(nTargets.allSatisfy { $0.isWarmup != true })
-        XCTAssertEqual(nTargets.count, 2, "new isolation exercises get 2 sets")
-        XCTAssertTrue(nTargets.allSatisfy { $0.resolvedRole == .straight && $0.restSeconds != nil })
-        XCTAssertFalse(nTargets.allSatisfy { Int($0.prefillRir).map { $0 <= 1 } ?? false })
-    }
-
-    func testApplierWarmupGoesOnlyToTheFirstHeavyCompound() {
-        let wid = UUID()
-        func ex(_ name: String, _ i: Int, _ muscle: String = "Chest") -> Exercise {
-            Exercise.create(workoutId: wid, name: name, muscleGroup: muscle, orderIndex: i, targetSets: 3,
-                            targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        }
-        let a = ex(bench, 0), b = ex("Barbell Bench Press", 1), c = ex("Incline Chest Press Machine", 2), d = ex(fly, 3, "Shoulders")
-        let parsed = WorkoutSessionService.ParsedPlan(exercises: [a, b, c, d], setTargets: [:])
-        let groups = [ExerciseHistoryGroup(names: [bench], sessions: benchHistory, best: nil),
-                      ExerciseHistoryGroup(names: ["Barbell Bench Press"], sessions: benchHistory, best: nil),
-                      ExerciseHistoryGroup(names: ["Incline Chest Press Machine"], sessions: benchHistory, best: nil),
-                      ExerciseHistoryGroup(names: [fly], sessions: flyHistory, best: nil)]
-        let applied = PlanProgressionApplier.apply(plan: parsed, history: ExerciseHistoryIndex(groups: groups),
-                                                   energy: 6, feedback: nil, coach: PlanCoachContext(now: day(10, 21)))
-        XCTAssertGreaterThan(applied.evidence[a.id]?.warmupCount ?? 0, 0)
-        XCTAssertEqual(applied.evidence[b.id]?.warmupCount, 0, "only the first heavy compound warms up")
-        XCTAssertEqual(applied.evidence[c.id]?.warmupCount, 0)
-        XCTAssertEqual(applied.evidence[d.id]?.warmupCount, 0)
-    }
-
     // MARK: - Coach review edits through the guardrails
 
     private func ctx(fresh: [String: MuscleRecency] = [:]) -> PlanCoachContext {
         PlanCoachContext(focus: .hypertrophy, restPreference: 90, nextTargets: [:], recency: fresh, now: day(10, 21))
     }
 
-    private func benchPlan(_ changes: [PlanChange], coach: PlanCoachContext? = nil) -> (AppliedPlan, Exercise) {
-        let wid = UUID()
-        let e = Exercise.create(workoutId: wid, name: bench, muscleGroup: "Chest", orderIndex: 0, targetSets: 3,
-                                targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        let parsed = WorkoutSessionService.ParsedPlan(exercises: [e], setTargets: [:])
-        let group = ExerciseHistoryGroup(names: [bench], sessions: benchHistory, best: HistorySet(230, 1))
-        let applied = PlanProgressionApplier.apply(plan: parsed, history: ExerciseHistoryIndex(groups: [group]),
-                                                   energy: 6, feedback: nil, coach: coach ?? ctx(), changes: changes)
-        return (applied, e)
-    }
-
-    func testLoadAdjustIsClampedToMinus15AndPlus5Percent() {
-        let down = benchPlan([PlanChange(type: .loadAdjust, exercise: bench, detail: "-40%", reason: "tired", percent: -40)])
-        let downTop = down.0.setTargets[down.1.id]?.compactMap { Double($0.prefillWeight) }.max() ?? 0
-        XCTAssertLessThanOrEqual(downTop, 160, "185 -15% = 157.5, rounded down to 155")
-        XCTAssertGreaterThanOrEqual(downTop, 150)
-        XCTAssertEqual(down.0.changes.first?.applied, true)
-        XCTAssertEqual(down.0.changes.first?.percent, -15)
-        XCTAssertNotNil(down.0.changes.first?.note, "says it was clamped")
-
-        let up = benchPlan([PlanChange(type: .loadAdjust, exercise: bench, detail: "+25%", reason: "feels light", percent: 25)])
-        let upTop = up.0.setTargets[up.1.id]?.compactMap { Double($0.prefillWeight) }.max() ?? 0
-        XCTAssertLessThanOrEqual(upTop, 185 * 1.05 + 0.001)
-        XCTAssertEqual(up.0.changes.first?.percent, 5)
-
-        // Percent can come from the detail text; an unsigned "cut" means lighter.
-        let text = benchPlan([PlanChange(type: .loadAdjust, exercise: bench, detail: "cut 10%", reason: "r")])
-        let textTop = text.0.setTargets[text.1.id]?.compactMap { Double($0.prefillWeight) }.max() ?? 0
-        XCTAssertLessThan(textTop, 185)
-    }
-
-    func testSetCountEditsCannotAddHeavySets() {
-        let more = benchPlan([PlanChange(type: .setCount, exercise: bench, detail: "5 sets", reason: "volume", sets: 5)])
-        XCTAssertEqual(more.0.setTargets[more.1.id]?.filter { $0.isWarmup != true }.count, 3)
-        XCTAssertEqual(more.0.changes.first?.applied, false)
-
-        let fewer = benchPlan([PlanChange(type: .setCount, exercise: bench, detail: "2 sets", reason: "tired", sets: 2)])
-        let targets = fewer.0.setTargets[fewer.1.id] ?? []
-        XCTAssertEqual(targets.filter { $0.isWarmup != true }.count, 2)
-        XCTAssertTrue(targets.contains { $0.role == .top }, "the top set is never the one removed")
-        XCTAssertTrue(targets.contains { $0.role == .backoff }, "Set 1 goes first; the back-off stays")
-        XCTAssertEqual(fewer.0.changes.first?.applied, true)
-    }
-
-    func testDropAndUnknownChangesAreReportedHonestly() {
-        let r = benchPlan([PlanChange(type: .drop, exercise: bench, detail: "skip", reason: "x"),
-                           PlanChange(type: .loadAdjust, exercise: "Not In Plan", detail: "-5%", reason: "x", percent: -5),
-                           PlanChange(type: .reorder, exercise: bench, detail: "first", reason: "x")])
-        XCTAssertEqual(r.0.changes.map(\.applied), [false, false, true])
-    }
-
     // MARK: - UI-test seed bug: strength plan had two top sets and no back-off
 
     private let seedBench = "Barbell Bench Press"
     private var seedHistory: [HistorySession] { [session(10, 20, "95x10@5, 185x6@1, 185x6@1, 180x5@1")] }
-
-    private func seedPlan(focus: CoachFocus, changes: [PlanChange] = [], target: NextTarget? = nil) -> [SetTarget] {
-        let e = Exercise.create(workoutId: UUID(), name: seedBench, muscleGroup: "Chest", orderIndex: 0, targetSets: 3,
-                                targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        let group = ExerciseHistoryGroup(names: [seedBench], sessions: seedHistory, best: HistorySet(185, 6))
-        var coach = PlanCoachContext(focus: focus, restPreference: 90, nextTargets: [:], recency: [:], now: day(10, 21))
-        if let target { coach.nextTargets[seedBench.lowercased()] = .init(target: target, date: day(10, 21)) }
-        let applied = PlanProgressionApplier.apply(
-            plan: .init(exercises: [e], setTargets: [:]), history: ExerciseHistoryIndex(groups: [group]),
-            energy: 6, feedback: nil, coach: coach, changes: changes)
-        return applied.setTargets[applied.exercises[0].id] ?? []
-    }
 
     private func assertInvariants(_ t: [SetTarget], strength: Bool, file: StaticString = #filePath, line: UInt = #line) {
         let work = t.filter { $0.isWarmup != true }
@@ -741,62 +588,12 @@ final class ProgressionEngineTests: XCTestCase {
         XCTAssertLessThanOrEqual(topW, 194.25, "top within +5% of 185", file: file, line: line)
     }
 
-    func testStrengthFocusSeedPlanEndsWithAStraightSetAndNoBackoff() {
-        let t = seedPlan(focus: .strength)
-        assertInvariants(t, strength: true)
-        XCTAssertEqual(t.filter { $0.resolvedRole == .top }.count, 1)
-    }
-
-    func testEnforceMainLiftStructureNeverAddsABackoff() {
-        let ctx = PlanGuardrails.StructureContext(name: seedBench, focus: .hypertrophy, restPreference: 90,
-                                                  lastTop: 185, bestE1RM: 222)
-        let raw = [SetTarget(weight: "150", reps: "10", rir: "2", role: .ramp), SetTarget(weight: "185", reps: "6", rir: "1", role: .top)]
-        let fixed = PlanGuardrails.enforceMainLiftStructure(raw, ctx: ctx)
-        XCTAssertEqual(fixed.targets.map(\.resolvedRole), [.ramp, .top])
-        XCTAssertFalse(fixed.reasons.contains { $0.contains("back-off") })
-    }
-
     func testLowEnergyHypertrophyGetsAStraightSetInsteadOfABackoff() throws {
         let r = try XCTUnwrap(plan(bench, benchHistory, best: HistorySet(230, 1), energy: 4))
         XCTAssertNil(r.workingSets.first { $0.role == .backoff })
         XCTAssertEqual(r.workingSets.map(\.role), [.ramp, .top, .straight])
         let normal = try XCTUnwrap(plan(bench, benchHistory, best: HistorySet(230, 1), energy: 6))
         XCTAssertEqual(normal.workingSets.last?.role, .backoff)
-    }
-
-    func testHypertrophySeedPlanHasOneTopAndBackoffAndTenToTwelveRepSet1() {
-        let t = seedPlan(focus: .hypertrophy)
-        assertInvariants(t, strength: false)
-        let ramp = t.first { $0.resolvedRole == .ramp }
-        XCTAssertTrue((10...12).contains(Int(ramp?.prefillReps ?? "") ?? 0), "\(t)")
-        XCTAssertEqual(t.first { $0.resolvedRole == .top }?.restSeconds, 120)
-    }
-
-    func testReviewChangesCannotDuplicateTop() {
-        for focus in [CoachFocus.hypertrophy, .strength] {
-            for sets in [2, 3, 4, 5] {
-                let t = seedPlan(focus: focus, changes: [
-                    PlanChange(type: .setCount, exercise: seedBench, detail: "\(sets) sets", reason: "x", sets: sets),
-                    PlanChange(type: .loadAdjust, exercise: seedBench, detail: "+5%", reason: "x", percent: 5)])
-                assertInvariants(t, strength: focus == .strength)
-            }
-        }
-    }
-
-    func testTopWeightNeverJumpsAboveFivePercentUnlessTargetWithinE1RMLimit() {
-        // A silly review target is ignored by the engine and, if it slips through, clamped by the final pass.
-        let silly = seedPlan(focus: .hypertrophy, target: NextTarget(weight: 225, reps: 5))
-        XCTAssertLessThanOrEqual(silly.compactMap { Double($0.prefillWeight) }.max() ?? 0, 194.25)
-        let ctx = PlanGuardrails.StructureContext(name: seedBench, focus: .hypertrophy, restPreference: 90,
-                                                  lastTop: 185, bestE1RM: 222, nextTarget: NextTarget(weight: 200, reps: 3))
-        XCTAssertEqual(PlanGuardrails.topWeightLimit(ctx), 200, "target 200x3 is under the e1RM limit")
-        var bad = ctx; bad.nextTarget = NextTarget(weight: 215, reps: 5)
-        XCTAssertEqual(PlanGuardrails.topWeightLimit(bad) ?? 0, 185 * 1.05, accuracy: 0.001)
-        let raw = [SetTarget(weight: "150", reps: "8", rir: "2", role: .ramp), SetTarget(weight: "215", reps: "3", rir: "1", role: .top),
-                   SetTarget(weight: "215", reps: "3", rir: "1", role: .top)]
-        let fixed = PlanGuardrails.enforceMainLiftStructure(raw, ctx: bad).targets
-        XCTAssertEqual(fixed.map(\.resolvedRole), [.ramp, .top], "the duplicate top is dropped and no back-off is added")
-        XCTAssertEqual(fixed[1].prefillWeight, "190")
     }
 
     func testFallbackOverallReadMatchesMissedMainLift() {
@@ -810,46 +607,6 @@ final class ProgressionEngineTests: XCTestCase {
         XCTAssertFalse(read.lowercased().contains("everything"), read)
         let merged = SessionAnalyzer.merge(analysis, model: ModelReview(exercises: [], overallRead: "Everything moved well, add 5 lbs.", recurringFlags: []), workoutType: "Push")
         XCTAssertTrue(merged.overallRead.contains("missed"), merged.overallRead)
-    }
-
-    func testRecencyRuleReachesThePlanAndExplainsItself() {
-        let fresh = ctx(fresh: ["chest": MuscleRecency(lastTrained: day(10, 21).addingTimeInterval(-24 * 3600), hardSets: 8)])
-        let r = benchPlan([], coach: fresh)
-        let targets = r.0.setTargets[r.1.id] ?? []
-        XCTAssertFalse(targets.contains { $0.role == .backoff })
-        XCTAssertEqual(targets.first { $0.role == .top }?.prefillRir, "2")
-        XCTAssertTrue(r.0.safeguards.contains { $0.contains("48 h") }, "\(r.0.safeguards)")
-    }
-
-    func testMuscleVolumeCapDropsExtraIsolationWork() {
-        let wid = UUID()
-        let names = ["Cable Fly", "Pec Deck Fly", "Incline Fly", "Decline Fly", "Machine Fly", "Dumbbell Fly"]
-        let exercises = names.enumerated().map { i, n in
-            Exercise.create(workoutId: wid, name: n, muscleGroup: "Chest", orderIndex: i, targetSets: 2,
-                            targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        }
-        var targets: [UUID: [SetTarget]] = [:]
-        for e in exercises { targets[e.id] = [t("40", "10", "2"), t("40", "10", "1")] }
-        let applied = PlanProgressionApplier.apply(
-            plan: .init(exercises: exercises, setTargets: targets), history: ExerciseHistoryIndex(),
-            energy: 6, feedback: nil, coach: ctx())
-        let total = applied.exercises.reduce(0) { $0 + (applied.setTargets[$1.id]?.filter { $0.isWarmup != true }.count ?? 0) }
-        XCTAssertLessThanOrEqual(total, PlanGuardrails.maxHardSetsPerMuscle)
-        XCTAssertFalse(applied.safeguards.isEmpty)
-        XCTAssertEqual(applied.exercises.map(\.orderIndex), Array(applied.exercises.indices))
-    }
-
-    func testHeavyCompoundsAreMovedAheadOfIsolation() {
-        let wid = UUID()
-        let fly = Exercise.create(workoutId: wid, name: "Cable Fly", muscleGroup: "Chest", orderIndex: 0, targetSets: 2,
-                                  targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        let row = Exercise.create(workoutId: wid, name: "Barbell Row", muscleGroup: "Back", orderIndex: 1, targetSets: 3,
-                                  targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        let applied = PlanProgressionApplier.apply(
-            plan: .init(exercises: [fly, row], setTargets: [:]), history: ExerciseHistoryIndex(),
-            energy: 6, feedback: nil, coach: ctx())
-        XCTAssertEqual(applied.exercises.map(\.name), ["Barbell Row", "Cable Fly"])
-        XCTAssertTrue(applied.safeguards.contains { $0.contains("Barbell Row") })
     }
 
     func testGuardrailsCapHeavySetsAndAssignRoles() {

@@ -167,6 +167,11 @@ enum ProgressionEngine {
             chosen.text += ", RIR 2 (trained recently)"
         }
 
+        // The coach's decision (push, ease, goal step) replaces the top set; the structure is built around it as usual.
+        if let override = input.topOverride {
+            chosen = (override.weight, override.reps, override.text)
+        }
+
         // 2. The standard structure around it.
         var built: [ProgressionSet]
         if cls == .isolation {
@@ -193,6 +198,7 @@ enum ProgressionEngine {
         var rationale = "Last: \(lastText) → \(action). \(structure)"
         if !capped.notes.isEmpty { rationale += " (" + capped.notes.joined(separator: "; ") + ")" }
         var result = ProgressionResult(sets: built, rationale: rationale, style: style, repRange: range, trend: trend)
+        result.evidenceLine = "Last: \(lastText) → \(action)"
         result.usedNextTarget = usedTarget
         result.recencyApplied = recency
         result.noProgressReason = noProgress ? noProgressNote : nil
