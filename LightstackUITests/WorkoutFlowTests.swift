@@ -174,20 +174,19 @@ final class WorkoutFlowTests: LightstackUITestCase {
 // MARK: - Manual rest timer
 
 extension WorkoutFlowTests {
-    /// The card's timer button starts a rest countdown, then stops it. Coach v3: the coach's own rest for the
-    /// exercise (bench's top set: 2:00) wins over the Settings default (180s here); the default only
-    /// covers exercises the coach gave no rest.
+    /// The card's timer button starts a rest countdown, then stops it. The plan's own rest for the exercise (the
+    /// bench top set, 3:00 for the strength focus) wins over the Settings default (240s here).
     func testManualRestButtonStartsAndStopsTimer() throws {
-        launchApp(extraArguments: ["-defaultRestSeconds", "180"])
+        launchApp(extraArguments: ["-defaultRestSeconds", "240"])
         generateAndStartPushWorkout()
         let button = waitFor(app.buttons["startRestButton"])
         XCTAssertEqual(button.label, "Start rest timer")
         button.tap()
         let banner = waitFor(app.staticTexts["Rest Period"], "Rest countdown did not appear")
         XCTAssertTrue(banner.exists)
-        let near = NSPredicate(format: "label BEGINSWITH '2:00' OR label BEGINSWITH '1:5'")
+        let near = NSPredicate(format: "label BEGINSWITH '3:00' OR label BEGINSWITH '2:5'")
         XCTAssertTrue(app.staticTexts.matching(near).firstMatch.waitForExistence(timeout: 5),
-                      "Countdown should start near the coach's 2:00, not the 3:00 Settings default")
+                      "Countdown should start near the plan's 3:00, not the 4:00 Settings default")
         XCTAssertEqual(app.buttons["startRestButton"].label, "Stop rest timer")
         app.buttons["startRestButton"].tap()
         XCTAssertTrue(app.staticTexts["Rest Period"].waitForNonExistence(timeout: 5), "Rest countdown did not stop")

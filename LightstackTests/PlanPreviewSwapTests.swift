@@ -116,10 +116,10 @@ final class PlanPreviewSwapTests: XCTestCase {
     }
 
     private let plan = """
-    {"exercises": [
-     {"name": "Barbell Bench Press", "muscle_group": "Chest", "sets": 3, "reps": "8", "target_weight": "135 lbs", "superset": "A"},
-     {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "sets": 3, "reps": "10", "superset": "A"},
-     {"name": "Overhead Press", "muscle_group": "Shoulders", "sets": 3, "reps": "8"}]}
+    {"summary": "Steady push day.", "exercises": [
+     {"name": "Barbell Bench Press", "decision": "add", "reason": "No log yet: start at 135 for 8.", "superset": "A", "starting_sets": [{"type":"work","weight":135,"reps":8,"rir":2,"rest":90},{"type":"work","weight":135,"reps":8,"rir":2,"rest":90},{"type":"work","weight":135,"reps":8,"rir":2,"rest":90}]},
+     {"name": "Incline Dumbbell Press", "decision": "add", "reason": "No log yet: start at 50 for 10.", "superset": "A", "starting_sets": [{"type":"work","weight":50,"reps":10,"rir":2,"rest":90},{"type":"work","weight":50,"reps":10,"rir":2,"rest":90},{"type":"work","weight":50,"reps":10,"rir":2,"rest":90}]},
+     {"name": "Overhead Press", "decision": "add", "reason": "No log yet: start at 85 for 8.", "starting_sets": [{"type":"work","weight":85,"reps":8,"rir":2,"rest":90},{"type":"work","weight":85,"reps":8,"rir":2,"rest":90},{"type":"work","weight":85,"reps":8,"rir":2,"rest":90}]}]}
     """
 
     private func generate(_ vm: TodayViewModel) async {

@@ -53,7 +53,7 @@ final class AIDietTests: XCTestCase {
         for task in AITask.allCases {
             caps[task] = config(model: "gemini-2.5-flash", options: .forTask(task))["maxOutputTokens"] as? Int
         }
-        XCTAssertEqual(caps[.plan], 8192)
+        XCTAssertEqual(caps[.plan], 3000)
         XCTAssertEqual(caps[.chat], 1000)
         XCTAssertEqual(caps[.postWorkout], 800)
         XCTAssertEqual(caps[.monthPlan], 4000)
@@ -69,11 +69,13 @@ final class AIDietTests: XCTestCase {
         XCTAssertEqual(flash35?["thinkingLevel"] as? String, "minimal")
     }
 
-    func testPlanTaskGetsRealThinkingBudget() {
-        let flash25 = config(model: "gemini-2.5-flash", options: .forTask(.plan))["thinkingConfig"] as? [String: Any]
-        XCTAssertEqual(flash25?["thinkingBudget"] as? Int, 4096)
+    func testPlanTaskGetsLowThinkingAndLowTemperature() {
+        let flash25 = config(model: "gemini-2.5-flash", options: .forTask(.plan))
+        XCTAssertEqual((flash25["thinkingConfig"] as? [String: Any])?["thinkingBudget"] as? Int, 1024)
+        XCTAssertEqual(flash25["temperature"] as? Double, 0.2)
         let flash35 = config(model: "gemini-3.5-flash", options: .forTask(.plan))["thinkingConfig"] as? [String: Any]
-        XCTAssertEqual(flash35?["thinkingLevel"] as? String, "medium")
+        XCTAssertEqual(flash35?["thinkingLevel"] as? String, "low")
+        XCTAssertEqual(config(model: "gemini-2.5-flash", options: .forTask(.postWorkout))["temperature"] as? Double, 0.3)
     }
 
     func testDefaultOptionsKeepOldBehaviour() {

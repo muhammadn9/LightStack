@@ -8,53 +8,56 @@ coaching logic all flow from this prompt.
 ---
 
 > **Live behaviour.** The strings in `CoachPromptService.swift` are authoritative; the long prompt
-> further down is the older, historical reference. The coach now works in two calls, and the app,
-> not the model, owns every weight, rep and RIR.
+> further down is the older, historical reference. The app, not the model, owns every weight, rep and RIR.
 >
-> ### Coach v3 (default): the coach sets the weights
-> `CoachPreferences.aiSetsWeights` (UserDefaults `coach.aiSetsWeights`, default on). For the `.plan` task
-> `writeRules` + `planFormatV3` replace `reviewRules` + `planFormat` ("YOUR JOB: WRITE TODAY'S PLAN"):
-> - The model chooses every exercise, set, weight (lb), rep, RIR and rest per set, warm-ups (type
->   `warmup`) where it judges they are needed, and one `reason` (max 15 words) per exercise naming the
->   evidence. Reply shape: `{"summary", "exercises": [{"name", "muscle_group", "superset", "cue",
->   "reason", "sets": [{"type": "warmup|work", "weight", "reps", "rir", "rest"}]}], "coaching_notes"}`,
->   enforced by a Gemini `responseSchema` (`CoachPromptService.planResponseSchema`).
-> - The rule-based plan is sent as the **APP BASELINE** (reference only), together with the BRIEF.
-> - Roles are derived by the app: warm-ups stay warm-ups, the heaviest work set is `top`, the rest are
->   `straight`, and `ramp` (Set 1) only when the first work set is >10% lighter than the top. No back-off
->   is forced.
-> - **Safety rails** (`PlanGuardrails.validateCoachSets`) check each exercise with history. Rejected
->   when: the top weight exceeds `max(last top x 1.10, last top + 1 increment)` (more than 14 days since the lift:
->   no increase; more than 28 days: at most 95% of the last top); any work set's e1RM is above the recent best
->   +5%; or a work weight is under half the last top at RIR <= 2. A rejected exercise gets the engine's
->   plan and the evidence says "Safety rail: rule-based". Small things are clamped, not rejected: reps
->   1-30, RIR 0-5 with one RIR 0, at most 5 work sets and 3 warm-ups (none at or above the first work
->   weight), rest 30-300 s (360 for strength). Exercises with no history run the older guardrails (and
->   the record + 5% clamp). Muscle-volume and heavy-set caps still run last. `RailContext.goalAllowance`
->   is a placeholder for a future per-lift allowance.
-> - The rule-based baseline itself now makes a back-off only for hypertrophy at energy >= 5 (otherwise Set
->   1 + top + a straight set) and warms up only the first heavy compound.
-> - Old reply shapes (`review.changes`, `set_targets`) still parse; an unparseable reply still falls back
->   to the full baseline. "What the coach saw" shows a "Coach's reasons" section.
-> - Rollback: set `aiSetsWeights` to false to get the v2 flow described below (engine numbers + review).
->
-> ### Plan call, v2 (rollback path)
-> 1. **Context** (`CoachContextBuilder`): the last **5** completed same-type sessions (at least one
->    logged set), the last one in full (every set as `weight x reps @RIR`, plus athlete note and coach
->    note) and the earlier ones as compact per-exercise trend lines (oldest to newest, same-lift
->    names merged). Also the last **4** coach reviews of that type, the athlete's PRs (shown as
->    `all-time best`, information only), per-muscle days since last trained over the last **7** days,
->    exercise feedback, focus, constraints and the rolling summary (background only).
-> 2. **Deterministic draft** (`PlanDraftBuilder` -> `ProgressionEngine`): per lift, from the last
->    session and the last review's target: warm-up (first lifts only), Set 1 (~80%), ONE top set and
->    a back-off; isolation gets 2 sets; rest is prescribed per set.
-> 3. **Gemini reviews the structure** (`reviewRules` + `planFormat`): order, balance, volume, recovery,
->    energy/time/constraints. It returns edits (reorder, swap, drop, add, setCount, loadAdjust -15..+5%)
->    with reasons, a `coach_note` per lift and prose. It does no load arithmetic, and `set_targets` are
->    only accepted for new exercises with no history.
-> 4. **Guardrails re-clamp** (`PlanProgressionApplier`, `PlanGuardrails`): engine numbers replace the
->    model's for every lift with history; review edits are applied inside the guardrails; muscle volume
->    and heavy-set caps; a final structure pass enforces the main-lift invariants and the top-weight limit.
+> ### Plan call: the coach decides, the engine sets the numbers
+> There is ONE plan path. The model never writes weights or reps for a lift that has history.
+> 1. **Draft** (`PlanDraftBuilder` -> `ProgressionEngine`): per lift in the last same-type session, from its
+>    log and the last review's target: warm-up (first heavy lift only), Set 1, ONE top set, a back-off;
+>    isolation 2 sets; rest per set. The engine learns each lift's real weights (`WeightIncrements`), never
+>    progresses a lift or muscle trained hours ago or on low fuel, holds after 14+ days, is lighter after 28+, and
+>    obeys the rep-jump rule. The draft is the plan unless a decision changes it.
+> 2. **Message** (`buildWorkoutRequestMessage`). Leads with the recency NOTE when the workout's muscles were trained
+>    hours ago. Then the DRAFT PLAN, one block per lift: draft sets, why, last session planned vs did, recent top sets,
+>    style / avg RIR / e1RM trend / rest, and COACH MEMORY for that lift. Then session-level blocks: muscle load and
+>    recent training, FUEL, PRE-WORKOUT MEALS, ACTIVE GOALS, COACH MEMORY for other lifts, PREVIOUS REVIEWS (latest in
+>    detail, the one before in a line; ROLLING CONTEXT only when there are none) and the athlete's exercise names that
+>    share a muscle with today (25 at most). Each fact appears once. The golden scenario's message is under 60% of the
+>    old builder's size (`CoachPromptBudgetTests`).
+> 3. **System prompt** (`decisionRules`, `fuelRulesPlan`, `planFormat`): the model reviews the draft and gives ONE
+>    decision per lift, default `as_planned`. Reply (a Gemini `responseSchema`, `planResponseSchema`, under the proxy's
+>    6000 character limit): `{"summary", "exercises": [{"name", "decision": "as_planned|push|ease|goal_step|swap|add",
+>    "percent", "sets", "replaces", "reason", "cue", "superset", "starting_sets"}], "dropped": [{"name", "reason"}],
+>    "coaching_notes"}`. Options: temperature 0.2, thinking low, 3000 output tokens.
+> 4. **Decisions** (`CoachDecisionApplier`, pure):
+>    - `as_planned`: the draft's sets.
+>    - `push`: one step beyond the draft (`ProgressionEngine.nextTopTarget`, then rebuilt around by the engine). Refused
+>      (downgraded to `as_planned`, label "Coach wanted to push; held: <why>") when the lift or its muscle was trained hours
+>      ago, fuel is low, the lift was last done 15+ days ago, the last session's outcome was a miss, the top would be over the
+>      e1RM cap or more than +10%, or the rep-jump rule caps it back to the draft.
+>    - `ease`: the draft top less `percent` (-2.5 to -15, default -5), snapped DOWN on the lift's ladder; when that rung is
+>      the same or too far, one or two reps fewer, else one working set fewer. Back-off and Set 1 are rebuilt by the engine.
+>    - `goal_step`: today's step from ACTIVE GOALS as the top set, under the same gate and rails as `push`.
+>    - `swap` / `add`: a lift with history gets the engine's numbers; a lift without history gets the coach's
+>      `starting_sets` when valid (reps 5-15, RIR 2+, at most 3 work sets, weight not far above a similar lift), else the
+>      app's default.
+>    - `sets` is clamped to the engine's limits; `dropped` lifts leave the plan; lifts the reply omits stay as planned.
+>    - An unknown or missing decision is `as_planned`. A coach-v3 style reply with full sets is read, but its numbers are
+>      ignored for lifts with history. If the AI call fails or the reply is unreadable, the plan is the draft, labelled
+>      "The coach was unavailable, so this plan comes straight from your log."
+> 5. **Checks** (`PlanChecks.run`, over the FINAL plan; a failing check is repaired and reported as adjusted): weights are
+>    on the lift's ladder; nothing progresses where the rules forbid it; rep jumps within the rule; set counts and the
+>    10-hard-sets-per-muscle cap; the session fits the time (+10%, trailing isolation work goes first); every lift's reason
+>    names evidence (a digit or a word such as RIR, miss, PR, fuel, days, goal), else the engine's "Last: 185x5@1 -> hold
+>    185x6" line is appended. The plan screen shows "Checks: N of M passed, K adjusted" and the debug screen lists what was
+>    adjusted.
+> 6. **Scorecard** (`CoachScorecard`): each stored decision keeps the engine draft top, the decision, the final top and,
+>    after the session, the outcome. "What the coach saw" shows how the lifts the coach changed did against the lifts left as
+>    planned over the last 20 sessions.
+> 7. **UI**: the plan card shows the summary, the lifts the coach changed or was refused, and the checks; each lift shows
+>    its label ("As planned", "Pushed by coach", "Eased by coach -5%", "Goal step", "Swapped in for X", "Added") and reason.
+>    A calm banner (`plan.recencyWarning`) says "You trained chest, shoulders and arms about 5 hours ago, so today's targets
+>    are held or lighter."
 >
 > ### Progression rules (Swift, deterministic)
 > - **Double progression:** top of the rep range at RIR <= 2 -> +1 increment (2.5 dumbbell/cable, 5
@@ -197,17 +200,18 @@ before substitution. No raw user input ever reaches the prompt unfiltered.
 
 ---
 
-## Coach Memory and Active Goals (coach v3 plan message)
+## Coach Memory and Active Goals (plan message)
 
-**COACH MEMORY** lists, per lift, the coach's past calls with outcomes (oldest to newest) and its last note. Lifts shown, in order
-(at most 8 in all): active-goal lifts, the app baseline's lifts, then other lifts the coach made a call on in earlier sessions of
-today's workout type. Lifts with nothing remembered are left out.
+**COACH MEMORY** is shown per draft lift inside its block: the coach's last three calls with outcomes (oldest to newest, the
+newest with its reason and decision) and its last note. Other lifts (goal lifts, lifts the coach made a call on in earlier
+sessions of today's workout type) get a separate "COACH MEMORY, other lifts" block of at most 6, without repeating a call
+already shown. Lifts with nothing remembered are left out.
 
 **ACTIVE GOALS** (`CoachPromptService.goalsBlock`, from `CoachGoalStore` + `GoalAssessor`), e.g.:
 `Bench Press 225x1 by 11/07 (e1RM 221 -> need 232). Today's step: top single 215x1 @1, then 2 work sets.`
 Only goals whose lift is in the baseline, or whose muscle is trained today, are shown (all of them when there is no baseline), at most 3.
 Today's step is the step dated today, else the first undated step, else the nearest future dated step (labelled "Next step").
-The v3 rules carry one line: "ACTIVE GOALS: move toward them; follow today's step when given."
+The decision rules name ACTIVE GOALS and `goal_step`; the app checks the step against the rails before using it.
 
 **Goal attempt allowance.** When today's step is the attempt and `GoalAssessor` says `realisticNow`, the prompt adds the warm-up
 ladder and `PlanGuardrails.RailContext.goalAllowance` is set to the goal weight for that lift only (with `goalReps`). The attempt

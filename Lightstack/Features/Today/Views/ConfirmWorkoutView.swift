@@ -20,6 +20,9 @@ struct ConfirmWorkoutView: View {
             VStack(spacing: 20) {
                 cancelRow
                 headerSection
+                if let message = todayViewModel.coachReview?.recencyMessage {
+                    PlanRecencyBanner(message: message)
+                }
                 if let review = todayViewModel.coachReview, !review.isEmpty {
                     CoachPlanReviewCard(review: review)
                 }

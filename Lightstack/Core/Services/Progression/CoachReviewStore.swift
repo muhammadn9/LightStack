@@ -121,7 +121,7 @@ final class CoachReviewStore {
         let clean = reason.trimmingCharacters(in: .whitespacesAndNewlines)
         return update(workoutId: workoutId) { doc in
             if clean.isEmpty { doc.inSessionReasons.removeValue(forKey: exercise) }
-            else { doc.inSessionReasons[exercise] = String(clean.prefix(200)) }
+            else { doc.inSessionReasons[exercise] = InputSanitizer.clipAtWord(clean, limit: 200) }
         }
     }
 
@@ -165,21 +165,22 @@ final class CoachReviewStore {
 
     // MARK: - Decisions
 
-    /// The coach's calls for a finished plan: one per exercise with a top set, with the reason the plan
-    /// carried (or the safety rail that replaced it), who set the numbers and what the coach saw.
+    /// The stored reason keeps the whole sentence (cut at a word boundary only past this length).
+    static let decisionReasonLimit = 200
+
+    /// The coach's calls for a finished plan: one per exercise with a top set. Each keeps the engine's draft top, the
+    /// decision, the final top (the prescription's), the reason shown and what the coach saw.
     static func decisions(prescription: [ExercisePrescription], exercises: [Exercise],
-                          evidence: [UUID: ExerciseEvidence], reasons: [CoachExerciseReason],
-                          energy: Int?) -> [CoachDecision] {
+                          lifts: [LiftDecision], evidence: [UUID: ExerciseEvidence],
+                          energy: Int?, engineOnly: Bool = false) -> [CoachDecision] {
         var result: [CoachDecision] = []
         for ex in exercises.sorted(by: { $0.orderIndex < $1.orderIndex }) {
             guard let pres = prescription.first(where: { $0.name == ex.name }), let top = pres.topSet else { continue }
             let ev = evidence[ex.id]
-            var source = "coach"
-            if let kind = ev?.source {
-                if kind == .engine { source = "engine" }
-                if kind == .engineFallback { source = "fallback" }
-            }
-            let reasonText = reasons.first { $0.exercise == ex.name }?.text ?? ev?.rationale ?? ""
+            let lift = lifts.first { ExerciseNameResolver.isMatch($0.name, ex.name) }
+            let move = lift?.move ?? .asPlanned
+            let source = (engineOnly || (move == .asPlanned && lift?.draftTop != nil)) ? "engine" : "coach"
+            let reasonText = lift?.reason ?? ev?.reason ?? ev?.rationale ?? ""
             var parts: [String] = []
             if let last = ev?.lastSets.last {
                 parts.append("last " + last.replacingOccurrences(of: "\u{00D7}", with: "x"))
@@ -191,9 +192,9 @@ final class CoachReviewStore {
             if let energy { parts.append("energy \(energy)") }
             result.append(CoachDecision(
                 name: ex.name, muscle: ex.muscleGroup, target: top, sets: pres.workingSets,
-                reason: SessionAnalyzer.cleanLine(reasonText, limit: 140) ?? "",
+                reason: SessionAnalyzer.cleanLine(reasonText, limit: CoachReviewStore.decisionReasonLimit) ?? "",
                 context: SessionAnalyzer.cleanLine(parts.joined(separator: ", "), limit: 120) ?? "",
-                source: source, outcome: nil))
+                source: source, outcome: nil, draftTop: lift?.draftTop, move: move.rawValue))
         }
         return result
     }
@@ -206,7 +207,7 @@ final class CoachReviewStore {
             var updated = decision
             let rirText = top.rir.map { "@\($0)" } ?? ""
             updated.outcome = DecisionOutcome(
-                hit: a.shortBy == 0 && a.outcome != .missed,
+                hit: a.outcome == .close || (a.shortBy == 0 && a.outcome != .missed),
                 actualTop: "\(String(format: "%g", top.weight))x\(top.reps)\(rirText)",
                 rir: top.rir, shortBy: a.shortBy, result: a.outcome)
             return updated
@@ -303,6 +304,16 @@ struct CoachMemoryIndex: Equatable {
             }
         }
         return found
+    }
+
+    /// How the lift's newest remembered call turned out (nil when nothing is remembered).
+    func lastOutcome(for name: String) -> DecisionOutcome? {
+        for record in records {
+            if let d = record.document.decisions.first(where: { $0.outcome != nil && ExerciseNameResolver.isMatch($0.name, name) }) {
+                return d.outcome
+            }
+        }
+        return nil
     }
 
     /// The newest memory note for a lift.

@@ -17,6 +17,13 @@ enum UITestMode {
     /// spelling) including a warm-up set, so the progression engine produces evidence and a warm-up for it
     /// (it only prescribes warm-ups the athlete's own log shows).
     static let wantsEngineHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingEngineHistory")
+    /// `-uiTestingRecentHours N` (with `-uiTestingEngineHistory`) moves that Push session from 3 days ago to N hours ago,
+    /// so the plan shows the "you trained chest N hours ago" heads-up.
+    static var recentSessionHours: Int? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uiTestingRecentHours"), i + 1 < args.count else { return nil }
+        return Int(args[i + 1])
+    }
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
     /// `-uiTestingDuplicateWorkoutTypes` adds past workouts so the types read: Push x3, push x1, Push Day x1, Legs x2.
@@ -376,7 +383,8 @@ enum UITestMode {
 
     /// One Push session 3 days ago: Barbell Bench Press, 185 x 6 @1 twice then 180 x 5 @1.
     private static func seedEngineHistory(localStorage: LocalStorageService) {
-        guard let day = Calendar.current.date(byAdding: .day, value: -3, to: Date()) else { return }
+        let component: Calendar.Component = recentSessionHours == nil ? .day : .hour
+        guard let day = Calendar.current.date(byAdding: component, value: -(recentSessionHours ?? 3), to: Date()) else { return }
         var workout = Workout.create(userId: userId, workoutType: "Push", energyLevel: 7, timeAvailableMinutes: 45)
         workout.date = day
         workout.createdAt = day
@@ -649,30 +657,31 @@ final class UITestFakeAIProvider: AIProvider {
     ```
     """
 
-    /// A coach v3 reply: the coach writes every set. Bench has history (rails accept 135, 140 at most);
-    /// the pushdown has none and carries a warm-up at its working weight, which the app removes.
+    /// A coach reply in the decision format. The seeded Push (Bench Press, Overhead Press) is the app's draft: the coach
+    /// swaps in "Barbell Bench Press" (with `-uiTestingEngineHistory` the app's numbers come from that log and the
+    /// starting sets are ignored; without history the starting sets are used), drops the overhead press and adds an
+    /// incline press and a pushdown (starting sets validated by the app).
     static let planJSON = """
     {
-      "summary": "Good order and volume for a push day. Heaviest lifts come first.",
+      "summary": "Bench first, then upper chest and triceps. Nothing was pushed today.",
       "coaching_notes": "Focus on controlled reps today.",
       "exercises": [
-        {"name": "Barbell Bench Press", "muscle_group": "Chest", "superset": null, "cue": null,
-         "reason": "Last top 135x8 at RIR 2, so repeat it and own the reps.",
-         "sets": [{"type": "warmup", "weight": 95, "reps": 8, "rir": 4, "rest": 60},
-                  {"type": "work", "weight": 135, "reps": 8, "rir": 2, "rest": 120},
-                  {"type": "work", "weight": 135, "reps": 8, "rir": 1, "rest": 90}]},
-        {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "superset": null, "cue": null,
-         "reason": "New to the log: start moderate and leave reps in reserve.",
-         "sets": [{"type": "work", "weight": 50, "reps": 10, "rir": 3, "rest": 90},
-                  {"type": "work", "weight": 50, "reps": 10, "rir": 2, "rest": 90},
-                  {"type": "work", "weight": 45, "reps": 12, "rir": 2, "rest": 90}]},
-        {"name": "Cable Triceps Pushdown", "muscle_group": "Triceps", "superset": null,
-         "cue": "Elbows pinned to your sides, no flaring.",
-         "reason": "Triceps are fresh after pressing; two hard sets finish the job.",
-         "sets": [{"type": "warmup", "weight": 185, "reps": 8, "rir": 4, "rest": 60},
-                  {"type": "work", "weight": 185, "reps": 8, "rir": 3, "rest": 90},
-                  {"type": "work", "weight": 195, "reps": 6, "rir": 2, "rest": 90}]}
-      ]
+        {"name": "Barbell Bench Press", "decision": "swap", "replaces": "Bench Press",
+         "reason": "Bench Press had 135x8 and 135x7 yesterday, so the barbell version goes first at 135 for 8.",
+         "starting_sets": [{"type": "warmup", "weight": 95, "reps": 8, "rir": 4, "rest": 60},
+                           {"type": "work", "weight": 135, "reps": 8, "rir": 2, "rest": 120},
+                           {"type": "work", "weight": 135, "reps": 8, "rir": 1, "rest": 90}]},
+        {"name": "Incline Dumbbell Press", "decision": "add",
+         "reason": "No upper-chest work in the log, so start at 50 for 10 with RIR 3.",
+         "starting_sets": [{"type": "work", "weight": 50, "reps": 10, "rir": 3, "rest": 90},
+                           {"type": "work", "weight": 50, "reps": 10, "rir": 2, "rest": 90},
+                           {"type": "work", "weight": 45, "reps": 12, "rir": 2, "rest": 90}]},
+        {"name": "Cable Triceps Pushdown", "decision": "add", "cue": "Elbows pinned to your sides, no flaring.",
+         "reason": "No pushdown in the log: 2 sets at RIR 3 and 2 finish the triceps.",
+         "starting_sets": [{"type": "work", "weight": 185, "reps": 8, "rir": 3, "rest": 90},
+                           {"type": "work", "weight": 195, "reps": 6, "rir": 2, "rest": 90}]}
+      ],
+      "dropped": [{"name": "Overhead Press", "reason": "Shoulders did 85x8 and 85x6 yesterday, so rest them today."}]
     }
     """
 }

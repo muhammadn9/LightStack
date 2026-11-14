@@ -89,6 +89,31 @@ struct InputSanitizer {
         return result
     }
 
+    /// A sentence or two of free text (a coach's reason or cue): the same cleaning as a label (markdown markers,
+    /// blocked patterns) but kept whole up to `limit` characters, cut at a word boundary with "…".
+    static func sanitizeSentence(_ input: String, limit: Int = 200) -> String {
+        var cleaned = input.replacingOccurrences(of: #"\*{1,2}([^*\n]+)\*{1,2}"#, with: "$1", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: #"^#{1,6}\s+"#, with: "", options: [.regularExpression, .anchored])
+        let flat = sanitize(cleaned).split(whereSeparator: { $0.isNewline || $0 == "\t" || $0 == " " }).joined(separator: " ")
+        return clipAtWord(flat, limit: limit)
+    }
+
+    /// `text` unchanged when it fits in `limit` characters; otherwise cut at the last word boundary that leaves
+    /// `limit` characters or fewer including a trailing "…". Never cuts mid-word (a single word longer than the
+    /// limit is the only exception).
+    static func clipAtWord(_ text: String, limit: Int) -> String {
+        guard limit > 1, text.count > limit else { return text }
+        let room = String(text.prefix(limit - 1))
+        var cut = room
+        // Only back up to a space when the character right after the cut is not itself a space (we are mid-word).
+        let nextIndex = text.index(text.startIndex, offsetBy: limit - 1)
+        if text[nextIndex] != " ", let space = room.lastIndex(of: " ") {
+            cut = String(room[..<space])
+        }
+        let trimmed = cut.trimmingCharacters(in: CharacterSet(charactersIn: " ,;:-–—.").union(.whitespaces))
+        return (trimmed.isEmpty ? room : trimmed) + "…"
+    }
+
     /// Sanitize and clamp a numeric Double to a given range.
     static func sanitizeNumeric(_ value: Double, min: Double, max: Double) -> Double {
         return Swift.min(Swift.max(value, min), max)
