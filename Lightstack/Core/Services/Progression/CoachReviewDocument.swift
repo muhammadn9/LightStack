@@ -18,6 +18,17 @@ struct NextTarget: Codable, Equatable {
 
 enum ExerciseOutcome: String, Codable, Equatable, CaseIterable {
     case pr, hold, regression, missed, new
+    /// The top set was one rep short of a plan of 5+ reps, at the planned weight: counts as on target, retry the
+    /// same numbers. Added with the "close" rule; older documents never contain it.
+    case close
+
+    /// An unknown stored value (a case from a newer build) reads as `hold` rather than failing the whole document.
+    /// Old stored values all still decode as themselves. Builds from before `close` existed drop a review that
+    /// contains it (the document decodes each part with `try?`), they do not crash.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ExerciseOutcome(rawValue: raw) ?? .hold
+    }
 }
 
 enum MissCause: String, Codable, Equatable, CaseIterable {
@@ -96,9 +107,14 @@ struct CoachDecision: Codable, Equatable {
     var reason: String
     /// What the coach saw (max 120 chars), e.g. "last 205x5@1, trend up, energy 6".
     var context: String
-    /// "coach", "engine" or "fallback".
+    /// "coach" (the coach changed the draft or wrote starting sets) or "engine" (the app's numbers as planned).
     var source: String
     var outcome: DecisionOutcome?
+    /// The engine's draft top set before the coach's decision, e.g. "175x5@2". nil on older documents and for lifts
+    /// with no history.
+    var draftTop: String? = nil
+    /// The coach's decision: "as_planned", "push", "ease", "goal_step", "swap" or "add". nil on older documents.
+    var move: String? = nil
 }
 
 /// Written after the workout is finished.
@@ -135,7 +151,7 @@ struct CoachReviewDocument: Codable, Equatable {
     var version: Int = CoachReviewDocument.currentVersion
     /// Written when the plan is finalized (and refreshed at finish from what was on screen).
     var prescription: [ExercisePrescription] = []
-    /// The structure review from the plan call (verdict, changes), for the UI.
+    /// The coach's plan as shown on the plan screen (summary, decision per lift, checks).
     var planReview: CoachPlanReview?
     /// Written after finish.
     var review: SessionReview?

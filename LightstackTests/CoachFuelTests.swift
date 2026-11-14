@@ -364,16 +364,15 @@ final class CoachFuelTests: XCTestCase {
     }
 
     func testRulesAreInAllThreePrompts() {
-        let plan = service.buildSystemPrompt(profile: nil, task: .plan, aiSetsWeights: true)
-        let review = service.buildSystemPrompt(profile: nil, task: .plan, aiSetsWeights: false)
+        let plan = service.buildSystemPrompt(profile: nil, task: .plan)
         let chat = service.buildSystemPrompt(profile: nil, task: .chat)
         let post = service.buildSystemPrompt(profile: nil, task: .postWorkout)
-        for (name, prompt) in [("plan", plan), ("review", review), ("chat", chat), ("post", post)] {
+        for (name, prompt) in [("plan", plan), ("chat", chat), ("post", post)] {
             XCTAssertTrue(prompt.contains("FUEL AND MEALS"), name)
             XCTAssertTrue(prompt.contains("eating closer to your targets would help"), name)
             XCTAssertTrue(prompt.contains("unreliable"), name)
         }
-        for prompt in [plan, review] {
+        for prompt in [plan] {
             XCTAssertTrue(prompt.contains("large high-fat meal within about 2 h"))
             XCTAssertTrue(prompt.contains("very low carbs in the last 24 h"))
             XCTAssertTrue(prompt.contains("more than 20% under target"))
@@ -446,88 +445,14 @@ final class CoachFuelTests: XCTestCase {
         SetTarget(weight: String(format: "%g", weight), reps: String(reps), rir: String(rir), restSeconds: 120)
     }
 
-    private func apply(_ sets: [SetTarget], fuel: FuelAssessment?, goal: GoalAllowance? = nil) -> (AppliedPlan, Exercise) {
-        let e = Exercise.create(workoutId: UUID(), name: bench, muscleGroup: "Chest", orderIndex: 0, targetSets: sets.count,
-                                targetReps: nil, targetRir: nil, restSeconds: nil, coachNote: nil)
-        var parsed = WorkoutSessionService.ParsedPlan(exercises: [e], setTargets: [e.id: sets])
-        parsed.coachSetIds = [e.id]
-        parsed.reasons = [e.id: "Last 185x6@1, e1RM up."]
-        let day = calendar.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 12)) ?? Date()
-        let applied = PlanProgressionApplier.apply(
-            plan: parsed, history: history(), energy: 6, feedback: nil,
-            coach: PlanCoachContext(now: day, goalAllowances: goal.map { [$0] } ?? [], fuelHold: fuel))
-        return (applied, e)
-    }
-
     private var raise: [SetTarget] { [set(150, 10, 2), set(195, 5, 1)] }
-
-    func testGuardHoldsARaiseUnderLowFuel() throws {
-        let assessment = FuelRules.assess(fuel: lowFuel(), meals: nil)
-        let (applied, e) = apply(raise, fuel: assessment)
-        let targets = try XCTUnwrap(applied.setTargets[e.id])
-        XCTAssertEqual(targets.map(\.prefillWeight), ["150", "185"], "195 is held at the last top set, 185")
-        XCTAssertEqual(applied.reasons.first?.text, "Held at 185: eating well under target this week")
-        XCTAssertFalse(applied.reasons.first?.railFallback ?? true)
-        XCTAssertEqual(applied.evidence[e.id]?.rationale, "Held at 185: eating well under target this week")
-        XCTAssertTrue(applied.adjustments.contains { $0.contains("fuel guard held the top weight at 185") })
-    }
-
-    func testGuardAllowsTheRaiseWhenWellFuelled() throws {
-        let (applied, e) = apply(raise, fuel: FuelRules.assess(fuel: fullFuel(), meals: nil))
-        XCTAssertEqual(applied.setTargets[e.id]?.map(\.prefillWeight), ["150", "195"])
-        XCTAssertEqual(applied.reasons.first?.text, "Last 185x6@1, e1RM up.")
-    }
-
-    func testGuardIgnoresFuelWhenTheDataIsUnreliable() throws {
-        var fuel = lowFuel()
-        fuel.dataQuality = .unreliable
-        let (applied, e) = apply(raise, fuel: FuelRules.assess(fuel: fuel, meals: nil))
-        XCTAssertEqual(applied.setTargets[e.id]?.map(\.prefillWeight), ["150", "195"])
-    }
-
-    func testGuardLeavesAHoldOrAReductionAlone() throws {
-        let assessment = FuelRules.assess(fuel: lowFuel(), meals: nil)
-        let hold = apply([set(150, 10, 2), set(185, 5, 1)], fuel: assessment)
-        XCTAssertEqual(hold.0.setTargets[hold.1.id]?.map(\.prefillWeight), ["150", "185"])
-        XCTAssertEqual(hold.0.reasons.first?.text, "Last 185x6@1, e1RM up.", "nothing changed, so the coach's reason stands")
-        let reduce = apply([set(140, 10, 2), set(175, 5, 1)], fuel: assessment)
-        XCTAssertEqual(reduce.0.setTargets[reduce.1.id]?.map(\.prefillWeight), ["140", "175"])
-    }
-
-    func testGoalAttemptBypassesTheGuardAndGetsAWarning() throws {
-        let assessment = FuelRules.assess(fuel: lowFuel(), meals: nil)
-        let attempt = GoalAllowance(name: bench, weight: 195, reps: 5)
-        let (applied, e) = apply(raise, fuel: assessment, goal: attempt)
-        XCTAssertEqual(applied.setTargets[e.id]?.map(\.prefillWeight), ["150", "195"], "the attempt is not lowered")
-        XCTAssertEqual(applied.reasons.first?.text, "Goal attempt kept; note: eating well under target this week")
-        // Well fuelled: the attempt and the coach's own reason are untouched.
-        let fine = apply(raise, fuel: nil, goal: attempt)
-        XCTAssertEqual(fine.0.setTargets[fine.1.id]?.map(\.prefillWeight), ["150", "195"])
-        XCTAssertEqual(fine.0.reasons.first?.text, "Last 185x6@1, e1RM up.")
-    }
-
-    func testHeavyMealWithinTwoHoursHoldsTheLift() throws {
-        let heavy = PreWorkoutMeals(meals: [PreWorkoutMeal(hoursBefore: 1.0, foods: ["Burger"], moreCount: 0, kcal: 1100,
-                                                           protein: 40, carbs: 95, fat: 60)], carbs24h: 150)
-        let (applied, e) = apply(raise, fuel: FuelRules.assess(fuel: fullFuel(), meals: heavy))
-        XCTAssertEqual(applied.setTargets[e.id]?.map(\.prefillWeight), ["150", "185"])
-        XCTAssertEqual(applied.reasons.first?.text, "Held at 185: a heavy meal just before training")
-    }
-
-    func testHoldDoesNotTouchWarmupsOrWithoutAHistory() {
-        let assessment = FuelRules.assess(fuel: lowFuel(), meals: nil)
-        let warm = SetTarget(weight: "200", reps: "5", rir: "4", isWarmup: true)
-        XCTAssertEqual(PlanGuardrails.applyFuelHold([warm], lastTopWeight: 185, hold: assessment).targets, [warm])
-        XCTAssertNil(PlanGuardrails.applyFuelHold(raise, lastTopWeight: nil, hold: assessment).heldAt)
-        XCTAssertNil(PlanGuardrails.applyFuelHold(raise, lastTopWeight: 185, hold: nil).heldAt)
-    }
 
     // MARK: - Post-workout classification
 
     private func missedBench(fuel: FuelAssessment?, energy: Int = 8, reasons: [String: String] = [:]) throws -> ExerciseAnalysis {
         let sets = [HistorySet(160, 3, rir: 4), HistorySet(185, 5, rir: 0)]
         let prescription = ExercisePrescription(name: bench, muscleGroup: "Chest", sets: [
-            PrescribedSet(role: .top, weight: 185, reps: 6, rir: 1, restSeconds: 150)])
+            PrescribedSet(role: .top, weight: 185, reps: 7, rir: 1, restSeconds: 150)])
         let analysis = SessionAnalyzer.analyze(
             logged: [LoggedExercise(name: bench, muscleGroup: "Chest", sets: sets, hitPR: false)],
             prescription: [prescription], energy: energy, userNote: nil, reasons: reasons, previous: [], history: history(),

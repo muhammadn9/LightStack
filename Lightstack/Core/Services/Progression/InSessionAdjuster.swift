@@ -45,7 +45,8 @@ enum InSessionAdjuster {
     ///   - prescribed: the exercise's set targets in order.
     ///   - logged: sets logged so far, in order (warm-ups included when the athlete logs them).
     ///   - roundingStep: plate step for new weights (`ExerciseTraits.roundingStep(name)`).
-    static func evaluate(prescribed: [SetTarget], logged: [LoggedSet], roundingStep: Double = 5) -> Suggestion? {
+    static func evaluate(prescribed: [SetTarget], logged: [LoggedSet], roundingStep: Double = 5,
+                         ladder: WeightIncrements? = nil) -> Suggestion? {
         guard !prescribed.isEmpty, !logged.isEmpty else { return nil }
         let offset = warmupOffset(prescribed: prescribed, logged: logged)
 
@@ -72,7 +73,7 @@ enum InSessionAdjuster {
             guard short >= repShortfall || rirZero else { continue }
             return suggestion(prescribed: prescribed, index: index, loggedIndex: loggedIndex,
                               loggedCount: logged.count, offset: offset, shortBy: max(0, short),
-                              rirZero: rirZero, step: roundingStep)
+                              rirZero: rirZero, step: roundingStep, ladder: ladder)
         }
         return nil
     }
@@ -124,9 +125,10 @@ enum InSessionAdjuster {
     }
 
     /// Convenience for UI call sites that hold `WorkoutSet`s.
-    static func evaluate(exerciseName: String, prescribed: [SetTarget], logged: [WorkoutSet]) -> Suggestion? {
+    static func evaluate(exerciseName: String, prescribed: [SetTarget], logged: [WorkoutSet],
+                         ladder: WeightIncrements? = nil) -> Suggestion? {
         evaluate(prescribed: prescribed, logged: logged.sorted { $0.setNumber < $1.setNumber }.map { LoggedSet($0) },
-                 roundingStep: ExerciseTraits.roundingStep(exerciseName))
+                 roundingStep: ExerciseTraits.roundingStep(exerciseName), ladder: ladder)
     }
 
     // MARK: - Private
@@ -141,7 +143,8 @@ enum InSessionAdjuster {
     }
 
     private static func suggestion(prescribed: [SetTarget], index: Int, loggedIndex: Int, loggedCount: Int,
-                                   offset: Int, shortBy: Int, rirZero: Bool, step: Double) -> Suggestion {
+                                   offset: Int, shortBy: Int, rirZero: Bool, step: Double,
+                                   ladder: WeightIncrements? = nil) -> Suggestion {
         let role = prescribed[index].resolvedRole
         var changes: [SetChange] = []
         for k in prescribed.indices where k > index && (k - offset) >= loggedCount {
@@ -154,8 +157,8 @@ enum InSessionAdjuster {
             case .top: factor = role == .top ? 0.90 : 0.95
             default: factor = 0.95
             }
-            var lowered = ExerciseTraits.floorStep(w * factor, step: step)
-            if lowered >= w { lowered = max(step, w - step) }
+            var lowered = ladder?.snap(w * factor, direction: .down) ?? ExerciseTraits.floorStep(w * factor, step: step)
+            if lowered >= w { lowered = ladder?.stepDown(from: w) ?? max(step, w - step) }
             guard lowered < w else { continue }
             changes.append(SetChange(index: k, role: r, previousWeight: w, weight: lowered, reps: reps))
         }
