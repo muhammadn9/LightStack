@@ -34,11 +34,13 @@ final class ProgressTests: LightstackUITestCase {
         waitFor(app.staticTexts["progress.title"])
         waitFor(element("progress.streak"))
         shot("progress-overview")
-        tap(app.buttons["progress.segment.Lifts"])
+        tap(app.buttons["progress.segment.lifts"])
         waitFor(element("progress.liftsList"))
         shot("progress-lifts")
-        tap(app.buttons["progress.segment.Equipment"])
-        waitFor(element("progress.equipmentWeeks"))
+        tap(app.buttons["progress.segment.overview"])
+        let weeks = element("progress.equipmentWeeks")
+        waitFor(weeks)
+        scrollUntilHittable(weeks)
         shot("progress-equipment")
     }
 
@@ -79,11 +81,9 @@ final class ProgressTests: LightstackUITestCase {
         shot("lift-chart")
         chart.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         shot("lift-chart-selected")
-        tap(app.buttons["progress.segment.Lifts"])
+        tap(app.buttons["progress.segment.lifts"])
         waitFor(element("progress.liftsList"))
-        element("lift.sparkline.Bench Press").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .tap()
-        shot("lift-sparkline-selected")
+        shot("lifts-list-with-history")
     }
 
     private static func idString(_ date: Date) -> String {

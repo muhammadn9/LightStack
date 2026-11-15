@@ -84,12 +84,18 @@ struct LiftChartView: View {
     let values: [Double?]
     let weekStarts: [Date]
     var perArm = false
+    /// Custom callout text for the selected point (date, value); default is the weekly est. 1RM text.
+    var calloutText: ((Date?, Double) -> String)?
+    /// Distance between x-axis labels (in points).
+    var labelStride = 2
+    /// Padding above and below the data in the y scale.
+    var yPadding: Double = 8
     @Binding var selection: Int?
 
     var body: some View {
         let points = values.enumerated().compactMap { i, v in v.map { (i, $0) } }
-        let low = ((points.map(\.1).min() ?? 0) - 8).rounded(.down)
-        let high = ((points.map(\.1).max() ?? 1) + 8).rounded(.up)
+        let low = ((points.map(\.1).min() ?? 0) - yPadding).rounded(.down)
+        let high = ((points.map(\.1).max() ?? 1) + yPadding).rounded(.up)
         let picked = LiftChartSelection.nearest(selection, in: values)
         let lastIndex = max(1, values.count - 1)
         Chart {
@@ -109,9 +115,9 @@ struct LiftChartView: View {
                     .lineStyle(StrokeStyle(lineWidth: 1))
                     .annotation(position: .top, spacing: 4,
                                 overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
-                        Text(LiftChartSelection.callout(
-                            date: weekStarts.indices.contains(picked.index) ? weekStarts[picked.index] : nil,
-                            value: picked.value, perArm: perArm))
+                        let pickedDate = weekStarts.indices.contains(picked.index) ? weekStarts[picked.index] : nil
+                        Text(calloutText?(pickedDate, picked.value)
+                             ?? LiftChartSelection.callout(date: pickedDate, value: picked.value, perArm: perArm))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(AppTheme.textPrimary)
                             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -125,7 +131,7 @@ struct LiftChartView: View {
         .chartXScale(domain: -0.6...(Double(lastIndex) + 0.6))
         .chartYScale(domain: low...high)
         .chartXAxis {
-            AxisMarks(values: Array(stride(from: lastIndex % 2, through: lastIndex, by: 2))) { value in
+            AxisMarks(values: Array(stride(from: lastIndex % labelStride, through: lastIndex, by: labelStride))) { value in
                 AxisValueLabel(anchor: .top) {
                     if let i = value.as(Int.self), weekStarts.indices.contains(i) {
                         Text(LiftChartSelection.weekLabel(weekStarts[i]))
@@ -152,6 +158,48 @@ enum LiftFormat {
         "\(Int(value.rounded())) lb" + (perArm ? " / arm" : "")
     }
 
+    /// "171 lb" / "78 kg" in the user's unit (stored weights are pounds), "/ arm" for per-arm lifts.
+    static func weight(_ lbs: Double, unit: BodyWeightUnit, perArm: Bool = false) -> String {
+        "\(Int(unit.fromLbs(lbs).rounded())) \(unit.rawValue)" + (perArm ? " / arm" : "")
+    }
+
+    /// Weight number only ("135", "61.2").
+    static func number(_ lbs: Double, unit: BodyWeightUnit) -> String {
+        let value = (unit.fromLbs(lbs) * 10).rounded() / 10
+        return value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    /// "135 \u{00D7} 8"
+    static func setText(weightLbs: Double, reps: Int, unit: BodyWeightUnit) -> String {
+        "\(number(weightLbs, unit: unit)) \u{00D7} \(reps)"
+    }
+
+    /// "+15 lb", "\u{2212}10 lb", "Even" or "New".
+    static func change(_ change: LiftChange, unit: BodyWeightUnit) -> String {
+        switch change {
+        case .new: return "New"
+        case .even: return "Even"
+        case .delta(let lbs):
+            let rounded = Int(unit.fromLbs(lbs).rounded())
+            if rounded == 0 { return "Even" }
+            return rounded > 0 ? "+\(rounded) \(unit.rawValue)" : "\u{2212}\(-rounded) \(unit.rawValue)"
+        }
+    }
+
+    static func changeColor(_ change: LiftChange) -> Color {
+        switch change {
+        case .new, .even: return AppTheme.textSecondary
+        case .delta(let lbs): return lbs < 0 ? AppTheme.warning : AppTheme.accent
+        }
+    }
+
+    /// "Nov 14", with the year when it is not this year.
+    static func date(_ date: Date, now: Date = Date()) -> String {
+        let sameYear = Calendar.current.isDate(date, equalTo: now, toGranularity: .year)
+        return sameYear ? date.formatted(.dateTime.month(.abbreviated).day())
+            : date.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+
     static func delta(_ lift: LiftTrend) -> String {
         guard lift.thisMonth != nil else { return "No sets this month" }
         guard let delta = lift.monthDelta else { return "New this month" }
@@ -171,6 +219,8 @@ struct LiftTrendRow: View {
     let lift: LiftTrend
     var weekStarts: [Date] = []
     var expanded = false
+    /// When set (expanded rows), a "Details" link opens that lift's detail page.
+    var detailKey: String?
     @State private var selection: Int?
 
     private var latest: Double { lift.weeklyE1RM.compactMap { $0 }.last ?? lift.allTimeBest }
@@ -196,6 +246,18 @@ struct LiftTrendRow: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
                 Spacer(minLength: 4)
+                if expanded, let detailKey {
+                    NavigationLink(value: detailKey) {
+                        HStack(spacing: 2) {
+                            Text("Details").font(.subheadline.weight(.semibold))
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("progress.trendOpen.\(lift.name)")
+                }
                 if !expanded, pointCount >= 2 {
                     SparklineView(values: lift.weeklyE1RM, selection: $selection)
                         .frame(width: 110, height: 52)
