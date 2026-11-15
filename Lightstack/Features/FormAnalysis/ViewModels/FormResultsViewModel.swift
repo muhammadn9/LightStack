@@ -22,18 +22,26 @@ final class FormResultsViewModel: ObservableObject {
 
     /// Seconds to wait before the one automatic retry after a busy or timed-out request.
     static let autoRetryDelay: TimeInterval = 8
+    /// Hard ceiling for one feedback request (key-frame sheet + upload + AI), whatever hangs. Just above the
+    /// AI manager's own ~60 s budget for this task.
+    static let feedbackTimeout: TimeInterval = 75
 
     private let provider: FormFeedbackProviding
     private let autoRetryDelay: TimeInterval
+    private let feedbackTimeout: TimeInterval
     private var feedbackTask: Task<Void, Never>?
     private var autoRetryTask: Task<Void, Never>?
     private var requested = false
     private var autoRetried = false
+    private var requestID = 0
 
-    init(result: FormSessionResult, provider: FormFeedbackProviding, autoRetryDelay: TimeInterval = FormResultsViewModel.autoRetryDelay) {
+    init(result: FormSessionResult, provider: FormFeedbackProviding,
+         autoRetryDelay: TimeInterval = FormResultsViewModel.autoRetryDelay,
+         feedbackTimeout: TimeInterval = FormResultsViewModel.feedbackTimeout) {
         self.result = result
         self.provider = provider
         self.autoRetryDelay = autoRetryDelay
+        self.feedbackTimeout = feedbackTimeout
         self.replay = FormReplayController(videoURL: result.videoURL, track: result.track)
     }
 
@@ -58,10 +66,21 @@ final class FormResultsViewModel: ObservableObject {
     private func startFeedbackRequest() {
         isLoadingFeedback = true
         failureReason = nil
+        requestID += 1
+        let id = requestID
+        let provider = provider, result = result
         feedbackTask = Task { [weak self] in
             guard let self else { return }
-            let reply = await provider.feedback(for: result)
-            guard !Task.isCancelled else { return }
+            // Whatever hangs (key frames, auth, upload, the AI), the section resolves within `feedbackTimeout`.
+            let reply = await GeminiService.withDeadline(seconds: feedbackTimeout) {
+                await provider.feedback(for: result)
+            } ?? .failure(AIFailureReason.classify(AITransientError(cause: .timedOut)))
+            // A newer request owns the loading state now.
+            guard id == requestID else { return }
+            if Task.isCancelled {
+                isLoadingFeedback = false
+                return
+            }
             switch reply {
             case .success(let value):
                 feedback = value

@@ -99,6 +99,18 @@ private final class FakeProvider: AIProvider {
     }
 }
 
+/// An AI provider whose request never completes.
+private final class NeverAnsweringProvider: AIProvider {
+    let name = "Never"
+    let rateLimitKey = "never_\(UUID().uuidString)"
+    var isAvailable: Bool { true }
+    var nextAvailableTime: Date? { nil }
+    func markRateLimited(until: Date) {}
+    func clearRateLimit() {}
+    func generateChat(systemPrompt: String, messages: [ChatMessage], expectsJSON: Bool,
+                      completion: @escaping (Result<String, Error>) -> Void) {}
+}
+
 private struct StubFeedbackProvider: FormFeedbackProviding {
     var replies: Box
     final class Box { var queue: [FormFeedbackResult]; var calls = 0; init(_ q: [FormFeedbackResult]) { queue = q } }
@@ -558,6 +570,66 @@ final class FormResultsViewModelTests: XCTestCase {
         XCTAssertTrue(vm.replay.isPlaying)
         XCTAssertEqual(vm.replay.currentTime, 5.7, accuracy: 1e-6)
         vm.teardown()
+    }
+
+    // MARK: Watchdog
+
+    /// First call never returns; later calls return `then`.
+    private final class HangingProvider: FormFeedbackProviding, @unchecked Sendable {
+        var calls = 0
+        let then: FormFeedbackResult
+        init(then: FormFeedbackResult) { self.then = then }
+        func feedback(for result: FormSessionResult) async -> FormFeedbackResult {
+            calls += 1
+            if calls == 1 { await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in } }
+            return then
+        }
+    }
+
+    private func waitUntil(_ timeout: TimeInterval = 5, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
+    func testHungProviderEndsInTheFailureRowAndRetryWorks() async {
+        let ok = FormFeedbackResult.success(FormFeedback(verdict: "Fine.", positives: [], fixes: [], estimatedReps: nil))
+        let provider = HangingProvider(then: ok)
+        let vm = FormResultsViewModel(result: FormFixtures.result(reps: [FormFixtures.rep(1), FormFixtures.rep(2)]),
+                                      provider: provider, autoRetryDelay: 60, feedbackTimeout: 0.3)
+        vm.loadFeedbackIfNeeded()
+        XCTAssertTrue(vm.isLoadingFeedback)
+        await waitUntil { vm.feedbackFailed }
+        XCTAssertTrue(vm.feedbackFailed, "the coach section must resolve to the failure row")
+        XCTAssertFalse(vm.isLoadingFeedback)
+        XCTAssertNil(vm.feedback)
+        XCTAssertEqual(vm.failureReason, AIFailureReason.classify(AITransientError(cause: .timedOut)))
+        vm.retryFeedback()
+        await waitUntil { vm.feedback != nil }
+        XCTAssertEqual(vm.feedback?.verdict, "Fine.")
+        XCTAssertFalse(vm.isLoadingFeedback)
+        XCTAssertFalse(vm.feedbackFailed)
+        XCTAssertEqual(provider.calls, 2)
+    }
+
+    func testHungProviderGetsOneAutomaticRetry() async {
+        let ok = FormFeedbackResult.success(FormFeedback(verdict: "Auto.", positives: [], fixes: [], estimatedReps: nil))
+        let provider = HangingProvider(then: ok)
+        let vm = FormResultsViewModel(result: FormFixtures.result(reps: [FormFixtures.rep(1)]),
+                                      provider: provider, autoRetryDelay: 0.05, feedbackTimeout: 0.3)
+        vm.loadFeedbackIfNeeded()
+        await waitUntil { vm.feedback != nil }
+        XCTAssertEqual(vm.feedback?.verdict, "Auto.")
+        XCTAssertFalse(vm.isLoadingFeedback)
+    }
+
+    func testNeverReturningAIProviderThroughTheRealServiceStillResolves() async {
+        let service = FormFeedbackService(aiServiceManager: AIServiceManager(providers: [NeverAnsweringProvider()]))
+        let vm = FormResultsViewModel(result: FormFixtures.result(reps: [FormFixtures.rep(1)]), provider: service,
+                                      autoRetryDelay: 60, feedbackTimeout: 0.4)
+        vm.loadFeedbackIfNeeded()
+        await waitUntil { vm.feedbackFailed }
+        XCTAssertTrue(vm.feedbackFailed)
+        XCTAssertFalse(vm.isLoadingFeedback)
     }
 
     func testEstimatedRepsDisplayRule() {

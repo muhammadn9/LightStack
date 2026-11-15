@@ -13,6 +13,8 @@ struct ActiveWorkoutView: View {
     @State private var showFinishConfirm = false
     @State private var currentExerciseIndex = 0
     @State private var exercisePendingRemoval: Exercise?
+    /// Re-renders the screen when Settings > Default Rest Timer changes, so rest labels and the timer follow it.
+    @AppStorage(RestPreference.key) private var defaultRestSeconds = RestPreference.fallbackSeconds
     @State private var showAddExercise = false
     @State private var showReorder = false
     /// Scroll position of the card pager; mirrors `currentExerciseIndex`.
@@ -50,7 +52,11 @@ struct ActiveWorkoutView: View {
                 prToast(pr: pr)
             }
         }
+        .onChange(of: defaultRestSeconds) { old, _ in
+            todayViewModel.reconcileRestDefault(previous: old)
+        }
         .onAppear {
+            todayViewModel.reconcileRestDefault()
             viewModel.startTimer(from: todayViewModel.resolvedElapsed, paused: todayViewModel.timerPaused)
             todayViewModel.liveClock = { [weak viewModel] in
                 guard let viewModel else { return nil }
@@ -469,7 +475,7 @@ struct ActiveWorkoutView: View {
             let role = target.resolvedRole
             let parts = [
                 role == .straight ? nil : role.label,
-                showRest ? (target.restSeconds ?? exercise.restSeconds).flatMap { $0 > 0 ? "rest \(CoachRestFormat.short($0))" : nil } : nil
+                showRest ? (target.restSeconds ?? Self.restSeconds(for: exercise)).flatMap { $0 > 0 ? "rest \(CoachRestFormat.short($0))" : nil } : nil
             ].compactMap { $0 }
             if !parts.isEmpty {
                 Text(parts.joined(separator: " · "))

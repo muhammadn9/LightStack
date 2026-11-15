@@ -315,7 +315,7 @@ struct ConfirmWorkoutView: View {
                 let isWarmup = role == .warmup
                 let isTop = role == .top
                 let roleText = role == .straight ? "Set \(setNum)" : role.label
-                let restText = (target?.restSeconds ?? exercise.restSeconds).flatMap { $0 > 0 ? CoachRestFormat.short($0) : nil } ?? ""
+                let restText = (target?.restSeconds ?? ActiveWorkoutView.restSeconds(for: exercise)).flatMap { $0 > 0 ? CoachRestFormat.short($0) : nil } ?? ""
                 let weightText = Self.compactWeight(rowWeight, perArm: exercise.isPerArm)
                 let repsText = "× \(rowReps)"
                 let rirText = rowRir == "—" ? "" : "@ RIR \(rowRir)"
