@@ -379,7 +379,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: ex.targetSets,
                 targetReps: ex.targetReps,
                 targetRir: ex.targetRir,
-                restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
+                restSeconds: RestPreference.storedSeconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
                 coachNote: ex.coachNote,
                 supersetGroupId: groupIds[index],
                 isPerArm: ex.isPerArm
@@ -435,7 +435,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: sets.isEmpty ? ex.targetSets : sets.count,
                 targetReps: first.map { String($0.reps) } ?? ex.targetReps,
                 targetRir: ex.targetRir,
-                restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
+                restSeconds: RestPreference.storedSeconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
                 coachNote: coachNote,
                 supersetGroupId: groupIds[index],
                 isPerArm: ex.isPerArm
@@ -503,7 +503,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: targetSets,
                 targetReps: targetReps,
                 targetRir: targetRir,
-                restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
+                restSeconds: restSeconds,
                 coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
                 isPerArm: canonical.isPerArm ? true : nil
             )
@@ -584,7 +584,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     targetSets: targetSets,
                     targetReps: targetReps,
                     targetRir: targetRir,
-                    restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
+                    restSeconds: restSeconds,
                     coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
                     supersetGroupId: groupId,
                     isPerArm: canonical.isPerArm ? true : nil
@@ -663,6 +663,27 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return joined.isEmpty ? nil : joined
     }
 
+    // MARK: - Rest default
+
+    /// Brings exercises already in the running workout in line with Settings > Default Rest Timer.
+    /// Exercises that still carry the PREVIOUS default (stamped when they were created, or restored from a
+    /// session saved before defaults stopped being stamped) and have no per-set rest prescribed drop it, so they
+    /// follow the live default from now on. Anything the plan, coach, engine or chat prescribed explicitly
+    /// (a different value, or per-set rests) is left alone. `previous` is the old value when the caller knows it;
+    /// otherwise the last value this was reconciled against is used.
+    func reconcileRestDefault(previous: Int? = nil, defaults: UserDefaults = .standard) {
+        let current = RestPreference.defaultSeconds(in: defaults)
+        let last = previous ?? (defaults.object(forKey: RestPreference.lastAppliedKey) as? Int) ?? current
+        defaults.set(current, forKey: RestPreference.lastAppliedKey)
+        guard last != current else { return }
+        let released = RestPreference.releasingStampedRest(exercises, stamped: last, setTargets: setTargets)
+        guard !released.isEmpty else { return }
+        for exercise in released {
+            if let index = exercises.firstIndex(where: { $0.id == exercise.id }) { exercises[index] = exercise }
+        }
+        saveSessionState()
+    }
+
     // MARK: - Manual Exercise Management
 
     /// Adds an exercise. With `afterPageIndex` it goes right after that page (after the
@@ -678,7 +699,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             targetSets: 3,
             targetReps: "8-12",
             targetRir: "2",
-            restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup),
+            restSeconds: RestPreference.storedSeconds(forMuscleGroup: muscleGroup),
             coachNote: nil
         )
         // Start from the most recent logged session of this lift, whatever workout it was in.
@@ -755,7 +776,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             targetSets: old.targetSets,
             targetReps: old.targetReps,
             targetRir: old.targetRir,
-            restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup),
+            restSeconds: RestPreference.storedSeconds(forMuscleGroup: muscleGroup),
             coachNote: nil,
             supersetGroupId: old.supersetGroupId
         )

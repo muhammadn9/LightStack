@@ -152,6 +152,33 @@ final class FormAnalysisViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(model.liveRepCount, 1)
     }
 
+    /// Owner bug: the live counter went 0, 2, 3 and never showed 1.
+    func testLiveRepCountShowsOneBeforeTwo() async {
+        let (model, source) = makeModel()
+        model.prepare(exerciseName: "Lateral Raise")
+        await record(model)
+        var seen: [Int] = [model.liveRepCount]
+        var t = 0.0
+        // Still for 2 s, then reps of 2 s each: the first rep completes at 4 s, the second at 6 s.
+        for end in stride(from: 1.0, through: 8.0, by: 0.5) {
+            feed(source, from: t, to: end)
+            t = end + 1 / SyntheticPoseSource.frameRate
+            await model.refreshLiveRepCount()
+            if seen.last != model.liveRepCount { seen.append(model.liveRepCount) }
+        }
+        XCTAssertEqual(seen.prefix(3), [0, 1, 2], "live count sequence was \(seen)")
+    }
+
+    func testLiveRepCountDoesNotCountWalkingIntoPosition() async {
+        let (model, source) = makeModel()
+        model.prepare(exerciseName: "Lateral Raise")
+        await record(model)
+        // Standing still, then the first raise only half done: no completed rep yet.
+        feed(source, from: 0, to: 3.2)
+        await model.refreshLiveRepCount()
+        XCTAssertEqual(model.liveRepCount, 0)
+    }
+
     func testTooShortRecordingReturnsToSetupWithMessage() async {
         let (model, source) = makeModel()
         model.prepare(exerciseName: "Lateral Raise")

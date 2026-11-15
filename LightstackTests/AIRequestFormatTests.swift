@@ -45,11 +45,13 @@ final class AIRequestFormatTests: XCTestCase {
                        ["thinkingBudget": 4096])
     }
 
-    func testPlanTaskUsesMediumThinkingAndFullTokenCap() {
+    func testPlanTaskUsesLowThinkingLowTemperatureAndRoomForTheCompactJSON() {
         let options = AIRequestOptions.forTask(.plan)
-        XCTAssertEqual(options.thinking, .medium)
-        XCTAssertEqual(options.maxOutputTokens, 8192)
+        XCTAssertEqual(options.thinking, .low)
+        XCTAssertEqual(options.temperature, 0.2)
+        XCTAssertEqual(options.maxOutputTokens, 3000)
         XCTAssertNil(options.schema)
+        XCTAssertEqual(AIRequestOptions.forTask(.postWorkout).temperature, 0.3)
     }
 
     private let sampleSchema = AIResponseSchema([
@@ -77,15 +79,16 @@ final class AIRequestFormatTests: XCTestCase {
         XCTAssertNil((prose["generationConfig"] as? [String: Any])?["responseSchema"])
     }
 
-    // MARK: - Coach v3 plan schema
+    // MARK: - Plan schema
 
-    func testPlanSchemaIsSmallAndDescribesTheCoachReply() throws {
+    func testPlanSchemaIsSmallAndDescribesTheCoachDecisions() throws {
         let schema = CoachPromptService.planResponseSchema
         let data = try JSONSerialization.data(withJSONObject: schema.definition)
         XCTAssertLessThan(data.count, 6000)
         let text = String(decoding: data, as: UTF8.self)
-        for key in ["summary", "exercises", "coaching_notes", "muscle_group", "superset", "cue", "reason", "sets",
-                    "weight", "reps", "rir", "rest", "warmup", "work"] {
+        for key in ["summary", "exercises", "dropped", "coaching_notes", "decision", "percent", "replaces", "superset", "cue",
+                    "reason", "sets", "starting_sets", "weight", "reps", "rir", "rest", "warmup", "work",
+                    "as_planned", "push", "ease", "goal_step", "swap", "add"] {
             XCTAssertTrue(text.contains("\"\(key)\""), "schema is missing \(key)")
         }
     }
@@ -100,6 +103,8 @@ final class AIRequestFormatTests: XCTestCase {
         XCTAssertEqual(sent?["type"] as? String, "OBJECT")
         let properties = sent?["properties"] as? [String: Any]
         XCTAssertNotNil(properties?["exercises"])
-        XCTAssertEqual(config?["maxOutputTokens"] as? Int, 8192)
+        XCTAssertEqual(config?["maxOutputTokens"] as? Int, 3000)
+        XCTAssertEqual(config?["temperature"] as? Double, 0.2)
+        XCTAssertNotNil(config?["thinkingConfig"])
     }
 }

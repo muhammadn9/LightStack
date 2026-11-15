@@ -244,7 +244,7 @@ final class FormAnalysisViewModel: ObservableObject {
         let snapshot = PoseTrack(frames: frames, aspectRatio: source.aspectRatio)
         let profile = profile
         let count = await Task.detached(priority: .userInitiated) {
-            RepDetector.detect(track: snapshot, profile: profile).reps.count
+            RepDetector.detect(track: snapshot, profile: profile, minReps: 1).reps.count
         }.value
         detecting = false
         guard phase == .recording, count > liveRepCount else { return }

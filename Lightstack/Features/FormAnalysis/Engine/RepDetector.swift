@@ -58,9 +58,11 @@ enum RepDetector {
     private static let usableVisibility = 0.5
     private static let goodVisibility = 0.75
     private static let bothSidesVisibility = 0.6
-    private static let minReps = 2
+    /// Reps needed for a final analysis. The live counter passes 1 so the first completed rep shows up;
+    /// a single cycle still has to clear the profile's amplitude threshold and the per-cycle duration limits.
+    static let defaultMinReps = 2
 
-    static func detect(track: PoseTrack, profile: MovementProfile) -> RepDetection {
+    static func detect(track: PoseTrack, profile: MovementProfile, minReps: Int = defaultMinReps) -> RepDetection {
         guard profile.isTracked else { return .insufficient(angle: profile.primary, quality: 0) }
         let frames = track.frames
         guard frames.count >= 10 else { return .insufficient(angle: profile.primary, quality: 0) }
@@ -121,7 +123,7 @@ enum RepDetector {
         let bestDisp = best(dispCands)
         // Tracking quality for "couldn't see you" messages always refers to the angle's joints.
         let angleQuality = bestAngle?.visibility ?? angleCands.map(\.visibility).max() ?? 0
-        guard let picked = pickKind(angle: bestAngle, displacement: bestDisp, order: profile.signalOrder) else {
+        guard let picked = pickKind(angle: bestAngle, displacement: bestDisp, order: profile.signalOrder, minReps: minReps) else {
             return .insufficient(angle: angle, quality: angleQuality)
         }
         let pool = picked.kind == .angle ? angleCands : dispCands
@@ -167,7 +169,7 @@ enum RepDetector {
     /// Picks between the angle and displacement signals. They agree within one rep -> keep the angle
     /// (existing behaviour and degree wording). Otherwise the more regular one wins; a candidate with about
     /// double the other's count that shows the odd/even alternation of a folded signal loses.
-    private static func pickKind(angle: Candidate?, displacement: Candidate?, order: [SignalKind]) -> Candidate? {
+    private static func pickKind(angle: Candidate?, displacement: Candidate?, order: [SignalKind], minReps: Int) -> Candidate? {
         let a = angle.flatMap { $0.reps.count >= minReps ? $0 : nil }
         let d = displacement.flatMap { $0.reps.count >= minReps ? $0 : nil }
         switch (a, d) {

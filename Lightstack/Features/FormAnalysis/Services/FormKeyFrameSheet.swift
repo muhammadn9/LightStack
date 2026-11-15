@@ -19,7 +19,7 @@ enum FormKeyFrameSheet {
     static let maxMoments = 6
     static let maxTileLongSide: CGFloat = 640
     static let maxColumns = 3
-    static let jpegByteBudget = 900_000
+    static let jpegByteBudget = 400_000
     /// A crop never gets smaller than this fraction of the frame in either direction.
     static let minCropFraction: CGFloat = 0.35
     /// Extra room around the lifter, as a fraction of the box size (split across both sides).

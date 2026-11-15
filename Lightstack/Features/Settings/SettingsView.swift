@@ -53,6 +53,7 @@ struct SettingsView: View {
                         Text("4 min").tag(240)
                         Text("5 min").tag(300)
                     }
+                    .accessibilityIdentifier("settings.defaultRestPicker")
                     .listRowBackground(AppTheme.surface)
 
                     Picker("Weight Unit", selection: $weightUnit) {
