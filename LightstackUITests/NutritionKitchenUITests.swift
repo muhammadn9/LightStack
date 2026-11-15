@@ -34,6 +34,24 @@ final class NutritionKitchenUITests: LightstackUITestCase {
         return target.exists
     }
 
+    /// Drags the journal until `element` sits in the clear band between the pinned header and the floating
+    /// search bar. A flick (`swipeUp`) coasts a variable distance, and when it overshoots the card ends up under
+    /// the header, so a coordinate tap at its centre lands on the header instead of the card.
+    private func scrollIntoClearBand(_ element: XCUIElement, top: CGFloat = 200, bottomInset: CGFloat = 260) {
+        let window = app.windows.firstMatch
+        let height = window.frame.height
+        for _ in 0..<8 {
+            let frame = element.frame
+            guard frame.minY < top || frame.maxY > height - bottomInset else { return }
+            let target = (top + height - bottomInset) / 2 - frame.height / 2
+            let delta = max(-300, min(300, frame.minY - target))
+            let mid: CGFloat = 0.5
+            let from = window.coordinate(withNormalizedOffset: CGVector(dx: mid, dy: mid + (delta > 0 ? 0.15 : -0.15)))
+            let to = window.coordinate(withNormalizedOffset: CGVector(dx: mid, dy: mid + (delta > 0 ? 0.15 : -0.15) - delta / height))
+            from.press(forDuration: 0.1, thenDragTo: to)
+        }
+    }
+
     private func start() {
         launchApp(colorScheme: "light")
         openNutrition()
@@ -182,8 +200,8 @@ final class NutritionKitchenUITests: LightstackUITestCase {
         XCTAssertTrue(any("journal.ring.calories").label.contains("730"), any("journal.ring.calories").label)
         let lunch = app.buttons["journal.meal.Lunch"]
         waitFor(lunch)
-        // The card sits behind the floating search bar until scrolled.
-        for _ in 0..<4 where lunch.frame.maxY > app.windows.firstMatch.frame.height - 200 { app.swipeUp() }
+        // The card sits behind the floating search bar until scrolled; keep it clear of the header too.
+        scrollIntoClearBand(lunch)
         let expanded = tapAt(lunch, until: app.buttons["journal.entry.Egg"])
         XCTAssertTrue(expanded)
         waitFor(app.buttons["journal.entry.Oats"])
