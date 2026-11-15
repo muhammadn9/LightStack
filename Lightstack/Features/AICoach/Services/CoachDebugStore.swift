@@ -14,11 +14,12 @@ struct CoachPlanSnapshot: Codable, Equatable {
     var rawResponse: String?
     /// What the progression engine and guardrails changed.
     var adjustments: [String]
-    /// The coach's structure review (verdict, proposed changes and what the app did with them).
+    /// The coach's plan: summary, one decision per lift and the checks that ran.
     var review: CoachPlanReview? = nil
-    /// Per exercise: who set the numbers and why (the coach's reason, or the safety rail that replaced it).
-    /// nil on snapshots saved before coach v3.
+    /// Per exercise: the coach's decision label and the reason shown. nil on snapshots saved by older builds.
     var reasons: [CoachExerciseReason]? = nil
+    /// "Coach changes: 6 (4 on target, 2 missed) · As planned: 18 (15 on target, 3 missed)"; nil on older snapshots.
+    var scorecard: String? = nil
     /// Whether the athlete shared the nutrition summary / pre-workout meals when this was sent. nil on older snapshots.
     var nutritionShared: Bool? = nil
     var mealsShared: Bool? = nil
@@ -27,15 +28,27 @@ struct CoachPlanSnapshot: Codable, Equatable {
     var mealsBlock: String? = nil
 }
 
-/// One line of "Coach's reasons": an exercise, whether the coach or a safety rail set it, and the text.
+/// One line of "Coach's reasons": an exercise, the decision label ("As planned", "Pushed by coach", ...) and the reason.
 struct CoachExerciseReason: Codable, Equatable {
     var exercise: String
-    /// True when the rule-based baseline replaced the coach's sets (a safety rail fired).
-    var railFallback: Bool
+    var label: String
     var text: String
 
-    /// The label shown next to the reason.
-    var label: String { railFallback ? "Safety rail: rule-based" : "Set by the coach" }
+    init(exercise: String, label: String, text: String) {
+        self.exercise = exercise
+        self.label = label
+        self.text = text
+    }
+
+    enum CodingKeys: String, CodingKey { case exercise, label, text }
+
+    /// Older snapshots stored a flag instead of a label; they decode with an empty one.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        exercise = try c.decode(String.self, forKey: .exercise)
+        label = (try? c.decodeIfPresent(String.self, forKey: .label)) ?? ""
+        text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? ""
+    }
 }
 
 /// Keeps the last plan request for a "What the coach saw" screen. In memory plus
@@ -72,14 +85,14 @@ final class CoachDebugStore {
         userId: UUID, workoutType: String, model: String,
         systemPromptName: String, systemPromptLength: Int, userMessage: String,
         nutritionShared: Bool? = nil, mealsShared: Bool? = nil, fuelBlock: String? = nil, mealsBlock: String? = nil,
-        now: Date = Date()
+        scorecard: String? = nil, now: Date = Date()
     ) {
         lock.lock(); defer { lock.unlock() }
         store(CoachPlanSnapshot(
             userId: userId.uuidString, timestamp: now, workoutType: workoutType, model: model,
             systemPromptName: systemPromptName, systemPromptLength: systemPromptLength,
             userMessage: userMessage, rawResponse: nil, adjustments: [], review: nil,
-            nutritionShared: nutritionShared, mealsShared: mealsShared, fuelBlock: fuelBlock, mealsBlock: mealsBlock))
+            scorecard: scorecard, nutritionShared: nutritionShared, mealsShared: mealsShared, fuelBlock: fuelBlock, mealsBlock: mealsBlock))
     }
 
     func recordResponse(userId: UUID, raw: String, adjustments: [String], review: CoachPlanReview? = nil,

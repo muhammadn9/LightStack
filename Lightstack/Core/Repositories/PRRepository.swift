@@ -69,11 +69,11 @@ final class PRRepository {
         let name = Self.recordName(for: exerciseName)
 
         // Calculate estimated 1RM using Epley formula: weight × (1 + reps/30)
-        let newE1RM = weightLbs * (1 + Double(reps) / 30)
+        let newE1RM = OneRepMax.estimate(weight: weightLbs, reps: reps)
 
         let existing = localStorage.fetchPersonalRecords(userId: userId)
             .filter { $0.exerciseName == name || $0.exerciseName == exerciseName }
-        let existingE1RM = existing.map { $0.weightLbs * (1 + Double($0.reps) / 30) }.max() ?? 0
+        let existingE1RM = existing.map { OneRepMax.estimate(weight: $0.weightLbs, reps: Int($0.reps)) }.max() ?? 0
 
         guard newE1RM > existingE1RM else { return nil }
 
@@ -161,7 +161,7 @@ final class PRRepository {
             let reps = Int(set.reps)
             let weight = set.weightLbs
             guard reps > 0, weight > 0 else { continue }
-            let e1rm = weight * (1 + Double(reps) / 30)
+            let e1rm = OneRepMax.estimate(weight: weight, reps: reps)
             if e1rm > bestE1RM {
                 bestE1RM = e1rm
                 bestSet = set

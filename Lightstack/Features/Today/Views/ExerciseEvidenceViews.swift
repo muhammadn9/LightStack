@@ -22,30 +22,22 @@ enum EvidenceFormat {
         return "Last\(when): \(sets(evidence.lastSets))"
     }
 
-    static func sourceTitle(_ source: ExerciseEvidence.Source) -> String {
-        switch source {
-        case .engine: return "Calculated from your log"
-        case .ai: return "AI estimate"
-        case .aiGuarded: return "AI estimate · adjusted"
-        case .coach: return "Set by the coach"
-        case .engineFallback: return "Safety rail: rule-based"
+    /// The badge text: the coach's decision for the lift ("As planned", "Pushed by coach", ...).
+    static func badgeTitle(_ evidence: ExerciseEvidence) -> String {
+        if !evidence.decisionLabel.isEmpty { return evidence.decisionLabel }
+        switch evidence.source {
+        case .engine: return "As planned"
+        case .newLift: return "Added"
         }
     }
 
-    /// True when the source has a one-line explanation worth showing under the details.
-    static func showsRationale(_ source: ExerciseEvidence.Source) -> Bool {
-        switch source {
-        case .engine, .coach, .engineFallback: return true
-        case .ai, .aiGuarded: return false
-        }
-    }
+    /// The coach asked for something the rules refused ("Coach wanted to push; held: ...").
+    static func isHeld(_ evidence: ExerciseEvidence) -> Bool { evidence.decisionLabel.hasPrefix("Coach wanted") }
 
-    /// Sources shown in the accent colour (the app's own numbers, or the coach's checked ones).
-    static func isAccented(_ source: ExerciseEvidence.Source) -> Bool {
-        switch source {
-        case .engine, .coach: return true
-        case .ai, .aiGuarded, .engineFallback: return false
-        }
+    /// The coach changed the app's numbers (push, ease, goal step, swap, add).
+    static func isChanged(_ evidence: ExerciseEvidence) -> Bool {
+        let label = evidence.decisionLabel
+        return !label.isEmpty && label != "As planned" && !isHeld(evidence)
     }
 
     static func trendSymbol(_ trend: ProgressionTrend) -> String {
@@ -80,7 +72,7 @@ struct PlanEvidenceBlock: View {
     @State private var showReasons = false
 
     private var hasDetails: Bool {
-        !evidence.lastSets.isEmpty || evidence.best != nil || EvidenceFormat.showsRationale(evidence.source)
+        !evidence.lastSets.isEmpty || evidence.best != nil || !evidence.rationale.isEmpty || !evidence.reason.isEmpty
     }
 
     var body: some View {
@@ -125,11 +117,12 @@ struct PlanEvidenceBlock: View {
                     }
                 }
             }
-            if EvidenceFormat.showsRationale(evidence.source), !evidence.rationale.isEmpty {
-                Text(evidence.rationale)
-                    .font(AppTheme.caveat(11))
-                    .foregroundStyle(AppTheme.textSecondary)
+            if !evidence.reason.isEmpty {
+                Text(evidence.reason)
+                    .font(AppTheme.caveat(12))
+                    .foregroundStyle(AppTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("plan.reason.\(exerciseIndex)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -139,20 +132,22 @@ struct PlanEvidenceBlock: View {
 
     @ViewBuilder
     private var sourceBadge: some View {
-        let title = EvidenceFormat.sourceTitle(evidence.source)
-        let tint: Color = EvidenceFormat.isAccented(evidence.source) ? AppTheme.accent : AppTheme.textSecondary
-        let label = HStack(spacing: 4) {
-            Image(systemName: (evidence.source == .engine || evidence.source == .engineFallback) ? "checkmark.seal" : "sparkles")
+        let title = EvidenceFormat.badgeTitle(evidence)
+        let held = EvidenceFormat.isHeld(evidence)
+        let tint: Color = held ? AppTheme.warning : (EvidenceFormat.isChanged(evidence) ? AppTheme.accent : AppTheme.textSecondary)
+        let symbol = held ? "pause.circle" : (EvidenceFormat.isChanged(evidence) ? "sparkles" : "checkmark.seal")
+        let label = HStack(alignment: .top, spacing: 4) {
+            Image(systemName: symbol)
                 .font(.caption2)
             Text(title)
                 .font(AppTheme.caveat(11, weight: .bold))
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(tint)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .background(tint.opacity(0.12))
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: 10))
 
         if evidence.guardrailReasons.isEmpty {
             label
@@ -163,7 +158,7 @@ struct PlanEvidenceBlock: View {
             Button { showReasons.toggle() } label: { label }
                 .buttonStyle(.plain)
                 .accessibilityLabel(title)
-                .accessibilityHint("Shows why the numbers were adjusted")
+                .accessibilityHint("Shows what the app adjusted")
                 .accessibilityIdentifier("plan.source.\(exerciseIndex)")
         }
     }

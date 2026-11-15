@@ -8,9 +8,12 @@ final class AIServiceManager {
     private var providers: [AIProvider]
     private var currentProviderIndex: Int = 0
     private let logger = Logger(subsystem: "org.lightstack.app", category: "AIServiceManager")
+    private let now: () -> Date
 
-    init(providers: [AIProvider]) {
+    /// `now` is injectable so tests can simulate slow attempts without waiting.
+    init(providers: [AIProvider], now: @escaping () -> Date = Date.init) {
         self.providers = providers
+        self.now = now
         logger.debug("Initialized with providers: \(providers.map { $0.name }.joined(separator: ", "))")
     }
 
@@ -45,34 +48,59 @@ final class AIServiceManager {
         completion: @escaping (Result<AIReply, Error>) -> Void
     ) {
         logger.debug("Starting chat generation with \(self.providers.count) providers available")
+        let chain = providers.filter { $0.isAvailable }
+        let state = RetryState(
+            started: now(),
+            // Immediate-failover tasks: original model, the next model, then the original once more.
+            maxAttempts: options.retryPolicy.failoverImmediately ? (chain.count >= 2 ? 3 : 2) : .max)
         tryNextProvider(
             systemPrompt: systemPrompt,
             messages: messages,
             expectsJSON: expectsJSON,
             options: options,
-            attemptedProviders: [],
+            state: state,
             completion: completion
         )
     }
 
     // MARK: - Private
 
+    private struct RetryState {
+        let started: Date
+        let maxAttempts: Int
+        var attempts = 0
+        var attempted: [String] = []
+        /// Hops made because of a timeout, 504 or lost connection (standard policy allows one).
+        var timeoutHops = 0
+        var original: AIProvider?
+        init(started: Date, maxAttempts: Int) {
+            self.started = started
+            self.maxAttempts = maxAttempts
+        }
+    }
+
     private func tryNextProvider(
         systemPrompt: String,
         messages: [ChatMessage],
         expectsJSON: Bool,
         options: AIRequestOptions,
-        attemptedProviders: [String],
+        state: RetryState,
+        forced: AIProvider? = nil,
         completion: @escaping (Result<AIReply, Error>) -> Void
     ) {
-        // Find next available provider
-        guard let availableProvider = findNextAvailableProvider(excluding: attemptedProviders) else {
+        // Find next available provider (or the one we were told to use, e.g. the original model again).
+        guard let availableProvider = forced ?? findNextAvailableProvider(excluding: state.attempted) else {
             logger.debug("All providers exhausted or rate limited")
             completion(.failure(AIProviderError.allProvidersUnavailable))
             return
         }
 
         logger.debug("Trying provider: \(availableProvider.name)")
+        var state = state
+        state.attempts += 1
+        if state.original == nil { state.original = availableProvider }
+        if !state.attempted.contains(availableProvider.name) { state.attempted.append(availableProvider.name) }
+        let attemptState = state
 
         availableProvider.generateReply(
             systemPrompt: systemPrompt,
@@ -97,26 +125,60 @@ final class AIServiceManager {
                     return
                 }
 
-                // Check if this is a rate limit error
-                if self.isRateLimitError(error) {
-                    self.handleRateLimitError(error, provider: availableProvider)
-                    // Try next provider
-                    var attempted = attemptedProviders
-                    attempted.append(availableProvider.name)
-                    self.tryNextProvider(
-                        systemPrompt: systemPrompt,
-                        messages: messages,
-                        expectsJSON: expectsJSON,
-                        options: options,
-                        attemptedProviders: attempted,
-                        completion: completion
-                    )
-                } else {
-                    // Non-rate-limit error, fail immediately
+                let next: (provider: AIProvider?, state: RetryState)? = self.nextAttempt(
+                    after: error, from: availableProvider, state: attemptState, policy: options.retryPolicy)
+                guard let next else {
+                    // Not worth another attempt: report what happened.
                     completion(.failure(error))
+                    return
                 }
+                self.tryNextProvider(
+                    systemPrompt: systemPrompt,
+                    messages: messages,
+                    expectsJSON: expectsJSON,
+                    options: options,
+                    state: next.state,
+                    forced: next.provider,
+                    completion: completion
+                )
             }
         }
+    }
+
+    /// Decides what follows a failed attempt: nil = give up with this error, else the next attempt
+    /// (`provider` nil = let the manager pick the next available model).
+    private func nextAttempt(after error: Error, from provider: AIProvider, state: RetryState,
+                             policy: AIRetryPolicy) -> (provider: AIProvider?, state: RetryState)? {
+        var state = state
+
+        if let transient = AITransientError.from(error) {
+            if policy.failoverImmediately {
+                // No backoff on an overloaded model: straight to the next one, then the original once more.
+                guard state.attempts < state.maxAttempts,
+                      now().timeIntervalSince(state.started) <= policy.totalBudget - policy.attemptTimeout else { return nil }
+                if let other = findNextAvailableProvider(excluding: state.attempted) {
+                    return (other, state)
+                }
+                // Nothing else to hop to: the original model again.
+                return (state.original ?? provider, state)
+            }
+            // Standard: a 503 marks the model busy and moves on, as before. A 504, timeout or lost connection
+            // makes one hop to the next model (which gets its own full timeout) and no more.
+            if transient.isOverload503 {
+                handleRateLimitError(error, provider: provider)
+                return (nil, state)
+            }
+            guard state.timeoutHops < 1, findNextAvailableProvider(excluding: state.attempted) != nil else { return nil }
+            state.timeoutHops += 1
+            return (nil, state)
+        }
+
+        if isRateLimitError(error) {
+            handleRateLimitError(error, provider: provider)
+            return (nil, state)
+        }
+        // Anything else is not a reason to try another model.
+        return nil
     }
 
     private func findNextAvailableProvider(excluding: [String]) -> AIProvider? {

@@ -171,6 +171,7 @@ struct CoachSessionReviewView: View {
         case .hold: return "Hold"
         case .regression: return "Regression"
         case .missed: return "Missed"
+        case .close: return "Close"
         case .new: return "New"
         }
     }
@@ -181,6 +182,7 @@ struct CoachSessionReviewView: View {
         case .hold: return AppTheme.accentSecondary
         case .regression: return AppTheme.warning
         case .missed: return AppTheme.destructive
+        case .close: return AppTheme.accent
         case .new: return AppTheme.textSecondary
         }
     }

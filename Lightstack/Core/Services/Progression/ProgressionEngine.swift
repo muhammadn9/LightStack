@@ -39,13 +39,23 @@ enum ProgressionEngine {
     /// A top set may rise at most this much over the most recent session's top (or one increment).
     static let topWeightTolerance = 0.05
 
+    /// The same lift trained less than this many hours ago: no progress, and a main lift comes down a notch.
+    static let sameLiftRecentHours = 24.0
+    /// A muscle with 2+ hard sets this recently counts as just trained (the session-level warning and the engine's hold).
+    static let muscleRecentHours = 20.0
+    static let muscleRecentMinHardSets = 2
+    /// How much a main lift comes down when it (or its muscle) was trained hours ago.
+    static let recentReductionPercent = 5.0
+
     private enum Mode { case reduce, holdRepeat, layoffReduce, normal }
 
     private struct Ctx {
         var name: String
         var cls: ExerciseClass
-        var step: Double
-        var inc: Double
+        /// The weights this lift can actually be loaded with (learned from history, else the class default).
+        var ladder: WeightIncrements
+        var step: Double { ladder.step }
+        var inc: Double { ladder.increment }
         var range: RepRange
         var mode: Mode
         var tooEasy: Bool
@@ -67,7 +77,7 @@ enum ProgressionEngine {
               let lastTop = referenceTop(last.work) else { return nil }
 
         let cls = ExerciseTraits.classify(input.name)
-        let step = ExerciseTraits.roundingStep(input.name)
+        let ladder = input.increments ?? WeightIncrements(name: input.name, sessions: input.sessions)
         let working = sessions.map { HistorySession(date: $0.session.date, sets: $0.work) }
         let range = topRange(cls: cls, focus: input.focus, sessions: working)
         let style = SetStyleDetector.detect(sessions: working)
@@ -94,7 +104,26 @@ enum ProgressionEngine {
             mode = .holdRepeat
             pauseNote = "skipped in the last session, no load increase"
         }
-        let ctx = Ctx(name: input.name, cls: cls, step: step, inc: ExerciseTraits.increment(input.name),
+        // Trained this lift (or its muscle) hours ago, or running on empty: never progress, and a main lift also
+        // comes down a notch when it was trained very recently.
+        let hoursSinceLast = input.now.map { max(0, $0.timeIntervalSince(last.session.date)) / 3600 }
+        let liftVeryRecent = (hoursSinceLast ?? .infinity) < sameLiftRecentHours
+        let noProgress = liftVeryRecent || input.muscleVeryRecent || input.fuelLow
+        var noProgressNote: String?
+        if noProgress {
+            if mode == .normal { mode = .holdRepeat }
+            if liftVeryRecent, let h = hoursSinceLast {
+                noProgressNote = "trained \(hoursText(h)) ago"
+            } else if input.muscleVeryRecent {
+                noProgressNote = "muscle trained in the last \(Int(muscleRecentHours)) h"
+            } else if let why = input.fuelReason {
+                noProgressNote = "low fuel: \(why)"
+            } else {
+                noProgressNote = "low fuel"
+            }
+            if pauseNote == nil { pauseNote = "\(noProgressNote ?? ""), no load or rep increase" }
+        }
+        let ctx = Ctx(name: input.name, cls: cls, ladder: ladder,
                       range: range, mode: mode, tooEasy: input.feedback == .tooEasy, best: input.best,
                       focus: input.focus)
 
@@ -108,11 +137,29 @@ enum ProgressionEngine {
         } else {
             chosen = progressTop(lastTop, ctx: ctx)
         }
-        chosen.weight = ExerciseTraits.round(chosen.weight, step: step)
+        chosen.weight = ladder.snap(chosen.weight)
+
+        // Never progress when the lift or its muscle was trained hours ago, or fuel is low: weight and reps stay
+        // at or under the last top set. A main lift trained very recently also comes down about 5%.
+        let veryRecent = liftVeryRecent || input.muscleVeryRecent
+        if noProgress, mode != .reduce, mode != .layoffReduce {
+            if chosen.weight > lastTop.weight + 0.001 {
+                chosen = (lastTop.weight, lastTop.reps, "hold \(g(lastTop.weight))×\(lastTop.reps)")
+            } else if abs(chosen.weight - lastTop.weight) <= 0.001, chosen.reps > lastTop.reps {
+                chosen = (lastTop.weight, lastTop.reps, "hold \(g(lastTop.weight))×\(lastTop.reps)")
+            }
+            if veryRecent, cls != .isolation {
+                let lighter = ladder.snap(lastTop.weight * (1 - recentReductionPercent / 100), direction: .down)
+                if lighter < chosen.weight - 0.001 {
+                    chosen = (lighter, min(chosen.reps, lastTop.reps),
+                              "top set down about \(g(recentReductionPercent))% to \(g(lighter))")
+                }
+            }
+        }
 
         // Recency rule: muscles trained hard in the last 48 h hold their load at RIR 2.
         var recency = false
-        if input.recentlyTrained {
+        if input.recentlyTrained || veryRecent {
             recency = true
             if chosen.weight > lastTop.weight {
                 chosen = (lastTop.weight, lastTop.reps, "hold \(g(lastTop.weight))×\(lastTop.reps)")
@@ -120,8 +167,13 @@ enum ProgressionEngine {
             chosen.text += ", RIR 2 (trained recently)"
         }
 
+        // The coach's decision (push, ease, goal step) replaces the top set; the structure is built around it as usual.
+        if let override = input.topOverride {
+            chosen = (override.weight, override.reps, override.text)
+        }
+
         // 2. The standard structure around it.
-        let built: [ProgressionSet]
+        var built: [ProgressionSet]
         if cls == .isolation {
             built = isolationSets(top: chosen, recency: recency, ctx: ctx, restPreference: input.restPreference)
         } else {
@@ -129,6 +181,9 @@ enum ProgressionEngine {
             built = mainSets(top: chosen, recency: recency, warmup: warm, energy: input.energy, ctx: ctx,
                              restPreference: input.restPreference)
         }
+        // No rep jumps at a weight the athlete just did: at most +2 reps (+1 after a hard set or at a higher RIR).
+        let capped = RepJumpRule.apply(built, last: last.work, ladder: ladder)
+        built = capped.sets
 
         var action = chosen.text
         switch mode {
@@ -140,24 +195,30 @@ enum ProgressionEngine {
         if usedTarget { action += " (from last review)" }
         let lastText = last.work.map(\.text).joined(separator: ", ")
         let structure = built.filter { !$0.isWarmup }.map { "\($0.role.label) \(g($0.weight))×\($0.reps)" }.joined(separator: ", ")
-        let rationale = "Last: \(lastText) → \(action). \(structure)"
+        var rationale = "Last: \(lastText) → \(action). \(structure)"
+        if !capped.notes.isEmpty { rationale += " (" + capped.notes.joined(separator: "; ") + ")" }
         var result = ProgressionResult(sets: built, rationale: rationale, style: style, repRange: range, trend: trend)
+        result.evidenceLine = "Last: \(lastText) → \(action)"
         result.usedNextTarget = usedTarget
         result.recencyApplied = recency
+        result.noProgressReason = noProgress ? noProgressNote : nil
+        result.repCaps = capped.notes
         return result
     }
 
     /// Where the next top set would go after this one (double progression), for review defaults.
     static func nextTopTarget(name: String, after top: HistorySet, focus: CoachFocus = .hypertrophy,
-                              best: HistorySet? = nil, history: [HistorySession] = []) -> (weight: Double, reps: Int) {
+                              best: HistorySet? = nil, history: [HistorySession] = [],
+                              increments: WeightIncrements? = nil) -> (weight: Double, reps: Int) {
         let cls = ExerciseTraits.classify(name)
         let sessions = history.isEmpty ? [HistorySession(date: Date(), sets: [top])] : history
-        let ctx = Ctx(name: name, cls: cls, step: ExerciseTraits.roundingStep(name),
-                      inc: ExerciseTraits.increment(name),
+        let ladder = increments ?? (history.isEmpty ? WeightIncrements.fallback(for: name)
+                                                    : WeightIncrements(name: name, sessions: history))
+        let ctx = Ctx(name: name, cls: cls, ladder: ladder,
                       range: topRange(cls: cls, focus: focus, sessions: sessions),
                       mode: .normal, tooEasy: false, best: best, focus: focus)
         let next = progressTop(top, ctx: ctx)
-        return (ExerciseTraits.round(next.weight, step: ctx.step), next.reps)
+        return (ladder.snap(next.weight), next.reps)
     }
 
     /// The set the last session was built around: the best estimated one-rep max (heavier on ties).
@@ -230,7 +291,7 @@ enum ProgressionEngine {
     private static func fromTarget(_ t: NextTarget, lastTop: HistorySet, ctx: Ctx) -> (weight: Double, reps: Int, text: String) {
         switch ctx.mode {
         case .reduce:
-            let w = ExerciseTraits.floorStep(t.weight * 0.95, step: ctx.step)
+            let w = reduced(t.weight, percent: 5, ctx: ctx)
             return (w, t.reps, "review target \(g(t.weight))×\(t.reps), down about 5% to \(g(w))")
         case .layoffReduce:
             let w = layoffWeight(min(t.weight, lastTop.weight), ctx: ctx)
@@ -247,17 +308,30 @@ enum ProgressionEngine {
 
     /// The weight after a long layoff: about 7.5% lighter, rounded down to the plate step.
     private static func layoffWeight(_ weight: Double, ctx: Ctx) -> Double {
-        var w = ExerciseTraits.floorStep(weight * (1 - layoffReductionPercent / 100), step: ctx.step)
-        if w >= weight { w = max(ctx.step, weight - ctx.step) }
-        return w
+        reduced(weight, percent: layoffReductionPercent, ctx: ctx)
+    }
+
+    /// `weight` lowered by about `percent`, on the lift's ladder. Rounds down; when the ladder is so coarse that the
+    /// next rung down is more than twice the intended cut, the nearer rung is used instead, and if that is the same
+    /// weight the weight is held (never a weight the lift cannot be loaded to).
+    private static func reduced(_ weight: Double, percent: Double, ctx: Ctx) -> Double {
+        let target = weight * (1 - percent / 100)
+        var down = ctx.ladder.snap(target, direction: .down)
+        if down >= weight - 0.001 { down = ctx.ladder.stepDown(from: weight) }
+        let intended = weight - target
+        if weight - down > 2 * intended {
+            let up = ctx.ladder.snap(target, direction: .up)
+            if up < weight - 0.001 { return up }
+            return weight
+        }
+        return down
     }
 
     /// Double progression for the top set.
     private static func progressTop(_ top: HistorySet, ctx: Ctx) -> (weight: Double, reps: Int, text: String) {
         switch ctx.mode {
         case .reduce:
-            var w = ExerciseTraits.floorStep(top.weight * 0.95, step: ctx.step)
-            if w >= top.weight { w = max(ctx.step, top.weight - ctx.step) }
+            let w = reduced(top.weight, percent: 5, ctx: ctx)
             return (w, top.reps, "top set down about 5% to \(g(w))")
         case .layoffReduce:
             let w = layoffWeight(top.weight, ctx: ctx)
@@ -268,7 +342,7 @@ enum ProgressionEngine {
             if ctx.focus == .maintenance {
                 return (top.weight, top.reps, "maintenance: hold top set \(g(top.weight))×\(top.reps)")
             }
-            let raised = top.weight + ctx.inc
+            let raised = ctx.ladder.stepUp(from: top.weight)
             let allowed = ctx.best.map { raised <= $0.weight + ctx.inc } ?? true
             if top.reps < ctx.range.lower {
                 // Under the range: add load only with plenty in reserve, else build reps.
@@ -301,13 +375,13 @@ enum ProgressionEngine {
         let topRir = steady ? 2 : 1
         var sets: [ProgressionSet] = []
 
-        let rampWeight = rampWeight(forTop: top.weight, step: ctx.step)
+        let rampWeight = rampWeight(forTop: top.weight, ladder: ctx.ladder)
         // Set 1 is lighter, so it gets more reps than the top set (hypertrophy ~10-12, strength up to 8).
         let rampReps = strength ? max(top.reps, min(8, top.reps + 2)) : max(top.reps, min(12, max(10, top.reps + 3)))
 
         if warmup {
-            var w = ExerciseTraits.round(top.weight * 0.5, step: ctx.step)
-            if w >= rampWeight { w = ExerciseTraits.round(rampWeight * 0.6, step: ctx.step) }
+            var w = ctx.ladder.snap(top.weight * 0.5)
+            if w >= rampWeight { w = ctx.ladder.snap(rampWeight * 0.6) }
             if w < rampWeight {
                 sets.append(ProgressionSet(weight: w, reps: 10, rir: 5, role: .warmup, restSeconds: warmupRest))
             }
@@ -323,8 +397,8 @@ enum ProgressionEngine {
                                        role: .straight, restSeconds: strengthTopRest))
             return sets
         }
-        var weight = ExerciseTraits.round(top.weight * backoffShare, step: ctx.step)
-        if weight >= top.weight { weight = max(ctx.step, top.weight - ctx.step) }
+        var weight = ctx.ladder.snap(top.weight * backoffShare)
+        if weight >= top.weight { weight = ctx.ladder.stepDown(from: top.weight) }
         let reps = max(top.reps, min(ctx.range.upper, top.reps + 1))
         // A back-off only for hypertrophy with energy to spare; otherwise a plain straight set.
         let role: SetRole = energy >= backoffMinEnergy ? .backoff : .straight
@@ -334,14 +408,14 @@ enum ProgressionEngine {
     }
 
     /// Set 1: about 80% of the top set, kept inside 75-85% when the plate step allows.
-    private static func rampWeight(forTop top: Double, step: Double) -> Double {
+    private static func rampWeight(forTop top: Double, ladder: WeightIncrements) -> Double {
         let target = top * rampShare
-        let down = ExerciseTraits.floorStep(target, step: step)
-        let up = down + step
+        let down = ladder.snap(target, direction: .down)
+        let up = ladder.stepUp(from: down)
         let candidates = [down, up].filter { $0 >= top * 0.75 && $0 <= top * 0.85 && $0 < top }
         if let best = candidates.min(by: { abs($0 - target) < abs($1 - target) }) { return best }
-        let rounded = ExerciseTraits.round(target, step: step)
-        return rounded < top ? rounded : max(step, top - step)
+        let rounded = ladder.snap(target)
+        return rounded < top ? rounded : ladder.stepDown(from: top)
     }
 
     private static func isolationSets(top: (weight: Double, reps: Int, text: String), recency: Bool,
@@ -355,6 +429,8 @@ enum ProgressionEngine {
     }
 
     private static func g(_ value: Double) -> String { String(format: "%g", value) }
+
+    private static func hoursText(_ hours: Double) -> String { RecencyWarning.hoursPhrase(hours) }
 }
 
 // MARK: - Goal assessment
@@ -369,8 +445,8 @@ enum GoalAssessor {
         var weight: Double
         var reps: Int
 
-        /// Epley, as everywhere else in the app.
-        var e1RM: Double { weight * (1 + Double(reps) / 30) }
+        /// The app's one e1RM formula (`OneRepMax`).
+        var e1RM: Double { OneRepMax.estimate(weight: weight, reps: reps) }
         var text: String { "\(String(format: "%g", weight))x\(reps)" }
     }
 
@@ -435,7 +511,7 @@ enum GoalAssessor {
 
     /// nil when the lift has no usable history.
     static func assess(exercise: String, targetWeight: Double, targetReps: Int,
-                       history: [Point], now: Date = Date()) -> Assessment? {
+                       history: [Point], now: Date = Date(), increments: WeightIncrements? = nil) -> Assessment? {
         guard targetWeight > 0, targetReps > 0 else { return nil }
         let all = history.filter { $0.weight > 0 && $0.reps > 0 && $0.date <= now.addingTimeInterval(86_400) }
             .sorted { $0.date < $1.date }
@@ -446,7 +522,9 @@ enum GoalAssessor {
         let stale = window.isEmpty
         if stale { window = [newest] }
 
-        guard let best = window.max(by: { $0.e1RM < $1.e1RM }) else { return nil }
+        // "Now" is the athlete's recent best: the best of the lift's last few sessions, the same value the brief
+        // ends its e1RM trend on. (The 42-day window is only for the slope: an old single would inflate "now".)
+        guard let best = all.suffix(OneRepMax.recentSessions).max(by: { $0.e1RM < $1.e1RM }) else { return nil }
         let current = best.e1RM
 
         // One value per day (the day's best), then a least-squares slope in e1RM per week.
@@ -481,14 +559,15 @@ enum GoalAssessor {
             verdict = .block(weeks: min(maxBlockWeeks, max(1, weeks)))
         } else {
             verdict = .longTerm(intermediateWeight: intermediateWeight(
-                exercise: exercise, current: current, reps: targetReps, targetWeight: targetWeight))
+                exercise: exercise, current: current, reps: targetReps, targetWeight: targetWeight,
+                increments: increments))
         }
 
         return Assessment(
             exercise: exercise, targetWeight: targetWeight, targetReps: targetReps, best: best,
             currentE1RM: current, weeklySlope: slope, spanWeeks: spanWeeks, stale: stale,
             targetE1RM: targetE1RM, gapPercent: gap, verdict: verdict,
-            ladder: ladder(exercise: exercise, weight: targetWeight, reps: targetReps))
+            ladder: ladder(exercise: exercise, weight: targetWeight, reps: targetReps, increments: increments))
     }
 
     private static func leastSquaresSlope(_ xs: [Double], _ ys: [Double]) -> Double {
@@ -507,32 +586,33 @@ enum GoalAssessor {
 
     /// The weight at the goal's reps that is about `intermediateShare` above the current e1RM,
     /// rounded to the lift's plate step and always below the final target.
-    private static func intermediateWeight(exercise: String, current: Double, reps: Int, targetWeight: Double) -> Double {
-        let step = ExerciseTraits.roundingStep(exercise)
-        let raw = current * intermediateShare / (1 + Double(reps) / 30)
-        var weight = ExerciseTraits.round(raw, step: step)
-        if weight >= targetWeight { weight = max(step, targetWeight - step) }
+    private static func intermediateWeight(exercise: String, current: Double, reps: Int, targetWeight: Double,
+                                           increments: WeightIncrements? = nil) -> Double {
+        let ladder = increments ?? WeightIncrements.fallback(for: exercise)
+        let raw = OneRepMax.weight(forE1RM: current * intermediateShare, reps: reps)
+        var weight = ladder.snap(raw)
+        if weight >= targetWeight { weight = ladder.stepDown(from: targetWeight) }
         return weight
     }
 
     // MARK: Warm-up ladder
 
     /// The bar (or about 40% of the attempt) for 5, then 60% x3, 75% x2, 85% x1, 92% x1, then the attempt.
-    static func ladder(exercise: String, weight: Double, reps: Int) -> [LadderStep] {
+    static func ladder(exercise: String, weight: Double, reps: Int, increments: WeightIncrements? = nil) -> [LadderStep] {
         guard weight > 0, reps > 0 else { return [] }
-        let step = ExerciseTraits.roundingStep(exercise)
+        let rungs = increments ?? WeightIncrements.fallback(for: exercise)
         let name = exercise.lowercased()
         let barbellLift = !name.contains("dumbbell")
             && ["barbell", "bench", "squat", "deadlift", "overhead press"].contains { name.contains($0) }
 
-        var first = ExerciseTraits.round(weight * 0.40, step: step)
+        var first = rungs.snap(weight * 0.40)
         if barbellLift && first < 45 { first = 45 }
         let plan: [(weight: Double, reps: Int)] = [
             (first, 5),
-            (ExerciseTraits.round(weight * 0.60, step: step), 3),
-            (ExerciseTraits.round(weight * 0.75, step: step), 2),
-            (ExerciseTraits.round(weight * 0.85, step: step), 1),
-            (ExerciseTraits.round(weight * 0.92, step: step), 1)
+            (rungs.snap(weight * 0.60), 3),
+            (rungs.snap(weight * 0.75), 2),
+            (rungs.snap(weight * 0.85), 1),
+            (rungs.snap(weight * 0.92), 1)
         ]
         var steps: [LadderStep] = []
         var previous = 0.0

@@ -30,13 +30,9 @@ struct CoachContext {
     /// The athlete's usual session length in minutes (median of recent sessions).
     var usualMinutes: Int? { medianSessionMinutes }
 
-    /// The briefs of the draft's exercises, in draft order, each carrying the draft's top set as its baseline.
+    /// The briefs of the draft's exercises, in draft order.
     func briefs(matching draft: [DraftExercise]) -> [ExerciseBrief] {
-        draft.compactMap { d in
-            guard var brief = briefs.first(where: { ExerciseNameResolver.isMatch($0.name, d.name) }) else { return nil }
-            brief.baselineTop = d.result.topSet
-            return brief
-        }
+        draft.compactMap { d in briefs.first(where: { ExerciseNameResolver.isMatch($0.name, d.name) }) }
     }
 }
 
@@ -257,8 +253,6 @@ struct ExerciseBrief: Equatable {
     /// Best working-set e1RM per session, oldest to newest (up to 4 sessions).
     var e1RMTrend: [Int]
     var rest: RestStats
-    /// The engine's draft top set, when known.
-    var baselineTop: ProgressionSet?
 
     var muscles: [String] { primaryMuscles + secondaryMuscles }
 }
@@ -312,7 +306,7 @@ enum ExerciseBriefBuilder {
     }
 
     /// Brief for one exercise from its past sessions (any order). nil when there is nothing logged.
-    static func build(name: String, muscleGroup: String, sessions: [BriefSession], baseline: ProgressionSet? = nil) -> ExerciseBrief? {
+    static func build(name: String, muscleGroup: String, sessions: [BriefSession]) -> ExerciseBrief? {
         let usable = sessions.filter { !$0.sets.isEmpty }.sorted { $0.date > $1.date }
         guard let latest = usable.first else { return nil }
         let recent = Array(usable.prefix(4))
@@ -342,7 +336,7 @@ enum ExerciseBriefBuilder {
             name: name, primaryMuscles: muscles.primary, secondaryMuscles: muscles.secondary,
             style: LiftStyle.from(medianReps: medianReps), repLow: repLow, repHigh: repHigh,
             lastTop: lastTop, avgRIR: avgRIR, e1RMTrend: trend,
-            rest: restStats(usable), baselineTop: baseline)
+            rest: restStats(usable))
     }
 
     /// Median rest between logged sets, split into heavy and light, against what was prescribed.

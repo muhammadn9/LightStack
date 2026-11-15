@@ -28,11 +28,19 @@ final class CoachTrustTests: LightstackUITestCase {
         XCTAssertTrue(evidence.label.contains("Last ("), "Evidence should start with the last session: \(evidence.label)")
         XCTAssertTrue(evidence.label.contains("185×6 @1"), "Last session sets missing: \(evidence.label)")
         XCTAssertTrue(evidence.label.contains("Best:"), "Best set missing: \(evidence.label)")
-        XCTAssertEqual(anyElement("plan.source.0").label, "Set by the coach")
+        // Bench has a log: the app's numbers, swapped in by the coach for the seeded "Bench Press".
+        XCTAssertEqual(anyElement("plan.source.0").label, "Swapped in for Bench Press")
+        let reason = anyElement("plan.reason.0")
+        XCTAssertTrue(reason.exists, "The coach's reason is shown under the bench targets")
+        XCTAssertFalse(reason.label.isEmpty)
 
-        // No history for the pushdown: the badge says so and there is no "Last" line.
-        XCTAssertEqual(anyElement("plan.source.2").label, "AI estimate · adjusted")
-        XCTAssertFalse(anyElement("plan.evidence.2").exists)
+        // No history for the pushdown: it was added, and there is no "Last" line.
+        XCTAssertEqual(anyElement("plan.source.2").label, "Added")
+        XCTAssertFalse(anyElement("plan.evidence.2").label.contains("Last ("))
+        for text in ["Safety rail", "Set by the coach", "sound", "Sound"] {
+            let match = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text))
+            XCTAssertEqual(match.count, 0, "Old label still on screen: \(text)")
+        }
 
         waitFor(anyElement("plan.warmup.0.0"), "Warm-up badge missing on the first compound")
         XCTAssertFalse(anyElement("plan.warmup.1.0").exists)

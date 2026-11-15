@@ -27,9 +27,12 @@ final class CoachV2Tests: LightstackUITestCase {
         launchApp(extraArguments: engineHistory)
         openPlanPreview()
 
-        let card = waitFor(anyElement("plan.coachReview"), "Coach's review card missing")
-        XCTAssertTrue(anyElement("plan.coachReview.verdict").exists)
+        let card = waitFor(anyElement("plan.coachReview"), "Coach's plan card missing")
+        XCTAssertFalse(anyElement("plan.coachReview.verdict").exists, "The old Sound / Adjusted verdict is gone")
         XCTAssertFalse(anyElement("plan.coachReview.summary").label.isEmpty)
+        let checks = waitFor(anyElement("plan.coachReview.checks"), "The checks line is missing")
+        XCTAssertTrue(checks.label.hasPrefix("Checks: "), checks.label)
+        XCTAssertTrue(checks.label.contains(" of 6 passed"), checks.label)
         shot("30-plan-top")
         _ = card
 
@@ -40,10 +43,9 @@ final class CoachV2Tests: LightstackUITestCase {
             labels.append(el.label)
         }
         XCTAssertTrue(labels.first?.hasPrefix("Warm-up") == true, "First row should be the warm-up: \(labels)")
-        // Coach v3: roles come from the coach's own sets (warm-up, top set, then work sets); no forced back-off.
-        XCTAssertTrue(labels.contains { $0.hasPrefix("Top set") }, "Top set missing: \(labels)")
-        XCTAssertTrue(labels.contains { $0.hasPrefix("Set 3") }, "Work set after the top set missing: \(labels)")
-        XCTAssertEqual(labels.filter { $0.hasPrefix("Back-off") }.count, 0, "No forced back-off expected: \(labels)")
+        // The engine's structure for a lift with a log: warm-up, Set 1, one top set (and a back-off at higher energy).
+        XCTAssertTrue(labels.contains { $0.hasPrefix("Set 1") }, "Set 1 missing: \(labels)")
+        XCTAssertEqual(labels.filter { $0.hasPrefix("Top set") }.count, 1, "One top set expected: \(labels)")
         XCTAssertTrue(labels.allSatisfy { $0.contains("rest ") }, "Every row should show rest: \(labels)")
 
         // The pushdown has a known form issue: its cue shows under the rows.
@@ -51,6 +53,36 @@ final class CoachV2Tests: LightstackUITestCase {
         scrollTo(cue)
         XCTAssertTrue(cue.waitForExistence(timeout: 5), "Form cue missing")
         shot("31-plan-roles-and-cue")
+    }
+
+    /// The plan shows the coach's decision per lift with its reason, the checks that ran, and no old labels.
+    func testPlanShowsDecisionLabelsReasonsAndChecks() throws {
+        launchApp(extraArguments: engineHistory)
+        openPlanPreview()
+        waitFor(anyElement("plan.coachReview"), "Coach's plan card missing")
+        XCTAssertFalse(anyElement("plan.recencyWarning").exists, "The session was 3 days ago: no heads-up")
+        XCTAssertEqual(anyElement("plan.source.0").label, "Swapped in for Bench Press")
+        XCTAssertFalse(anyElement("plan.reason.0").label.isEmpty, "The lift's reason is shown")
+        XCTAssertEqual(anyElement("plan.source.1").label, "Added")
+        for text in ["Sound", "Adjusted", "Safety rail", "Set by the coach", "Review (sound)"] {
+            let match = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text))
+            XCTAssertEqual(match.count, 0, "Old label on screen: \(text)")
+        }
+        shot("32-plan-decisions-top")
+        scrollTo(anyElement("plan.source.1"))
+        shot("33-plan-decisions-labels")
+    }
+
+    /// A session 5 hours ago: the calm heads-up shows, and the lift is held, not pushed.
+    func testPlanShowsTheRecencyHeadsUpWhenTheMusclesWereTrainedHoursAgo() throws {
+        launchApp(extraArguments: engineHistory + ["-uiTestingRecentHours", "5"])
+        openPlanPreview()
+        let banner = waitFor(anyElement("plan.recencyWarning"), "Recency heads-up missing")
+        XCTAssertTrue(banner.label.contains("You trained chest"), banner.label)
+        XCTAssertTrue(banner.label.contains("about 5 hours ago, so today's targets are held or lighter."), banner.label)
+        // The 5-hour-old session is the draft, so bench is the draft lift itself.
+        XCTAssertEqual(anyElement("plan.source.0").label, "As planned")
+        shot("34-plan-recency-warning")
     }
 
     // MARK: - In-session miss banner
@@ -74,11 +106,11 @@ final class CoachV2Tests: LightstackUITestCase {
         let caption = waitFor(anyElement("session.setRole.0.0"), "Role caption missing")
         XCTAssertTrue(caption.label.contains("rest"), "Caption should show rest: \(caption.label)")
 
-        // Log the warm-up as prescribed; under coach v3 the next pending row is the top set.
+        // Log the warm-up as prescribed; the next pending row is Set 1.
         tap(app.buttons["setRow.0.0.log"])
         waitFor(app.staticTexts["loggedSet.0.0.weight"], "Warm-up was not logged")
         XCTAssertFalse(anyElement("session.missBanner.0").exists, "Banner must not show for sets that hit target")
-        XCTAssertTrue(anyElement("session.setRole.0.1").label.hasPrefix("Top set"), "Row 2 should be the top set: \(anyElement("session.setRole.0.1").label)")
+        XCTAssertTrue(anyElement("session.setRole.0.1").label.hasPrefix("Set 1"), "Row 2 should be Set 1: \(anyElement("session.setRole.0.1").label)")
 
         replaceText(in: repsField(), with: "1")
         dismissKeyboardIfNeeded()
