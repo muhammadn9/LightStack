@@ -17,14 +17,15 @@ struct MergeExercisesView: View {
 
     private var groups: [[LocalStorageService.ExerciseNameStat]] {
         let byName = Dictionary(stats.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        return ExerciseNameResolver.duplicateGroups(among: stats.map(\.name))
-            .map { $0.compactMap { byName[$0] } }
+        let found = ExerciseNameResolver.duplicateGroups(among: stats.map(\.name))
+            .map { ExerciseSort.azSorted($0.compactMap { byName[$0] }, by: \.name) }
+        return ExerciseSort.azSorted(found, by: { $0.first?.name ?? "" })
     }
 
     private var visibleStats: [LocalStorageService.ExerciseNameStat] {
         let query = searchText.trimmingCharacters(in: .whitespaces)
-        guard !query.isEmpty else { return stats }
-        return stats.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        let matches = query.isEmpty ? stats : stats.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        return ExerciseSort.azSorted(matches, by: \.name)
     }
 
     var body: some View {

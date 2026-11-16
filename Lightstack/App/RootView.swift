@@ -21,7 +21,9 @@ struct RootView: View {
 
     private var appBody: some View {
         Group {
-            if environment.needsEmailVerification {
+            if environment.localStoreUnavailable {
+                StoreUnavailableView()
+            } else if environment.needsEmailVerification {
                 EmailVerificationView()
             } else if !environment.isAuthenticated {
                 LoginView()
@@ -34,6 +36,15 @@ struct RootView: View {
             }
         }
         .keyboardDoneButton()
+        .alert("Your data on this iPhone was set aside", isPresented: Binding(
+            get: { environment.storeRecoveryNotice != nil && !environment.localStoreUnavailable },
+            set: { if !$0 { environment.acknowledgeStoreRecoveryNotice() } }
+        )) {
+            Button("OK", role: .cancel) {}
+                .accessibilityIdentifier("storeRecovery.ok")
+        } message: {
+            Text("Lightstack couldn't open the data saved on this iPhone. The old files were set aside safely, not deleted, and the app started with an empty library. Your backed-up data will be restored from your account.")
+        }
         .animation(.easeInOut(duration: 0.3), value: environment.isAuthenticated)
         .animation(.easeInOut(duration: 0.3), value: environment.needsEmailVerification)
         .animation(.easeInOut(duration: 0.3), value: environment.hasCompletedOnboarding)
@@ -58,5 +69,28 @@ struct RootView: View {
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
             .forEach { $0.overrideUserInterfaceStyle = style }
+    }
+}
+
+/// Shown instead of the app when no local store, not even an empty one, could be created.
+struct StoreUnavailableView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "externaldrive.badge.exclamationmark")
+                .font(.system(size: 44))
+                .foregroundStyle(AppTheme.destructive)
+            Text("Lightstack can't open its storage")
+                .font(.title3.bold())
+                .foregroundStyle(AppTheme.textPrimary)
+                .multilineTextAlignment(.center)
+            Text("Nothing has been deleted. Close and reopen the app, and make sure your iPhone has free storage space. If this keeps happening, contact support before reinstalling so your backup can be checked first.")
+                .font(.body)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.background.ignoresSafeArea())
+        .accessibilityIdentifier("storeUnavailable.screen")
     }
 }

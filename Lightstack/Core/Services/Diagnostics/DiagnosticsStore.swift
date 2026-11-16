@@ -4,7 +4,7 @@ import Foundation
 /// MetricKit payloads cannot be built in tests, so parsing and storage work on this model only.
 struct DiagnosticEntry: Codable, Equatable, Identifiable {
     enum Kind: String, Codable {
-        case crash, hang, cpu, disk, metrics
+        case crash, hang, cpu, disk, metrics, storage
 
         var label: String {
             switch self {
@@ -13,6 +13,7 @@ struct DiagnosticEntry: Codable, Equatable, Identifiable {
             case .cpu: return "CPU"
             case .disk: return "Disk writes"
             case .metrics: return "Metrics"
+            case .storage: return "Local data"
             }
         }
     }
@@ -56,7 +57,14 @@ final class DiagnosticsStore: @unchecked Sendable {
 
     init(directory: URL, maxEntries: Int = DiagnosticsStore.defaultMaxEntries,
          maxBytes: Int = DiagnosticsStore.defaultMaxBytes) {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
+        // Crash summaries are device-specific and regenerable: keep them out of backups.
+        var excluded = directory
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? excluded.setResourceValues(values)
         self.fileURL = directory.appendingPathComponent("diagnostics.json")
         self.maxEntries = maxEntries
         self.maxBytes = maxBytes
@@ -85,7 +93,7 @@ final class DiagnosticsStore: @unchecked Sendable {
         if all.count > maxEntries { all = Array(all.prefix(maxEntries)) }
         while all.count > 1, (try? Self.encoder.encode(all).count) ?? 0 > maxBytes { all.removeLast() }
         if let data = try? Self.encoder.encode(all) {
-            try? data.write(to: fileURL, options: .atomic)
+            try? data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         }
         return all
     }
@@ -93,6 +101,16 @@ final class DiagnosticsStore: @unchecked Sendable {
     func clear() {
         lock.lock(); defer { lock.unlock() }
         try? FileManager.default.removeItem(at: fileURL)
+        try? FileManager.default.removeItem(at: Self.exportURL)
+    }
+
+    /// Removes the shared store and its exported copy. Call on sign-out and account deletion.
+    static func clearAll() {
+        shared.clear()
+    }
+
+    private static var exportURL: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("lightstack-diagnostics.json")
     }
 
     /// Writes a copy named for sharing and returns its URL.
@@ -100,8 +118,11 @@ final class DiagnosticsStore: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         let entries = readLocked()
         guard let data = try? Self.encoder.encode(entries) else { return nil }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("lightstack-diagnostics.json")
-        do { try data.write(to: url, options: .atomic); return url } catch { return nil }
+        let url = Self.exportURL
+        do {
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return url
+        } catch { return nil }
     }
 
     private func readLocked() -> [DiagnosticEntry] {

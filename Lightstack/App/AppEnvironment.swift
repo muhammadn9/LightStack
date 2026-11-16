@@ -21,6 +21,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     /// profile before deciding whether to onboard (see `beginProfileRestore`).
     @Published var restoreGate: RestoreGate = .idle
 
+    /// Set when the local store could not be opened and was set aside (shown once).
+    @Published var storeRecoveryNotice: LocalStoreRecoveryEvent?
+    /// True when even a fresh local store could not be created; the app shows a blocking screen.
+    @Published var localStoreUnavailable = false
+
     enum RestoreGate: Equatable {
         case idle
         case restoring
@@ -126,6 +131,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         let expiryTracker = SessionExpiryTracker()
         self.sessionExpiry = expiryTracker
         self.authService = AuthService(client: supabaseClient, expiry: expiryTracker)
+        #if DEBUG
+        if UITestMode.isActive && UITestMode.signOutOffline {
+            authService.remoteSignOutOverride = { throw URLError(.notConnectedToInternet) }
+        }
+        #endif
         self.localStorageService = LocalStorageService()
         localStorageService.removeDuplicateExercises()
         #if DEBUG
@@ -308,6 +318,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         #if DEBUG
         if UITestMode.isActive { simulateExpiredSessionForUITest(UITestMode.wantsExpiredSession) }
         #endif
+        applyStoreLoadResult()
         checkExistingSession()
         loadOnboardingState()
     }
@@ -494,9 +505,29 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
         restoreTask?.cancel()
         restoreGate = .idle
+        LocalStorageService.clearSessionScopedCaches()
         // The offline queue is deliberately kept: unsynced changes are tagged with
         // their owner and upload the next time that user signs in on this device.
+        // With nothing queued there is nothing to protect, so remove the previous user's local data.
+        let queue = offlineQueueManager
+        let storage = localStorageService
+        Task { @MainActor in
+            let pending = await queue.pendingCount
+            let failed = await queue.failedCount
+            let queued = pending + failed
+            guard queued == 0 else { return }
+            if storage.wipeAllUserData() {
+                let defaults = UserDefaults.standard
+                for key in Self.userScopedDefaultsKeys { defaults.removeObject(forKey: key) }
+            }
+        }
     }
+
+    /// UserDefaults entries that belong to the signed-in user and must not leak to the next one.
+    static let userScopedDefaultsKeys = [
+        "coach.exerciseFeedback", "coach.focus", "lightstack.perArmPreferences.v1",
+        "com.lightstack.activeWorkoutSession", "ai_usage_debug_v1", "coach.debug.lastPlan"
+    ]
 
     func authServiceSessionExpired(_ service: AuthService, userId: UUID) {
         Task { @MainActor in backupStatus.refresh() }
@@ -506,6 +537,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         pendingVerificationEmail = email
         needsEmailVerification = true
         isAuthenticated = false
+    }
+
+    func acknowledgeStoreRecoveryNotice() {
+        LocalStoreRecoveryLog.shared.acknowledgeAll()
+        storeRecoveryNotice = nil
     }
 
     func authService(_ service: AuthService, didFailWith error: Error) {
@@ -557,6 +593,19 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     #endif
 
     // MARK: - Private
+
+    @MainActor
+    private func applyStoreLoadResult() {
+        switch localStorageService.loadResult {
+        case .loaded: break
+        case .recovered(let event): storeRecoveryNotice = event
+        case .unavailable: localStoreUnavailable = true
+        }
+        if storeRecoveryNotice == nil, !localStoreUnavailable {
+            // A recovery from an earlier launch the user has not been told about yet.
+            storeRecoveryNotice = LocalStoreRecoveryLog.shared.unacknowledgedEvent()
+        }
+    }
 
     @MainActor
     private func checkExistingSession() {

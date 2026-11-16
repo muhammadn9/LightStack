@@ -129,6 +129,16 @@ struct PlanBuilderChatView: View {
                     .padding(.bottom, 8)
             }
 
+            if viewModel.canRetry && !viewModel.isGenerating {
+                Button(action: { viewModel.retryGeneration() }) {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                        .font(AppTheme.playfairItalic(14, weight: .bold))
+                        .foregroundStyle(AppTheme.accent)
+                }
+                .accessibilityIdentifier("planBuilderRetryButton")
+                .padding(.bottom, 8)
+            }
+
             Button(action: { viewModel.generatePlan() }) {
                 HStack {
                     if viewModel.isGenerating {

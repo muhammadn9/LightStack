@@ -6,13 +6,13 @@ struct PersonalRecordsListView: View {
     let records: [PersonalRecord]
 
     enum SortOrder: String, CaseIterable, Identifiable {
-        case heaviest = "Heaviest"
         case name = "A–Z"
+        case heaviest = "Heaviest"
         var id: String { rawValue }
     }
 
     @State private var searchText = ""
-    @State private var sortOrder: SortOrder = .heaviest
+    @State private var sortOrder: SortOrder = .name
 
     /// Epley estimate; nil when weight or reps is zero.
     static func estimatedOneRepMax(weight: Double, reps: Int) -> Double? {
@@ -64,9 +64,7 @@ struct PersonalRecordsListView: View {
                     > (estimatedOneRepMax(weight: $1.weightLbs, reps: $1.reps) ?? $1.weightLbs)
             }
         case .name:
-            return records.sorted {
-                $0.exerciseName.localizedCaseInsensitiveCompare($1.exerciseName) == .orderedAscending
-            }
+            return ExerciseSort.azSorted(records, by: \.exerciseName)
         }
     }
 

@@ -10,18 +10,13 @@ final class WorkoutTimerSideSwitchTests: LightstackUITestCase {
         return parts[0] * 60 + parts[1]
     }
 
-    /// Today -> Log Manually -> custom exercise -> Start.
+    /// Today -> Freestyle (the picker opens by itself) -> custom exercise. The workout is live as soon as it is added.
     private func startManualWorkout() {
-        let manual = waitFor(app.buttons["logManuallyButton"])
-        let add = app.buttons["Add Exercise"]
-        for _ in 0..<3 where !add.exists {
-            manual.tap()
-            if add.waitForExistence(timeout: 10) { break }
-        }
+        let freestyle = waitFor(app.buttons["freestyleButton"])
         let custom = app.buttons["addCustomExerciseButton"]
         for _ in 0..<3 where !custom.exists {
-            add.tap()
-            if custom.waitForExistence(timeout: 10) { break }
+            if freestyle.exists { tap(freestyle) }
+            if custom.waitForExistence(timeout: 15) { break }
         }
         let nameField = app.textFields["customExerciseNameField"]
         for _ in 0..<3 where !nameField.exists {
@@ -30,16 +25,7 @@ final class WorkoutTimerSideSwitchTests: LightstackUITestCase {
         }
         type("Timer Curl", into: nameField)
         tap(app.buttons["customExerciseAddButton"])
-        let typeField = waitFor(app.textFields["manualWorkoutTypeField"])
-        waitUntilHittable(typeField)
-        type("Arms", into: typeField)
-        let start = app.buttons["Start"]
-        waitFor(start)
-        for _ in 0..<3 where !app.staticTexts["workout.elapsed"].exists {
-            if start.exists, start.isHittable { start.tap() }
-            if app.staticTexts["workout.elapsed"].waitForExistence(timeout: 8) { break }
-        }
-        waitFor(app.staticTexts["workout.elapsed"], "Manual workout did not start")
+        waitFor(app.staticTexts["workout.elapsed"], "Freestyle workout did not start")
     }
 
     /// One cycle per workout: the first match is the visible side's button (the hidden side's tree is not yet
@@ -350,15 +336,17 @@ final class WorkoutTimerSideSwitchTests: LightstackUITestCase {
         awayAndBack("AI plan")
     }
 
-    func testRepeatLastClockSurvivesSideSwitch() throws {
+    /// A history-only split name (not a profile split day) goes through the coach like any other.
+    func testHistorySplitClockSurvivesSideSwitch() throws {
         launchApp()
-        tap(app.buttons["chip.Push"])
-        tap(app.buttons["repeatLastButton"])
-        let start = waitFor(app.buttons["startWorkoutButton"], timeout: 30)
+        tap(app.buttons["chip.Arm Day"])
+        let start = app.buttons["startWorkoutButton"]
+        tap(app.buttons["generateButton"], until: start, attempts: 3, perAttempt: 30)
+        waitFor(start, timeout: 60)
         var swipes = 0
         while !start.isHittable && swipes < 6 { app.swipeUp(); swipes += 1 }
         tap(start)
-        awayAndBack("repeat last")
+        awayAndBack("history split")
     }
 
     func testHistoryRepeatClockTicks() throws {

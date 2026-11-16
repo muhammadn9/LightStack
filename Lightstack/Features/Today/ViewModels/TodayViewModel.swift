@@ -1,6 +1,83 @@
 import Foundation
 import os
 
+/// Turns any AI/network failure into a short, friendly sentence. Raw error text
+/// ("API error: ...", status codes, domains) is never shown to the athlete.
+enum AIErrorPresentation {
+
+    static let genericMessage = "The coach couldn't finish that right now. Please try again."
+    static let offlineMessage = "You appear to be offline. Check your connection and try again."
+    static let timeoutMessage = "The coach took too long to respond. Please try again."
+    static let rateLimitMessage = "You're going a little fast. Wait a moment, then try again."
+    static let dailyLimitMessage = "Daily AI limit reached. Try again tomorrow."
+    static let unavailableMessage = "The coach is busy right now. Please try again in a minute."
+    static let malformedMessage = "The coach sent back something we couldn't read. Please try again."
+
+    static func message(for error: Error) -> String {
+        // Messages written for the athlete by the AI service layer pass through unchanged.
+        if String(describing: type(of: error)) == "AIServiceError",
+           let text = (error as? LocalizedError)?.errorDescription,
+           !text.isEmpty {
+            return text
+        }
+        let ns = error as NSError
+        // Consent refusals and ai-proxy budget / kill-switch refusals already carry athlete-facing text.
+        if ns.domain == AIConsent.deniedError.domain { return ns.localizedDescription }
+        if ns.domain == GeminiService.proxyErrorDomain,
+           GeminiService.isBudgetCode(ns.userInfo[GeminiService.proxyErrorCodeKey] as? String) {
+            return ns.localizedDescription
+        }
+        if let urlError = error as? URLError { return message(forURLCode: urlError.code.rawValue) }
+        if ns.domain == NSURLErrorDomain { return message(forURLCode: ns.code) }
+
+        if let provider = error as? AIProviderError {
+            switch provider {
+            case .allProvidersUnavailable: return unavailableMessage
+            case .rateLimitExceeded: return rateLimitMessage
+            case .invalidResponse: return malformedMessage
+            case .apiError(let text): return message(forDescription: text)
+            }
+        }
+        return message(forDescription: error.localizedDescription)
+    }
+
+    /// Maps URLError codes (NSURLErrorDomain) to friendly text.
+    static func message(forURLCode code: Int) -> String {
+        switch code {
+        case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorDataNotAllowed,
+             NSURLErrorInternationalRoamingOff:
+            return offlineMessage
+        case NSURLErrorTimedOut:
+            return timeoutMessage
+        default:
+            return unavailableMessage
+        }
+    }
+
+    /// Classifies raw error text from the proxy or Gemini. Only used to choose a
+    /// friendly sentence; the raw text is dropped.
+    static func message(forDescription raw: String) -> String {
+        let text = raw.lowercased()
+        if text.contains("daily ai limit") || text.contains("daily limit") { return dailyLimitMessage }
+        if text.contains("429") || text.contains("too many") || text.contains("rate limit") || text.contains("quota") {
+            return rateLimitMessage
+        }
+        if text.contains("timed out") || text.contains("timeout") || text.contains("504") { return timeoutMessage }
+        if text.contains("offline") || text.contains("not connected") || text.contains("internet connection") {
+            return offlineMessage
+        }
+        if text.contains("503") || text.contains("502") || text.contains("500") || text.contains("unavailable")
+            || text.contains("overloaded") || text.contains("busy") {
+            return unavailableMessage
+        }
+        if text.contains("parse") || text.contains("invalid") || text.contains("malformed")
+            || text.contains("format") || text.contains("decode") || text.contains("could not read") {
+            return malformedMessage
+        }
+        return genericMessage
+    }
+}
+
 /// Phase of the Today tab lifecycle.
 enum TodayPhase {
     case setup
@@ -35,7 +112,10 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     /// changes with whether each was applied, deterministic safeguards). nil when there is none.
     @Published var coachReview: CoachPlanReview?
     @Published var streak: Int = 0
+    /// Friendly text for the last failure (see `AIErrorPresentation`); never raw error output.
     @Published var errorMessage: String?
+    /// True when `errorMessage` came from a failed plan generation, so the UI can offer Retry / Build manually.
+    @Published private(set) var planGenerationFailed = false
     @Published var isLoadingNote: Bool = false
     @Published var lastPR: PersonalRecord?
     /// Last session's sets per new exercise id (repeat sessions only).
@@ -154,6 +234,17 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return saved + max(0, Int(now.timeIntervalSince(savedAt)))
     }
 
+    /// Arguments of the last `generatePlan` call, so a failed generation can be retried as-is.
+    private var lastPlanRequest: (workoutType: String, time: Int?, energy: Int?, notes: String?,
+                                  constraints: String?, focus: CoachFocus?)?
+
+    /// Re-runs the last plan generation after a failure.
+    func retryPlanGeneration() {
+        guard let r = lastPlanRequest else { return }
+        generatePlan(workoutType: r.workoutType, time: r.time, energy: r.energy, notes: r.notes,
+                     constraints: r.constraints, focus: r.focus)
+    }
+
     /// Hands-off by default: time, energy, constraints and focus are all optional.
     func generatePlan(workoutType: String, time: Int? = nil, energy: Int? = nil, notes: String? = nil,
                       constraints: String? = nil, focus: CoachFocus? = nil) {
@@ -161,7 +252,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             errorMessage = "Sign in required to generate a workout."
             return
         }
+        lastPlanRequest = (workoutType, time, energy, notes, constraints, focus)
         phase = .generating
+        planGenerationFailed = false
         errorMessage = nil
         coachReview = nil
         sessionService.generatePlan(
@@ -409,50 +502,46 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         }
     }
 
-    /// Start a new workout from the last session of this type, skipping AI.
-    /// Last session's numbers become grey hints on the set rows.
-    func repeatLastSession(ofType type: String) {
-        guard let userId = userId, let source = lastSession(ofType: type) else { return }
-        let newWorkout = Workout.create(userId: userId, workoutType: source.workoutType, energyLevel: nil, timeAvailableMinutes: nil)
-        let sourceExercises = workoutRepository.fetchExercises(workoutId: source.id)
-            .sorted { $0.orderIndex < $1.orderIndex }
+    /// The previous session of a workout type, for the "Last Push: Thu, Nov 12 · 5 exercises" line on setup.
+    struct LastSessionInfo: Equatable {
+        let date: Date
+        let exerciseCount: Int
+    }
 
-        let groupIds = SupersetGroup.freshGroupIds(copying: sourceExercises)
-        var hints: [UUID: [PreviousSetHint]] = [:]
-        var newExercises: [Exercise] = []
-        for (index, ex) in sourceExercises.enumerated() {
-            let sets = workoutRepository.fetchSets(exerciseId: ex.id)
-                .sorted { $0.setNumber < $1.setNumber }
-            let first = sets.first
-            let coachNote: String? = first.map { set in
-                set.weightLbs == 0 ? "Target: BW" : "Target: \(String(format: "%g", set.weightLbs)) lbs"
-            }
-            let newExercise = Exercise.create(
-                workoutId: newWorkout.id,
-                name: ex.name,
-                muscleGroup: ex.muscleGroup,
-                orderIndex: index,
-                targetSets: sets.isEmpty ? ex.targetSets : sets.count,
-                targetReps: first.map { String($0.reps) } ?? ex.targetReps,
-                targetRir: ex.targetRir,
-                restSeconds: RestPreference.storedSeconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
-                coachNote: coachNote,
-                supersetGroupId: groupIds[index],
-                isPerArm: ex.isPerArm
-            )
-            if newExercise.trackingType == .strength, !sets.isEmpty {
-                hints[newExercise.id] = sets.map {
-                    PreviousSetHint(weightLbs: $0.weightLbs, reps: $0.reps, rir: $0.rir)
-                }
-            }
-            newExercises.append(newExercise)
-        }
+    func lastSessionInfo(ofType type: String) -> LastSessionInfo? {
+        guard let source = lastSession(ofType: type) else { return nil }
+        let count = workoutRepository.fetchExercises(workoutId: source.id).filter { exercise in
+            !workoutRepository.fetchSets(exerciseId: exercise.id).isEmpty
+        }.count
+        return LastSessionInfo(date: source.date, exerciseCount: count)
+    }
 
-        workoutRepository.createWorkout(newWorkout)
-        sessionService.startSession(workout: newWorkout, exercises: newExercises)
-        self.exercises = newExercises
-        self.previousHints = hints
-        phase = .confirmation
+    /// Name of the workout started by "Freestyle".
+    static let freestyleName = "Freestyle"
+
+    /// Set when a Freestyle workout starts so the active workout screen opens the exercise picker straight away.
+    var opensExercisePickerOnStart = false
+
+    /// Starts a live workout with no exercises and no AI plan: the clock runs and the exercise picker opens.
+    func startFreestyle() {
+        guard let userId else { return }
+        let workout = Workout.create(userId: userId, workoutType: Self.freestyleName, energyLevel: nil, timeAvailableMinutes: nil)
+        workoutRepository.createWorkout(workout)
+        sessionService.startSession(workout: workout, exercises: [])
+        exercises = []
+        loggedSets = [:]
+        previousHints = [:]
+        setTargets = [:]
+        evidence = [:]
+        coachReview = nil
+        pendingSetsSnapshot = [:]
+        timerPaused = false
+        aiProgressionNote = nil
+        errorMessage = nil
+        activeWorkoutElapsed = 0
+        opensExercisePickerOnStart = true
+        phase = .active
+        saveSessionState()
     }
 
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String) {
@@ -465,8 +554,9 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     }
 
     func sessionServiceDidFail(_ service: WorkoutSessionService, error: Error) {
-        self.errorMessage = error.localizedDescription
+        self.errorMessage = AIErrorPresentation.message(for: error)
         self.isLoadingNote = false
+        planGenerationFailed = (phase == .generating)
         if phase == .generating {
             phase = .setup
         }
@@ -818,13 +908,31 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return workoutRepository.fetchDistinctExerciseNames(userId: userId)
     }
 
+    /// The last few distinct lifts the athlete actually logged (at least one set), most recent first. The workout
+    /// in progress is left out: its own exercises are not "recent".
+    func recentLoggedExercises(limit: Int = ExerciseCatalogPicker.recentLimit) -> [HistoryExercise] {
+        guard let userId else { return [] }
+        let currentId = sessionService.currentWorkoutId
+        var rows: [(name: String, muscleGroup: String)] = []
+        for workout in workoutRepository.fetchRecentWorkouts(userId: userId, limit: 40)
+            .filter({ $0.id != currentId }).sorted(by: { $0.date > $1.date }) {
+            for exercise in workoutRepository.fetchExercises(workoutId: workout.id).sorted(by: { $0.orderIndex < $1.orderIndex })
+            where !workoutRepository.fetchSets(exerciseId: exercise.id).isEmpty {
+                rows.append((exercise.name, exercise.muscleGroup))
+            }
+            if HistoryExercise.distinct(rows).count >= limit { break }
+        }
+        return Array(HistoryExercise.distinct(rows).prefix(limit))
+    }
+
     /// Past workout names (not in `splitDays`) that have a repeatable session, most recent first.
     func historyWorkoutNames(excluding splitDays: [String]) -> [String] {
         guard let userId else { return [] }
         let names = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 200)
             .sorted { $0.date > $1.date }
             .map(\.workoutType)
-        return HistoryWorkoutNames.distinct(names, excluding: splitDays)
+        // Freestyle is a way to start, not a split: it never becomes a chip.
+        return HistoryWorkoutNames.distinct(names, excluding: splitDays + [Self.freestyleName])
             .filter { lastSession(ofType: $0) != nil }
     }
 

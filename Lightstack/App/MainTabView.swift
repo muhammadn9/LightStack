@@ -111,6 +111,7 @@ private struct TodayTabContent: View {
     @State private var chatViewModel: CoachChatViewModel?
     @State private var setupViewModel: WorkoutSetupViewModel?
     @State private var activeWorkoutViewModel: ActiveWorkoutViewModel?
+    @State private var showManualEntry = false
 
     var body: some View {
         NavigationStack {
@@ -177,9 +178,24 @@ private struct TodayTabContent: View {
                 get: { viewModel.errorMessage != nil },
                 set: { if !$0 { viewModel.errorMessage = nil } }
             )) {
-                Button("OK") { viewModel.errorMessage = nil }
+                if viewModel.planGenerationFailed {
+                    Button("Retry") { viewModel.retryPlanGeneration() }
+                    Button("Build manually") {
+                        viewModel.errorMessage = nil
+                        showManualEntry = true
+                    }
+                    Button("Cancel", role: .cancel) { viewModel.errorMessage = nil }
+                } else {
+                    Button("OK") { viewModel.errorMessage = nil }
+                }
             } message: {
                 Text(viewModel.errorMessage ?? "")
+            }
+            .sheet(isPresented: $showManualEntry) {
+                if let userId = environment.authService.currentUser()?.userId {
+                    ManualWorkoutEntryView(todayViewModel: viewModel, userId: userId)
+                        .keyboardDoneButton()
+                }
             }
         }
     }

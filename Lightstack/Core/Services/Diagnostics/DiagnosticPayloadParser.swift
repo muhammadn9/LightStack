@@ -73,7 +73,7 @@ enum DiagnosticPayloadParser {
             if let d = text("totalSampledTime") { parts.append("over \(d)") }
         case .disk:
             if let d = text("writesCaused") { parts.append("wrote \(d)") }
-        case .metrics:
+        case .metrics, .storage:
             break
         }
         return parts.isEmpty ? kind.label : parts.joined(separator: ", ")

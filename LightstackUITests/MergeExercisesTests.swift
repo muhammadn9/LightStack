@@ -21,19 +21,13 @@ final class MergeExercisesTests: LightstackUITestCase {
         return found
     }
 
-    /// Today -> Log Manually -> Add Exercise -> Add Custom Exercise (retries a swallowed first tap).
+    /// Today -> Freestyle (its exercise picker opens by itself) -> Add Custom Exercise (retries a swallowed first tap).
     private func openCustomExerciseAlert() {
-        let manual = waitFor(app.buttons["logManuallyButton"])
-        let add = app.buttons["Add Exercise"]
-        for _ in 0..<3 where !add.exists {
-            manual.tap()
-            if add.waitForExistence(timeout: 10) { break }
-        }
+        let freestyle = waitFor(app.buttons["freestyleButton"])
         let custom = app.buttons["addCustomExerciseButton"]
-        waitFor(add)
         for _ in 0..<3 where !custom.exists {
-            add.tap()
-            if custom.waitForExistence(timeout: 10) { break }
+            if freestyle.exists { tap(freestyle) }
+            if custom.waitForExistence(timeout: 15) { break }
         }
         tap(custom)
     }

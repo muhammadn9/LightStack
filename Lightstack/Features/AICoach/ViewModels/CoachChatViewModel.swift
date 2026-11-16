@@ -230,6 +230,9 @@ final class CoachChatViewModel: ObservableObject {
     @Published var inputText = ""
     @Published var pendingModifications: [WorkoutModification] = []
     @Published var showModificationConfirmation = false
+    /// True after a failed reply; the view offers a Retry button that resends the last message.
+    @Published var canRetry = false
+    private var failureMessageId: UUID?
     @Published private(set) var mode: Mode = .workout
     /// A goal the athlete agreed to in chat, waiting for "Save goal".
     @Published var pendingGoal: CoachGoal?
@@ -486,6 +489,7 @@ final class CoachChatViewModel: ObservableObject {
         guard !text.isEmpty, !isLoading else { return }
 
         inputText = ""
+        canRetry = false
         let userMessage = ChatMessage(role: .user, content: text)
         messages.append(userMessage)
 
@@ -503,6 +507,19 @@ final class CoachChatViewModel: ObservableObject {
             return
         }
 
+        requestReply()
+    }
+
+    /// Resends the last user message after a failure, replacing the error bubble.
+    func retryLastMessage() {
+        guard canRetry, !isLoading else { return }
+        if let id = failureMessageId { messages.removeAll { $0.id == id } }
+        failureMessageId = nil
+        canRetry = false
+        requestReply()
+    }
+
+    private func requestReply() {
         isLoading = true
 
         aiServiceManager.generateChat(
@@ -518,7 +535,9 @@ final class CoachChatViewModel: ObservableObject {
             case .success(let responseText):
                 self.handleReply(responseText)
             case .failure(let error):
-                let errorMessage = ChatMessage(role: .coach, content: "Sorry, I couldn't respond right now. Please try again. (\(error.localizedDescription))")
+                let errorMessage = ChatMessage(role: .coach, content: "Sorry, I couldn't respond. \(AIErrorPresentation.message(for: error))")
+                self.failureMessageId = errorMessage.id
+                self.canRetry = true
                 self.messages.append(errorMessage)
             }
         }

@@ -198,6 +198,17 @@ struct CoachChatView: View {
                         }
                     }
 
+                    if viewModel.canRetry && !viewModel.isLoading {
+                        Button {
+                            viewModel.retryLastMessage()
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                                .font(AppTheme.playfairItalic(14, weight: .bold))
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                        .accessibilityIdentifier("chatRetryButton")
+                    }
+
                     if viewModel.isLoading {
                         HStack {
                             ProgressView()

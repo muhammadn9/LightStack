@@ -38,4 +38,42 @@ final class SignOutWarningTests: LightstackUITestCase {
         XCTAssertFalse(app.alerts[alertTitle].waitForExistence(timeout: 3), "No backup warning expected when nothing is pending")
         shot("signout-no-warning")
     }
+
+    func testSignOutWhileOfflineStillReturnsToWelcome() {
+        launchApp(extraArguments: ["-uiTestingSignOutOffline"])
+        openSettings()
+        tapSignOut()
+        waitFor(app.buttons["auth.email"], "Sign Out must reach the welcome screen even when the server call fails")
+        shot("signout-offline")
+    }
+}
+
+
+/// Settings -> Delete account sheet. Never confirms the deletion.
+final class DeleteAccountSheetTests: LightstackUITestCase {
+
+    func testConfirmStaysDisabledUntilDELETEIsTyped() throws {
+        launchApp()
+        openSettings()
+        let row = app.buttons["settings.deleteAccountButton"]
+        for _ in 0..<5 where !row.exists || !row.isHittable { app.swipeUp() }
+        tap(row)
+
+        waitFor(app.otherElements["deleteAccount.sheet"], "Delete account sheet did not appear")
+        let confirm = app.buttons["deleteAccount.confirmButton"]
+        waitFor(confirm)
+        XCTAssertFalse(confirm.isEnabled, "Confirm must be disabled before typing DELETE")
+
+        let field = app.textFields["deleteAccount.confirmField"]
+        type("DELET", into: field)
+        XCTAssertFalse(confirm.isEnabled, "A partial word must not enable confirm")
+
+        field.typeText("E")
+        dismissKeyboardIfNeeded()
+        XCTAssertTrue(confirm.isEnabled, "Confirm should enable after typing DELETE")
+        shot("delete-account-sheet")
+
+        tap(app.buttons["deleteAccount.cancelButton"])
+        XCTAssertTrue(app.buttons["settings.deleteAccountButton"].waitForExistence(timeout: 10))
+    }
 }

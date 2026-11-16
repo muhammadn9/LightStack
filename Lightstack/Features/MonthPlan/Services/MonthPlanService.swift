@@ -62,8 +62,8 @@ final class MonthPlanService {
 
             switch result {
             case .success(let responseText):
-                // Log the raw response for debugging
-                self.logger.debug("Raw AI response: \(responseText)")
+                // The reply can echo personal notes: keep it out of readable logs.
+                self.logger.debug("Raw AI response: \(responseText, privacy: .private)")
 
                 if let (plan, sessions) = self.parseMonthPlanResponse(
                     responseText,
@@ -78,7 +78,7 @@ final class MonthPlanService {
                     // Provide more detailed error message
                     let extractedJSON = self.extractJSON(from: responseText)
                     let preview = String(extractedJSON.prefix(200))
-                    self.logger.error("Failed to parse. Extracted JSON preview: \(preview)")
+                    self.logger.error("Failed to parse. Extracted JSON preview: \(preview, privacy: .private)")
 
                     let error = NSError(
                         domain: "MonthPlanService", code: -1,
@@ -88,7 +88,7 @@ final class MonthPlanService {
                 }
 
             case .failure(let error):
-                self.logger.error("AI request failed: \(String(describing: error))")
+                self.logger.error("AI request failed: \(String(describing: error), privacy: .private)")
                 self.delegate?.monthPlanServiceDidFail(self, error: error)
             }
         }

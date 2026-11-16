@@ -1,44 +1,35 @@
 import SwiftUI
 import AuthenticationServices
 
-/// Login screen with purple radiant dark theme.
+/// Welcome screen: three equal sign-in choices. Email lives on its own screen.
 struct LoginView: View {
     @EnvironmentObject var environment: AppEnvironment
-    @State private var email = ""
-    @State private var password = ""
-    @State private var isSignUp = false
+    @Environment(\.colorScheme) private var colorScheme
     @State private var errorMessage: String?
     /// Raw nonce for the in-flight Apple request; its SHA-256 goes on the request.
     @State private var appleNonce: String?
-    @State private var showResetConfirmation = false
+    @State private var showEmail = false
+    @State private var legalDocument: LegalDocument?
+
+    private let buttonHeight: CGFloat = 54
 
     var body: some View {
-        ZStack {
-            // Background
-            AppTheme.backgroundGradient.ignoresSafeArea()
-
-            // Subtle purple glow at top
-            VStack {
-                Ellipse()
-                    .fill(AppTheme.accent.opacity(0.08))
-                    .frame(width: 400, height: 250)
-                    .blur(radius: 60)
-                    .offset(y: -80)
-                Spacer()
+        NavigationStack {
+            VStack(spacing: 0) {
+                Spacer(minLength: 24)
+                header
+                Spacer(minLength: 24)
+                actions
             }
-            .ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 32) {
-                    headerSection
-                    formCard
-                    socialSignInSection
-                    toggleModeSection
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 60)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AppTheme.background.ignoresSafeArea())
+            .navigationDestination(isPresented: $showEmail) {
+                EmailAuthView(errorMessage: $errorMessage)
             }
         }
+        .sheet(item: $legalDocument) { LegalSheet(document: $0) }
         .onChange(of: environment.authErrorMessage) { _, newValue in
             if let message = newValue {
                 errorMessage = message
@@ -49,170 +40,92 @@ struct LoginView: View {
 
     // MARK: - Sections
 
-    private var headerSection: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.accent.opacity(0.15))
-                    .frame(width: 100, height: 100)
-                Image(systemName: "figure.strengthtraining.traditional")
-                    .font(.system(size: 44))
-                    .foregroundStyle(AppTheme.accent)
-            }
-
-            Text("Lightstack")
-                .font(AppTheme.playfairItalic(40, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-
-            Text("Your AI Strength Coach")
-                .font(AppTheme.caveat(18))
-                .foregroundStyle(AppTheme.textSecondary)
-        }
-    }
-
-    private var formCard: some View {
+    private var header: some View {
         VStack(spacing: 16) {
-            TextField("Email", text: $email)
-                .keyboardType(.emailAddress)
-                .textContentType(.emailAddress)
-                .autocapitalization(.none)
-                .padding(14)
-                .background(AppTheme.surfaceElevated)
+            AppIconMark(size: 96)
+            Text("Lightstack")
+                .font(.largeTitle.bold())
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-
-            SecureField("Password", text: $password)
-                .textContentType(isSignUp ? .newPassword : .password)
-                .padding(14)
-                .background(AppTheme.surfaceElevated)
-                .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-
-            if !isSignUp {
-                HStack {
-                    Spacer()
-                    Button("Forgot password?") {
-                        handleForgotPassword()
-                    }
-                    .font(AppTheme.caveat(12))
-                    .foregroundStyle(AppTheme.accentSecondary)
-                }
-            }
-
-            if showResetConfirmation {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Check your email for a password reset link")
-                }
-                .font(AppTheme.caveat(11))
-                .foregroundStyle(AppTheme.accent)
-            }
-
-            if let errorMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                    Text(errorMessage)
-                }
-                .font(AppTheme.caveat(11))
-                .foregroundStyle(AppTheme.destructive)
-            }
-
-            Button(action: handleEmailAuth) {
-                Text(isSignUp ? "Sign Up" : "Sign In")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.onAccent)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(AppTheme.accentGradient)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            }
-            .disabled(email.isEmpty || password.isEmpty)
-            .opacity(email.isEmpty || password.isEmpty ? 0.6 : 1)
+            Text(AuthCopy.tagline)
+                .font(.body)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 300)
         }
-        .padding(20)
-        .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-        .shadow(color: Color.purple.opacity(0.15), radius: 12, x: 0, y: 4)
     }
 
-    private var socialSignInSection: some View {
+    private var actions: some View {
         VStack(spacing: 12) {
-            dividerWithText("or")
-
-            // Google Sign-In
-            Button(action: { environment.authService.signInWithGoogle() }) {
-                HStack(spacing: 10) {
-                    Image(systemName: "g.circle.fill")
-                        .font(.title2)
-                    Text("Sign in with Google")
-                        .font(AppTheme.playfairItalic(16, weight: .bold))
-                }
-                .foregroundStyle(AppTheme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                        .stroke(AppTheme.surfaceElevated, lineWidth: 1)
-                )
+            if let errorMessage {
+                AuthErrorLabel(message: errorMessage)
             }
 
-            // Apple Sign-In
             SignInWithAppleButton(
-                .signIn,
+                .continue,
                 onRequest: configureAppleRequest,
                 onCompletion: handleAppleResult
             )
-            .frame(height: 50)
-            .signInWithAppleButtonStyle(.white)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+            .frame(height: buttonHeight)
+            .clipShape(Capsule())
+            .accessibilityIdentifier("auth.apple")
+
+            choiceButton("Continue with Google", systemImage: "g.circle.fill", id: "auth.google") {
+                errorMessage = nil
+                environment.authService.signInWithGoogle()
+            }
+
+            choiceButton("Continue with email", systemImage: "envelope.fill", id: "auth.email") {
+                errorMessage = nil
+                showEmail = true
+            }
+
+            legalLine
+                .padding(.top, 8)
         }
     }
 
-    private var toggleModeSection: some View {
-        Button(action: {
-            withAnimation(.easeInOut(duration: 0.2)) { isSignUp.toggle() }
-        }) {
-            Text(isSignUp
-                 ? "Already have an account? Sign In"
-                 : "Don't have an account? Sign Up")
-                .font(AppTheme.caveat(12))
-                .foregroundStyle(AppTheme.accentSecondary)
+    private func choiceButton(_ title: String, systemImage: String, id: String,
+                              action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                Text(title)
+            }
+            .font(.body.weight(.semibold))
+            .foregroundStyle(AppTheme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .frame(height: buttonHeight)
+            .background(AppTheme.surface, in: Capsule())
+            .overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
 
-    // MARK: - Actions
-
-    private func handleForgotPassword() {
-        errorMessage = nil
-        showResetConfirmation = false
-        guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
-            errorMessage = "Enter your email address first"
-            return
-        }
-        Task {
-            do {
-                try await environment.authService.resetPassword(email: email)
-                showResetConfirmation = true
-            } catch {
-                showResetConfirmation = false
-                errorMessage = AuthService.resetPasswordMessage(for: error)
+    private var legalLine: some View {
+        VStack(spacing: 2) {
+            Text("By continuing you agree to the")
+            HStack(spacing: 4) {
+                linkButton("Terms", id: "auth.terms", document: .terms)
+                Text("and")
+                linkButton("Privacy Policy", id: "auth.privacy", document: .privacy)
+                Text(".").padding(.leading, -4)
             }
         }
+        .font(.footnote)
+        .foregroundStyle(AppTheme.textSecondary)
+        .multilineTextAlignment(.center)
     }
 
-    private func handleEmailAuth() {
-        errorMessage = nil
-        showResetConfirmation = false
-        // Store password so EmailVerificationView can re-sign-in to check verification
-        environment.pendingVerificationPassword = password
-        if isSignUp {
-            environment.authService.signUpWithEmail(email: email, password: password)
-        } else {
-            environment.authService.signInWithEmail(email: email, password: password)
-        }
+    private func linkButton(_ title: String, id: String, document: LegalDocument) -> some View {
+        Button(title) { legalDocument = document }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(AppTheme.accent)
+            .accessibilityIdentifier(id)
     }
+
+    // MARK: - Apple
 
     private func configureAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
         request.requestedScopes = [.fullName, .email]
@@ -235,12 +148,23 @@ struct LoginView: View {
             errorMessage = "Apple Sign-In cancelled."
         }
     }
+}
 
-    private func dividerWithText(_ text: String) -> some View {
-        HStack {
-            InkDivider()
-            Text(text).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
-            InkDivider()
+/// Inline, readable auth error.
+struct AuthErrorLabel: View {
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text(message).fixedSize(horizontal: false, vertical: true)
         }
+        .font(.subheadline)
+        .foregroundStyle(AppTheme.destructive)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(AppTheme.destructive.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("auth.error")
     }
 }

@@ -22,7 +22,15 @@ final class LocalStorageService {
         return NSManagedObjectModel(contentsOf: url)
     }()
 
-    init(inMemory: Bool = false) {
+    /// How the persistent store came up. Anything but `.loaded` means the old store was set aside.
+    private(set) var loadResult: LocalStoreLoader.Result = .loaded
+
+    /// `storeURL` and `quarantineRoot` are seams for tests; production passes neither.
+    init(inMemory: Bool = false,
+         storeURL: URL? = nil,
+         quarantineRoot: URL = LocalStoreRecoveryLog.defaultDirectory(),
+         recoveryLog: LocalStoreRecoveryLog = .shared,
+         diagnostics: DiagnosticsStore = .shared) {
         if let model = Self.sharedModel {
             container = NSPersistentContainer(name: "Lightstack", managedObjectModel: model)
         } else {
@@ -38,15 +46,98 @@ final class LocalStorageService {
                 description.url = UITestMode.storeURL
             }
             #endif
+            if !inMemory, let storeURL { description.url = storeURL }
             description.shouldMigrateStoreAutomatically = true
             description.shouldInferMappingModelAutomatically = true
+            Self.applyFileProtection(to: description)
         }
-        container.loadPersistentStores { _, error in
-            if let error = error {
-                fatalError("Core Data failed to load: \(error.localizedDescription)")
+        #if DEBUG
+        if !inMemory && storeURL == nil && UITestMode.isActive && UITestMode.corruptStore {
+            try? Data("not a database".utf8).write(to: UITestMode.storeURL)
+        }
+        #endif
+        loadResult = LocalStoreLoader.load(
+            container: container,
+            quarantineRoot: quarantineRoot,
+            log: recoveryLog,
+            diagnostics: diagnostics
+        )
+        container.viewContext.automaticallyMergesChangesFromParent = true
+        if !inMemory {
+            // Stores created before protection was set keep their old class until re-attributed.
+            for description in container.persistentStoreDescriptions {
+                if let url = description.url { Self.protectStoreFiles(at: url) }
             }
         }
-        container.viewContext.automaticallyMergesChangesFromParent = true
+    }
+
+    // MARK: - File protection
+
+    /// `completeUntilFirstUserAuthentication` keeps the store encrypted at rest until the user
+    /// unlocks the device once after boot, then readable even while locked. `.complete` would
+    /// make the store unreadable whenever the phone is locked, which breaks background sync,
+    /// background app refresh, rest-timer notifications and Live Activity updates (Core Data
+    /// would fail to open the file and crash or lose writes).
+    static let storeFileProtection = FileProtectionType.completeUntilFirstUserAuthentication
+
+    /// Sets the Core Data file-protection option on a store description.
+    static func applyFileProtection(to description: NSPersistentStoreDescription) {
+        description.setOption(storeFileProtection as NSObject, forKey: NSPersistentStoreFileProtectionKey)
+    }
+
+    /// Applies the protection class to the sqlite file and its -wal / -shm companions.
+    static func protectStoreFiles(at url: URL) {
+        guard url.path != "/dev/null" else { return }
+        let fm = FileManager.default
+        for suffix in ["", "-wal", "-shm"] {
+            let path = url.path + suffix
+            guard fm.fileExists(atPath: path) else { continue }
+            try? fm.setAttributes([.protectionKey: storeFileProtection], ofItemAtPath: path)
+        }
+    }
+
+    // MARK: - Wipe
+
+    /// Deletes every row of every entity (all users). For account deletion, or switching accounts
+    /// when the previous user's data must not stay on the device. Callers must make sure sync and
+    /// the offline queue are idle and cleared first (see docs/security/LOCAL_DATA_AUDIT.md).
+    /// Returns false, changing nothing, while a batch of deferred saves is open.
+    @discardableResult
+    func wipeAllUserData() -> Bool {
+        var done = false
+        context.performAndWait {
+            guard deferredSaveDepth == 0 else { return }
+            context.rollback()
+            let entityNames = container.managedObjectModel.entities.compactMap(\.name)
+            for name in entityNames {
+                let fetch = NSFetchRequest<NSFetchRequestResult>(entityName: name)
+                let batch = NSBatchDeleteRequest(fetchRequest: fetch)
+                batch.resultType = .resultTypeObjectIDs
+                if let result = try? context.execute(batch) as? NSBatchDeleteResult,
+                   let ids = result.result as? [NSManagedObjectID] {
+                    NSManagedObjectContext.mergeChanges(
+                        fromRemoteContextSave: [NSDeletedObjectsKey: ids], into: [context])
+                } else if let objects = try? context.fetch(fetch) as? [NSManagedObject] {
+                    // Stores without batch support: delete one by one.
+                    objects.forEach(context.delete)
+                }
+            }
+            context.reset()
+            do {
+                if context.hasChanges { try context.save() }
+                done = true
+            } catch {
+                logger.error("wipeAllUserData save failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        return done
+    }
+
+    /// Clears the in-memory and on-disk caches that hold one user's AI prompts, replies and
+    /// diagnostics. Call on every sign-out and on account deletion.
+    static func clearSessionScopedCaches() {
+        CoachDebugStore.clearAll()
+        DiagnosticsStore.clearAll()
     }
 
     var context: NSManagedObjectContext {

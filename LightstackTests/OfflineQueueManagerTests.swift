@@ -349,7 +349,7 @@ final class OfflineQueueManagerTests: XCTestCase {
         let m = makeManager()
         let pending = await m.pendingCount
         XCTAssertEqual(pending, 1)
-        XCTAssertNotNil(defaults.data(forKey: OfflineQueueManager.legacyDefaultsKey), "legacy key stays for one release")
+        XCTAssertNil(defaults.data(forKey: OfflineQueueManager.legacyDefaultsKey), "legacy copy is removed once imported")
         XCTAssertTrue(defaults.bool(forKey: OfflineQueueManager.migrationDoneKey))
         await m.flush()
         XCTAssertEqual(remote.calls, ["insertWorkout:old"])
@@ -512,5 +512,127 @@ final class OfflineQueueManagerTests: XCTestCase {
         await m2.flush()
         let all = await m2.pendingCount + m2.failedCount
         XCTAssertEqual(all, 1)
+    }
+
+    // MARK: - Sync audit regressions (workstream E)
+
+    func testPurgeAllEmptiesQueueAndDeadLettersAndPersists() async throws {
+        remote.script = { type, _ in type == .insertWorkout ? QueueTestError.postgres("23514") : nil }
+        let m = makeManager()
+        await enqueueWorkouts(m, ["dead"])
+        await m.flush()                       // dead-lettered
+        remote.script = nil
+        await enqueueWorkouts(m, ["queued"])
+        let before = await m.pendingCount + m.failedCount
+        XCTAssertEqual(before, 2)
+
+        // A leftover "corrupt" backup holds user data too.
+        let corrupt = dir.appendingPathComponent("queue.corrupt-1.json")
+        try Data("[]".utf8).write(to: corrupt)
+
+        await m.purgeAll(reason: "test")
+        let after = await m.queuedOperations().count + m.failedOperations().count
+        XCTAssertEqual(after, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: corrupt.path))
+
+        let m2 = makeManager()                // "restart": the empty state was persisted
+        let restored = await m2.queuedOperations().count + m2.failedOperations().count
+        XCTAssertEqual(restored, 0)
+    }
+
+    func testEnqueueIsBlockedAfterPurgeUntilDifferentUserSignsIn() async {
+        let m = makeManager()
+        await enqueueWorkouts(m, ["a"])
+        await m.purgeAll(reason: "account deleted")
+
+        await enqueueWorkouts(m, ["late"])                // same (deleted) account: refused
+        m.submitTombstones(.workout, ids: [UUID()])
+        await m.waitForSubmissions()
+        let blocked = await m.queuedOperations().count
+        XCTAssertEqual(blocked, 0, "a late write must not recreate data of the deleted account")
+        await m.flush()
+        XCTAssertTrue(remote.calls.isEmpty)
+
+        owner.value = nil                                  // signed out: still blocked
+        await enqueueWorkouts(m, ["nobody"])
+        let stillBlocked = await m.queuedOperations().count
+        XCTAssertEqual(stillBlocked, 0)
+
+        owner.value = userB                                // a new account signs in
+        await enqueueWorkouts(m, ["b"])
+        let ops = await m.queuedOperations()
+        XCTAssertEqual(ops.count, 1)
+        XCTAssertEqual(ops.first?.ownerUserId, userB)
+    }
+
+    func testResumeEnqueueLiftsThePurgeBlock() async {
+        let m = makeManager()
+        await m.purgeAll(reason: "test")
+        await enqueueWorkouts(m, ["x"])
+        var count = await m.queuedOperations().count
+        XCTAssertEqual(count, 0)
+        await m.resumeEnqueue()
+        await enqueueWorkouts(m, ["x"])
+        count = await m.queuedOperations().count
+        XCTAssertEqual(count, 1)
+    }
+
+    func testWriteMadeWhileSignedOutStaysWithLastUserAndIsNotAdoptedByNextUser() async {
+        let m = makeManager()
+        await enqueueWorkouts(m, ["a1"])                   // remembers user A
+        owner.value = nil                                  // sign-out raced a write
+        await enqueueWorkouts(m, ["a2"])
+        let ops = await m.queuedOperations()
+        XCTAssertEqual(ops.map(\.ownerUserId), [userA, userA])
+
+        owner.value = userB
+        await m.flush()
+        XCTAssertTrue(remote.calls.isEmpty, "user B must not upload user A's changes")
+        owner.value = userA
+        await m.flush()
+        XCTAssertEqual(remote.calls, ["insertWorkout:a1", "insertWorkout:a2"])
+    }
+
+    func testRemovingARestDayCancelsAQueuedAdd() async {
+        let day = Date(timeIntervalSince1970: 1_800_100_000)
+        let added = RestDay(id: UUID(), userId: userA, date: day, createdAt: day)
+        let m = makeManager()
+        await m.enqueue(.upsertRestDay, payload: added, recordKey: added.id.uuidString)
+        await m.enqueue(.deleteRestDay, payload: DeleteRestDayPayload(id: added.id, date: day))
+        let types = await m.queuedOperations().map(\.type)
+        XCTAssertEqual(types, [.deleteRestDay])
+    }
+
+    func testReAddingARestDayCancelsAQueuedRemovalSoItIsNotDeletedAfterTheUpsert() async {
+        let day = Date(timeIntervalSince1970: 1_800_100_000)
+        let old = RestDay(id: UUID(), userId: userA, date: day, createdAt: day)
+        let again = RestDay(id: UUID(), userId: userA, date: day, createdAt: day)
+        let m = makeManager()
+        await m.enqueue(.deleteRestDay, payload: DeleteRestDayPayload(id: old.id, date: day))
+        await m.enqueue(.upsertRestDay, payload: again, recordKey: again.id.uuidString)
+        let types = await m.queuedOperations().map(\.type)
+        XCTAssertEqual(types, [.upsertRestDay], "fkOrdered runs deletes last; the stale removal would erase the re-add")
+
+        // A different day is untouched.
+        let other = Date(timeIntervalSince1970: 1_800_100_000 + 3 * 86_400)
+        await m.enqueue(.deleteRestDay, payload: DeleteRestDayPayload(id: UUID(), date: other))
+        let all = await m.queuedOperations().map(\.type)
+        XCTAssertEqual(Set(all), [.upsertRestDay, .deleteRestDay])
+    }
+
+    func testOwnerlessOperationsGoToThePreviousUserNotTheNextAccount() async throws {
+        let m0 = makeManager()
+        await enqueueWorkouts(m0, ["seed"])               // remembers user A
+        let op = QueuedOperation(type: .insertWorkout, payload: try JSONEncoder().encode(makeTestWorkout("legacy")))
+        let existing = await m0.queuedOperations()
+        try JSONEncoder().encode(existing + [op]).write(to: dir.appendingPathComponent("queue.json"))
+
+        owner.value = userB
+        let m = makeManager()
+        await m.flush()
+        XCTAssertTrue(remote.calls.isEmpty, "B must not upload ownerless operations")
+        owner.value = userA
+        await m.flush()
+        XCTAssertEqual(Set(remote.calls), ["insertWorkout:seed", "insertWorkout:legacy"])
     }
 }

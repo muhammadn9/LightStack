@@ -46,8 +46,14 @@ enum UITestMode {
         guard let i = args.firstIndex(of: "-uiTestingFakeRemote"), i + 1 < args.count else { return nil }
         return args[i + 1]
     }
+    /// `-uiTestingSignOutOffline` makes the server sign-out call fail like an offline device.
+    static let signOutOffline: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSignOutOffline")
+    /// `-uiTestingCorruptStore` overwrites the UI-test store with garbage before it loads (recovery test).
+    static let corruptStore: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingCorruptStore")
     /// `-uiTestingSkipLaunchFlush` keeps the launch-time flush from running (foreground-trigger test).
     static let skipLaunchFlush: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSkipLaunchFlush")
+    /// `-uiTestingSignedOut` starts signed out, so the welcome screen shows (auth redesign tests).
+    static let signedOut: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSignedOut")
     /// `-uiTestingFreshInstall` seeds no local profile or history: the app starts like a new device.
     static let freshInstall: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingFreshInstall")
     /// `-uiTestingRemoteSeed history` fills the fake remote with a profile, workouts, a rest day and a tombstone.
@@ -71,6 +77,11 @@ enum UITestMode {
     /// `-uiTestingNutritionWizard` lets the nutrition setup wizard open by itself on first visit (it is off in
     /// UI tests otherwise, so the other nutrition tests are not interrupted).
     static let wantsNutritionWizard: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingNutritionWizard")
+    /// `-uiTestingNoAIConsent` stops test mode from auto-granting the third-party AI consent, so the consent
+    /// sheet and the "AI is off" paths can be tested. (A reset launch also clears any stored answer.)
+    static let wantsNoAIConsent: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingNoAIConsent")
+    /// `-uiTestingAIFail` makes the fake AI provider fail every request (Retry / Build manually paths).
+    static let wantsAIFailure: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingAIFail")
     static let shouldReset: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingReset")
 
     /// Constant id of the fake signed-in user.
@@ -102,11 +113,18 @@ enum UITestMode {
         defaults.removeObject(forKey: SessionExpiryTracker.defaultsKey)
         defaults.removeObject(forKey: RestPreference.key)
         defaults.removeObject(forKey: PerArmPreference.key)
+        defaults.removeObject(forKey: WorkoutSetupViewModel.energyKey)
+        defaults.removeObject(forKey: WorkoutSetupViewModel.timeKey)
+        defaults.removeObject(forKey: CoachPreferences.focusKey)
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
+        defaults.removeObject(forKey: AIConsent.key)
+        defaults.removeObject(forKey: AIConsent.dateKey)
+        defaults.removeObject(forKey: AIConsent.promptedKey)
         defaults.set(0, forKey: "selectedTab")
         defaults.set("gym", forKey: "appSide")
         defaults.removeObject(forKey: "nutritionSelectedTab")
+        defaults.removeObject(forKey: "progressSegment")
         defaults.removeObject(forKey: "nutritionSetupSkipped")
         defaults.removeObject(forKey: WaterUnit.storageKey)
         defaults.removeObject(forKey: ServingUnitPreferences.storageKey)
@@ -613,6 +631,12 @@ final class UITestFakeAIProvider: AIProvider {
         options: AIRequestOptions,
         completion: @escaping (Result<String, Error>) -> Void
     ) {
+        if UITestMode.wantsAIFailure {
+            let failure = NSError(domain: "UITestFakeAI", code: 500,
+                                  userInfo: [NSLocalizedDescriptionKey: "Simulated AI failure"])
+            DispatchQueue.main.async { completion(.failure(failure)) }
+            return
+        }
         let last = messages.last?.content ?? ""
         let reply: String
         if options.task == .formFeedback {

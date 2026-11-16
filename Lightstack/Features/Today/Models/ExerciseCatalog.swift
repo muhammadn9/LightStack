@@ -143,6 +143,6 @@ enum ExerciseCatalog {
             }
             return true
         }
-        .sorted { $0.name < $1.name }
+        .sorted { ExerciseSort.isInOrder($0.name, $1.name) }
     }
 }

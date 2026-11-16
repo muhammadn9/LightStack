@@ -6,19 +6,20 @@ final class ProgressTests: LightstackUITestCase {
         app.descendants(matching: .any)[id].firstMatch
     }
 
-    /// The seeded "Core Day" is dated today: 3 Lat Pulldown sets (cable), 2 Leg Press sets (machine).
-    func testTodayShowsEquipmentUsage() throws {
+    /// The seeded "Core Day" is dated today: 3 Lat Pulldown sets (back), 2 Leg Press sets (legs).
+    /// Today shows the slim "This week" card with sets per muscle group; the equipment grid lives on Progress.
+    func testTodayShowsThisWeekInsteadOfEquipment() throws {
         launchApp()
         waitFor(app.buttons["chip.Push"])
-        let card = waitFor(element("equipment.usedCount"), "Equipment card missing on Today")
-        XCTAssertTrue(card.exists)
+        waitFor(element("thisWeek.card"), "This week card missing on Today")
         waitFor(element("weekStrip"), "Week strip missing on Today")
-        XCTAssertEqual(waitFor(element("equipment.Cable")).label, "Cable, 3 sets")
-        XCTAssertEqual(element("equipment.Machine").label, "Machine, 2 sets")
-        XCTAssertEqual(element("equipment.Kettlebell").label, "Kettlebell, not yet")
-        let used = element("equipment.usedCount").label
-        XCTAssertTrue(["2 of 7", "3 of 7", "4 of 7", "5 of 7"].contains(used), "Unexpected used count \(used)")
-        shot("today-equipment")
+        XCTAssertFalse(element("equipment.usedCount").exists, "The equipment grid is not on Today any more")
+        XCTAssertFalse(app.staticTexts["Equipment Worked This Week"].exists)
+        let back = waitFor(element("thisWeek.group.Back"))
+        XCTAssertTrue(back.label.hasPrefix("Back, "), back.label)
+        XCTAssertTrue(back.label.contains("sets"), "Core Day logged back sets today: \(back.label)")
+        XCTAssertEqual(element("thisWeek.group.Core").label, "Core, not yet")
+        shot("today-this-week")
         app.swipeUp()
         shot("today-controls")
     }
@@ -34,11 +35,13 @@ final class ProgressTests: LightstackUITestCase {
         waitFor(app.staticTexts["progress.title"])
         waitFor(element("progress.streak"))
         shot("progress-overview")
-        tap(app.buttons["progress.segment.Lifts"])
+        tap(app.buttons["progress.segment.lifts"])
         waitFor(element("progress.liftsList"))
         shot("progress-lifts")
-        tap(app.buttons["progress.segment.Equipment"])
-        waitFor(element("progress.equipmentWeeks"))
+        tap(app.buttons["progress.segment.overview"])
+        let weeks = element("progress.equipmentWeeks")
+        waitFor(weeks)
+        scrollUntilHittable(weeks)
         shot("progress-equipment")
     }
 
@@ -79,11 +82,9 @@ final class ProgressTests: LightstackUITestCase {
         shot("lift-chart")
         chart.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         shot("lift-chart-selected")
-        tap(app.buttons["progress.segment.Lifts"])
+        tap(app.buttons["progress.segment.lifts"])
         waitFor(element("progress.liftsList"))
-        element("lift.sparkline.Bench Press").coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .tap()
-        shot("lift-sparkline-selected")
+        shot("lifts-list-with-history")
     }
 
     private static func idString(_ date: Date) -> String {
