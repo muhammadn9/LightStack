@@ -11,8 +11,9 @@ struct ExerciseSwapSheet: View {
     @State private var candidates: [SwapCandidate] = []
     @State private var showSearch = false
 
-    private var fromHistory: [SwapCandidate] { candidates.filter(\.isFromHistory) }
-    private var fromCatalog: [SwapCandidate] { candidates.filter { !$0.isFromHistory } }
+    // Alternatives are listed A to Z, like every other exercise list.
+    private var fromHistory: [SwapCandidate] { ExerciseSort.azSorted(candidates.filter(\.isFromHistory), by: \.name) }
+    private var fromCatalog: [SwapCandidate] { ExerciseSort.azSorted(candidates.filter { !$0.isFromHistory }, by: \.name) }
 
     var body: some View {
         NavigationStack {
@@ -67,7 +68,10 @@ struct ExerciseSwapSheet: View {
             }
             .onAppear { candidates = todayViewModel.swapCandidates(forExerciseId: exercise.id) }
             .sheet(isPresented: $showSearch) {
-                ExerciseCatalogPicker(loadYourExercises: { todayViewModel.historyExercises() }) { name, group in
+                ExerciseCatalogPicker(
+                    loadYourExercises: { todayViewModel.historyExercises() },
+                    loadRecent: { todayViewModel.recentLoggedExercises() }
+                ) { name, group in
                     choose(name: name, muscleGroup: group)
                 }
             }

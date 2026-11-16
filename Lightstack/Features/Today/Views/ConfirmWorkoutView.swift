@@ -32,6 +32,7 @@ struct ConfirmWorkoutView: View {
             .padding(16)
         }
         .themedBackground()
+        .tabBarBackdrop()
         .sheet(isPresented: $showChat) {
             if let chatVM = chatViewModel {
                 CoachChatView(viewModel: chatVM, todayViewModel: todayViewModel)

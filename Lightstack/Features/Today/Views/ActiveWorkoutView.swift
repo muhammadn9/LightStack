@@ -39,7 +39,9 @@ struct ActiveWorkoutView: View {
     var body: some View {
         VStack(spacing: 0) {
             timerBar
-            if !todayViewModel.exercises.isEmpty {
+            if todayViewModel.exercises.isEmpty {
+                emptyWorkoutState
+            } else {
                 cardsPager
                 pageIndicator
             }
@@ -80,6 +82,13 @@ struct ActiveWorkoutView: View {
             LiveActivityController.shared.attach(active: viewModel, today: todayViewModel)
             if formViewModel == nil {
                 formViewModel = makeFormViewModel()
+            }
+            // A Freestyle workout opens the exercise picker straight away.
+            if todayViewModel.opensExercisePickerOnStart {
+                todayViewModel.opensExercisePickerOnStart = false
+                if todayViewModel.exercises.isEmpty {
+                    DispatchQueue.main.async { showAddExercise = true }
+                }
             }
         }
         .onDisappear {
@@ -142,8 +151,11 @@ struct ActiveWorkoutView: View {
             )
         }
         .sheet(isPresented: $showAddExercise) {
-            ExerciseCatalogPicker(loadYourExercises: { todayViewModel.historyExercises() }) { name, muscleGroup in
-                addExercise(name: name, muscleGroup: muscleGroup)
+            ExerciseCatalogPicker(
+                loadYourExercises: { todayViewModel.historyExercises() },
+                loadRecent: { todayViewModel.recentLoggedExercises() }
+            ) { picks in
+                addExercises(picks)
             }
             .keyboardDoneButton()
         }
@@ -836,25 +848,64 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Add / Reorder
 
-    /// Adds an exercise right after the page being shown and jumps to it.
-    private func addExercise(name: String, muscleGroup: String) {
+    /// Adds the ticked exercises in order, each right after the previous one (the first after the page being
+    /// shown), prefilled from its last logged session, and jumps to the first of them.
+    private func addExercises(_ picks: [PickedExercise]) {
+        guard !picks.isEmpty else { return }
         let pagesBefore = SupersetGroup.pages(from: todayViewModel.exercises)
-        let after = min(currentExerciseIndex, max(0, pagesBefore.count - 1))
-        guard let newId = todayViewModel.addExerciseManually(
-            name: name,
-            muscleGroup: muscleGroup,
-            afterPageIndex: pagesBefore.isEmpty ? nil : after
-        ) else { return }
-        if let newExercise = todayViewModel.exercises.first(where: { $0.id == newId }) {
-            viewModel.prefillTargets(for: newExercise)
-            if let hints = todayViewModel.previousHints[newId] {
-                viewModel.applyPreviousSession(hints, to: newExercise)
+        var after: Int? = pagesBefore.isEmpty ? nil : min(currentExerciseIndex, max(0, pagesBefore.count - 1))
+        var firstNewId: UUID?
+        for pick in picks {
+            guard let newId = todayViewModel.addExerciseManually(
+                name: pick.name,
+                muscleGroup: pick.muscleGroup,
+                afterPageIndex: after
+            ) else { continue }
+            if let newExercise = todayViewModel.exercises.first(where: { $0.id == newId }) {
+                viewModel.prefillTargets(for: newExercise)
+                if let hints = todayViewModel.previousHints[newId] {
+                    viewModel.applyPreviousSession(hints, to: newExercise)
+                }
             }
+            firstNewId = firstNewId ?? newId
+            after = SupersetGroup.pages(from: todayViewModel.exercises)
+                .firstIndex { $0.exerciseIds.contains(newId) }
         }
         let pages = SupersetGroup.pages(from: todayViewModel.exercises)
-        currentExerciseIndex = pages.firstIndex { $0.exerciseIds.contains(newId) }
-            ?? max(0, pages.count - 1)
+        if let firstNewId {
+            currentExerciseIndex = pages.firstIndex { $0.exerciseIds.contains(firstNewId) }
+                ?? max(0, pages.count - 1)
+        }
         persistSession()
+    }
+
+    /// Shown while a Freestyle workout has no exercises yet.
+    private var emptyWorkoutState: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "figure.strengthtraining.traditional")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(AppTheme.accent)
+            Text("No exercises yet")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("Pick what you are training. Each one starts from your last session.")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Button { showAddExercise = true } label: {
+                Text("Add exercises")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AppTheme.onAccent)
+                    .padding(.horizontal, 36)
+                    .frame(height: 56)
+                    .background(AppTheme.accent, in: Capsule())
+            }
+            .accessibilityIdentifier("emptyWorkoutAddButton")
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Applies the reorder sheet's result, staying on the exercise that was showing.

@@ -81,6 +81,7 @@ private struct HistoryContentView: View {
                         NavigationLink(destination: WorkoutDetailView(workout: workout, viewModel: viewModel)) {
                             workoutCard(workout: workout)
                         }
+                        .hidingListChevron()
                         .accessibilityIdentifier("historyRow.\(workout.workoutType)")
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -182,8 +183,10 @@ private struct HistoryContentView: View {
                     .foregroundStyle(AppTheme.textSecondary)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(AppTheme.textSecondary)
+                if #available(iOS 18.0, *) {
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
             }
         }
         .cardStyle()
@@ -193,5 +196,18 @@ private struct HistoryContentView: View {
         if volume >= 1_000_000 { return String(format: "%.1fM lbs", volume / 1_000_000) }
         if volume >= 1_000 { return String(format: "%.0fK lbs", volume / 1_000) }
         return String(format: "%.0f lbs", volume)
+    }
+}
+
+private extension View {
+    /// The card draws its own chevron, so the list's disclosure indicator goes (iOS 18+). On iOS 17 the list's
+    /// own indicator stays and the card draws none, so there is always exactly one.
+    @ViewBuilder
+    func hidingListChevron() -> some View {
+        if #available(iOS 18.0, *) {
+            self.navigationLinkIndicatorVisibility(.hidden)
+        } else {
+            self
+        }
     }
 }

@@ -331,6 +331,23 @@ extension View {
         modifier(ThemedBackground())
     }
 
+    /// Solid strip behind the floating tab bar, so scrolling content stops at the bar instead of
+    /// showing through around it. For scroll screens that sit directly in a tab.
+    func tabBarBackdrop() -> some View {
+        overlay(alignment: .bottom) {
+            // The reader ends at the top of the tab bar; the strip fills the inset below it.
+            GeometryReader { proxy in
+                ZStack(alignment: .bottom) {
+                    Color.clear
+                    AppTheme.background
+                        .frame(height: proxy.safeAreaInsets.bottom)
+                        .offset(y: proxy.safeAreaInsets.bottom)
+                }
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
     /// Solid strip behind the status bar for scroll screens without a navigation
     /// bar, so scrolled content doesn't run under the clock.
     func statusBarBackdrop() -> some View {
