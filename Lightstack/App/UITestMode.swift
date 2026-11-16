@@ -48,6 +48,8 @@ enum UITestMode {
     }
     /// `-uiTestingSkipLaunchFlush` keeps the launch-time flush from running (foreground-trigger test).
     static let skipLaunchFlush: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSkipLaunchFlush")
+    /// `-uiTestingSignedOut` starts signed out, so the welcome screen shows (auth redesign tests).
+    static let signedOut: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSignedOut")
     /// `-uiTestingFreshInstall` seeds no local profile or history: the app starts like a new device.
     static let freshInstall: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingFreshInstall")
     /// `-uiTestingRemoteSeed history` fills the fake remote with a profile, workouts, a rest day and a tombstone.

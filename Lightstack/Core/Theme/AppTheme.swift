@@ -61,6 +61,12 @@ enum AppTheme {
     static let textHand        = AppTheme.textSecondary
     static let prStamp         = Color(hex: 0xB91C1C)
 
+    /// App icon mark colours (fixed in both appearances, like the icon itself).
+    static let markBackground = Color(hex: 0x111114)
+    static let markBarLong    = Color(hex: 0x2E4A35)
+    static let markBarMid     = Color(hex: 0x2F8F47)
+    static let markBarShort   = Color(hex: 0x4ED16A)
+
     // MARK: - Dimensions
 
     static let cornerRadius: CGFloat = 20

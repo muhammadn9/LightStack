@@ -494,7 +494,7 @@ final class AuthService: NSObject {
 
     func currentUser() -> UserProfile? {
         #if DEBUG
-        if UITestMode.isActive { return UITestMode.testUser }
+        if UITestMode.isActive { return UITestMode.signedOut ? nil : UITestMode.testUser }
         #endif
         guard let user = supabaseClient.auth.currentUser else {
             if let expired = expiry.expiredUserId { return Self.expiredStub(userId: expired) }

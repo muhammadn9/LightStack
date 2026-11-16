@@ -79,6 +79,19 @@ struct SettingsView: View {
                 SyncQueueDebugSection()
                 #endif
 
+                Section("Legal") {
+                    NavigationLink(destination: LegalView(document: .privacy)) {
+                        Text("Privacy Policy")
+                    }
+                    .accessibilityIdentifier("settings.privacy")
+                    .listRowBackground(AppTheme.surface)
+                    NavigationLink(destination: LegalView(document: .terms)) {
+                        Text("Terms of Use")
+                    }
+                    .accessibilityIdentifier("settings.terms")
+                    .listRowBackground(AppTheme.surface)
+                }
+
                 Section("Account") {
                     Button(action: requestSignOut) {
                         HStack {

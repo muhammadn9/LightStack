@@ -8,7 +8,7 @@ struct RestoreProgressView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.backgroundGradient.ignoresSafeArea()
+            AppTheme.background.ignoresSafeArea()
             VStack(spacing: 20) {
                 if environment.restoreGate == .failed {
                     failedContent
@@ -27,11 +27,11 @@ struct RestoreProgressView: View {
                 .tint(AppTheme.accent)
                 .scaleEffect(1.4)
             Text("Restoring your history…")
-                .font(AppTheme.playfairItalic(20, weight: .bold))
+                .font(.title3.bold())
                 .foregroundStyle(AppTheme.textPrimary)
                 .multilineTextAlignment(.center)
             Text("Looking for your account's workouts.")
-                .font(AppTheme.caveat(14))
+                .font(.body)
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .accessibilityElement(children: .contain)
@@ -44,12 +44,12 @@ struct RestoreProgressView: View {
                 .font(.system(size: 40))
                 .foregroundStyle(AppTheme.warning)
             Text("Couldn't reach your account")
-                .font(AppTheme.playfairItalic(20, weight: .bold))
+                .font(.title3.bold())
                 .foregroundStyle(AppTheme.textPrimary)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("restoreFailedView")
             Text("Check your connection and try again. Your workouts are safe in your account.")
-                .font(AppTheme.caveat(14))
+                .font(.body)
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
 
@@ -57,11 +57,10 @@ struct RestoreProgressView: View {
                 environment.retryProfileRestore()
             } label: {
                 Text("Retry")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(AppTheme.onAccent)
-                    .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchSize)
-                    .background(AppTheme.accentGradient)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(AppTheme.accent, in: Capsule())
             }
             .accessibilityIdentifier("restoreRetryButton")
 
@@ -69,11 +68,11 @@ struct RestoreProgressView: View {
                 environment.continueWithoutRestore()
             } label: {
                 Text("Set up as new")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchSize)
-                    .background(AppTheme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(AppTheme.surface, in: Capsule())
+                    .overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
             }
             .accessibilityIdentifier("restoreSetUpAsNewButton")
         }

@@ -27,6 +27,8 @@ targets:
       - path: Lightstack/Resources/ExerciseGuides
         type: folder
         buildPhase: resources
+      - path: docs/legal
+        buildPhase: resources
     resources:
       - path: Lightstack/Resources/Assets.xcassets
     settings:
