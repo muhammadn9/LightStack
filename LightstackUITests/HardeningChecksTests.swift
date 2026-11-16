@@ -67,25 +67,16 @@ final class HardeningChecksTests: LightstackUITestCase {
         shot("settings-privacy-policy-row")
     }
 
-    /// A forced AI failure shows a friendly message with Retry and Build manually (Today tab path).
-    func testAIFailureShowsRetryAndBuildManually() throws {
+    /// A forced AI failure no longer blocks building a workout: the engine's plan is shown ("engine only") and no
+    /// error appears. (The Retry / Build manually screen, `planFailure.*`, is only for a plan that cannot be built at all.)
+    func testAIFailureStillBuildsEnginePlan() throws {
         launchApp(extraArguments: ["-uiTestingAIFail"])
         tap(app.buttons["chip.Push"])
         tap(app.buttons["generateButton"])
-        let alert = waitFor(app.alerts["Error"], "Failure alert missing", timeout: 60)
-        XCTAssertFalse(alert.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Simulated")).firstMatch.exists,
-                       "Raw error text must not be shown")
-        waitFor(alert.buttons["Retry"], "Retry missing")
-        waitFor(alert.buttons["Build manually"], "Build manually missing")
-        shot("ai-failure-retry-build-manually")
-
-        // Retry runs another attempt (and fails again under the forced failure).
-        tap(alert.buttons["Retry"])
-        waitFor(app.alerts["Error"], "Retry should end in the failure alert again", timeout: 60)
-
-        // Build manually opens the manual entry screen, no AI needed.
-        tap(app.alerts["Error"].buttons["Build manually"])
-        waitFor(app.navigationBars["Manual Workout"], "Manual entry did not open")
-        shot("ai-failure-manual-entry")
+        waitFor(app.staticTexts["Workout Ready"], "Plan preview should still open when the AI fails", timeout: 60)
+        waitFor(anyElement("plan.coachReview.engineOnly"), "Plan should be marked engine only")
+        XCTAssertFalse(app.alerts.firstMatch.exists, "No error alert expected")
+        XCTAssertFalse(anyElement("planFailure.message").exists, "Failure screen must not show")
+        shot("ai-failure-engine-plan")
     }
 }

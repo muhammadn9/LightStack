@@ -21,6 +21,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Children before parents. Order only matters if a cascade is ever removed.
 const USER_TABLES = [
+  "food_collection_items", // nutrition kitchen (added after the original list)
+  "food_collections",
+  "weigh_ins",
   "food_entries",
   "water_entries",
   "day_notes",
