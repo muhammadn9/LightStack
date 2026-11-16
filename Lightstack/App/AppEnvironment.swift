@@ -21,6 +21,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     /// profile before deciding whether to onboard (see `beginProfileRestore`).
     @Published var restoreGate: RestoreGate = .idle
 
+    /// Set when the local store could not be opened and was set aside (shown once).
+    @Published var storeRecoveryNotice: LocalStoreRecoveryEvent?
+    /// True when even a fresh local store could not be created; the app shows a blocking screen.
+    @Published var localStoreUnavailable = false
+
     enum RestoreGate: Equatable {
         case idle
         case restoring
@@ -126,6 +131,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         let expiryTracker = SessionExpiryTracker()
         self.sessionExpiry = expiryTracker
         self.authService = AuthService(client: supabaseClient, expiry: expiryTracker)
+        #if DEBUG
+        if UITestMode.isActive && UITestMode.signOutOffline {
+            authService.remoteSignOutOverride = { throw URLError(.notConnectedToInternet) }
+        }
+        #endif
         self.localStorageService = LocalStorageService()
         localStorageService.removeDuplicateExercises()
         #if DEBUG
@@ -308,6 +318,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         #if DEBUG
         if UITestMode.isActive { simulateExpiredSessionForUITest(UITestMode.wantsExpiredSession) }
         #endif
+        applyStoreLoadResult()
         checkExistingSession()
         loadOnboardingState()
     }
@@ -508,6 +519,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         isAuthenticated = false
     }
 
+    func acknowledgeStoreRecoveryNotice() {
+        LocalStoreRecoveryLog.shared.acknowledgeAll()
+        storeRecoveryNotice = nil
+    }
+
     func authService(_ service: AuthService, didFailWith error: Error) {
         authErrorMessage = error.localizedDescription
     }
@@ -557,6 +573,19 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     #endif
 
     // MARK: - Private
+
+    @MainActor
+    private func applyStoreLoadResult() {
+        switch localStorageService.loadResult {
+        case .loaded: break
+        case .recovered(let event): storeRecoveryNotice = event
+        case .unavailable: localStoreUnavailable = true
+        }
+        if storeRecoveryNotice == nil, !localStoreUnavailable {
+            // A recovery from an earlier launch the user has not been told about yet.
+            storeRecoveryNotice = LocalStoreRecoveryLog.shared.unacknowledgedEvent()
+        }
+    }
 
     @MainActor
     private func checkExistingSession() {

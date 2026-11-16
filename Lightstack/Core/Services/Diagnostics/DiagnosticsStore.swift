@@ -4,7 +4,7 @@ import Foundation
 /// MetricKit payloads cannot be built in tests, so parsing and storage work on this model only.
 struct DiagnosticEntry: Codable, Equatable, Identifiable {
     enum Kind: String, Codable {
-        case crash, hang, cpu, disk, metrics
+        case crash, hang, cpu, disk, metrics, storage
 
         var label: String {
             switch self {
@@ -13,6 +13,7 @@ struct DiagnosticEntry: Codable, Equatable, Identifiable {
             case .cpu: return "CPU"
             case .disk: return "Disk writes"
             case .metrics: return "Metrics"
+            case .storage: return "Local data"
             }
         }
     }

@@ -115,6 +115,15 @@ struct SettingsView: View {
                 Text("\(unsyncedCount) \(unsyncedCount == 1 ? "change is" : "changes are") saved on this iPhone but not yet uploaded. They'll upload next time you sign in on this device.")
             }
         }
+        .alert("Account problem", isPresented: Binding(
+            get: { environment.authErrorMessage != nil },
+            set: { if !$0 { environment.authErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+                .accessibilityIdentifier("settings.authError.ok")
+        } message: {
+            Text(environment.authErrorMessage ?? "")
+        }
         .background(AppTheme.background.ignoresSafeArea())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)

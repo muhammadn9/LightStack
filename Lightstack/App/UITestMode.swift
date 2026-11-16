@@ -46,6 +46,10 @@ enum UITestMode {
         guard let i = args.firstIndex(of: "-uiTestingFakeRemote"), i + 1 < args.count else { return nil }
         return args[i + 1]
     }
+    /// `-uiTestingSignOutOffline` makes the server sign-out call fail like an offline device.
+    static let signOutOffline: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSignOutOffline")
+    /// `-uiTestingCorruptStore` overwrites the UI-test store with garbage before it loads (recovery test).
+    static let corruptStore: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingCorruptStore")
     /// `-uiTestingSkipLaunchFlush` keeps the launch-time flush from running (foreground-trigger test).
     static let skipLaunchFlush: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSkipLaunchFlush")
     /// `-uiTestingSignedOut` starts signed out, so the welcome screen shows (auth redesign tests).
