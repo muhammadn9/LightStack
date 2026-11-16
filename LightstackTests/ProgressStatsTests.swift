@@ -106,15 +106,16 @@ final class ProgressStatsTests: XCTestCase {
         }
         XCTAssertEqual(lift.thisMonth?.weightLbs, 175)
         XCTAssertEqual(lift.lastMonth?.weightLbs, 150)
-        // Best before this month is the older 160 x 5.
-        let delta = (lift.monthDelta ?? 0)
+        // 30-day window (same as the Lifts list): now is Oct 8, so the cutoff is Sep 8 and the
+        // latest session on or before it is Aug 20 (160 x 5); the Sep 10 session is inside the window.
+        guard case .delta(let delta) = lift.change else { return XCTFail("Expected a delta, got \(lift.change)") }
         XCTAssertEqual(delta, 175 * (1 + 5.0 / 30) - 160 * (1 + 5.0 / 30), accuracy: 0.001)
     }
 
-    func testNoLastMonthMeansNoDelta() {
+    func testNoSessionBeforeThirtyDaysMeansNew() {
         let sets = [set("Squat", date(2026, 10, 2), 200, 5)]
         let lift = ProgressStats.liftTrends(sets, now: now, calendar: calendar).first
-        XCTAssertNil(lift?.monthDelta)
+        XCTAssertEqual(lift?.change, .new)
         XCTAssertNil(lift?.lastMonth)
     }
 

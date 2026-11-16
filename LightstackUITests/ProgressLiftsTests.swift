@@ -105,7 +105,7 @@ final class ProgressLiftsTests: LightstackUITestCase {
         XCTAssertEqual(waitFor(app.staticTexts["liftDetail.title"]).label, "Bench Press")
         app.navigationBars.buttons.firstMatch.tap()
 
-        _ = scrollTo("equipment.usedCount")
+        _ = scrollTo("progress.equipmentCard")
         shot("overview-equipment")
         let seeAll = scrollTo("progress.seeAllLifts")
         seeAll.tap()
@@ -132,7 +132,7 @@ final class ProgressLiftsTests: LightstackUITestCase {
             shot("\(scheme)-overview")
             _ = scrollTo("progress.seeAllLifts")
             shot("\(scheme)-overview-trends")
-            _ = scrollTo("equipment.usedCount")
+            _ = scrollTo("progress.equipmentCard")
             app.swipeUp()
             shot("\(scheme)-overview-equipment")
             app.swipeDown(); app.swipeDown(); app.swipeDown(); app.swipeDown()

@@ -200,16 +200,19 @@ enum LiftFormat {
             : date.formatted(.dateTime.month(.abbreviated).day().year())
     }
 
+    /// "+15 lb, 30 days", "Even" or "New", same wording as the Lifts list.
     static func delta(_ lift: LiftTrend) -> String {
-        guard lift.thisMonth != nil else { return "No sets this month" }
-        guard let delta = lift.monthDelta else { return "New this month" }
-        let rounded = Int(delta.rounded())
-        if rounded == 0 { return "Even this month" }
-        return rounded > 0 ? "+\(rounded) lb this month" : "\u{2212}\(-rounded) lb this month"
+        switch lift.change {
+        case .new: return "New"
+        case .even: return "Even"
+        case .delta:
+            let text = change(lift.change, unit: .lb)
+            return text == "Even" ? text : "\(text), 30 days"
+        }
     }
 
     static func deltaColor(_ lift: LiftTrend) -> Color {
-        (lift.monthDelta ?? 0) < -0.5 ? AppTheme.warning : AppTheme.accent
+        changeColor(lift.change)
     }
 }
 

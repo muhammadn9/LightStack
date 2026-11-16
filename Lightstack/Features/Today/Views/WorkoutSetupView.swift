@@ -47,6 +47,7 @@ struct WorkoutSetupView: View {
     private var dateText: String { DateFormatter.weekdayMonthDay.string(from: Date()) }
 
     var body: some View {
+        ScrollViewReader { scroll in
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 headerRow
@@ -61,10 +62,24 @@ struct WorkoutSetupView: View {
 
                 settingsCard
 
+                // Clearance under an open settings row so its controls end above the floating tab bar.
+                Color.clear
+                    .frame(height: viewModel.expandedRow == nil ? 0 : 110)
+                    .id(Self.settingsBottomID)
+
                 buttons
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
+        }
+        .onChange(of: viewModel.expandedRow) { _, row in
+            guard row != nil else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    scroll.scrollTo(Self.settingsBottomID, anchor: .bottom)
+                }
+            }
         }
         .themedBackground()
         .statusBarBackdrop()
@@ -107,7 +122,10 @@ struct WorkoutSetupView: View {
                     .keyboardDoneButton()
             }
         }
+        }
     }
+
+    private static let settingsBottomID = "setup.settingsBottom"
 
     // MARK: - Header
 

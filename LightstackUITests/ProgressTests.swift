@@ -7,7 +7,7 @@ final class ProgressTests: LightstackUITestCase {
     }
 
     /// The seeded "Core Day" is dated today: 3 Lat Pulldown sets (back), 2 Leg Press sets (legs).
-    /// Today shows the slim "This week" card with sets per muscle group; the equipment grid lives on Progress.
+    /// Today shows the slim "This week" card with sets per muscle group; equipment lives on Progress.
     func testTodayShowsThisWeekInsteadOfEquipment() throws {
         launchApp()
         waitFor(app.buttons["chip.Push"])
@@ -39,9 +39,12 @@ final class ProgressTests: LightstackUITestCase {
         waitFor(element("progress.liftsList"))
         shot("progress-lifts")
         tap(app.buttons["progress.segment.overview"])
-        let weeks = element("progress.equipmentWeeks")
-        waitFor(weeks)
-        scrollUntilHittable(weeks)
+        let card = element("progress.equipmentCard")
+        waitFor(card)
+        scrollUntilHittable(card)
+        XCTAssertTrue(app.staticTexts["Sets by equipment"].exists, "Equipment card title missing")
+        XCTAssertFalse(app.staticTexts["Equipment Worked This Week"].exists, "Old equipment hero card is gone")
+        XCTAssertFalse(element("progress.equipmentWeeks").exists, "Old 4-week equipment card is gone")
         shot("progress-equipment")
     }
 

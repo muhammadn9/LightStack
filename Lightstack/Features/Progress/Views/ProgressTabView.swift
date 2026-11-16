@@ -159,8 +159,7 @@ struct ProgressTabView: View {
             }
             trends
             monthCompare
-            EquipmentWeekCard(usage: snapshot.equipmentThisWeek)
-            equipmentWeeks
+            equipmentCard
         }
     }
 
@@ -252,42 +251,48 @@ struct ProgressTabView: View {
 
     // MARK: - Equipment
 
-    private var equipmentWeeks: some View {
-        ProgressCard {
+    /// Sets per equipment type this week, most first; types with none are left out.
+    private var equipmentCard: some View {
+        let rows = EquipmentKind.allCases
+            .map { (kind: $0, sets: snapshot.equipmentThisWeek[$0] ?? 0) }
+            .filter { $0.sets > 0 }
+            .sorted { $0.sets != $1.sets ? $0.sets > $1.sets : $0.kind.name < $1.kind.name }
+        let maxSets = max(1, rows.map(\.sets).max() ?? 1)
+        return ProgressCard {
             VStack(alignment: .leading, spacing: 14) {
-                sectionTitle("Sets by equipment", "last 4 weeks")
-                ForEach(EquipmentKind.allCases) { kind in
-                    equipmentRow(kind)
+                sectionTitle("Sets by equipment", "This week")
+                if rows.isEmpty {
+                    Text("No sets logged this week.")
+                        .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
+                        .accessibilityIdentifier("progress.equipmentEmpty")
+                }
+                ForEach(rows, id: \.kind) { row in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(row.kind.name)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppTheme.textPrimary)
+                            Spacer(minLength: 8)
+                            Text("\(row.sets) \(row.sets == 1 ? "set" : "sets")")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(AppTheme.surfaceElevated)
+                                Capsule().fill(AppTheme.accent)
+                                    .frame(width: proxy.size.width * max(0.04, CGFloat(row.sets) / CGFloat(maxSets)))
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(row.kind.name), \(row.sets) sets")
+                    .accessibilityIdentifier("progress.equipmentRow.\(row.kind.name)")
                 }
             }
         }
-        .accessibilityIdentifier("progress.equipmentWeeks")
-    }
-
-    private func equipmentRow(_ kind: EquipmentKind) -> some View {
-        let perWeek = snapshot.equipmentByWeek.map { $0[kind] ?? 0 }
-        let total = perWeek.reduce(0, +)
-        return HStack(spacing: 12) {
-            EquipmentIcon(kind: kind, intensity: total > 0 ? 0.7 : 0)
-                .frame(width: 34, height: 34)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(kind.name).font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
-                Text("\(total) sets").font(.caption).foregroundStyle(AppTheme.textSecondary)
-            }
-            Spacer(minLength: 4)
-            Chart {
-                ForEach(Array(perWeek.enumerated()), id: \.offset) { index, sets in
-                    BarMark(x: .value("Week", index), y: .value("Sets", sets))
-                        .foregroundStyle(index == perWeek.count - 1 ? AppTheme.accent : AppTheme.accent.opacity(0.4))
-                        .cornerRadius(3)
-                }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .chartYScale(domain: 0...max(1, perWeek.max() ?? 1))
-            .frame(width: 80, height: 34)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("progress.equipmentRow.\(kind.name)")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("progress.equipmentCard")
     }
 }

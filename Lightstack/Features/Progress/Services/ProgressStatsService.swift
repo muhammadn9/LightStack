@@ -42,8 +42,8 @@ struct LiftTrend: Identifiable, Equatable {
     let allTimeBest: Double
     let thisMonth: BestSet?
     let lastMonth: BestSet?
-    /// This month's best e1RM minus the best e1RM before this month.
-    let monthDelta: Double?
+    /// Estimated 1RM change over the last 30 days (same calculation as the Lifts list).
+    let change: LiftChange
     /// Weights are per arm (latest sets came from a per-arm exercise); labelled "/ arm" in charts.
     var isPerArm = false
     var id: String { key }
@@ -52,8 +52,6 @@ struct LiftTrend: Identifiable, Equatable {
 struct ProgressSnapshot: Equatable {
     /// Sets per equipment kind, current Mon-Sun week.
     var equipmentThisWeek: [EquipmentKind: Int] = [:]
-    /// Same, last 4 weeks, oldest first.
-    var equipmentByWeek: [[EquipmentKind: Int]] = []
     /// Weekday indices (0 = Monday) with a workout this week.
     var trainedWeekdays: Set<Int> = []
     var streak = 0
@@ -233,10 +231,12 @@ enum ProgressStats {
             var thisMonth: BestSet?
             var lastMonth: BestSet?
             var allTime = 0.0
-            var beforeThisMonth = 0.0
+            var dayBest: [Date: Double] = [:]
             for set in group {
                 guard let e1rm = PersonalRecordsListView.estimatedOneRepMax(weight: set.weightLbs, reps: set.reps) else { continue }
                 allTime = max(allTime, e1rm)
+                let day = calendar.startOfDay(for: set.date)
+                dayBest[day] = max(dayBest[day] ?? 0, e1rm)
                 let ago = weeksAgo(set.date, now: now, calendar: calendar)
                 if (0..<weeks).contains(ago) {
                     let index = weeks - 1 - ago
@@ -246,7 +246,6 @@ enum ProgressStats {
                 if calendar.isDate(set.date, equalTo: now, toGranularity: .month) {
                     if e1rm > (thisMonth?.e1rm ?? 0) { thisMonth = best }
                 } else {
-                    if set.date < now { beforeThisMonth = max(beforeThisMonth, e1rm) }
                     if calendar.isDate(set.date, equalTo: lastMonthDate, toGranularity: .month),
                        e1rm > (lastMonth?.e1rm ?? 0) {
                         lastMonth = best
@@ -255,13 +254,12 @@ enum ProgressStats {
             }
             let latestSet = group.max { $0.date < $1.date }
             let latest = latestSet?.exerciseName ?? key
-            let delta: Double? = {
-                guard let thisMonth, beforeThisMonth > 0 else { return nil }
-                return thisMonth.e1rm - beforeThisMonth
-            }()
+            let cutoff = calendar.date(byAdding: .day, value: -LiftStats.changeWindowDays, to: now) ?? now
+            let change = LiftStats.change(points: dayBest.map { (date: $0.key, e1rm: $0.value) }
+                .sorted { $0.date < $1.date }, cutoff: cutoff)
             return LiftTrend(key: key, name: latest, setCount: group.count, weeklyE1RM: weekly,
                              allTimeBest: allTime, thisMonth: thisMonth, lastMonth: lastMonth,
-                             monthDelta: delta, isPerArm: latestSet?.isPerArm ?? false)
+                             change: change, isPerArm: latestSet?.isPerArm ?? false)
         }
     }
 
@@ -269,7 +267,6 @@ enum ProgressStats {
                          streak: Int, now: Date, calendar: Calendar) -> ProgressSnapshot {
         var snap = ProgressSnapshot()
         snap.equipmentThisWeek = equipmentSets(sets, now: now, calendar: calendar)
-        snap.equipmentByWeek = (0..<4).reversed().map { equipmentSets(sets, weeksBack: $0, now: now, calendar: calendar) }
         snap.trainedWeekdays = trainedWeekdays(workouts, now: now, calendar: calendar)
         snap.streak = streak
         snap.workoutsPerWeek = workoutsPerWeek(workouts, now: now, calendar: calendar)

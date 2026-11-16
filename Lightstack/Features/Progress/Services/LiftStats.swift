@@ -162,8 +162,13 @@ enum LiftStats {
 
     /// Latest session's 1RM against the latest session on or before the cutoff (30 days ago).
     static func change(sessions: [LiftSession], cutoff: Date) -> LiftChange {
-        guard let latest = sessions.last,
-              let before = sessions.dropLast().last(where: { $0.date <= cutoff }) else { return .new }
+        change(points: sessions.map { (date: $0.date, e1rm: $0.e1rm) }, cutoff: cutoff)
+    }
+
+    /// Same calculation on (date, 1RM) points, oldest first.
+    static func change(points: [(date: Date, e1rm: Double)], cutoff: Date) -> LiftChange {
+        guard let latest = points.last,
+              let before = points.dropLast().last(where: { $0.date <= cutoff }) else { return .new }
         let delta = latest.e1rm - before.e1rm
         return abs(delta) < 0.5 ? .even : .delta(delta)
     }
