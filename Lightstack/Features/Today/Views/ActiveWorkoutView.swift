@@ -13,6 +13,8 @@ struct ActiveWorkoutView: View {
     @State private var showFinishConfirm = false
     @State private var currentExerciseIndex = 0
     @State private var exercisePendingRemoval: Exercise?
+    /// Re-renders the screen when Settings > Default Rest Timer changes, so rest labels and the timer follow it.
+    @AppStorage(RestPreference.key) private var defaultRestSeconds = RestPreference.fallbackSeconds
     @State private var showAddExercise = false
     @State private var showReorder = false
     /// Scroll position of the card pager; mirrors `currentExerciseIndex`.
@@ -27,14 +29,19 @@ struct ActiveWorkoutView: View {
 
     // Form Analysis
     @State private var formCaptureExercise: Exercise?
-    @State private var formFeedbackResult: FormAnalysisResult?
+    @State private var formFeedbackResult: FormSessionResult?
     @State private var formDemoExercise: Exercise?
     @State private var formViewModel: FormAnalysisViewModel?
+    /// The exercise of the recording whose results are showing, and whether "Record again" was chosen.
+    @State private var formResultExercise: Exercise?
+    @State private var formRecordAgainRequested = false
 
     var body: some View {
         VStack(spacing: 0) {
             timerBar
-            if !todayViewModel.exercises.isEmpty {
+            if todayViewModel.exercises.isEmpty {
+                emptyWorkoutState
+            } else {
                 cardsPager
                 pageIndicator
             }
@@ -47,9 +54,17 @@ struct ActiveWorkoutView: View {
                 prToast(pr: pr)
             }
         }
+        .onChange(of: defaultRestSeconds) { old, _ in
+            todayViewModel.reconcileRestDefault(previous: old)
+        }
         .onAppear {
-            viewModel.startTimer(from: todayViewModel.activeWorkoutElapsed)
-            if todayViewModel.timerPaused { viewModel.pauseTimer() }
+            todayViewModel.reconcileRestDefault()
+            viewModel.startTimer(from: todayViewModel.resolvedElapsed, paused: todayViewModel.timerPaused)
+            todayViewModel.liveClock = { [weak viewModel] in
+                guard let viewModel else { return nil }
+                viewModel.syncElapsed()
+                return (viewModel.elapsedSeconds, viewModel.isPaused)
+            }
             viewModel.previousHints = todayViewModel.previousHints
             // After a relaunch the display copy is empty; seed it from the
             // authoritative (persisted) copy so logged sets stay logged.
@@ -66,11 +81,14 @@ struct ActiveWorkoutView: View {
             }
             LiveActivityController.shared.attach(active: viewModel, today: todayViewModel)
             if formViewModel == nil {
-                formViewModel = FormAnalysisViewModel(
-                    poseService: PoseEstimationService(),
-                    repCounter: RepCounterService(),
-                    feedbackService: FormFeedbackService(aiServiceManager: environment.aiServiceManager)
-                )
+                formViewModel = makeFormViewModel()
+            }
+            // A Freestyle workout opens the exercise picker straight away.
+            if todayViewModel.opensExercisePickerOnStart {
+                todayViewModel.opensExercisePickerOnStart = false
+                if todayViewModel.exercises.isEmpty {
+                    DispatchQueue.main.async { showAddExercise = true }
+                }
             }
         }
         .onDisappear {
@@ -101,7 +119,7 @@ struct ActiveWorkoutView: View {
             CoachChatView(viewModel: chatViewModel, todayViewModel: todayViewModel)
         }
         .sheet(item: $formDemoExercise) { exercise in
-            ExerciseFormDemoView(exerciseName: exercise.name) {
+            FormGuideView(exerciseName: exercise.name) {
                 formDemoExercise = nil
                 formCaptureExercise = exercise
             }
@@ -109,16 +127,35 @@ struct ActiveWorkoutView: View {
         .fullScreenCover(item: $formCaptureExercise) { exercise in
             if let vm = formViewModel {
                 FormCaptureView(viewModel: vm, exerciseName: exercise.name) { result in
+                    formResultExercise = exercise
                     formFeedbackResult = result
                 }
             }
         }
-        .sheet(item: $formFeedbackResult) { result in
-            FormFeedbackView(result: result)
+        .sheet(item: $formFeedbackResult, onDismiss: {
+            formViewModel?.discardResult()
+            // Reopen the recorder only once the results sheet is fully gone, skipping the demo.
+            if formRecordAgainRequested {
+                formRecordAgainRequested = false
+                formCaptureExercise = formResultExercise
+            }
+        }) { result in
+            FormResultsView(
+                result: result,
+                feedbackProvider: FormFeedbackService(aiServiceManager: environment.aiServiceManager),
+                onRecordAgain: {
+                    formRecordAgainRequested = true
+                    formFeedbackResult = nil
+                },
+                onClose: { formFeedbackResult = nil }
+            )
         }
         .sheet(isPresented: $showAddExercise) {
-            ExerciseCatalogPicker(loadYourExercises: { todayViewModel.historyExercises() }) { name, muscleGroup in
-                addExercise(name: name, muscleGroup: muscleGroup)
+            ExerciseCatalogPicker(
+                loadYourExercises: { todayViewModel.historyExercises() },
+                loadRecent: { todayViewModel.recentLoggedExercises() }
+            ) { picks in
+                addExercises(picks)
             }
             .keyboardDoneButton()
         }
@@ -450,7 +487,7 @@ struct ActiveWorkoutView: View {
             let role = target.resolvedRole
             let parts = [
                 role == .straight ? nil : role.label,
-                showRest ? (target.restSeconds ?? exercise.restSeconds).flatMap { $0 > 0 ? "rest \(CoachRestFormat.short($0))" : nil } : nil
+                showRest ? (target.restSeconds ?? Self.restSeconds(for: exercise)).flatMap { $0 > 0 ? "rest \(CoachRestFormat.short($0))" : nil } : nil
             ].compactMap { $0 }
             if !parts.isEmpty {
                 Text(parts.joined(separator: " · "))
@@ -728,6 +765,18 @@ struct ActiveWorkoutView: View {
         todayViewModel.exercises.firstIndex { $0.id == exercise.id } ?? 0
     }
 
+    private func makeFormViewModel() -> FormAnalysisViewModel {
+        #if DEBUG
+        if UITestMode.isActive {
+            // The simulator has no camera: a synthetic figure doing lateral raises stands in for it.
+            let model = FormAnalysisViewModel(source: SyntheticPoseSource())
+            model.analysisNameOverride = SyntheticPoseSource.syntheticExerciseName
+            return model
+        }
+        #endif
+        return FormAnalysisViewModel(source: CameraPoseSource())
+    }
+
     private func clampPageIndex() {
         let count = SupersetGroup.pages(from: todayViewModel.exercises).count
         currentExerciseIndex = min(currentExerciseIndex, max(0, count - 1))
@@ -799,25 +848,64 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Add / Reorder
 
-    /// Adds an exercise right after the page being shown and jumps to it.
-    private func addExercise(name: String, muscleGroup: String) {
+    /// Adds the ticked exercises in order, each right after the previous one (the first after the page being
+    /// shown), prefilled from its last logged session, and jumps to the first of them.
+    private func addExercises(_ picks: [PickedExercise]) {
+        guard !picks.isEmpty else { return }
         let pagesBefore = SupersetGroup.pages(from: todayViewModel.exercises)
-        let after = min(currentExerciseIndex, max(0, pagesBefore.count - 1))
-        guard let newId = todayViewModel.addExerciseManually(
-            name: name,
-            muscleGroup: muscleGroup,
-            afterPageIndex: pagesBefore.isEmpty ? nil : after
-        ) else { return }
-        if let newExercise = todayViewModel.exercises.first(where: { $0.id == newId }) {
-            viewModel.prefillTargets(for: newExercise)
-            if let hints = todayViewModel.previousHints[newId] {
-                viewModel.applyPreviousSession(hints, to: newExercise)
+        var after: Int? = pagesBefore.isEmpty ? nil : min(currentExerciseIndex, max(0, pagesBefore.count - 1))
+        var firstNewId: UUID?
+        for pick in picks {
+            guard let newId = todayViewModel.addExerciseManually(
+                name: pick.name,
+                muscleGroup: pick.muscleGroup,
+                afterPageIndex: after
+            ) else { continue }
+            if let newExercise = todayViewModel.exercises.first(where: { $0.id == newId }) {
+                viewModel.prefillTargets(for: newExercise)
+                if let hints = todayViewModel.previousHints[newId] {
+                    viewModel.applyPreviousSession(hints, to: newExercise)
+                }
             }
+            firstNewId = firstNewId ?? newId
+            after = SupersetGroup.pages(from: todayViewModel.exercises)
+                .firstIndex { $0.exerciseIds.contains(newId) }
         }
         let pages = SupersetGroup.pages(from: todayViewModel.exercises)
-        currentExerciseIndex = pages.firstIndex { $0.exerciseIds.contains(newId) }
-            ?? max(0, pages.count - 1)
+        if let firstNewId {
+            currentExerciseIndex = pages.firstIndex { $0.exerciseIds.contains(firstNewId) }
+                ?? max(0, pages.count - 1)
+        }
         persistSession()
+    }
+
+    /// Shown while a Freestyle workout has no exercises yet.
+    private var emptyWorkoutState: some View {
+        VStack(spacing: 14) {
+            Spacer()
+            Image(systemName: "figure.strengthtraining.traditional")
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(AppTheme.accent)
+            Text("No exercises yet")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("Pick what you are training. Each one starts from your last session.")
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Button { showAddExercise = true } label: {
+                Text("Add exercises")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AppTheme.onAccent)
+                    .padding(.horizontal, 36)
+                    .frame(height: 56)
+                    .background(AppTheme.accent, in: Capsule())
+            }
+            .accessibilityIdentifier("emptyWorkoutAddButton")
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// Applies the reorder sheet's result, staying on the exercise that was showing.

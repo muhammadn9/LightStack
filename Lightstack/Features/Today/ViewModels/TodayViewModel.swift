@@ -135,7 +135,20 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
     let prRepository: PRRepository
     let sessionPersistence: WorkoutSessionPersistence
     private(set) var userId: UUID?
-    var activeWorkoutElapsed: Int = 0
+    /// Elapsed seconds as of `activeWorkoutElapsedStamp`. Read through `resolvedElapsed`, which
+    /// adds the wall-clock time since, so the clock never loses time while the screen is away.
+    var activeWorkoutElapsed: Int = 0 {
+        didSet { activeWorkoutElapsedStamp = Date() }
+    }
+    private(set) var activeWorkoutElapsedStamp: Date?
+    /// Live clock of the on-screen workout (elapsed seconds, paused), when one is attached.
+    /// Lets every save write the true elapsed time instead of a stale snapshot.
+    var liveClock: (() -> (seconds: Int, paused: Bool)?)?
+
+    /// Elapsed time right now: the snapshot plus time since it was taken, unless paused.
+    var resolvedElapsed: Int {
+        Self.restoredElapsed(saved: activeWorkoutElapsed, savedAt: activeWorkoutElapsedStamp, paused: timerPaused)
+    }
 
     init(
         sessionService: WorkoutSessionService,
@@ -196,13 +209,17 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             return
         }
 
+        if let live = liveClock?() {
+            timerPaused = live.paused
+            activeWorkoutElapsed = live.seconds
+        }
         sessionPersistence.saveSession(
             workout: workout,
             exercises: exercises,
             loggedSets: loggedSets,
             phase: phase,
             userNote: nil,
-            elapsedSeconds: activeWorkoutElapsed,
+            elapsedSeconds: resolvedElapsed,
             previousHints: previousHints,
             setTargets: setTargets,
             pendingSets: pendingSetsSnapshot,
@@ -436,6 +453,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         sessionService.recordStartedPlan(exercises: exercises, setTargets: setTargets)
         activeWorkoutElapsed = 0
         phase = .active
+        saveSessionState()
     }
 
     /// Load a previous workout's exercises as a new workout plan, skipping AI generation.
@@ -454,7 +472,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: ex.targetSets,
                 targetReps: ex.targetReps,
                 targetRir: ex.targetRir,
-                restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
+                restSeconds: RestPreference.storedSeconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
                 coachNote: ex.coachNote,
                 supersetGroupId: groupIds[index],
                 isPerArm: ex.isPerArm
@@ -484,50 +502,46 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         }
     }
 
-    /// Start a new workout from the last session of this type, skipping AI.
-    /// Last session's numbers become grey hints on the set rows.
-    func repeatLastSession(ofType type: String) {
-        guard let userId = userId, let source = lastSession(ofType: type) else { return }
-        let newWorkout = Workout.create(userId: userId, workoutType: source.workoutType, energyLevel: nil, timeAvailableMinutes: nil)
-        let sourceExercises = workoutRepository.fetchExercises(workoutId: source.id)
-            .sorted { $0.orderIndex < $1.orderIndex }
+    /// The previous session of a workout type, for the "Last Push: Thu, Nov 12 · 5 exercises" line on setup.
+    struct LastSessionInfo: Equatable {
+        let date: Date
+        let exerciseCount: Int
+    }
 
-        let groupIds = SupersetGroup.freshGroupIds(copying: sourceExercises)
-        var hints: [UUID: [PreviousSetHint]] = [:]
-        var newExercises: [Exercise] = []
-        for (index, ex) in sourceExercises.enumerated() {
-            let sets = workoutRepository.fetchSets(exerciseId: ex.id)
-                .sorted { $0.setNumber < $1.setNumber }
-            let first = sets.first
-            let coachNote: String? = first.map { set in
-                set.weightLbs == 0 ? "Target: BW" : "Target: \(String(format: "%g", set.weightLbs)) lbs"
-            }
-            let newExercise = Exercise.create(
-                workoutId: newWorkout.id,
-                name: ex.name,
-                muscleGroup: ex.muscleGroup,
-                orderIndex: index,
-                targetSets: sets.isEmpty ? ex.targetSets : sets.count,
-                targetReps: first.map { String($0.reps) } ?? ex.targetReps,
-                targetRir: ex.targetRir,
-                restSeconds: RestPreference.seconds(forMuscleGroup: ex.muscleGroup, existing: ex.restSeconds),
-                coachNote: coachNote,
-                supersetGroupId: groupIds[index],
-                isPerArm: ex.isPerArm
-            )
-            if newExercise.trackingType == .strength, !sets.isEmpty {
-                hints[newExercise.id] = sets.map {
-                    PreviousSetHint(weightLbs: $0.weightLbs, reps: $0.reps, rir: $0.rir)
-                }
-            }
-            newExercises.append(newExercise)
-        }
+    func lastSessionInfo(ofType type: String) -> LastSessionInfo? {
+        guard let source = lastSession(ofType: type) else { return nil }
+        let count = workoutRepository.fetchExercises(workoutId: source.id).filter { exercise in
+            !workoutRepository.fetchSets(exerciseId: exercise.id).isEmpty
+        }.count
+        return LastSessionInfo(date: source.date, exerciseCount: count)
+    }
 
-        workoutRepository.createWorkout(newWorkout)
-        sessionService.startSession(workout: newWorkout, exercises: newExercises)
-        self.exercises = newExercises
-        self.previousHints = hints
-        phase = .confirmation
+    /// Name of the workout started by "Freestyle".
+    static let freestyleName = "Freestyle"
+
+    /// Set when a Freestyle workout starts so the active workout screen opens the exercise picker straight away.
+    var opensExercisePickerOnStart = false
+
+    /// Starts a live workout with no exercises and no AI plan: the clock runs and the exercise picker opens.
+    func startFreestyle() {
+        guard let userId else { return }
+        let workout = Workout.create(userId: userId, workoutType: Self.freestyleName, energyLevel: nil, timeAvailableMinutes: nil)
+        workoutRepository.createWorkout(workout)
+        sessionService.startSession(workout: workout, exercises: [])
+        exercises = []
+        loggedSets = [:]
+        previousHints = [:]
+        setTargets = [:]
+        evidence = [:]
+        coachReview = nil
+        pendingSetsSnapshot = [:]
+        timerPaused = false
+        aiProgressionNote = nil
+        errorMessage = nil
+        activeWorkoutElapsed = 0
+        opensExercisePickerOnStart = true
+        phase = .active
+        saveSessionState()
     }
 
     func sessionServiceDidReceiveProgressionNote(_ service: WorkoutSessionService, note: String) {
@@ -579,7 +593,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                 targetSets: targetSets,
                 targetReps: targetReps,
                 targetRir: targetRir,
-                restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
+                restSeconds: restSeconds,
                 coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
                 isPerArm: canonical.isPerArm ? true : nil
             )
@@ -660,7 +674,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
                     targetSets: targetSets,
                     targetReps: targetReps,
                     targetRir: targetRir,
-                    restSeconds: restSeconds ?? RestPreference.seconds(forMuscleGroup: muscleGroup),
+                    restSeconds: restSeconds,
                     coachNote: Self.coachNote(nil, weight: targetWeight, note: note),
                     supersetGroupId: groupId,
                     isPerArm: canonical.isPerArm ? true : nil
@@ -739,6 +753,27 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return joined.isEmpty ? nil : joined
     }
 
+    // MARK: - Rest default
+
+    /// Brings exercises already in the running workout in line with Settings > Default Rest Timer.
+    /// Exercises that still carry the PREVIOUS default (stamped when they were created, or restored from a
+    /// session saved before defaults stopped being stamped) and have no per-set rest prescribed drop it, so they
+    /// follow the live default from now on. Anything the plan, coach, engine or chat prescribed explicitly
+    /// (a different value, or per-set rests) is left alone. `previous` is the old value when the caller knows it;
+    /// otherwise the last value this was reconciled against is used.
+    func reconcileRestDefault(previous: Int? = nil, defaults: UserDefaults = .standard) {
+        let current = RestPreference.defaultSeconds(in: defaults)
+        let last = previous ?? (defaults.object(forKey: RestPreference.lastAppliedKey) as? Int) ?? current
+        defaults.set(current, forKey: RestPreference.lastAppliedKey)
+        guard last != current else { return }
+        let released = RestPreference.releasingStampedRest(exercises, stamped: last, setTargets: setTargets)
+        guard !released.isEmpty else { return }
+        for exercise in released {
+            if let index = exercises.firstIndex(where: { $0.id == exercise.id }) { exercises[index] = exercise }
+        }
+        saveSessionState()
+    }
+
     // MARK: - Manual Exercise Management
 
     /// Adds an exercise. With `afterPageIndex` it goes right after that page (after the
@@ -754,7 +789,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             targetSets: 3,
             targetReps: "8-12",
             targetRir: "2",
-            restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup),
+            restSeconds: RestPreference.storedSeconds(forMuscleGroup: muscleGroup),
             coachNote: nil
         )
         // Start from the most recent logged session of this lift, whatever workout it was in.
@@ -831,7 +866,7 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
             targetSets: old.targetSets,
             targetReps: old.targetReps,
             targetRir: old.targetRir,
-            restSeconds: RestPreference.seconds(forMuscleGroup: muscleGroup),
+            restSeconds: RestPreference.storedSeconds(forMuscleGroup: muscleGroup),
             coachNote: nil,
             supersetGroupId: old.supersetGroupId
         )
@@ -873,13 +908,31 @@ final class TodayViewModel: ObservableObject, WorkoutSessionServiceDelegate {
         return workoutRepository.fetchDistinctExerciseNames(userId: userId)
     }
 
+    /// The last few distinct lifts the athlete actually logged (at least one set), most recent first. The workout
+    /// in progress is left out: its own exercises are not "recent".
+    func recentLoggedExercises(limit: Int = ExerciseCatalogPicker.recentLimit) -> [HistoryExercise] {
+        guard let userId else { return [] }
+        let currentId = sessionService.currentWorkoutId
+        var rows: [(name: String, muscleGroup: String)] = []
+        for workout in workoutRepository.fetchRecentWorkouts(userId: userId, limit: 40)
+            .filter({ $0.id != currentId }).sorted(by: { $0.date > $1.date }) {
+            for exercise in workoutRepository.fetchExercises(workoutId: workout.id).sorted(by: { $0.orderIndex < $1.orderIndex })
+            where !workoutRepository.fetchSets(exerciseId: exercise.id).isEmpty {
+                rows.append((exercise.name, exercise.muscleGroup))
+            }
+            if HistoryExercise.distinct(rows).count >= limit { break }
+        }
+        return Array(HistoryExercise.distinct(rows).prefix(limit))
+    }
+
     /// Past workout names (not in `splitDays`) that have a repeatable session, most recent first.
     func historyWorkoutNames(excluding splitDays: [String]) -> [String] {
         guard let userId else { return [] }
         let names = workoutRepository.fetchRecentWorkouts(userId: userId, limit: 200)
             .sorted { $0.date > $1.date }
             .map(\.workoutType)
-        return HistoryWorkoutNames.distinct(names, excluding: splitDays)
+        // Freestyle is a way to start, not a split: it never becomes a chip.
+        return HistoryWorkoutNames.distinct(names, excluding: splitDays + [Self.freestyleName])
             .filter { lastSession(ofType: $0) != nil }
     }
 

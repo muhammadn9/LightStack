@@ -1,19 +1,43 @@
 import SwiftUI
 import Charts
 
-/// Progress tab: streak and consistency, lift trends, and equipment balance.
+/// Progress tab: Overview (streak, consistency, top lift trends, equipment balance) and
+/// Lifts (every lift ever logged, with a detail page per lift).
 struct ProgressTabView: View {
     @EnvironmentObject var environment: AppEnvironment
     @State private var snapshot = ProgressSnapshot()
+    @State private var lifts: [LiftSummary] = []
     @State private var loaded = false
-    @State private var section: Section = .overview
+    /// The last chosen segment is remembered.
+    @AppStorage("progressSegment") private var sectionRaw = Section.overview.rawValue
 
     enum Section: String, CaseIterable, Identifiable {
-        case overview = "Overview", lifts = "Lifts", equipment = "Equipment"
+        case overview, lifts
         var id: String { rawValue }
+        var title: String { self == .overview ? "Overview" : "Lifts" }
     }
 
+    private var section: Section { Section(rawValue: sectionRaw) ?? .overview }
+
     var body: some View {
+        NavigationStack {
+            content
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(for: String.self) { key in
+                    if let lift = lifts.first(where: { $0.key == key }) {
+                        LiftDetailView(lift: lift, refresh: reload)
+                    } else {
+                        Text("This lift has no logged sets any more.")
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+                .navigationDestination(for: LiftSessionRoute.self) { route in
+                    LiftSessionDestination(workoutId: route.workoutId)
+                }
+        }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(spacing: 18) {
                 HStack {
@@ -30,8 +54,7 @@ struct ProgressTabView: View {
                 } else {
                     switch section {
                     case .overview: overview
-                    case .lifts: lifts
-                    case .equipment: equipment
+                    case .lifts: LiftsListView(lifts: lifts)
                     }
                 }
             }
@@ -47,7 +70,9 @@ struct ProgressTabView: View {
 
     private func reload() {
         guard let userId = environment.authService.currentUser()?.userId else { return }
-        snapshot = ProgressStatsService(localStorage: environment.localStorageService).snapshot(userId: userId)
+        let data = ProgressStatsService(localStorage: environment.localStorageService).loadProgress(userId: userId)
+        snapshot = data.snapshot
+        lifts = data.lifts
         loaded = true
     }
 
@@ -56,8 +81,8 @@ struct ProgressTabView: View {
     private var segmented: some View {
         HStack(spacing: 0) {
             ForEach(Section.allCases) { item in
-                Button { withAnimation(.easeOut(duration: 0.15)) { section = item } } label: {
-                    Text(item.rawValue)
+                Button { select(item) } label: {
+                    Text(item.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(section == item ? ProgressStyle.onAccent : AppTheme.textSecondary)
                         .frame(maxWidth: .infinity)
@@ -71,6 +96,10 @@ struct ProgressTabView: View {
         }
         .padding(3)
         .background(AppTheme.surface, in: Capsule())
+    }
+
+    private func select(_ item: Section) {
+        withAnimation(.easeOut(duration: 0.15)) { sectionRaw = item.rawValue }
     }
 
     private var emptyState: some View {
@@ -130,6 +159,8 @@ struct ProgressTabView: View {
             }
             trends
             monthCompare
+            EquipmentWeekCard(usage: snapshot.equipmentThisWeek)
+            equipmentWeeks
         }
     }
 
@@ -143,10 +174,29 @@ struct ProgressTabView: View {
                 }
                 ForEach(Array(snapshot.topLifts.enumerated()), id: \.element.id) { index, lift in
                     if index > 0 { Divider().overlay(AppTheme.border) }
-                    LiftTrendRow(lift: lift, weekStarts: snapshot.liftWeekStarts, expanded: true)
+                    LiftTrendRow(lift: lift, weekStarts: snapshot.liftWeekStarts, expanded: true,
+                                 detailKey: lift.key)
+                }
+                if !lifts.isEmpty {
+                    Divider().overlay(AppTheme.border)
+                    Button { select(.lifts) } label: {
+                        HStack {
+                            Text("See all lifts")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text("\(lifts.count)").font(.subheadline)
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("progress.seeAllLifts")
                 }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("progress.trends")
     }
 
@@ -200,40 +250,18 @@ struct ProgressTabView: View {
         }
     }
 
-    // MARK: - Lifts
-
-    private var lifts: some View {
-        ProgressCard {
-            VStack(alignment: .leading, spacing: 14) {
-                sectionTitle("Top lifts", "est. 1RM, last 8 weeks")
-                if snapshot.lifts.isEmpty {
-                    Text("Log sets with weight and reps to see your lifts.")
-                        .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
-                }
-                ForEach(Array(snapshot.lifts.enumerated()), id: \.element.id) { index, lift in
-                    if index > 0 { Divider().overlay(AppTheme.border) }
-                    LiftTrendRow(lift: lift, weekStarts: snapshot.liftWeekStarts)
-                }
-            }
-        }
-        .accessibilityIdentifier("progress.liftsList")
-    }
-
     // MARK: - Equipment
 
-    private var equipment: some View {
-        VStack(spacing: 18) {
-            EquipmentWeekCard(usage: snapshot.equipmentThisWeek)
-            ProgressCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    sectionTitle("Sets by equipment", "last 4 weeks")
-                    ForEach(EquipmentKind.allCases) { kind in
-                        equipmentRow(kind)
-                    }
+    private var equipmentWeeks: some View {
+        ProgressCard {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionTitle("Sets by equipment", "last 4 weeks")
+                ForEach(EquipmentKind.allCases) { kind in
+                    equipmentRow(kind)
                 }
             }
-            .accessibilityIdentifier("progress.equipmentWeeks")
         }
+        .accessibilityIdentifier("progress.equipmentWeeks")
     }
 
     private func equipmentRow(_ kind: EquipmentKind) -> some View {

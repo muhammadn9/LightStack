@@ -17,11 +17,11 @@ final class RestoreFreshInstallTests: LightstackUITestCase {
         let restoring = app.descendants(matching: .any)["restoreProgressView"]
         waitFor(restoring, "Restore screen never appeared", timeout: 20)
         shot("01-restoring-your-history")
-        XCTAssertFalse(app.staticTexts["Get Started"].exists, "Onboarding must not show before the cloud is checked")
+        XCTAssertFalse(app.descendants(matching: .any)["onboarding.progress"].exists, "Onboarding must not show before the cloud is checked")
 
         // Lands on the app, not on onboarding.
         waitFor(app.tabBars.buttons["Today"], "Did not land on the main tabs", timeout: 40)
-        XCTAssertFalse(app.staticTexts["Get Started"].exists, "A restored profile must skip onboarding")
+        XCTAssertFalse(app.descendants(matching: .any)["onboarding.progress"].exists, "A restored profile must skip onboarding")
         shot("02-today-after-restore")
 
         openTab("History")

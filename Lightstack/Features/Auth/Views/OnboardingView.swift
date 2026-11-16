@@ -1,9 +1,9 @@
 import SwiftUI
 import os
 
-/// Three-step onboarding flow with purple radiant dark theme:
+/// Three-step first-run setup, every step skippable:
 /// 1. Profile stats (age, weight, height, training age, goals)
-/// 2. Split day setup with preset suggestions
+/// 2. Split day setup with one-tap presets or your own days
 /// 3. Equipment picker
 struct OnboardingView: View {
     private let logger = Logger(subsystem: "org.lightstack.app", category: "OnboardingView")
@@ -23,6 +23,7 @@ struct OnboardingView: View {
     // Step 2: Split Days
     @State private var splitDays: [String] = []
     @State private var newDayLabel = ""
+    @State private var isCustomSplit = false
 
     // Step 3: Equipment
     @State private var selectedEquipment: [String: Bool] = [:]
@@ -37,43 +38,147 @@ struct OnboardingView: View {
         "Improve Endurance", "Stay Healthy"
     ]
 
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                AppTheme.backgroundGradient.ignoresSafeArea()
+    private let splitPresets: [SplitPreset] = [
+        SplitPreset(id: "ppl", name: "Push / Pull / Legs", days: ["Push", "Pull", "Legs"]),
+        SplitPreset(id: "upperLower", name: "Upper / Lower", days: ["Upper", "Lower"]),
+        SplitPreset(id: "bodyPart", name: "Body-part split",
+                    days: ["Chest", "Back", "Shoulders", "Arms", "Legs"]),
+        SplitPreset(id: "fullBody", name: "Full body", days: ["Full Body A", "Full Body B"])
+    ]
 
-                VStack {
-                    stepIndicator
-                    TabView(selection: $currentStep) {
-                        profileStepView.tag(0)
-                        splitDayStepView.tag(1)
-                        equipmentStepView.tag(2)
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.easeInOut, value: currentStep)
-                    navigationButtons
+    /// Used when the split step is skipped or left empty.
+    private let defaultSplitDays = ["Push", "Pull", "Legs"]
+
+    private struct SplitPreset: Identifiable {
+        let id: String
+        let name: String
+        let days: [String]
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            topBar
+            Group {
+                switch currentStep {
+                case 0: profileStepView
+                case 1: splitDayStepView
+                default: equipmentStepView
                 }
             }
-            .navigationTitle("Get Started")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.opacity)
+            bottomBar
+        }
+        .background(AppTheme.background.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.2), value: currentStep)
+        .onAppear {
+            if displayName.isEmpty, let name = environment.authService.currentUser()?.displayName {
+                displayName = name
+            }
         }
     }
 
-    // MARK: - Step Indicator
+    // MARK: - Top bar
 
-    private var stepIndicator: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<3) { index in
-                Capsule()
-                    .fill(index <= currentStep
-                          ? AppTheme.accentGradient
-                          : LinearGradient(colors: [AppTheme.surfaceElevated], startPoint: .leading, endPoint: .trailing))
-                    .frame(height: 4)
+    private var topBar: some View {
+        HStack {
+            Button("Back") { currentStep -= 1 }
+                .font(.body.weight(.semibold))
+                .foregroundStyle(AppTheme.accent)
+                .frame(minWidth: 60, minHeight: 44, alignment: .leading)
+                .opacity(currentStep > 0 ? 1 : 0)
+                .disabled(currentStep == 0)
+                .accessibilityIdentifier("onboarding.back")
+            Spacer()
+            HStack(spacing: 6) {
+                ForEach(0..<3, id: \.self) { index in
+                    Capsule()
+                        .fill(index <= currentStep ? AppTheme.accent : AppTheme.border)
+                        .frame(width: 28, height: 6)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Step \(currentStep + 1) of 3")
+            .accessibilityIdentifier("onboarding.progress")
+            Spacer()
+            Button("Skip") { skipStep() }
+                .font(.body.weight(.semibold))
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(minWidth: 60, minHeight: 44, alignment: .trailing)
+                .disabled(isFinishing)
+                .accessibilityIdentifier("onboarding.skip")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Bottom bar
+
+    private var bottomBar: some View {
+        VStack(spacing: 8) {
+            if let finishError {
+                Text(finishError)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.destructive)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("onboarding.finishError")
+            }
+            if currentStep < 2 {
+                primaryButton("Next", id: "onboarding.next") { currentStep += 1 }
+            } else {
+                Button {
+                    Task { await completeOnboarding() }
+                } label: {
+                    Group {
+                        if isFinishing {
+                            ProgressView().tint(AppTheme.onAccent)
+                        } else {
+                            Text("Finish")
+                        }
+                    }
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.onAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(AppTheme.accent, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isFinishing)
+                .accessibilityIdentifier("onboarding.finishButton")
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 20)
         .padding(.top, 8)
+        .padding(.bottom, 16)
+    }
+
+    private func primaryButton(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(AppTheme.onAccent)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(AppTheme.accent, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
+    private func skipStep() {
+        if currentStep < 2 {
+            currentStep += 1
+        } else {
+            Task { await completeOnboarding() }
+        }
+    }
+
+    private func stepHeader(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.title.bold()).foregroundStyle(AppTheme.textPrimary)
+            Text(subtitle).font(.body).foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Step 1: Profile
@@ -81,56 +186,45 @@ struct OnboardingView: View {
     private var profileStepView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("About You")
-                    .font(AppTheme.playfair(22, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
+                stepHeader("About you", "Helps the coach start from your numbers. Everything is optional.")
 
-                themedField("Display Name", text: $displayName)
-
-                HStack(spacing: 12) {
-                    labeledField("Age", text: $age, keyboard: .numberPad)
-                    labeledField("Weight (lbs)", text: $weightLbs, keyboard: .decimalPad)
+                card {
+                    field("Name", text: $displayName, keyboard: .default, id: "onboarding.name")
+                    HStack(spacing: 12) {
+                        field("Age", text: $age, keyboard: .numberPad, id: "onboarding.age")
+                        field("Weight (lbs)", text: $weightLbs, keyboard: .decimalPad, id: "onboarding.weight")
+                    }
+                    HStack(spacing: 12) {
+                        field("Height (ft)", text: $heightFeet, keyboard: .numberPad, id: "onboarding.heightFeet")
+                        field("Height (in)", text: $heightInchesPartial, keyboard: .numberPad, id: "onboarding.heightInches")
+                    }
+                    field("Training (months)", text: $trainingAgeMonths, keyboard: .numberPad, id: "onboarding.training")
                 }
 
-                HStack(spacing: 12) {
-                    labeledField("Height (ft)", text: $heightFeet, keyboard: .numberPad)
-                    labeledField("Height (in)", text: $heightInchesPartial, keyboard: .numberPad)
-                    labeledField("Training (months)", text: $trainingAgeMonths, keyboard: .numberPad)
+                Text("Goals").font(.headline).foregroundStyle(AppTheme.textPrimary)
+                FlowLayout(spacing: 8) {
+                    ForEach(goalOptions, id: \.self) { goalChip($0) }
                 }
-
-                Text("Goals")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-                goalSelectionGrid
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
+            .padding(20)
         }
-    }
-
-    private var goalSelectionGrid: some View {
-        FlowLayout(spacing: 8) {
-            ForEach(goalOptions, id: \.self) { goal in
-                goalChip(goal)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func goalChip(_ goal: String) -> some View {
         let isSelected = selectedGoals.contains(goal)
         return Button(action: { toggleGoal(goal) }) {
             Text(goal)
-                .font(AppTheme.caveat(14))
+                .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(isSelected ? AppTheme.accent : AppTheme.surface)
+                .frame(minHeight: 44)
+                .background(isSelected ? AppTheme.accent : AppTheme.surface, in: Capsule())
                 .foregroundStyle(isSelected ? AppTheme.onAccent : AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                        .stroke(isSelected ? Color.clear : AppTheme.border, lineWidth: 1)
-                )
+                .overlay(Capsule().stroke(isSelected ? Color.clear : AppTheme.border, lineWidth: 1))
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("onboarding.goal.\(goal)")
     }
 
     private func toggleGoal(_ goal: String) {
@@ -145,96 +239,109 @@ struct OnboardingView: View {
 
     private var splitDayStepView: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Your Split Days")
-                    .font(AppTheme.playfair(22, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-                Text("Name your training days however you like. These are suggestions to get started.")
-                    .font(AppTheme.caveat(15))
-                    .foregroundStyle(AppTheme.textSecondary)
+            VStack(alignment: .leading, spacing: 16) {
+                stepHeader("How do you split your week?",
+                           "Pick one to start. You can rename or add days any time.")
 
-                presetSuggestions
-                currentSplitDaysList
-                addCustomDayField
-            }
-            .padding(24)
-        }
-    }
+                VStack(spacing: 10) {
+                    ForEach(splitPresets) { preset in
+                        presetCard(preset)
+                    }
+                    makeMyOwnCard
+                }
 
-    private var presetSuggestions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Quick Presets")
-                .font(AppTheme.playfairItalic(16, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
-            presetButton("PPL", days: ["Push", "Pull", "Legs"])
-            presetButton("Bro Split", days: ["Chest", "Back", "Shoulders", "Arms", "Legs"])
-            presetButton("Upper / Lower", days: ["Upper", "Lower"])
-            presetButton("Arnold", days: ["Chest & Back", "Shoulders & Arms", "Legs"])
-        }
-    }
-
-    private func presetButton(_ name: String, days: [String]) -> some View {
-        let isActive = splitDays == days
-        return Button(action: { splitDays = days }) {
-            HStack {
-                Text(name).font(AppTheme.caveat(14, weight: .bold)).foregroundStyle(AppTheme.textPrimary)
-                Spacer()
-                Text(days.joined(separator: ", "))
-                    .font(AppTheme.caveat(11))
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-            .padding(12)
-            .background(isActive ? AppTheme.accent.opacity(0.15) : AppTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isActive ? AppTheme.accent : Color.clear, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var currentSplitDaysList: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !splitDays.isEmpty {
-                Text("Your Days")
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .padding(.top, 8)
-                ForEach(Array(splitDays.enumerated()), id: \.offset) { index, day in
-                    splitDayRow(day, at: index)
+                if isCustomSplit {
+                    customSplitEditor
                 }
             }
+            .padding(20)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
-    private func splitDayRow(_ day: String, at index: Int) -> some View {
-        HStack {
-            Text(day).foregroundStyle(AppTheme.textPrimary)
-            Spacer()
-            Button(action: { splitDays.remove(at: index) }) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(AppTheme.textSecondary)
+    private func presetCard(_ preset: SplitPreset) -> some View {
+        let isActive = !isCustomSplit && splitDays == preset.days
+        return Button {
+            isCustomSplit = false
+            splitDays = preset.days
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(preset.name).font(.headline).foregroundStyle(AppTheme.textPrimary)
+                Text(preset.days.joined(separator: " · "))
+                    .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18)
+                .stroke(isActive ? AppTheme.accent : Color.clear, lineWidth: 2))
         }
-        .padding(10)
-        .background(AppTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("onboarding.preset.\(preset.id)")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 
-    private var addCustomDayField: some View {
-        HStack {
-            TextField("Add custom day (e.g. Heavy Pull)", text: $newDayLabel)
-                .padding(12)
-                .background(AppTheme.surfaceElevated)
-                .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            Button(action: addCustomDay) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(AppTheme.accent)
+    private var makeMyOwnCard: some View {
+        Button {
+            if !isCustomSplit { splitDays = [] }
+            isCustomSplit = true
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Make my own").font(.headline).foregroundStyle(AppTheme.accent)
+                Text("Name your own training days")
+                    .font(.subheadline).foregroundStyle(AppTheme.textSecondary)
             }
-            .disabled(newDayLabel.trimmingCharacters(in: .whitespaces).isEmpty)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18)
+                .stroke(isCustomSplit ? AppTheme.accent : Color.clear, lineWidth: 2))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("onboarding.preset.custom")
+        .accessibilityAddTraits(isCustomSplit ? .isSelected : [])
+    }
+
+    private var customSplitEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !splitDays.isEmpty {
+                Text("Your days").font(.headline).foregroundStyle(AppTheme.textPrimary)
+                ForEach(Array(splitDays.enumerated()), id: \.offset) { index, day in
+                    HStack {
+                        Text(day).font(.body).foregroundStyle(AppTheme.textPrimary)
+                        Spacer()
+                        Button { splitDays.remove(at: index) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(minWidth: 44, minHeight: 44)
+                        }
+                        .accessibilityLabel("Remove \(day)")
+                        .accessibilityIdentifier("onboarding.day.remove.\(index)")
+                    }
+                    .padding(.leading, 16)
+                    .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+                }
+            }
+            HStack(spacing: 8) {
+                TextField("Add a day (e.g. Heavy Pull)", text: $newDayLabel)
+                    .font(.body)
+                    .submitLabel(.done)
+                    .onSubmit(addCustomDay)
+                    .padding(.horizontal, 16)
+                    .frame(height: 50)
+                    .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 14))
+                    .accessibilityIdentifier("onboarding.day.field")
+                Button(action: addCustomDay) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title)
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .disabled(newDayLabel.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityLabel("Add day")
+                .accessibilityIdentifier("onboarding.day.add")
+            }
         }
     }
 
@@ -254,81 +361,7 @@ struct OnboardingView: View {
         )
     }
 
-    // MARK: - Navigation
-
-    private var navigationButtons: some View {
-        VStack(spacing: 8) {
-        if let finishError {
-            Text(finishError)
-                .font(AppTheme.caveat(13))
-                .foregroundStyle(AppTheme.destructive)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-                .accessibilityIdentifier("onboarding.finishError")
-        }
-        HStack {
-            if currentStep > 0 {
-                Button("Back") { currentStep -= 1 }
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 24)
-                    .background(AppTheme.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-            }
-            Spacer()
-            if currentStep < 2 {
-                Button("Next") {
-                    if canProceedToNextStep {
-                        currentStep += 1
-                    }
-                }
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.onAccent)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 24)
-                    .background(canProceedToNextStep ? AppTheme.accentGradient : LinearGradient(colors: [AppTheme.surfaceElevated], startPoint: .leading, endPoint: .trailing))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                    .disabled(!canProceedToNextStep)
-            } else {
-                Button {
-                    Task { await completeOnboarding() }
-                } label: {
-                    if isFinishing {
-                        ProgressView().tint(AppTheme.onAccent)
-                    } else {
-                        Text("Finish")
-                    }
-                }
-                    .font(AppTheme.playfairItalic(16, weight: .bold))
-                    .foregroundStyle(AppTheme.onAccent)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 24)
-                    .background(AppTheme.accentGradient)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                    .disabled(isFinishing)
-                    .accessibilityIdentifier("onboarding.finishButton")
-            }
-        }
-        .padding(.horizontal, 24)
-        }
-        .padding(.bottom, 16)
-    }
-
-    // MARK: - Validation
-
-    private var canProceedToNextStep: Bool {
-        switch currentStep {
-        case 0:
-            // Step 1: Profile - require at least display name
-            return !displayName.trimmingCharacters(in: .whitespaces).isEmpty
-        case 1:
-            // Step 2: Split Days - require at least one split day
-            return !splitDays.isEmpty
-        default:
-            return true
-        }
-    }
+    // MARK: - Finish
 
     private func completeOnboarding() async {
         guard let userId = environment.authService.currentUser()?.userId else { return }
@@ -341,14 +374,14 @@ struct OnboardingView: View {
             weightLbs: Double(weightLbs),
             trainingAgeMonths: Int(trainingAgeMonths),
             primaryGoals: Array(selectedGoals),
-            splitDays: splitDays,
+            splitDays: splitDays.isEmpty ? defaultSplitDays : splitDays,
             avoidExercises: [],
             equipment: selectedEquipment,
             customEquipment: customEquipment.isEmpty ? nil : customEquipment,
             notesToCoach: nil
         )
 
-        logger.debug("Saving profile with split days: \(splitDays)")
+        logger.debug("Saving profile with split days: \(splitDays.isEmpty ? defaultSplitDays : splitDays)")
         isFinishing = true
         finishError = nil
         // Saves the new profile only if the account has none in the cloud; otherwise the
@@ -362,27 +395,24 @@ struct OnboardingView: View {
 
     // MARK: - Helpers
 
-    private func themedField(_ label: String, text: Binding<String>) -> some View {
-        TextField(label, text: text)
-            .padding(14)
-            .background(AppTheme.surfaceElevated)
-            .foregroundStyle(AppTheme.textPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) { content() }
+            .padding(16)
+            .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 18))
     }
 
-    private func labeledField(
-        _ label: String,
-        text: Binding<String>,
-        keyboard: UIKeyboardType
-    ) -> some View {
+    private func field(_ label: String, text: Binding<String>, keyboard: UIKeyboardType,
+                       id: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(AppTheme.caveat(11)).foregroundStyle(AppTheme.textSecondary)
+            Text(label).font(.footnote.weight(.medium)).foregroundStyle(AppTheme.textSecondary)
             TextField(label, text: text)
                 .keyboardType(keyboard)
-                .padding(12)
-                .background(AppTheme.surfaceElevated)
+                .font(.body)
+                .padding(.horizontal, 12)
+                .frame(height: 46)
                 .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .background(AppTheme.background, in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityIdentifier(id)
         }
     }
 }

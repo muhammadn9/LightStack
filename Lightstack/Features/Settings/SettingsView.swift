@@ -8,10 +8,11 @@ struct SettingsView: View {
     @AppStorage(RestPreference.key) private var defaultRestSeconds = 90
     @AppStorage("weightUnit") private var weightUnit = "lbs"
     @AppStorage(LiveActivityController.settingKey) private var liveActivityEnabled = true
+    @AppStorage(CoachPreferences.shareNutritionSummaryKey) private var shareNutrition = true
+    @AppStorage(CoachPreferences.sharePreWorkoutMealsKey) private var shareMeals = true
     @State private var unsyncedCount = 0
     @State private var showUnsyncedAlert = false
     @State private var showDeleteAccount = false
-    @State private var showPrivacyInfo = false
     @State private var aiConsentGranted = AIConsent.isGranted
 
     // Pushed from Profile's NavigationStack (gear button), so it uses the
@@ -55,6 +56,7 @@ struct SettingsView: View {
                         Text("4 min").tag(240)
                         Text("5 min").tag(300)
                     }
+                    .accessibilityIdentifier("settings.defaultRestPicker")
                     .listRowBackground(AppTheme.surface)
 
                     Picker("Weight Unit", selection: $weightUnit) {
@@ -63,6 +65,8 @@ struct SettingsView: View {
                     }
                     .listRowBackground(AppTheme.surface)
                 }
+
+                CoachNutritionSettingsSection(shareNutrition: $shareNutrition, shareMeals: $shareMeals)
 
                 Section("Backup") {
                     BackupStatusRow()
@@ -86,22 +90,23 @@ struct SettingsView: View {
                     .tint(AppTheme.accent)
                     .accessibilityIdentifier("settings.aiConsentToggle")
                     .listRowBackground(AppTheme.surface)
-
-                    if let url = PrivacyPolicy.url {
-                        Link(destination: url) {
-                            Text("Privacy Policy")
-                        }
-                        .accessibilityIdentifier("settings.privacyPolicy")
-                        .listRowBackground(AppTheme.surface)
-                    } else {
-                        Button("Privacy Policy") { showPrivacyInfo = true }
-                            .accessibilityIdentifier("settings.privacyPolicy")
-                            .listRowBackground(AppTheme.surface)
-                    }
                 } header: {
                     Text("Privacy")
                 } footer: {
                     Text("When on, your workout history, profile stats, notes to the coach, and the meal descriptions and photos you choose to send are shared with Google Gemini through LightStack's server to write coaching and estimate meals. Restaurant meals may be looked up with Google Search. When off, no AI requests are made.")
+                }
+
+                Section("Legal") {
+                    NavigationLink(destination: LegalView(document: .privacy)) {
+                        Text("Privacy Policy")
+                    }
+                    .accessibilityIdentifier("settings.privacy")
+                    .listRowBackground(AppTheme.surface)
+                    NavigationLink(destination: LegalView(document: .terms)) {
+                        Text("Terms of Use")
+                    }
+                    .accessibilityIdentifier("settings.terms")
+                    .listRowBackground(AppTheme.surface)
                 }
 
                 Section("Account") {
@@ -139,9 +144,6 @@ struct SettingsView: View {
                 DeleteAccountSheet()
                     .keyboardDoneButton()
             }
-            .sheet(isPresented: $showPrivacyInfo) {
-                NavigationStack { PrivacyInfoView() }
-            }
             .scrollContentBackground(.hidden)
             .alert("Some changes haven't backed up yet", isPresented: $showUnsyncedAlert) {
                 Button("Sign Out", role: .destructive) { environment.authService.signOut() }
@@ -151,6 +153,15 @@ struct SettingsView: View {
             } message: {
                 Text("\(unsyncedCount) \(unsyncedCount == 1 ? "change is" : "changes are") saved on this iPhone but not yet uploaded. They'll upload next time you sign in on this device.")
             }
+        }
+        .alert("Account problem", isPresented: Binding(
+            get: { environment.authErrorMessage != nil },
+            set: { if !$0 { environment.authErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+                .accessibilityIdentifier("settings.authError.ok")
+        } message: {
+            Text(environment.authErrorMessage ?? "")
         }
         .background(AppTheme.background.ignoresSafeArea())
         .navigationTitle("Settings")
@@ -309,46 +320,6 @@ enum PrivacyPolicy {
         else { return nil }
         return url
     }
-
-    /// Short in-app summary of docs/privacy/DATA_INVENTORY.md.
-    static let summary: [(title: String, detail: String)] = [
-        ("Account", "Email address (or Apple / Google sign-in identity), handled by Supabase Auth."),
-        ("Profile", "Display name, age, height, weight, training experience, goals, equipment, exercises to avoid and notes to the coach."),
-        ("Training", "Workouts, exercises, sets (weight, reps, RIR), personal records, plans, rest days and coach summaries."),
-        ("Nutrition", "Foods, meals, water, daily notes, targets and plans you log."),
-        ("Where it lives", "On your iPhone and in your LightStack account on Supabase. Deleting your account removes both."),
-        ("AI features", "With your permission, your profile stats, goals, notes, recent workouts and chat messages go through LightStack's server to Google Gemini to write coaching. Meal descriptions and meal photos you choose to send for AI meal logging go the same way, and restaurant meals may be looked up with Google Search. Your name and email are not needed for this."),
-        ("Barcode and food search", "Barcodes and search words you type are sent to Open Food Facts."),
-        ("Your choices", "Turn AI features off any time in Settings. Delete your account and all data in Settings, Delete account.")
-    ]
-}
-
-struct PrivacyInfoView: View {
-    var body: some View {
-        List {
-            Section {
-                ForEach(PrivacyPolicy.summary, id: \.title) { item in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title).font(AppTheme.playfairItalic(15, weight: .bold))
-                        Text(item.detail).font(.subheadline).foregroundStyle(AppTheme.textSecondary)
-                    }
-                    .listRowBackground(AppTheme.surface)
-                }
-            } footer: {
-                if let url = PrivacyPolicy.url {
-                    Link("Read the full privacy policy", destination: url)
-                } else {
-                    Text("Policy URL not configured. This summary describes what the app does.")
-                        .accessibilityIdentifier("privacy.urlNotConfigured")
-                }
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(AppTheme.background.ignoresSafeArea())
-        .navigationTitle("Privacy")
-        .navigationBarTitleDisplayMode(.inline)
-        .accessibilityIdentifier("privacy.info")
-    }
 }
 
 /// One-time sheet asking permission to send data to the third-party AI.
@@ -362,22 +333,18 @@ struct AIConsentSheet: View {
                     .font(.system(size: 34))
                     .foregroundStyle(AppTheme.accent)
                 Text("Allow AI features?")
-                    .font(AppTheme.playfairItalic(26, weight: .bold))
+                    .font(.title.bold())
+                    .foregroundStyle(AppTheme.textPrimary)
                 Text("To write your plans and coaching and to estimate meals you log with AI, LightStack sends your workout history, profile stats (age, height, weight, goals, training experience), notes to the coach, and the meal descriptions and photos you choose to send to Google Gemini, through LightStack's server. Restaurant meals may be looked up with Google Search. It is used only to generate those results.")
                     .foregroundStyle(AppTheme.textSecondary)
                 Text("You can change this any time in Settings. Without it, the rest of the app works and no AI requests are made.")
                     .foregroundStyle(AppTheme.textSecondary)
-                if let url = PrivacyPolicy.url {
-                    Link("Privacy policy", destination: url)
-                        .accessibilityIdentifier("aiConsent.privacyLink")
-                } else {
-                    NavigationLink("What data is used") { PrivacyInfoView() }
-                        .accessibilityIdentifier("aiConsent.privacyLink")
-                }
+                NavigationLink("Privacy policy") { LegalView(document: .privacy) }
+                    .accessibilityIdentifier("aiConsent.privacyLink")
                 Spacer()
                 Button(action: { onDecision(true) }) {
                     Text("Allow")
-                        .font(AppTheme.playfairItalic(17, weight: .bold))
+                        .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchSize)
                         .background(AppTheme.accent, in: RoundedRectangle(cornerRadius: 14))
                         .foregroundStyle(AppTheme.onAccent)
@@ -424,7 +391,7 @@ struct DeleteAccountSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Delete your account?")
-                        .font(AppTheme.playfairItalic(26, weight: .bold))
+                        .font(.title.bold())
                     Text("All of your workouts, nutrition and coach data will be permanently deleted from LightStack's cloud and from this iPhone. This can't be undone.")
                         .foregroundStyle(AppTheme.textSecondary)
                         .accessibilityIdentifier("deleteAccount.explanation")
@@ -451,7 +418,7 @@ struct DeleteAccountSheet: View {
                             if phase == .deleting { ProgressView().tint(.white) }
                             Text(buttonTitle)
                         }
-                        .font(AppTheme.playfairItalic(17, weight: .bold))
+                        .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchSize)
                         .background(AppTheme.destructive.opacity(canConfirm ? 1 : 0.35), in: RoundedRectangle(cornerRadius: 14))
                         .foregroundStyle(.white)

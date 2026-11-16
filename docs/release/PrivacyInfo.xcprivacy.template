@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  TEMPLATE. Not part of the Xcode project yet.
+  ADOPTED: the live manifest is Lightstack/Resources/PrivacyInfo.xcprivacy (identical data types). This file is kept as documentation.
+  (Old note: not part of the Xcode project.)
   To adopt: copy to Lightstack/Resources/PrivacyInfo.xcprivacy (exact file name), run `xcodegen generate`
   on the Mac so it is added to the Lightstack target's resources, then Product > Archive > Generate Privacy Report.
   Never hand-edit project.pbxproj. See docs/release/APP_REVIEW_COMPLIANCE.md section 3.

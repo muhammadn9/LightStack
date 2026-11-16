@@ -57,7 +57,7 @@ struct CoachSawView: View {
 
             section("What the app decided") {
                 if s.adjustments.isEmpty {
-                    Text("Nothing was changed: the AI's numbers were used as given.")
+                    Text("Nothing was changed: the draft went through every check as built.")
                         .font(AppTheme.caveat(14))
                         .foregroundStyle(AppTheme.textSecondary)
                 } else {
@@ -81,9 +81,9 @@ struct CoachSawView: View {
                 section("Coach's reasons") {
                     ForEach(Array(reasons.enumerated()), id: \.offset) { _, reason in
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(reason.exercise) · \(reason.label)")
+                            Text(reason.label.isEmpty ? reason.exercise : "\(reason.exercise) · \(reason.label)")
                                 .font(AppTheme.caveat(12, weight: .bold))
-                                .foregroundStyle(reason.railFallback ? AppTheme.warning : AppTheme.accent)
+                                .foregroundStyle(reason.label.hasPrefix("Coach wanted") ? AppTheme.warning : AppTheme.accent)
                             Text(reason.text)
                                 .font(AppTheme.caveat(13))
                                 .foregroundStyle(AppTheme.textPrimary)
@@ -93,6 +93,67 @@ struct CoachSawView: View {
                     }
                 }
                 .accessibilityIdentifier("coachSaw.reasons")
+            }
+
+            if let review = s.review, !review.checks.isEmpty {
+                section("Checks") {
+                    Text(review.checksLine)
+                        .font(AppTheme.caveat(14, weight: .bold))
+                        .foregroundStyle(review.adjustedChecks.isEmpty ? AppTheme.success : AppTheme.warning)
+                        .accessibilityIdentifier("coachSaw.checks.line")
+                    ForEach(review.adjustedChecks, id: \.id) { check in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(check.title)
+                                .font(AppTheme.caveat(12, weight: .bold))
+                                .foregroundStyle(AppTheme.accent)
+                            ForEach(check.adjustments, id: \.self) { line in
+                                Text(line)
+                                    .font(AppTheme.caveat(13))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+                .accessibilityIdentifier("coachSaw.checks")
+            }
+
+            if let scorecard = s.scorecard {
+                section("Is the coach helping?") {
+                    Text(scorecard)
+                        .font(AppTheme.caveat(13))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("coachSaw.scorecard")
+                }
+            }
+
+            if let shared = s.nutritionShared {
+                section("Nutrition sent to the coach") {
+                    if !shared {
+                        Text(Self.nutritionOffText)
+                            .font(AppTheme.caveat(14))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .accessibilityIdentifier("coachSaw.nutritionOff")
+                    } else {
+                        if let fuel = s.fuelBlock { mono(fuel).accessibilityIdentifier("coachSaw.fuel") }
+                        if s.mealsShared == false {
+                            Text(Self.mealsOffText)
+                                .font(AppTheme.caveat(14))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .accessibilityIdentifier("coachSaw.mealsOff")
+                        } else if let meals = s.mealsBlock {
+                            mono(meals).accessibilityIdentifier("coachSaw.meals")
+                        }
+                        if s.fuelBlock == nil, s.mealsBlock == nil, s.mealsShared != false {
+                            Text(Self.noNutritionText)
+                                .font(AppTheme.caveat(14))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .accessibilityIdentifier("coachSaw.nutritionNone")
+                        }
+                    }
+                }
             }
 
             section("Message sent to the coach") {
@@ -133,12 +194,32 @@ struct CoachSawView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Who set the numbers, from the adjustment line the plan builder wrote.
+    static let nutritionOffText = "Nutrition sharing is off"
+    static let mealsOffText = "Pre-workout meal sharing is off"
+    static let noNutritionText = "No nutrition data was available"
+
+    /// The nutrition part of the copied text: the exact blocks sent, or why nothing was.
+    static func nutritionText(_ s: CoachPlanSnapshot) -> [String] {
+        guard let shared = s.nutritionShared else { return [] }
+        var parts = ["", "NUTRITION SENT"]
+        guard shared else { return parts + [nutritionOffText] }
+        if let fuel = s.fuelBlock { parts.append(fuel) }
+        if s.mealsShared == false { parts.append(mealsOffText) } else if let meals = s.mealsBlock { parts.append(meals) }
+        if s.fuelBlock == nil, s.mealsBlock == nil, s.mealsShared != false { parts.append(noNutritionText) }
+        return parts
+    }
+
+    /// What kind of change an adjustment line describes.
     static func kind(of line: String) -> String {
-        if line.contains("safety rail rejected") { return "Safety rail: rule-based" }
-        if line.contains("coach set the targets") { return "Set by the coach" }
-        if line.contains("engine set the targets") { return "Calculated from your log" }
-        if line.contains("guardrail:") { return "AI estimate, adjusted by guardrails" }
+        if line.hasPrefix("Held the coach's") { return "Coach request held" }
+        if line.contains("not a weight this lift has") { return "Weight check" }
+        if line.contains("held at") && line.contains("because") { return "No-progress check" }
+        if line.contains("reps held at") { return "Rep-jump rule" }
+        if line.contains("hard sets is over") || line.contains("working sets is over") { return "Volume check" }
+        if line.contains("to fit") && line.contains("minutes") { return "Time check" }
+        if line.contains("named no evidence") { return "Evidence check" }
+        if line.contains("dropped by the coach") { return "Coach dropped a lift" }
+        if line.contains("swapped in") || line.contains("added with") { return "Calculated from your log" }
         return "Note"
     }
 
@@ -154,6 +235,12 @@ struct CoachSawView: View {
         if let reasons = s.reasons, !reasons.isEmpty {
             parts += ["", "COACH'S REASONS"] + reasons.map { "- \($0.exercise) [\($0.label)]: \($0.text)" }
         }
+        if let review = s.review, !review.checks.isEmpty {
+            parts += ["", "CHECKS", review.checksLine]
+            for check in review.adjustedChecks { parts.append("- \(check.title): " + check.adjustments.joined(separator: "; ")) }
+        }
+        if let scorecard = s.scorecard { parts += ["", "SCORECARD", scorecard] }
+        parts += nutritionText(s)
         parts += ["", "MESSAGE SENT", s.userMessage, "", "RAW REPLY", s.rawResponse ?? "(none)"]
         return parts.joined(separator: "\n")
     }

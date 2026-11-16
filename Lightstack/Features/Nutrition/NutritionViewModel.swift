@@ -12,10 +12,16 @@ final class NutritionViewModel: ObservableObject {
     @Published private(set) var trackers: [NutrientTracker] = []
     @Published private(set) var waterUnit: WaterUnit = WaterUnit.current()
     /// Bumped whenever the saved-food list changes, so Kitchen and the add-food flow refresh.
-    @Published private(set) var foodsVersion = 0
+    @Published internal(set) var foodsVersion = 0
+    /// Bumped whenever a saved meal or recipe changes (or a food they use does), so Kitchen refreshes.
+    @Published internal(set) var kitchenVersion = 0
+    /// Bumped on every `reload()` (any entry, weight or target change), so the Dashboard refreshes.
+    @Published private(set) var dataVersion = 0
     /// True once the setup wizard has been finished (on any device).
     @Published private(set) var isSetupComplete = false
     @Published private(set) var plans: [NutritionPlan] = []
+    /// The "Training day" card for today; nil when hidden (no workout, no targets, turned off or dismissed today).
+    @Published private(set) var trainingNudge: TrainingDayNudge?
 
     /// Branded (Open Food Facts) search state for the UI.
     @Published private(set) var brandedState: BrandedSearchState = .idle
@@ -23,10 +29,11 @@ final class NutritionViewModel: ObservableObject {
     /// AI meal estimate state for the UI.
     @Published private(set) var aiState: AIEstimateState = .idle
 
-    private let repository: NutritionRepository
+    let repository: NutritionRepository
     private let userIdProvider: () -> UUID?
     private let foodDatabase: OpenFoodFactsServicing?
     private let nutritionAI: NutritionAIServicing?
+    private let trainingDay: TrainingDayProvider?
     private var aiTask: Task<Void, Never>?
     private var aiRequestId = UUID()
     private let brandedDebounce: TimeInterval
@@ -35,7 +42,8 @@ final class NutritionViewModel: ObservableObject {
     /// `foodDatabase` nil = no branded lookups (searches report an error state).
     init(repository: NutritionRepository, userIdProvider: @escaping () -> UUID?,
          foodDatabase: OpenFoodFactsServicing? = nil, nutritionAI: NutritionAIServicing? = nil,
-         brandedDebounce: TimeInterval = 0.4) {
+         brandedDebounce: TimeInterval = 0.4, trainingDay: TrainingDayProvider? = nil) {
+        self.trainingDay = trainingDay
         self.repository = repository
         self.userIdProvider = userIdProvider
         self.foodDatabase = foodDatabase
@@ -70,6 +78,7 @@ final class NutritionViewModel: ObservableObject {
     // MARK: - Day
 
     func reload() {
+        dataVersion += 1
         guard let userId else { summary = nil; return }
         repository.ensureDefaultMealSlots(userId: userId)
         summary = repository.daySummary(userId: userId, on: date)
@@ -78,6 +87,23 @@ final class NutritionViewModel: ObservableObject {
         waterUnit = WaterUnit.current()
         isSetupComplete = repository.isSetupComplete(userId: userId)
         plans = repository.plans(userId: userId)
+        refreshTrainingNudge(userId: userId)
+    }
+
+    // MARK: - Training-day card
+
+    private func refreshTrainingNudge(userId: UUID, now: Date = Date()) {
+        guard isToday, TrainingDayPreferences.tipsEnabled(), !TrainingDayPreferences.isDismissed(on: now),
+              let summary, let trainingDay else { trainingNudge = nil; return }
+        trainingNudge = TrainingDayNudge.make(
+            info: trainingDay(userId, now), target: summary.target, entries: summary.entries,
+            goal: repository.goalSettings(userId: userId)?.goal, now: now)
+    }
+
+    /// Hides the card for the rest of today.
+    func dismissTrainingNudge() {
+        TrainingDayPreferences.dismiss(on: Date())
+        trainingNudge = nil
     }
 
     func setDate(_ day: Date) {
@@ -189,9 +215,40 @@ final class NutritionViewModel: ObservableObject {
     }
 
     func logPlate(_ items: [PlateItem], mealSlotId: UUID?) {
-        repository.logFoods(items, mealSlotId: mealSlotId, on: date)
+        if items.contains(where: { $0.measuredLabel != nil }) {
+            for item in items {
+                if let unit = item.unit, let amount = item.amount, item.measuredLabel != nil {
+                    logMeasured(item.food, amount: amount, unit: unit, mealSlotId: mealSlotId, reloadAfter: false)
+                } else {
+                    repository.logFood(item.food, servings: item.servings, on: date, mealSlotId: mealSlotId)
+                }
+            }
+        } else {
+            repository.logFoods(items, mealSlotId: mealSlotId, on: date)
+        }
         foodsVersion += 1
         reload()
+    }
+
+    /// Logs "amount + unit" of a saved food as one entry that reads "150 g": the entry's quantity is the amount
+    /// and its serving label is the unit, with the food's values per unit, so totals stay exact.
+    @discardableResult
+    func logMeasured(_ food: NutritionFood, amount: Double, unit: NutritionUnit, mealSlotId: UUID? = nil,
+                     reloadAfter: Bool = true) -> Bool {
+        guard let servings = ServingUnitConverter.servings(amount: amount, unit: unit, for: food),
+              servings > 0, amount > 0 else { return false }
+        var entry = repository.logFood(food, servings: servings, on: date, mealSlotId: mealSlotId)
+        if unit != .serving {
+            entry.servings = amount
+            entry.servingLabel = unit.displayName
+            entry.perServing = food.nutrients.scaled(by: servings / amount)
+            repository.updateEntry(entry)
+        }
+        if reloadAfter {
+            foodsVersion += 1
+            reload()
+        }
+        return true
     }
 
     func update(_ entry: FoodEntry) {
@@ -333,12 +390,14 @@ final class NutritionViewModel: ObservableObject {
         guard let userId else { return }
         repository.deleteFood(id: food.id, userId: userId)
         foodsVersion += 1
+        kitchenVersion += 1
     }
 
     /// Saves edits to a saved food (name, serving, nutrients, favourite).
     func updateFood(_ food: NutritionFood) {
         repository.saveFood(food)
         foodsVersion += 1
+        kitchenVersion += 1
     }
 
     /// Saves a new food and, when `servings` is given, logs that many servings on the selected day into `mealSlotId`.

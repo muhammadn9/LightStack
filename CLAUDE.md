@@ -50,7 +50,7 @@ When the owner reports a bug, reproduce it with a UI test before fixing it:
 
 1. **Reproduce.** Add a test to `LightstackUITests/` that performs the owner's exact steps, starting from `launchApp()` in `LightstackUITestCase` and using the shared helpers (`openTab`, `tap`, `type`, `shot`). Run it and confirm it **fails**, which proves the bug is reproduced. If it can't be reproduced on the simulator (device-only timing, haptics, camera, iOS-version differences), say so plainly and fall back to the crash log.
 2. **Fix**, then run the test again and confirm it **passes**. Keep the test permanently as a regression guard.
-3. **Before every TestFlight upload**, run the whole UI suite plus the unit tests.
+3. **Before every TestFlight upload**, run (a) the whole unit suite, (b) the UI test classes for whatever the change touched, and (c) the fixed smoke set of cross-feature UI classes: `WorkoutFlowTests`, `WorkoutTimerSideSwitchTests`, `RelaunchTests`, `SupersetTests`, `RestTimerDefaultTests`, `FinishWorkoutTests`. Then start the whole UI suite right after the upload, while the owner tests on device; it must have passed before the change merges to main. Send the owner a push notification when a build is live on TestFlight.
 
 **Test mode** (DEBUG builds only; Release/TestFlight contain none of it):
 - `-uiTesting` signs in a fixed test user, uses a separate seeded store (`Lightstack-UITests.sqlite`), a fake AI provider and a separate session key.
@@ -67,6 +67,12 @@ grep -E "Test Case.*(passed|failed)" /tmp/ui.log
 xcrun xcresulttool export attachments --path /tmp/ui.xcresult --output-path /tmp/ui-shots
 ```
 
+Smoke set (pre-upload, ready to paste; add the touched classes as extra `-only-testing` flags):
+
+```
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test -project Lightstack.xcodeproj -scheme LightstackUITests -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -only-testing:LightstackUITests/WorkoutFlowTests -only-testing:LightstackUITests/WorkoutTimerSideSwitchTests -only-testing:LightstackUITests/RelaunchTests -only-testing:LightstackUITests/SupersetTests -only-testing:LightstackUITests/RestTimerDefaultTests -only-testing:LightstackUITests/FinishWorkoutTests -resultBundlePath /tmp/ui-smoke.xcresult > /tmp/ui-smoke.log 2>&1; echo EXIT=$?
+```
+
 Add `-only-testing:LightstackUITests/<Class>/<test>` to run a single test. Delete any old `/tmp/ui.xcresult` first. Look at the exported screenshots to check visual bugs, and send relevant ones to the owner.
 
 **Crash logs.** When the owner taps "Share" after a crash in TestFlight, fetch the symbolicated log. Run `source scripts/asc-config.sh`, then call `scripts/asc_api.py` on:
@@ -77,4 +83,4 @@ The owner may also attach an `.ips` file directly.
 
 ## TestFlight
 
-`scripts/testflight-release.sh --skip-tests`, after the unit and UI suites have passed. It bumps the build number, archives, uploads, waits for processing and adds the build to the tester group. Afterwards commit the bump: `Info.plist`, `project.yml`, `project.pbxproj`. Build numbers must never repeat. If `main` is behind the latest uploaded build, sync it before releasing.
+`scripts/testflight-release.sh --skip-tests`, after the unit suite, the touched UI classes and the smoke set have passed (the full UI suite runs after the upload, see Bug Workflow step 3). It bumps the build number, archives, uploads, waits for processing and adds the build to the tester group. Afterwards commit the bump: `Info.plist`, `project.yml`, `project.pbxproj`. Build numbers must never repeat. If `main` is behind the latest uploaded build, sync it before releasing.

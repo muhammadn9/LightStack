@@ -159,6 +159,14 @@ class LightstackUITestCase: XCTestCase {
         waitFor(app.staticTexts["Rest Timer Alerts"])
     }
 
+    /// Scrolls the current list until `element` is hittable (Settings rows can sit below the fold).
+    @discardableResult
+    func scrollUntilHittable(_ element: XCUIElement, maxSwipes: Int = 8) -> XCUIElement {
+        var swipes = 0
+        while !(element.exists && element.isHittable) && swipes < maxSwipes { app.swipeUp(); swipes += 1 }
+        return element
+    }
+
     // MARK: - Flows
 
     /// Today tab -> Push -> Generate -> Start. Ends on the first exercise page.

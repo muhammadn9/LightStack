@@ -147,10 +147,27 @@ Deno.test("mealEstimate task: limits, flags, and phase 4's request fits", () => 
   eq(clampThinking("mealEstimate", "gemini-2.5-flash", { thinkingBudget: 1024 }), { thinkingBudget: 1024 });
   eq(clampThinking("mealEstimate", "gemini-3.5-flash", { thinkingLevel: "medium" }), { thinkingLevel: "low" });
   if (m.reserveUsd < 0.035) throw new Error("reserve must cover search grounding");
-  // Only mealEstimate may take images or search.
+  // Only mealEstimate may take search; only mealEstimate and formFeedback may take (one) image.
   for (const [name, spec] of Object.entries(TASKS)) {
-    if (name !== "mealEstimate" && (spec.allowImages !== 0 || spec.allowSearch)) throw new Error(`${name} must not allow media or tools`);
+    if (name !== "mealEstimate" && spec.allowSearch) throw new Error(`${name} must not allow tools`);
+    if (name !== "mealEstimate" && name !== "formFeedback" && spec.allowImages !== 0) throw new Error(`${name} must not allow media`);
   }
+});
+
+Deno.test("formFeedback: one image, no search, fits what the app sends (2500 tokens, low thinking)", () => {
+  const f = TASKS.formFeedback;
+  eq([f.allowImages, f.allowSearch], [1, false]);
+  eq(clampOutputTokens("formFeedback", 2500), 2500);
+  eq(clampOutputTokens("formFeedback", 99999), 3000);
+  eq(clampThinking("formFeedback", "gemini-2.5-flash", { thinkingBudget: 1024 }), { thinkingBudget: 1024 });
+  eq(clampThinking("formFeedback", "gemini-3.5-flash", { thinkingLevel: "medium" }), { thinkingLevel: "low" });
+  // A real contact sheet is ~400 KB of JPEG, ~535k base64 chars: well inside the 3M image body limit.
+  const big = "A".repeat(540_000);
+  eq(checkContentsAndTools("formFeedback", mealContents(img("image/jpeg", big)), undefined).ok, true);
+  eq(checkContentsAndTools("formFeedback", mealContents(img(), img()), undefined).ok, false, "two images");
+  eq(checkContentsAndTools("formFeedback", mealContents(img("image/gif")), undefined).ok, false, "gif");
+  eq(checkContentsAndTools("formFeedback", mealContents(img()), SEARCH).ok, false, "search");
+  eq(checkContentsAndTools("formFeedback", mealContents(), SEARCH).ok, false, "search no image");
 });
 
 Deno.test("mealEstimate accepts one jpeg or png and the search tool", () => {
@@ -184,7 +201,7 @@ Deno.test("mealEstimate rejects 2 images, pdf/video/gif mime, bad base64, extra 
 });
 
 Deno.test("every other task and legacy still reject images and tools", () => {
-  for (const name of ["plan", "chat", "postWorkout", "monthPlan", "formFeedback", "other", "legacy"] as const) {
+  for (const name of ["plan", "chat", "postWorkout", "monthPlan", "other", "legacy"] as const) {
     eq(checkContentsAndTools(name, mealContents(img()), undefined).ok, false, `${name} image`);
     eq(checkContentsAndTools(name, mealContents(img("image/png")), undefined).ok, false, `${name} png`);
     eq(checkContentsAndTools(name, mealContents(), SEARCH).ok, false, `${name} search`);
@@ -192,6 +209,8 @@ Deno.test("every other task and legacy still reject images and tools", () => {
     eq(checkContentsAndTools(name, mealContents(), undefined).ok, true, `${name} text ok`);
   }
   eq(validateContents(mealContents(img()), 0), null);
+  // formFeedback takes an image but still no search.
+  eq(checkContentsAndTools("formFeedback", mealContents(), SEARCH).ok, false);
 });
 
 Deno.test("legacy (no task id) is not meal estimation and cannot ask for it by media", () => {

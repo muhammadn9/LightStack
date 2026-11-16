@@ -11,7 +11,7 @@ struct EmailVerificationView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.backgroundGradient.ignoresSafeArea()
+            AppTheme.background.ignoresSafeArea()
 
             VStack(spacing: 32) {
                 Spacer()
@@ -30,33 +30,32 @@ struct EmailVerificationView: View {
     private var iconSection: some View {
         ZStack {
             Circle()
-                .fill(AppTheme.accent.opacity(0.15))
-                .frame(width: 120, height: 120)
-            Circle()
-                .fill(AppTheme.accent.opacity(0.08))
-                .frame(width: 160, height: 160)
+                .fill(AppTheme.accent.opacity(0.14))
+                .frame(width: 112, height: 112)
             Image(systemName: "envelope.badge")
-                .font(.system(size: 48))
+                .font(.system(size: 46))
                 .foregroundStyle(AppTheme.accent)
         }
+        .accessibilityHidden(true)
     }
 
     private var messageSection: some View {
         VStack(spacing: 12) {
             Text("Check your email")
-                .font(AppTheme.playfair(28, weight: .bold))
+                .font(.title.bold())
                 .foregroundStyle(AppTheme.textPrimary)
 
             if let email = environment.pendingVerificationEmail {
                 Text("We sent a verification link to")
+                    .font(.body)
                     .foregroundStyle(AppTheme.textSecondary)
                 Text(email)
-                    .font(AppTheme.plexMono(14, weight: .medium))
-                    .foregroundStyle(AppTheme.accentSecondary)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
             }
 
             Text("Tap the link in the email, then come back and tap the button below.")
-                .font(AppTheme.caveat(15))
+                .font(.body)
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.top, 4)
@@ -70,7 +69,7 @@ struct EmailVerificationView: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                     Text(errorMessage)
                 }
-                .font(AppTheme.caveat(11))
+                .font(.subheadline)
                 .foregroundStyle(AppTheme.destructive)
             }
 
@@ -82,14 +81,14 @@ struct EmailVerificationView: View {
                     }
                     Text("I've verified my email")
                 }
-                .font(AppTheme.playfairItalic(16, weight: .bold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(AppTheme.onAccent)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(AppTheme.accentGradient)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .frame(height: 54)
+                .background(AppTheme.accent, in: Capsule())
             }
             .disabled(isChecking)
+            .accessibilityIdentifier("verify.check")
 
             Button(action: resendEmail) {
                 HStack {
@@ -98,12 +97,12 @@ struct EmailVerificationView: View {
                          ? "Resend in \(cooldownRemaining)s"
                          : "Resend Email")
                 }
-                .font(AppTheme.caveat(14, weight: .bold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(cooldownRemaining > 0 ? AppTheme.textSecondary : AppTheme.accent)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .frame(height: 54)
+                .background(AppTheme.surface, in: Capsule())
+                .overlay(Capsule().stroke(AppTheme.border, lineWidth: 1))
             }
             .disabled(cooldownRemaining > 0)
         }
@@ -112,8 +111,9 @@ struct EmailVerificationView: View {
     private var differentEmailButton: some View {
         Button(action: useDifferentEmail) {
             Text("Use a different email")
-                .font(AppTheme.caveat(12))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(AppTheme.textSecondary)
+                .frame(minHeight: 44)
         }
         .padding(.bottom, 24)
     }

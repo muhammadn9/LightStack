@@ -101,51 +101,68 @@ final class ActiveWorkoutViewModel: ObservableObject {
 
     var formattedElapsedTime: String { clock.formattedElapsedTime }
 
-    /// Elapsed time is derived from wall-clock dates rather than counted tick by
-    /// tick, so it keeps advancing while the app is in the background (iOS
-    /// suspends Timers there) and catches up on return.
-    private var accumulatedSeconds = 0
-    private var runningSince: Date?
+    /// Single source of truth for the workout clock: a wall-clock anchor plus, while paused, the
+    /// moment the pause began. elapsed = (pausedAt ?? now) - clockAnchor. Nothing here ever counts
+    /// ticks or freezes a value, so the view disappearing, a stalled Timer or a side switch cannot
+    /// lose time, and the value never goes backwards.
+    private(set) var clockAnchor: Date?
+    private(set) var pausedAt: Date?
 
-    func startTimer(from initialSeconds: Int = 0) {
+    /// Elapsed seconds at `now`, derived purely from the anchor.
+    func elapsed(at now: Date = Date()) -> Int {
+        guard let anchor = clockAnchor else { return clock.elapsedSeconds }
+        return max(0, Int(((pausedAt ?? now).timeIntervalSince(anchor))))
+    }
+
+    /// Starts (or re-attaches to) the clock. Only the first call seeds the anchor from
+    /// `initialSeconds`; later calls (the workout view reappearing) keep the running clock.
+    func startTimer(from initialSeconds: Int = 0, paused: Bool = false) {
         timer?.invalidate()
-        accumulatedSeconds = initialSeconds
-        runningSince = Date()
-        clock.elapsedSeconds = initialSeconds
-        clock.isPaused = false
+        if clockAnchor == nil {
+            let now = Date()
+            clockAnchor = now.addingTimeInterval(-TimeInterval(initialSeconds))
+            pausedAt = paused ? now : nil
+            clock.elapsedSeconds = initialSeconds
+        }
+        clock.isPaused = pausedAt != nil
+        syncElapsed()
         scheduleTick()
     }
 
+    /// Stops the redraw tick only. The clock itself keeps its anchor.
     func stopTimer() {
         syncElapsed()
-        accumulatedSeconds = clock.elapsedSeconds
-        runningSince = nil
         timer?.invalidate()
         timer = nil
     }
 
     func pauseTimer() {
+        guard pausedAt == nil else { return }
         syncElapsed()
-        accumulatedSeconds = clock.elapsedSeconds
-        runningSince = nil
+        pausedAt = Date()
         clock.isPaused = true
         timer?.invalidate()
         timer = nil
     }
 
     func resumeTimer() {
-        runningSince = Date()
+        if let paused = pausedAt, let anchor = clockAnchor {
+            // Shift the anchor forward by the paused span so elapsed continues where it stopped.
+            clockAnchor = anchor.addingTimeInterval(Date().timeIntervalSince(paused))
+        }
+        pausedAt = nil
         clock.isPaused = false
         timer?.invalidate()
+        syncElapsed()
         scheduleTick()
     }
 
-    /// Recompute elapsed time from the dates. Call on app foreground return.
+    /// Recompute elapsed time from the anchor. Safe to call any time; never lowers the value.
     func syncElapsed(now: Date = Date()) {
-        guard let since = runningSince else { return }
-        let elapsed = accumulatedSeconds + max(0, Int(now.timeIntervalSince(since)))
-        if clock.elapsedSeconds != elapsed {
-            clock.elapsedSeconds = elapsed
+        guard clockAnchor != nil else { return }
+        let value = elapsed(at: now)
+        if clock.elapsedSeconds != value {
+            clock.elapsedSeconds = value
         }
     }
 

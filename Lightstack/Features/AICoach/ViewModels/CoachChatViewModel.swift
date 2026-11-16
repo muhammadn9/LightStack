@@ -89,7 +89,8 @@ struct ThreadSeed: Equatable {
     struct Item: Equatable {
         var name: String
         var reason: String?
-        var railFallback: Bool
+        /// The decision label: "As planned", "Pushed by coach", ...
+        var label: String
         /// "95x8 warm-up, 135x8 @RIR2, 135x8 @RIR1"
         var targets: String
         /// "3 sets, top 135x8"
@@ -111,7 +112,7 @@ struct ThreadSeed: Equatable {
         for item in items {
             var line = "\n\(item.name): \(item.targets)"
             if let reason = item.reason, !reason.isEmpty {
-                line += "\n  \(item.railFallback ? "Safety rail: " : "")\(reason)"
+                line += "\n  \(item.label.isEmpty ? "" : item.label + ": ")\(reason)"
             }
             lines.append(line)
         }
@@ -145,7 +146,7 @@ struct ThreadSeed: Equatable {
             return Item(
                 name: exercise.name,
                 reason: reason?.text,
-                railFallback: reason?.railFallback ?? false,
+                label: reason?.label ?? "",
                 targets: targetsText(for: exercise, targets: targets),
                 compact: compactText(for: exercise, targets: targets)
             )
@@ -350,6 +351,7 @@ final class CoachChatViewModel: ObservableObject {
         if let summary = context.rollingSummary { info += "\n\nRecent history: \(summary)" }
         if let compact = seed?.compactSummary { info += "\n\nToday's plan: \(compact)" }
         if let goals = goalsLine() { info += "\n\n\(goals)" }
+        if let nutrition = nutritionBlocks(context) { info += "\n\n" + nutrition }
         let contextMessage = ChatMessage(role: .user, content: info)
 
         if let seed {
@@ -392,6 +394,7 @@ final class CoachChatViewModel: ObservableObject {
         let recent = context.recentSessions.prefix(5).map { "\($0.workoutType) \($0.date.formatted(.dateTime.month(.abbreviated).day()))" }
         if !recent.isEmpty { info += "\n\nRecent sessions: " + recent.joined(separator: ", ") }
         if let goals = goalsLine() { info += "\n\n\(goals)" }
+        if let nutrition = nutritionBlocks(context) { info += "\n\n" + nutrition }
         let contextMessage = ChatMessage(role: .user, content: info)
 
         if continuing {
@@ -414,6 +417,12 @@ final class CoachChatViewModel: ObservableObject {
         if messages.count == 1 {
             messages.append(ChatMessage(role: .coach, content: "I can see your current session. What would you like to know about your workout?"))
         }
+    }
+
+    /// The FUEL and PRE-WORKOUT MEALS blocks for the hidden context message; nil when sharing is off or there is no data.
+    private func nutritionBlocks(_ context: CoachContext) -> String? {
+        let blocks = [coachPromptService.fuelBlock(context.fuel), coachPromptService.mealsBlock(context.meals)].compactMap { $0 }
+        return blocks.isEmpty ? nil : blocks.joined(separator: "\n\n")
     }
 
     /// Builds the profile-based system prompt and the list of lift names the athlete could mean.
@@ -673,7 +682,7 @@ final class CoachChatViewModel: ObservableObject {
     }
 
     static func truncated(_ text: String, _ limit: Int) -> String {
-        text.count <= limit ? text : String(text.prefix(max(0, limit - 1))) + "…"
+        InputSanitizer.clipAtWord(text, limit: limit)
     }
 
     // MARK: - Helpers

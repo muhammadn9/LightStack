@@ -18,9 +18,9 @@
 //   kill switch, per-user/global day+month budgets and in-flight concurrency before the
 //   call; ai_settle records the real cost from usageMetadata afterwards. See budget.ts and
 //   docs/ai/AI_COST_CONTROLS.md.
-// - Media and tools are per task (tasks.ts allowImages / allowSearch). Only the `mealEstimate` task may
-//   carry ONE image/jpeg or image/png inline_data part (base64) and tools exactly [{"google_search":{}}];
-//   every other task, and legacy clients, get a 400 for either. With tools present responseMimeType and
+// - Media and tools are per task (tasks.ts allowImages / allowSearch). `mealEstimate` and `formFeedback` may
+//   carry ONE image/jpeg or image/png inline_data part (base64); only `mealEstimate` may send tools exactly
+//   [{"google_search":{}}]. Every other task, and legacy clients, get a 400 for either. With tools present responseMimeType and
 //   responseSchema are dropped (Gemini can reject them together; the app asks for JSON in text and parses it
 //   leniently). Bodies with an image may be up to 3,000,000 chars; everything else stays at 200,000.
 //

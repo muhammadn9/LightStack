@@ -272,7 +272,7 @@ final class NutritionTests: LightstackUITestCase {
         waitFor(any("goals.personalize"))
         shot("52-goals-dark")
         openTab("Dashboard")
-        waitFor(any("dashboard.soon"))
+        waitFor(any("dashboard.macros"))
         shot("53-dashboard-dark")
     }
 

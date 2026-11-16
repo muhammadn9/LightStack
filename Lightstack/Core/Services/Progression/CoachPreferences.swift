@@ -22,18 +22,31 @@ enum CoachPreferences {
     /// Session length used when there is no history and no profile default.
     static let fallbackMinutes = 45
 
-    static let aiSetsWeightsKey = "coach.aiSetsWeights"
+    // MARK: Nutrition sharing
 
-    /// Rollback switch for coach v3. true (default): the AI coach writes every weight, rep, RIR and rest
-    /// and the app only enforces safety rails. false: the v2 path, where the rule-based engine computes
-    /// the numbers and the AI only reviews the structure.
-    static var aiSetsWeights: Bool {
-        get { aiSetsWeights(in: .standard) }
-        set { UserDefaults.standard.set(newValue, forKey: aiSetsWeightsKey) }
+    static let shareNutritionSummaryKey = "coach.shareNutritionSummary"
+    static let sharePreWorkoutMealsKey = "coach.sharePreWorkoutMeals"
+
+    /// Send the nutrition summary (the FUEL block, including yesterday's intake) to the AI coach. On by default.
+    /// Off means no fuel and no meals at all.
+    static var shareNutritionSummary: Bool {
+        get { shareNutritionSummary(in: .standard) }
+        set { UserDefaults.standard.set(newValue, forKey: shareNutritionSummaryKey) }
     }
 
-    static func aiSetsWeights(in defaults: UserDefaults) -> Bool {
-        defaults.object(forKey: aiSetsWeightsKey) as? Bool ?? true
+    static func shareNutritionSummary(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: shareNutritionSummaryKey) as? Bool ?? true
+    }
+
+    /// Send the foods eaten before the workout (meal names and macros) to the AI coach. On by default; only
+    /// matters while `shareNutritionSummary` is on.
+    static var sharePreWorkoutMeals: Bool {
+        get { sharePreWorkoutMeals(in: .standard) }
+        set { UserDefaults.standard.set(newValue, forKey: sharePreWorkoutMealsKey) }
+    }
+
+    static func sharePreWorkoutMeals(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: sharePreWorkoutMealsKey) as? Bool ?? true
     }
 
     /// The explicitly chosen focus, if any.

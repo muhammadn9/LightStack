@@ -38,6 +38,14 @@ final class SignOutWarningTests: LightstackUITestCase {
         XCTAssertFalse(app.alerts[alertTitle].waitForExistence(timeout: 3), "No backup warning expected when nothing is pending")
         shot("signout-no-warning")
     }
+
+    func testSignOutWhileOfflineStillReturnsToWelcome() {
+        launchApp(extraArguments: ["-uiTestingSignOutOffline"])
+        openSettings()
+        tapSignOut()
+        waitFor(app.buttons["auth.email"], "Sign Out must reach the welcome screen even when the server call fails")
+        shot("signout-offline")
+    }
 }
 
 

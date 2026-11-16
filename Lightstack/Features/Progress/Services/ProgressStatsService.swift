@@ -299,26 +299,44 @@ final class ProgressStatsService {
     }
 
     func snapshot(userId: UUID, now: Date = Date(), calendar: Calendar = .current) -> ProgressSnapshot {
+        loadProgress(userId: userId, includeLifts: false, now: now, calendar: calendar).snapshot
+    }
+
+    /// The Progress tab's data from one pass over the log: stats plus every strength lift.
+    func loadProgress(userId: UUID, includeLifts: Bool = true, now: Date = Date(),
+                      calendar: Calendar = .current) -> (snapshot: ProgressSnapshot, lifts: [LiftSummary]) {
         var sets: [LoggedSet] = []
         var workouts: [LoggedWorkout] = []
+        var entries: [LiftEntry] = []
         for cdWorkout in localStorage.fetchRecentLoggedWorkouts(userId: userId, limit: 100000) {
             guard let date = cdWorkout.date, let workoutId = cdWorkout.id else { continue }
-            workouts.append(LoggedWorkout(id: workoutId, date: date,
-                                          name: cdWorkout.workoutType ?? ""))
+            let workoutName = cdWorkout.workoutType ?? ""
+            workouts.append(LoggedWorkout(id: workoutId, date: date, name: workoutName))
             for cdExercise in localStorage.fetchExercises(workoutId: workoutId) {
                 guard let exerciseId = cdExercise.id else { continue }
                 let name = cdExercise.name ?? ""
+                var history: [HistorySet] = []
                 for cdSet in localStorage.fetchSets(exerciseId: exerciseId) {
                     sets.append(LoggedSet(date: date, exerciseName: name,
                                           weightLbs: cdSet.weightLbs, reps: Int(cdSet.reps),
                                           isPerArm: cdExercise.isPerArm))
+                    history.append(HistorySet(cdSet.weightLbs, Int(cdSet.reps),
+                                              rir: cdSet.rir < 0 ? nil : Int(cdSet.rir)))
+                }
+                if includeLifts {
+                    entries.append(LiftEntry(workoutId: workoutId, date: date, workoutName: workoutName,
+                                             exerciseName: name, muscleGroup: cdExercise.muscleGroup ?? "",
+                                             isPerArm: cdExercise.isPerArm, sets: history))
                 }
             }
         }
+        let weekCalendar = ProgressStats.weekCalendar(calendar)
         let restDays = Set(localStorage.fetchRestDays(userId: userId).compactMap(\.date))
-        return ProgressStats.snapshot(
+        let snapshot = ProgressStats.snapshot(
             sets: sets, workouts: workouts, restDays: restDays,
             streak: localStorage.countConsecutiveWorkoutDays(userId: userId),
-            now: now, calendar: ProgressStats.weekCalendar(calendar))
+            now: now, calendar: weekCalendar)
+        let lifts = includeLifts ? LiftStats.summaries(entries, now: now, calendar: calendar) : []
+        return (snapshot, lifts)
     }
 }

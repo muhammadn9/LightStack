@@ -3,7 +3,7 @@ import XCTest
 /// Swap an exercise on the generated-plan preview, and back out of the preview.
 final class PlanPreviewTests: LightstackUITestCase {
 
-    func testBenchPlanShowsOnlyTheSetsTheCoachWrote() throws {
+    func testBenchPlanShowsTheEnginesSetsFromTheLog() throws {
         launchApp(extraArguments: ["-uiTestingEngineHistory"])
         tap(app.buttons["chip.Push"])
         tap(app.buttons["generateButton"])
@@ -15,10 +15,10 @@ final class PlanPreviewTests: LightstackUITestCase {
             labels.append(el.label)
         }
         shot("17-plan-bench-coach-sets")
-        // Coach v3: the coach writes every set, so the app no longer appends a back-off of its own.
-        XCTAssertEqual(labels.count, 3, "Bench should show exactly the coach's 3 sets: \(labels)")
+        // The coach said "as planned": the numbers come from the log, in the app's structure.
+        XCTAssertGreaterThanOrEqual(labels.count, 3, "Bench should show warm-up, Set 1 and a top set at least: \(labels)")
         XCTAssertTrue(labels.first?.hasPrefix("Warm-up") == true, "\(labels)")
-        XCTAssertEqual(labels.filter { $0.hasPrefix("Back-off") }.count, 0, "No forced back-off expected: \(labels)")
+        XCTAssertEqual(labels.filter { $0.hasPrefix("Top set") }.count, 1, "\(labels)")
     }
 
     func testSwapToHistoryBackedExerciseFillsRowsOnStart() throws {

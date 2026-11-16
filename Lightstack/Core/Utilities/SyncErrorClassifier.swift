@@ -28,7 +28,9 @@ enum SyncErrorClassifier {
     /// subquery (`exercises`, `sets`). Such a child written before its parent exists is refused with
     /// 42501 / HTTP 403, which here means "parent not uploaded yet", not "not your row".
     static let parentCheckedTypes: Set<QueuedOperationType> = [
-        .insertExercises, .insertSet, .renameExercises, .deleteExercise, .deleteExercises, .deleteSet
+        .insertExercises, .insertSet, .renameExercises, .deleteExercise, .deleteExercises, .deleteSet,
+        // Collection items: the policy checks the caller's own collection and food.
+        .upsertFoodCollectionItem
     ]
 
     /// The server has no such table yet (a migration that has not been applied): PostgREST `PGRST205`,
@@ -91,6 +93,8 @@ enum SyncErrorClassifier {
         if isMissingTable(postgresCode: code) || isMissingColumn(postgresCode: code) { return .dependency }
         // A food saved with a source the server's CHECK does not know yet ('off' before the barcode migration).
         if code == "23514", opType == .upsertFood { return .dependency }
+        // A tombstone for an entity the server's CHECK does not list yet (kitchen migration not applied).
+        if code == "23514", opType == .insertTombstone { return .dependency }
         switch code {
         case "23503":
             return .dependency

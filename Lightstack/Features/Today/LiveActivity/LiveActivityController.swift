@@ -17,6 +17,7 @@ final class LiveActivityController {
     private weak var today: TodayViewModel?
     private var cancellables = Set<AnyCancellable>()
     private var lastState: LightstackWorkoutAttributes.ContentState?
+    private var lastSessionId: UUID?
     private var restEndTask: Task<Void, Never>?
     private var scheduledRestEnd: Date?
     private static let restDoneNotificationId = "rest-done"
@@ -68,6 +69,7 @@ final class LiveActivityController {
     func end() {
         cancellables.removeAll()
         lastState = nil
+        lastSessionId = nil
         cancelRestEndWork()
         let final = Activity<LightstackWorkoutAttributes>.activities
         for activity in final {
@@ -117,6 +119,16 @@ final class LiveActivityController {
             if today.phase != .active { end() }
             return
         }
+        // Never show a smaller elapsed time than what is already on the lock screen.
+        let sessionId = today.sessionService.currentWorkout?.id
+        let guarded = LiveActivityMapper.guardedAnchor(new: state, previous: lastState, sameSession: sessionId == lastSessionId)
+        #if DEBUG
+        if guarded != state.elapsedAnchor {
+            logger.debug("Blocked backwards Live Activity push: kept anchor \(guarded.timeIntervalSince1970), dropped later \(state.elapsedAnchor.timeIntervalSince1970)")
+        }
+        #endif
+        state.elapsedAnchor = guarded
+        lastSessionId = sessionId
         // Ignore clock jitter so a tick alone does not cost an update.
         if let last = lastState, abs(last.elapsedAnchor.timeIntervalSince(state.elapsedAnchor)) < 2 {
             state.elapsedAnchor = last.elapsedAnchor

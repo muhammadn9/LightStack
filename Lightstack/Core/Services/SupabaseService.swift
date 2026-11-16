@@ -333,6 +333,32 @@ final class SupabaseService {
         try await client.from("nutrition_plans").upsert(plan.cloudRow()).execute()
     }
 
+    func upsertFoodCollection(_ collection: FoodCollection) async throws {
+        try await client.from("food_collections").upsert(collection.cloudRow()).execute()
+    }
+
+    func deleteFoodCollection(id: UUID) async throws {
+        try await client.from("food_collections").delete().eq("id", value: id.uuidString).execute()
+    }
+
+    func upsertFoodCollectionItem(_ item: FoodCollectionItem) async throws {
+        try await client.from("food_collection_items").upsert(item.cloudRow()).execute()
+    }
+
+    func deleteFoodCollectionItem(id: UUID) async throws {
+        try await client.from("food_collection_items").delete().eq("id", value: id.uuidString).execute()
+    }
+
+    /// One weigh-in per user per day: the conflict target is (user_id, date), so a second device that logged the
+    /// same day (with its own id) updates that row instead of failing on the unique constraint.
+    func upsertWeighIn(_ weighIn: WeighIn) async throws {
+        try await client.from("weigh_ins").upsert(weighIn.cloudRow(), onConflict: "user_id,date").execute()
+    }
+
+    func deleteWeighIn(id: UUID) async throws {
+        try await client.from("weigh_ins").delete().eq("id", value: id.uuidString).execute()
+    }
+
     // MARK: - Tombstones
 
     /// Records that these rows were deleted on this device, so other devices

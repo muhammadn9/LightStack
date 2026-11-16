@@ -58,12 +58,12 @@ struct ExerciseTableView: View {
     // MARK: - Target Info (rest seconds only — weight/reps/rir shown in set rows)
 
     private var hasTargetInfo: Bool {
-        (exercise.restSeconds ?? 0) > 0
+        (ActiveWorkoutView.restSeconds(for: exercise) ?? 0) > 0
     }
 
     private var targetInfoRow: some View {
         HStack(spacing: 12) {
-            if let rest = exercise.restSeconds, rest > 0 {
+            if let rest = ActiveWorkoutView.restSeconds(for: exercise), rest > 0 {
                 targetBadge("Rest", value: "\(rest)s")
             }
         }

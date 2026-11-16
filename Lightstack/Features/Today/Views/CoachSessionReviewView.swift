@@ -60,7 +60,7 @@ struct CoachSessionReviewView: View {
                     .fixedSize()
                     .accessibilityIdentifier("review.outcome.\(index)")
             }
-            let notes = exercise.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let notes = Self.displayNotes(exercise.notes, missReason: exercise.missAnalysis?.reason)
             if !notes.isEmpty {
                 Text(notes)
                     .font(AppTheme.caveat(13))
@@ -165,12 +165,28 @@ struct CoachSessionReviewView: View {
 
     // MARK: - Text
 
+    /// The lift's notes without the miss explanation, which is printed once, in the miss block below them.
+    /// The rules' own note ends with that same sentence, so it is cut out rather than shown twice.
+    static func displayNotes(_ notes: String, missReason: String?) -> String {
+        var text = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let reason = missReason?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty else { return text }
+        if let range = text.range(of: reason) {
+            text.removeSubrange(range)
+        } else if text.caseInsensitiveCompare(reason) == .orderedSame {
+            text = ""
+        }
+        // Tidy the join: a doubled space or a leading/trailing separator left by the cut.
+        while text.contains("  ") { text = text.replacingOccurrences(of: "  ", with: " ") }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func outcomeTitle(_ outcome: ExerciseOutcome) -> String {
         switch outcome {
         case .pr: return "PR"
         case .hold: return "Hold"
         case .regression: return "Regression"
         case .missed: return "Missed"
+        case .close: return "Close"
         case .new: return "New"
         }
     }
@@ -181,6 +197,7 @@ struct CoachSessionReviewView: View {
         case .hold: return AppTheme.accentSecondary
         case .regression: return AppTheme.warning
         case .missed: return AppTheme.destructive
+        case .close: return AppTheme.accent
         case .new: return AppTheme.textSecondary
         }
     }

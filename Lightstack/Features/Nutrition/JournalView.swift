@@ -8,8 +8,9 @@ struct AddFoodRoute: Hashable {
 }
 
 private enum JournalSheet: Identifiable {
-    case addMenu, water, targets, settings
+    case addMenu, water, weight, targets, settings
     case quickAdd(UUID?), createFood(UUID?), scan(UUID?), barcode(UUID?)
+    case createMeal, createRecipe
     case ai(UUID?, String)
     case editEntry(FoodEntry)
 
@@ -17,10 +18,13 @@ private enum JournalSheet: Identifiable {
         switch self {
         case .addMenu: return "addMenu"
         case .water: return "water"
+        case .weight: return "weight"
         case .targets: return "targets"
         case .settings: return "settings"
         case .quickAdd: return "quickAdd"
         case .createFood: return "createFood"
+        case .createMeal: return "createMeal"
+        case .createRecipe: return "createRecipe"
         case .scan: return "scan"
         case .barcode: return "barcode"
         case .ai: return "ai"
@@ -50,6 +54,8 @@ struct JournalView: View {
     @State private var renameText = ""
     @State private var creatingMeal = false
     @State private var newMealName = ""
+    @State private var savingAsMeal: UUID?
+    @State private var savedMealName = ""
 
     private let scrollSpace = "journalScroll"
 
@@ -68,6 +74,7 @@ struct JournalView: View {
                                 }
                                 .frame(height: 0)
                                 JournalWeekStrip(selected: viewModel.date) { viewModel.setDate($0) }
+                                if let nudge = viewModel.trainingNudge { trainingDayCard(nudge) }
                                 macroCard
                                 trackerRow
                                 mealCards
@@ -122,6 +129,16 @@ struct JournalView: View {
             Button("Add") { viewModel.addMeal(name: newMealName) }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Save as meal", isPresented: Binding(get: { savingAsMeal != nil }, set: { if !$0 { savingAsMeal = nil } })) {
+            TextField("Meal name", text: $savedMealName)
+                .accessibilityIdentifier("journal.saveAsMeal.name")
+            Button("Save") {
+                if let slotId = savingAsMeal { viewModel.saveMeal(name: savedMealName, fromJournalMeal: slotId) }
+                savingAsMeal = nil
+            }
+            .accessibilityIdentifier("journal.saveAsMeal.confirm")
+            Button("Cancel", role: .cancel) { savingAsMeal = nil }
+        } message: { Text("Saves everything in this meal to your Kitchen.") }
         .onAppear { viewModel.reload() }
     }
 
@@ -140,14 +157,19 @@ struct JournalView: View {
                     path.append(AddFoodRoute(slotId: viewModel.defaultSlotId, focusSearch: true, query: query))
                 },
                 onWater: { present(.water) },
+                onWeight: { present(.weight) },
                 onQuickTrack: { present(.quickAdd(viewModel.defaultSlotId)) },
                 onCreateFood: { present(.createFood(nil)) },
+                onCreateMeal: { present(.createMeal) },
+                onCreateRecipe: { present(.createRecipe) },
                 onBarcode: { present(.barcode(viewModel.defaultSlotId)) },
                 onAI: { query in present(.ai(viewModel.defaultSlotId, query)) }
             )
             .presentationDetents([.medium, .large])
         case .water:
             WaterSheet(viewModel: viewModel).presentationDetents([.medium])
+        case .weight:
+            WeightSheet(viewModel: viewModel).presentationDetents([.medium, .large])
         case .targets:
             PlanEditorView(viewModel: viewModel, plan: viewModel.plan(for: viewModel.date))
         case .settings:
@@ -156,6 +178,10 @@ struct JournalView: View {
             QuickAddView(viewModel: viewModel, mealSlotId: slotId)
         case .createFood(let slotId):
             CreateFoodView(viewModel: viewModel, mealSlotId: slotId, logByDefault: false)
+        case .createMeal:
+            MealEditorView(viewModel: viewModel)
+        case .createRecipe:
+            RecipeEditorView(viewModel: viewModel)
         case .scan(let slotId):
             ScanFlowView(viewModel: viewModel, mealSlotId: slotId)
         case .barcode(let slotId):
@@ -463,6 +489,11 @@ struct JournalView: View {
                 renameText = slot.name
                 renaming = slot
             },
+            onSaveAsMeal: {
+                guard let slot = meal.slot else { return }
+                savedMealName = slot.name
+                savingAsMeal = slot.id
+            },
             onClear: { if let id = meal.slot?.id { viewModel.clearMeal(slotId: id) } },
             onMoveAll: { target in meal.entries.forEach { viewModel.move($0, toMeal: target) } },
             onRemove: { if let id = meal.slot?.id { viewModel.archiveMeal(id: id) } }
@@ -530,6 +561,39 @@ struct JournalView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+    }
+
+    // MARK: - Training-day card
+
+    private func trainingDayCard(_ nudge: TrainingDayNudge) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "figure.strengthtraining.traditional")
+                .font(.title3).foregroundStyle(AppTheme.accent).frame(width: 28)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(nudge.title).font(.headline).foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityIdentifier("journal.trainingDay.title")
+                Text(nudge.proteinLine).font(.subheadline).foregroundStyle(AppTheme.textPrimary)
+                    .accessibilityIdentifier("journal.trainingDay.protein")
+                if let tip = nudge.tip {
+                    Text(tip).font(.subheadline).foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("journal.trainingDay.tip")
+                }
+            }
+            Spacer(minLength: 0)
+            Button { withAnimation(.easeOut(duration: 0.2)) { viewModel.dismissTrainingNudge() } } label: {
+                Image(systemName: "xmark").font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss training day tip")
+            .accessibilityIdentifier("journal.trainingDay.dismiss")
+        }
+        .padding(.leading, 16).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("journal.trainingDay")
     }
 
     // MARK: - Bottom bar
@@ -654,6 +718,7 @@ private struct MealCardView: View {
     let onEditEntry: (FoodEntry) -> Void
     let onDeleteEntry: (FoodEntry) -> Void
     let onRename: () -> Void
+    let onSaveAsMeal: () -> Void
     let onClear: () -> Void
     let onMoveAll: (UUID?) -> Void
     let onRemove: () -> Void
@@ -677,6 +742,8 @@ private struct MealCardView: View {
                     Menu {
                         Button(action: onRename) { Label("Rename meal", systemImage: "pencil") }
                         if !meal.entries.isEmpty {
+                            Button(action: onSaveAsMeal) { Label("Save as meal", systemImage: "square.and.arrow.down") }
+                                .accessibilityIdentifier("journal.saveAsMeal")
                             Menu {
                                 ForEach(otherMeals) { other in
                                     Button(other.name) { onMoveAll(other.id) }
@@ -708,28 +775,27 @@ private struct MealCardView: View {
     }
 
     private func entryRow(_ entry: FoodEntry) -> some View {
-        Button { onEditEntry(entry) } label: {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(entry.name).font(.body.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
-                        .multilineTextAlignment(.leading)
-                    Text("\(NutritionFormat.amount(entry.servings)) × \(entry.servingLabel)")
-                        .font(.caption).foregroundStyle(AppTheme.textSecondary)
-                    MacroSummaryLine(nutrients: entry.total, font: .caption.weight(.semibold))
-                }
-                Spacer(minLength: 6)
-                Text("\(NutritionFormat.whole(entry.total.kcal)) kcal")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.name).font(.body.weight(.medium)).foregroundStyle(AppTheme.textPrimary)
+                    .multilineTextAlignment(.leading)
+                Text(JournalFormat.amountText(for: entry))
+                    .font(.caption).foregroundStyle(AppTheme.textSecondary)
+                MacroSummaryLine(nutrients: entry.total, font: .caption.weight(.semibold))
             }
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppTheme.surface)
-            .contentShape(Rectangle())
+            Spacer(minLength: 6)
+            Text("\(NutritionFormat.whole(entry.total.kcal)) kcal")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(AppTheme.textPrimary)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.surface)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("journal.entry.\(entry.name)")
         .accessibilityHint("Edit this entry")
-        .swipeToDelete(id: "journal.entry.delete") { onDeleteEntry(entry) }
+        .swipeToDelete(id: "journal.entry.delete", onTap: { onEditEntry(entry) }) { onDeleteEntry(entry) }
     }
 }
 

@@ -53,10 +53,13 @@ export const TASKS: Record<TaskName, TaskSpec> = {
     maxInputChars: 100_000, maxOutputTokens: 4000, maxThinking: "minimal", reserveUsd: 0.02,
     allowImages: 0, allowSearch: false,
   },
+  // Form coach feedback: the app sends the rep table plus ONE jpeg contact sheet of the recorded set
+  // (<= ~400 KB, base64 ~535k chars), 2500 output tokens and "low" thinking, with a responseSchema (no search).
+  // The caps below leave headroom over that and no more. The reserve covers one image plus the output.
   formFeedback: {
     models: ALL_MODELS, defaultModel: CHEAP_MODEL,
-    maxInputChars: 30_000, maxOutputTokens: 600, maxThinking: "minimal", reserveUsd: 0.004,
-    allowImages: 0, allowSearch: false,
+    maxInputChars: 30_000, maxOutputTokens: 3000, maxThinking: "low", reserveUsd: 0.015,
+    allowImages: 1, allowSearch: false,
   },
   // Meal estimation (nutrition phase 4): a description and/or ONE photo, optionally with Google Search for
   // restaurant menus. The app sends 3000 output tokens and "low" thinking; 4096 leaves headroom, no more.

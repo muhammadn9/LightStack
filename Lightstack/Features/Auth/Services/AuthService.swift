@@ -414,26 +414,34 @@ final class AuthService: NSObject {
 
     // MARK: - Sign Out
 
+    /// Server-side revoke. A seam so tests can simulate an offline device.
+    var remoteSignOutOverride: (() async throws -> Void)?
+
+    /// Always signs out locally. The server revoke is best effort: offline or a server error must
+    /// never leave the user stuck signed in.
     func signOut() {
         LocalStorageService.clearSessionScopedCaches()
         userSignOutAt = Date()
         Task {
-            do {
-                try await supabaseClient.auth.signOut()
-                await finishSignOut()
-            } catch AuthError.sessionMissing {
-                // Already signed out on the server side (expired / revoked): finish locally.
-                await finishSignOut()
-            } catch {
-                // Offline or server error: sign-out must still complete locally.
-                try? await supabaseClient.auth.signOut(scope: .local)
-                await finishSignOut()
-            }
+            await performSignOut()
         }
     }
 
+    func performSignOut() async {
+        do {
+            if let override = remoteSignOutOverride {
+                try await override()
+            } else {
+                try await supabaseClient.auth.signOut()
+            }
+        } catch {
+            logger.info("server sign-out failed (\(error.localizedDescription, privacy: .public)); signing out locally")
+        }
+        await finishSignOut()
+    }
+
     @MainActor
-    private func finishSignOut() {
+    func finishSignOut() {
         LocalStorageService.clearSessionScopedCaches()
         expiry.clear()
         UserDefaults.standard.removeObject(forKey: Self.lastKnownUserKey)
@@ -499,7 +507,7 @@ final class AuthService: NSObject {
 
     func currentUser() -> UserProfile? {
         #if DEBUG
-        if UITestMode.isActive { return UITestMode.testUser }
+        if UITestMode.isActive { return UITestMode.signedOut ? nil : UITestMode.testUser }
         #endif
         guard let user = supabaseClient.auth.currentUser else {
             if let expired = expiry.expiredUserId { return Self.expiredStub(userId: expired) }

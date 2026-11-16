@@ -63,7 +63,8 @@ final class WorkoutFlowTests: LightstackUITestCase {
 
         tap(app.buttons["addExerciseButton"])
         type("rear delt", into: app.textFields["exerciseSearchField"])
-        tap(waitFor(app.buttons["yourExercise.Rear Delt Fly Machine"], "History entry missing"))
+        tap(waitFor(app.buttons["pickerRow.Rear Delt Fly Machine"], "History entry missing"))
+        tap(app.buttons["pickerAddButton"])
         waitFor(app.staticTexts["2 of 4"], "New exercise was not inserted after the current one")
         shot("05-added-prefilled")
 
@@ -84,17 +85,19 @@ final class WorkoutFlowTests: LightstackUITestCase {
         generateAndStartPushWorkout()
         waitFor(app.staticTexts["1 of 3"])
 
-        tap(app.buttons["addExerciseButton"], until: app.staticTexts["yourExercisesHeader"], perAttempt: 15)
-        waitFor(app.staticTexts["yourExercisesHeader"], "No 'Your exercises' section")
-        let row = waitFor(app.buttons["yourExercise.Bench Press"], "Seeded Bench Press missing from history")
+        tap(app.buttons["addExerciseButton"], until: app.staticTexts["recentExercisesHeader"], perAttempt: 15)
+        waitFor(app.staticTexts["recentExercisesHeader"], "No 'Recent' section")
+        waitFor(app.staticTexts["allExercisesHeader"], "No A to Z section")
+        let row = waitFor(app.buttons["pickerRow.Bench Press"], "Seeded Bench Press missing from history")
         shot("03-add-sheet")
 
-        // Search narrows the history section.
+        // Search narrows the list.
         type("Overhead", into: app.textFields["exerciseSearchField"])
-        waitFor(app.buttons["yourExercise.Overhead Press"])
+        waitFor(app.buttons["pickerRow.Overhead Press"])
         XCTAssertFalse(row.exists)
         replaceText(in: app.textFields["exerciseSearchField"], with: "Bench")
-        tap(app.buttons["yourExercise.Bench Press"])
+        tap(app.buttons["pickerRow.Bench Press"])
+        tap(app.buttons["pickerAddButton"])
         shot("03b-after-tap")
 
         // Inserted right after exercise 1 and shown: page 2 of 4.
@@ -108,22 +111,27 @@ final class WorkoutFlowTests: LightstackUITestCase {
         waitFor(app.staticTexts["Incline Dumbbell Press"])
     }
 
-    func testSetupOffersPastWorkoutsAndStartsWithoutAI() throws {
+    /// A past workout name that is not a split day sits in the same chip list and goes through the coach.
+    func testSetupOffersPastWorkoutsAndBuildsThemThroughTheCoach() throws {
         launchApp()
-        waitFor(app.staticTexts["fromHistoryHeader"], "No 'From history' section")
+        waitFor(app.staticTexts["splitHeader"], "No 'Workout split' card")
+        XCTAssertFalse(app.staticTexts["fromHistoryHeader"].exists, "The separate 'From history' card is gone")
         let chip = waitFor(app.buttons["chip.Arm Day"], "Arm Day chip missing")
         shot("05-setup-history")
         chip.tap()
-
-        let start = waitFor(app.buttons["startWorkoutButton"])
+        waitFor(app.staticTexts["setup.lastSession"], "Last session line missing for Arm Day")
+        let generate = app.buttons["generateButton"]
+        XCTAssertEqual(generate.label, "Build my Arm Day workout")
+        let start = app.buttons["startWorkoutButton"]
+        tap(generate, until: start, attempts: 3, perAttempt: 30)
+        waitFor(app.buttons["previewCancelButton"], "Coach plan preview did not appear for a history-only name")
         waitFor(app.staticTexts["Barbell Curl"])
         var swipes = 0
         while !start.isHittable && swipes < 4 { app.swipeUp(); swipes += 1 }
         start.tap()
 
         waitFor(app.textFields["setRow.0.0.weight"], "Active workout did not start")
-        waitFor(app.staticTexts["1 of 2"])
-        waitFor(app.staticTexts["Barbell Curl"])
+        waitFor(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '1 of '")).firstMatch, "Page indicator missing")
         shot("06-arm-day-active")
     }
 
@@ -174,20 +182,28 @@ final class WorkoutFlowTests: LightstackUITestCase {
 // MARK: - Manual rest timer
 
 extension WorkoutFlowTests {
-    /// The card's timer button starts a rest countdown, then stops it. Coach v3: the coach's own rest for the
-    /// exercise (bench's top set: 2:00) wins over the Settings default (180s here); the default only
-    /// covers exercises the coach gave no rest.
+    /// The card's timer button starts a rest countdown, then stops it. The plan's own rest for the exercise (the
+    /// bench top set, 3:00 for the strength focus) wins over the Settings default (240s here).
     func testManualRestButtonStartsAndStopsTimer() throws {
-        launchApp(extraArguments: ["-defaultRestSeconds", "180"])
+        launchApp(extraArguments: ["-defaultRestSeconds", "240"])
+        // The 3:00 plan rest is the strength focus's: pick it (the reset no longer leaks it from other tests).
+        let options = app.buttons["setup.moreOptions"]
+        for _ in 0..<4 where !options.isHittable { app.swipeUp() }
+        tap(options)
+        let strength = app.segmentedControls["setup.focus"].buttons["Strength"]
+        waitFor(strength, "Focus control missing")
+        for _ in 0..<4 where !strength.isHittable { app.swipeUp() }
+        strength.tap()
+        for _ in 0..<8 where !app.buttons["chip.Push"].isHittable { app.swipeDown() }
         generateAndStartPushWorkout()
         let button = waitFor(app.buttons["startRestButton"])
         XCTAssertEqual(button.label, "Start rest timer")
         button.tap()
         let banner = waitFor(app.staticTexts["Rest Period"], "Rest countdown did not appear")
         XCTAssertTrue(banner.exists)
-        let near = NSPredicate(format: "label BEGINSWITH '2:00' OR label BEGINSWITH '1:5'")
+        let near = NSPredicate(format: "label BEGINSWITH '3:00' OR label BEGINSWITH '2:5'")
         XCTAssertTrue(app.staticTexts.matching(near).firstMatch.waitForExistence(timeout: 5),
-                      "Countdown should start near the coach's 2:00, not the 3:00 Settings default")
+                      "Countdown should start near the plan's 3:00, not the 4:00 Settings default")
         XCTAssertEqual(app.buttons["startRestButton"].label, "Stop rest timer")
         app.buttons["startRestButton"].tap()
         XCTAssertTrue(app.staticTexts["Rest Period"].waitForNonExistence(timeout: 5), "Rest countdown did not stop")
@@ -238,8 +254,10 @@ extension WorkoutFlowTests {
         func labelValue() -> Int? {
             Int(app.staticTexts["energyLabel"].label.prefix(1))
         }
+        XCTAssertEqual(app.buttons["setup.row.energy"].value as? String, "4 of 5")
         var swipes = 0
-        while !app.staticTexts["energyLabel"].exists && swipes < 6 { app.swipeUp(); swipes += 1 }
+        while !app.buttons["setup.row.energy"].isHittable && swipes < 6 { app.swipeUp(); swipes += 1 }
+        tap(app.buttons["setup.row.energy"])
         waitFor(app.staticTexts["energyLabel"], "Energy label missing")
         XCTAssertEqual(labelValue(), filledDots(), "Default: label and dots disagree")
         shot("20-energy-default")

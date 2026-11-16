@@ -1,6 +1,27 @@
 import Foundation
 import os
 
+// MARK: - AttemptGate
+
+/// One-shot latch shared between a request's completion handler and its deadline timer.
+final class AttemptGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    /// True for the first caller only.
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
+    }
+
+    var isClaimed: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return claimed
+    }
+}
+
 // MARK: - GeminiService
 
 /// Handles all Gemini calls.
@@ -31,13 +52,14 @@ final class GeminiService {
         model: String = "gemini-3.5-flash",
         proxyURL: URL? = nil,
         anonKey: String = "",
-        accessToken: @escaping () async -> String? = { nil }
+        accessToken: @escaping () async -> String? = { nil },
+        session: URLSession = .shared
     ) {
         self.model = model
         self.proxyURL = proxyURL
         self.anonKey = anonKey
         self.accessToken = accessToken
-        self.session = URLSession.shared
+        self.session = session
     }
 
     // MARK: - Multi-Turn Chat (Callback-based)
@@ -103,8 +125,15 @@ final class GeminiService {
             return
         }
 
+        let attemptStart = Date()
+        let attemptTimeout = options.retryPolicy.attemptTimeout
         Task {
-            guard let token = await accessToken() else {
+            // The wall-clock deadline for this attempt starts here, so a hung token or session fetch counts too.
+            guard let fetched = await Self.withDeadline(seconds: attemptTimeout, { await self.accessToken() }) else {
+                DispatchQueue.main.async { completion(.failure(AITransientError(cause: .timedOut))) }
+                return
+            }
+            guard let token = fetched else {
                 DispatchQueue.main.async { completion(.failure(Self.proxyError(401, "Please sign in to use the AI coach."))) }
                 return
             }
@@ -114,13 +143,13 @@ final class GeminiService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue(anonKey, forHTTPHeaderField: "apikey")
             request.httpBody = httpBody
-            // Just above the proxy's 55s upstream cap, so a slow model surfaces the
-            // proxy's own 504 (which does not trigger the model fallback).
-            request.timeoutInterval = 58
+            // Standard tasks wait just above the proxy's 55s upstream cap; interactive tasks use a shorter
+            // per-attempt timeout (see AIRetryPolicy). A timeout or 504 makes the manager try another model.
+            request.timeoutInterval = options.retryPolicy.attemptTimeout
             #if DEBUG
             AIUsageTracker.shared.recordCall(task: options.task)
             #endif
-            performWithRetry(request: request, attempt: 0, task: options.task,
+            performWithRetry(request: request, attemptStart: attemptStart, attempt: 0, task: options.task, maxBackoffRetries: options.retryPolicy.sameModel503Retries,
                              thinkingFallbackBody: plainBody, expectsJSON: expectsJSON, completion: completion)
         }
     }
@@ -159,70 +188,119 @@ final class GeminiService {
         }
     }
 
-    /// Executes the request, retrying on 503 with exponential backoff: 1s, 2s, 4s.
+    /// Executes the request, retrying on 503 with exponential backoff (1s, 2s, 4s) up to `maxBackoffRetries` times.
     private func performWithRetry(
         request: URLRequest,
+        attemptStart: Date = Date(),
         attempt: Int,
         task: AITask,
+        maxBackoffRetries: Int,
         thinkingFallbackBody: Data?,
         expectsJSON: Bool,
         completion: @escaping (Result<AIReply, Error>) -> Void
     ) {
+        // `request.timeoutInterval` is only an idle timeout (it restarts whenever bytes move), so a trickling
+        // upload never trips it. This gate enforces a hard wall-clock deadline for the whole attempt and makes
+        // sure the completion fires exactly once, whichever of the response or the deadline comes first.
+        let gate = AttemptGate()
+        let finish: (Result<AIReply, Error>) -> Void = { result in
+            guard gate.claim() else { return }
+            completion(result)
+        }
         let task = session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self else { return }
+            guard let self, !gate.isClaimed else { return }
 
             if let error = error {
-                DispatchQueue.main.async { completion(.failure(error)) }
+                DispatchQueue.main.async { finish(.failure(error)) }
                 return
             }
 
             let http = response as? HTTPURLResponse
             let httpStatus = http?.statusCode ?? 200
 
+            // The proxy's own 504 (upstream timeout) and 502 (could not reach Gemini) mean "busy", not "refused":
+            // another model may answer.
+            if http?.value(forHTTPHeaderField: "x-ai-proxy-error") != nil, httpStatus == 502 || httpStatus == 504 {
+                DispatchQueue.main.async { finish(.failure(AITransientError(cause: .busy(httpStatus)))) }
+                return
+            }
+
             // ai-proxy's own refusals (rate limit, signed out, …): surface the message.
             if http?.value(forHTTPHeaderField: "x-ai-proxy-error") != nil {
                 let code = http?.value(forHTTPHeaderField: "x-ai-proxy-error")
                 let message = Self.userMessage(forProxyCode: code, serverMessage: data.flatMap(Self.proxyMessage(from:)))
-                DispatchQueue.main.async { completion(.failure(Self.proxyError(httpStatus, message, code: code))) }
+                DispatchQueue.main.async { finish(.failure(Self.proxyError(httpStatus, message, code: code))) }
                 return
             }
 
             // The thinking field is model-specific. If Gemini rejects it, retry once without.
             if httpStatus == 400, let fallback = thinkingFallbackBody, let data,
                Self.isThinkingRejection(data) {
+                guard gate.claim() else { return }   // retire this attempt's deadline timer
                 var plain = request
                 plain.httpBody = fallback
                 self.logger.debug("400 mentioning thinking, retrying without thinkingConfig")
-                self.performWithRetry(request: plain, attempt: attempt, task: task,
+                self.performWithRetry(request: plain, attempt: attempt, task: task, maxBackoffRetries: maxBackoffRetries,
                                       thinkingFallbackBody: nil, expectsJSON: expectsJSON, completion: completion)
                 return
             }
 
-            // Retry on 503 with exponential backoff: 1s → 2s → 4s (max 3 retries)
-            if httpStatus == 503 && attempt < 3 {
+            // Retry on 503 with exponential backoff: 1s → 2s → 4s (standard policy only).
+            if httpStatus == 503 && attempt < maxBackoffRetries {
+                guard gate.claim() else { return }   // retire this attempt's deadline timer
                 let delay = pow(2.0, Double(attempt))   // 1, 2, 4 seconds
-                self.logger.debug("503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/3)")
+                self.logger.debug("503 received, retrying in \(Int(delay))s (attempt \(attempt + 1)/\(maxBackoffRetries))")
                 DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
-                    self?.performWithRetry(request: request, attempt: attempt + 1, task: task,
+                    self?.performWithRetry(request: request, attempt: attempt + 1, task: task, maxBackoffRetries: maxBackoffRetries,
                                            thinkingFallbackBody: thinkingFallbackBody, expectsJSON: expectsJSON,
                                            completion: completion)
                 }
                 return
             }
+            // Still overloaded (or the upstream is down): a typed error so the manager can move to another model.
+            if httpStatus == 503 || httpStatus == 502 || httpStatus == 504 {
+                DispatchQueue.main.async { finish(.failure(AITransientError(cause: .busy(httpStatus)))) }
+                return
+            }
 
             guard let data else {
-                DispatchQueue.main.async { completion(.failure(self.noDataError())) }
+                DispatchQueue.main.async { finish(.failure(self.noDataError())) }
                 return
             }
 
             do {
                 let reply = try self.parseReply(data, task: task, expectsJSON: expectsJSON)
-                DispatchQueue.main.async { completion(.success(reply)) }
+                DispatchQueue.main.async { finish(.success(reply)) }
             } catch {
-                DispatchQueue.main.async { completion(.failure(error)) }
+                DispatchQueue.main.async { finish(.failure(error)) }
             }
         }
+        let remaining = max(0.01, request.timeoutInterval - Date().timeIntervalSince(attemptStart))
+        DispatchQueue.global().asyncAfter(deadline: .now() + remaining) { [weak task] in
+            guard gate.claim() else { return }
+            task?.cancel()
+            DispatchQueue.main.async { completion(.failure(AITransientError(cause: .timedOut))) }
+        }
         task.resume()
+    }
+
+    /// Runs `operation` and gives up after `seconds`, even when the operation never returns.
+    /// Returns nil on timeout.
+    static func withDeadline<T>(seconds: TimeInterval, _ operation: @escaping () async -> T) async -> T? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
+            let once = AttemptGate()
+            let work = Task {
+                let value = await operation()
+                if once.claim() { continuation.resume(returning: value) }
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(max(0.01, seconds) * 1_000_000_000))
+                if once.claim() {
+                    work.cancel()
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
     }
 
     /// True when a Gemini 400 body complains about the thinking settings.

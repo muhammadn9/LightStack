@@ -61,7 +61,7 @@ final class HardeningChecksTests: LightstackUITestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: on, object: toggle)], timeout: 5), .completed,
                        "Toggle should switch back on")
 
-        let policy = anyElement("settings.privacyPolicy")
+        let policy = anyElement("settings.privacy")
         for _ in 0..<5 where !policy.exists { app.swipeUp() }
         waitFor(policy, "Privacy Policy row missing")
         shot("settings-privacy-policy-row")

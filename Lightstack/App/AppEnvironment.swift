@@ -21,6 +21,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     /// profile before deciding whether to onboard (see `beginProfileRestore`).
     @Published var restoreGate: RestoreGate = .idle
 
+    /// Set when the local store could not be opened and was set aside (shown once).
+    @Published var storeRecoveryNotice: LocalStoreRecoveryEvent?
+    /// True when even a fresh local store could not be created; the app shows a blocking screen.
+    @Published var localStoreUnavailable = false
+
     enum RestoreGate: Equatable {
         case idle
         case restoring
@@ -92,21 +97,9 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     // MARK: - Coach fuel
 
-    /// Yesterday's intake against target plus the nutrition goal, for the coach's plan brief.
-    /// nil when there is neither a logged day nor a finished goal setup.
+    /// The coach's nutrition summary (today so far, last 7 days, weight trend, goal); nil without any data.
     static func fuelSummary(_ nutrition: NutritionRepository, userId: UUID, now: Date) -> CoachFuelSummary? {
-        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now) else { return nil }
-        let day = nutrition.dailyNutrition(userId: userId, on: yesterday)
-        let settings = nutrition.goalSettings(userId: userId).flatMap { $0.isComplete ? $0 : nil }
-        let logged = !day.entries.isEmpty
-        guard logged || settings != nil else { return nil }
-        return CoachFuelSummary(
-            yesterdayKcal: logged ? day.totals.kcal : nil,
-            targetKcal: day.target?.kcal,
-            proteinG: logged ? day.totals.protein : nil,
-            targetProteinG: day.target?.protein,
-            goal: settings?.goal.rawValue,
-            weeklyRate: settings?.weeklyRateLbs)
+        nutrition.coachFuel(userId: userId, now: now)
     }
 
     // MARK: - Init
@@ -138,6 +131,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         let expiryTracker = SessionExpiryTracker()
         self.sessionExpiry = expiryTracker
         self.authService = AuthService(client: supabaseClient, expiry: expiryTracker)
+        #if DEBUG
+        if UITestMode.isActive && UITestMode.signOutOffline {
+            authService.remoteSignOutOverride = { throw URLError(.notConnectedToInternet) }
+        }
+        #endif
         self.localStorageService = LocalStorageService()
         localStorageService.removeDuplicateExercises()
         #if DEBUG
@@ -253,7 +251,8 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
             workoutRepository: workoutRepository,
             localStorage: localStorageService,
             validationService: validationService,
-            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) }
+            fuel: { userId, now in Self.fuelSummary(nutrition, userId: userId, now: now) },
+            meals: { userId, start in nutrition.coachPreWorkoutMeals(userId: userId, before: start) }
         )
 
         self.workoutSessionService = WorkoutSessionService(
@@ -319,6 +318,7 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         #if DEBUG
         if UITestMode.isActive { simulateExpiredSessionForUITest(UITestMode.wantsExpiredSession) }
         #endif
+        applyStoreLoadResult()
         checkExistingSession()
         loadOnboardingState()
     }
@@ -419,7 +419,28 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
 
     @MainActor func makeNutritionViewModel() -> NutritionViewModel {
         NutritionViewModel(repository: nutritionRepository, userIdProvider: { [authService] in authService.currentUser()?.userId },
-                           foodDatabase: foodDatabase, nutritionAI: nutritionAI)
+                           foodDatabase: foodDatabase, nutritionAI: nutritionAI,
+                           trainingDay: { [weak self] userId, day in self?.trainingDayInfo(userId: userId, on: day) })
+    }
+
+    /// Today's training as the nutrition Journal sees it: a workout with logged sets (done), else a workout that
+    /// was generated but not started or a non-rest planned session (planned). nil = no workout today.
+    func trainingDayInfo(userId: UUID, on day: Date) -> TrainingDayInfo? {
+        let workouts = localStorageService.fetchWorkoutsForDate(userId: userId, date: day)
+        let logged = workouts.first { workout in
+            guard let id = workout.id else { return false }
+            return localStorageService.loggedSetCount(workoutId: id) > 0
+        }
+        if let logged { return TrainingDayInfo(workoutType: logged.workoutType, workoutDone: true) }
+        if let started = workouts.first { return TrainingDayInfo(workoutType: started.workoutType, workoutDone: false) }
+        for plan in monthPlanRepository.fetchActivePlans(userId: userId) {
+            if let session = monthPlanRepository.fetchSessions(monthPlanId: plan.id).first(where: {
+                !$0.isRestDay && !$0.completed && Calendar.current.isDate($0.plannedDate, inSameDayAs: day)
+            }) {
+                return TrainingDayInfo(workoutType: session.workoutType, workoutDone: false)
+            }
+        }
+        return nil
     }
 
     func makeMonthPlanViewModel() -> MonthPlanViewModel {
@@ -518,6 +539,11 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
         isAuthenticated = false
     }
 
+    func acknowledgeStoreRecoveryNotice() {
+        LocalStoreRecoveryLog.shared.acknowledgeAll()
+        storeRecoveryNotice = nil
+    }
+
     func authService(_ service: AuthService, didFailWith error: Error) {
         authErrorMessage = error.localizedDescription
     }
@@ -567,6 +593,19 @@ final class AppEnvironment: ObservableObject, AuthServiceDelegate {
     #endif
 
     // MARK: - Private
+
+    @MainActor
+    private func applyStoreLoadResult() {
+        switch localStorageService.loadResult {
+        case .loaded: break
+        case .recovered(let event): storeRecoveryNotice = event
+        case .unavailable: localStoreUnavailable = true
+        }
+        if storeRecoveryNotice == nil, !localStoreUnavailable {
+            // A recovery from an earlier launch the user has not been told about yet.
+            storeRecoveryNotice = LocalStoreRecoveryLog.shared.unacknowledgedEvent()
+        }
+    }
 
     @MainActor
     private func checkExistingSession() {

@@ -22,7 +22,15 @@ final class LocalStorageService {
         return NSManagedObjectModel(contentsOf: url)
     }()
 
-    init(inMemory: Bool = false) {
+    /// How the persistent store came up. Anything but `.loaded` means the old store was set aside.
+    private(set) var loadResult: LocalStoreLoader.Result = .loaded
+
+    /// `storeURL` and `quarantineRoot` are seams for tests; production passes neither.
+    init(inMemory: Bool = false,
+         storeURL: URL? = nil,
+         quarantineRoot: URL = LocalStoreRecoveryLog.defaultDirectory(),
+         recoveryLog: LocalStoreRecoveryLog = .shared,
+         diagnostics: DiagnosticsStore = .shared) {
         if let model = Self.sharedModel {
             container = NSPersistentContainer(name: "Lightstack", managedObjectModel: model)
         } else {
@@ -38,15 +46,22 @@ final class LocalStorageService {
                 description.url = UITestMode.storeURL
             }
             #endif
+            if !inMemory, let storeURL { description.url = storeURL }
             description.shouldMigrateStoreAutomatically = true
             description.shouldInferMappingModelAutomatically = true
             Self.applyFileProtection(to: description)
         }
-        container.loadPersistentStores { _, error in
-            if let error = error {
-                fatalError("Core Data failed to load: \(error.localizedDescription)")
-            }
+        #if DEBUG
+        if !inMemory && storeURL == nil && UITestMode.isActive && UITestMode.corruptStore {
+            try? Data("not a database".utf8).write(to: UITestMode.storeURL)
         }
+        #endif
+        loadResult = LocalStoreLoader.load(
+            container: container,
+            quarantineRoot: quarantineRoot,
+            log: recoveryLog,
+            diagnostics: diagnostics
+        )
         container.viewContext.automaticallyMergesChangesFromParent = true
         if !inMemory {
             // Stores created before protection was set keep their old class until re-attributed.

@@ -81,6 +81,8 @@ final class NutritionRepository {
         saved.updatedAt = now()
         localStorage.saveFood(saved)
         queue(saved)
+        // A changed ingredient changes the recipes that use it.
+        if saved.source != .recipe { recomputeRecipes(usingFoodIds: [saved.id], userId: saved.userId) }
         return saved
     }
 
@@ -91,11 +93,13 @@ final class NutritionRepository {
     /// Deletes a saved food. Entries already logged from it stay (snapshot) and lose the link.
     func deleteFood(id: UUID, userId: UUID) {
         guard let existing = localStorage.fetchFood(id: id), existing.userId == userId else { return }
+        let affectedCollections = foodWillBeDeleted(existing, userId: userId)
         let detached = localStorage.detachFoodEntries(foodIds: [id], userId: userId)
         localStorage.deleteFoods(ids: [id])
         detached.forEach { queue($0) }
         offlineQueueManager.submit(.deleteFood, payload: DeleteNutritionRecordPayload(id: id))
         offlineQueueManager.submitTombstones(.food, ids: [id])
+        recomputeAfterFoodDelete(affectedCollectionIds: affectedCollections)
     }
 
     @discardableResult

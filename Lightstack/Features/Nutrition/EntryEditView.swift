@@ -27,7 +27,8 @@ struct EntryEditView: View {
                         .frame(minHeight: 44)
                         .accessibilityIdentifier("nutrition.entryEdit.name")
                     NutritionField(title: "Servings", unit: "", text: $servings, id: "nutrition.entryEdit.servings", placeholder: "1")
-                    Text("One serving is \(entry.servingLabel).")
+                    Text(NutritionUnit.allCases.contains { $0 != .serving && $0.displayName == entry.servingLabel }
+                         ? "Amount in \(entry.servingLabel)." : "One serving is \(entry.servingLabel).")
                         .font(.footnote).foregroundStyle(AppTheme.textSecondary)
                 }
                 .listRowBackground(AppTheme.surface)

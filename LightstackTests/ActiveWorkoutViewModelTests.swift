@@ -366,4 +366,45 @@ final class ActiveWorkoutViewModelTests: XCTestCase {
         XCTAssertNil(vm.activeRestExerciseId)
         XCTAssertEqual(cancelCount, 1)
     }
+
+    // MARK: - Clock anchor (single source of truth)
+
+    /// A stale in-app value must never beat wall-clock truth: sync always recomputes from the anchor.
+    func testSyncIgnoresStaleInAppValue() {
+        let vm = ActiveWorkoutViewModel()
+        vm.startTimer(from: 100)
+        vm.clock.elapsedSeconds = 5   // stale display value
+        vm.syncElapsed(now: Date().addingTimeInterval(30))
+        XCTAssertGreaterThanOrEqual(vm.elapsedSeconds, 130)
+        vm.stopTimer()
+    }
+
+    /// The workout view disappearing (stopTimer) and reappearing (startTimer) must not freeze or reset the clock.
+    func testReattachKeepsRunningClock() {
+        let vm = ActiveWorkoutViewModel()
+        vm.startTimer(from: 50)
+        vm.stopTimer()
+        vm.startTimer(from: 0)   // reappear with a stale/zero seed: must be ignored
+        XCTAssertGreaterThanOrEqual(vm.elapsed(at: Date().addingTimeInterval(20)), 70)
+        vm.stopTimer()
+    }
+
+    func testPauseResumeKeepsElapsedAcrossPausedSpan() {
+        let vm = ActiveWorkoutViewModel()
+        vm.startTimer(from: 10)
+        vm.pauseTimer()
+        let frozen = vm.elapsed(at: Date().addingTimeInterval(300))
+        XCTAssertEqual(frozen, vm.elapsed(at: Date()))
+        vm.startTimer(from: 0)   // reattach while paused stays paused
+        XCTAssertTrue(vm.isPaused)
+        vm.stopTimer()
+    }
+
+    func testSeedPausedStartsPaused() {
+        let vm = ActiveWorkoutViewModel()
+        vm.startTimer(from: 42, paused: true)
+        XCTAssertTrue(vm.isPaused)
+        XCTAssertEqual(vm.elapsed(at: Date().addingTimeInterval(500)), 42)
+        vm.stopTimer()
+    }
 }

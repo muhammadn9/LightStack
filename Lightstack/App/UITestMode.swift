@@ -17,6 +17,13 @@ enum UITestMode {
     /// spelling) including a warm-up set, so the progression engine produces evidence and a warm-up for it
     /// (it only prescribes warm-ups the athlete's own log shows).
     static let wantsEngineHistory: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingEngineHistory")
+    /// `-uiTestingRecentHours N` (with `-uiTestingEngineHistory`) moves that Push session from 3 days ago to N hours ago,
+    /// so the plan shows the "you trained chest N hours ago" heads-up.
+    static var recentSessionHours: Int? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-uiTestingRecentHours"), i + 1 < args.count else { return nil }
+        return Int(args[i + 1])
+    }
     /// `-uiTestingDuplicateNames` logs one lift under two spellings ("Leg Extension" / "Leg extension machine").
     static let wantsDuplicateNames: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingDuplicateNames")
     /// `-uiTestingDuplicateWorkoutTypes` adds past workouts so the types read: Push x3, push x1, Push Day x1, Legs x2.
@@ -39,8 +46,14 @@ enum UITestMode {
         guard let i = args.firstIndex(of: "-uiTestingFakeRemote"), i + 1 < args.count else { return nil }
         return args[i + 1]
     }
+    /// `-uiTestingSignOutOffline` makes the server sign-out call fail like an offline device.
+    static let signOutOffline: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSignOutOffline")
+    /// `-uiTestingCorruptStore` overwrites the UI-test store with garbage before it loads (recovery test).
+    static let corruptStore: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingCorruptStore")
     /// `-uiTestingSkipLaunchFlush` keeps the launch-time flush from running (foreground-trigger test).
     static let skipLaunchFlush: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSkipLaunchFlush")
+    /// `-uiTestingSignedOut` starts signed out, so the welcome screen shows (auth redesign tests).
+    static let signedOut: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingSignedOut")
     /// `-uiTestingFreshInstall` seeds no local profile or history: the app starts like a new device.
     static let freshInstall: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingFreshInstall")
     /// `-uiTestingRemoteSeed history` fills the fake remote with a profile, workouts, a rest day and a tombstone.
@@ -57,6 +70,10 @@ enum UITestMode {
     }
     /// `-uiTestingExpiredSession` starts with the signed-out banner showing, as if the session had been revoked.
     static let wantsExpiredSession: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingExpiredSession")
+    /// `-uiTestingFuelSeed` makes the coach's nutrition context rich: a finished nutrition goal (lose 0.5 lb/wk), a
+    /// daily plan that the seeded past days meet, and a breakfast logged today (a few hours before "now"), so the
+    /// PRE-WORKOUT MEALS block is not empty. Off by default: other tests expect an empty Journal today.
+    static let wantsFuelSeed: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingFuelSeed")
     /// `-uiTestingNutritionWizard` lets the nutrition setup wizard open by itself on first visit (it is off in
     /// UI tests otherwise, so the other nutrition tests are not interrupted).
     static let wantsNutritionWizard: Bool = ProcessInfo.processInfo.arguments.contains("-uiTestingNutritionWizard")
@@ -96,6 +113,9 @@ enum UITestMode {
         defaults.removeObject(forKey: SessionExpiryTracker.defaultsKey)
         defaults.removeObject(forKey: RestPreference.key)
         defaults.removeObject(forKey: PerArmPreference.key)
+        defaults.removeObject(forKey: WorkoutSetupViewModel.energyKey)
+        defaults.removeObject(forKey: WorkoutSetupViewModel.timeKey)
+        defaults.removeObject(forKey: CoachPreferences.focusKey)
         defaults.removeObject(forKey: "lightstack_offline_queue_v1")
         defaults.removeObject(forKey: "lightstack.lastSuccessfulRestore.\(userId.uuidString)")
         defaults.removeObject(forKey: AIConsent.key)
@@ -104,9 +124,15 @@ enum UITestMode {
         defaults.set(0, forKey: "selectedTab")
         defaults.set("gym", forKey: "appSide")
         defaults.removeObject(forKey: "nutritionSelectedTab")
+        defaults.removeObject(forKey: "progressSegment")
         defaults.removeObject(forKey: "nutritionSetupSkipped")
         defaults.removeObject(forKey: WaterUnit.storageKey)
+        defaults.removeObject(forKey: ServingUnitPreferences.storageKey)
         defaults.removeObject(forKey: ExerciseFeedbackStore.defaultsKey)
+        defaults.removeObject(forKey: CoachPreferences.shareNutritionSummaryKey)
+        defaults.removeObject(forKey: CoachPreferences.sharePreWorkoutMealsKey)
+        defaults.removeObject(forKey: TrainingDayPreferences.tipsKey)
+        defaults.removeObject(forKey: TrainingDayPreferences.dismissedDayKey)
         CoachDebugStore.shared.clear()
         logger.debug("Reset UI test store")
     }
@@ -134,17 +160,96 @@ enum UITestMode {
     /// A few saved foods so the add-food flow has something to pick in UI tests.
     private static func seedNutritionFoods(localStorage: LocalStorageService) {
         let stamp = Date()
-        func food(_ name: String, _ label: String, kcal: Double, p: Double, c: Double, f: Double, recent: Bool) -> NutritionFood {
-            var item = NutritionFood.make(userId: userId, name: name, servingLabel: label,
+        func food(_ name: String, _ label: String, kcal: Double, p: Double, c: Double, f: Double, recent: Bool,
+                  unit: String = "serving", amount: Double = 1, grams: Double? = nil) -> NutritionFood {
+            var item = NutritionFood.make(userId: userId, name: name, servingLabel: label, servingUnit: unit,
+                                          servingAmount: amount, servingGrams: grams,
                                           nutrients: NutrientValues(kcal: kcal, protein: p, carbs: c, fat: f), now: stamp)
             if recent { item.lastUsedAt = stamp }
             return item
         }
         [
             food("Egg", "2 large egg", kcal: 140, p: 12, c: 0, f: 10, recent: true),
-            food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true),
-            food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false)
+            food("Greek Yogurt", "1 cup", kcal: 160, p: 20, c: 20, f: 0, recent: true, unit: "cup", amount: 1, grams: 245),
+            food("Oats", "1 serving", kcal: 310, p: 10, c: 54, f: 6, recent: false, grams: 40)
         ].forEach { localStorage.saveFood($0) }
+        seedKitchen(localStorage: localStorage, stamp: stamp)
+        seedDashboardHistory(localStorage: localStorage, stamp: stamp)
+        if wantsFuelSeed { seedFuelContext(localStorage: localStorage, stamp: stamp) }
+    }
+
+    /// Only with `-uiTestingFuelSeed`. A finished goal (lose 0.5 lb/wk), one daily plan of 45 P / 55 C / 25 F (625 kcal,
+    /// which the seeded 590 kcal days meet, so fuel reads "good" and not low) and today's breakfast (2 eggs + oats,
+    /// logged up to 90 minutes before now, never before midnight) under the Breakfast slot.
+    private static func seedFuelContext(localStorage: LocalStorageService, stamp: Date) {
+        localStorage.saveGoalSettings(NutritionGoalSettings(
+            id: NutritionGoalSettings.id(userId: userId), userId: userId, goal: .lose, sex: .male, age: 30,
+            heightInches: 70, currentWeightLbs: 180, targetWeightLbs: 170, weeklyRateLbs: 0.5,
+            activityLevel: .active, liftsWeights: true, unit: .lb, completedAt: stamp, createdAt: stamp, updatedAt: stamp))
+        localStorage.saveNutritionPlans([NutritionPlan(
+            id: UUID(), userId: userId, name: "Daily", weekdayMask: WeekdayMask.all, protein: 45, carbs: 55, fat: 25,
+            kcal: 625, kcalOverridden: false, sortOrder: 0, isArchived: false, createdAt: stamp, updatedAt: stamp)])
+
+        let foods = localStorage.fetchFoods(userId: userId)
+        guard let egg = foods.first(where: { $0.name == "Egg" }), let oats = foods.first(where: { $0.name == "Oats" }) else { return }
+        let slot = MealSlot.defaults(userId: userId).first?.id
+        let sinceMidnight = stamp.timeIntervalSince(Calendar.current.startOfDay(for: stamp))
+        let eaten = stamp.addingTimeInterval(-min(90 * 60, max(60, sinceMidnight / 2)))
+        localStorage.saveFoodEntries([
+            FoodEntry.make(from: egg, servings: 2, on: stamp, source: .saved, mealSlotId: slot, now: eaten),
+            FoodEntry.make(from: oats, servings: 1, on: stamp, source: .saved, mealSlotId: slot, now: eaten)
+        ])
+    }
+
+    /// Dashboard data: diary entries on several past days (never today, so the empty-Journal tests still hold; the
+    /// streak runs from yesterday back 3 days, with gaps further back) and five weigh-ins over the last 30 days
+    /// (none today). Written straight to storage, so the profile weight stays 180.
+    private static func seedDashboardHistory(localStorage: LocalStorageService, stamp: Date) {
+        let foods = localStorage.fetchFoods(userId: userId)
+        guard let egg = foods.first(where: { $0.name == "Egg" }), let oats = foods.first(where: { $0.name == "Oats" }) else { return }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: stamp)
+        func day(_ offset: Int) -> Date { calendar.date(byAdding: .day, value: -offset, to: today) ?? today }
+
+        var entries: [FoodEntry] = []
+        for offset in [1, 2, 3, 5, 6, 8, 9, 10, 13, 17, 20, 24] {
+            entries.append(FoodEntry.make(from: egg, servings: 2, on: day(offset), source: .saved, now: stamp))
+            entries.append(FoodEntry.make(from: oats, servings: 1, on: day(offset), source: .saved, now: stamp))
+        }
+        localStorage.saveFoodEntries(entries)
+
+        let weights: [(Int, Double)] = [(2, 179.2), (8, 180.4), (15, 181.0), (22, 181.6), (29, 182.3)]
+        for (offset, lbs) in weights {
+            localStorage.saveWeighIn(WeighIn.make(userId: userId, date: day(offset), weightLbs: lbs, now: stamp))
+        }
+    }
+
+    /// One saved meal ("Usual breakfast": 3 eggs + oats) and one recipe ("Egg Oat Bowl", 2 servings, with its
+    /// derived food) so the Kitchen screens have something to show.
+    private static func seedKitchen(localStorage: LocalStorageService, stamp: Date) {
+        let foods = localStorage.fetchFoods(userId: userId)
+        guard let egg = foods.first(where: { $0.name == "Egg" }), let oats = foods.first(where: { $0.name == "Oats" }) else { return }
+
+        let meal = FoodCollection.make(userId: userId, kind: .meal, name: "Usual breakfast", now: stamp)
+        localStorage.saveFoodCollection(meal)
+        localStorage.saveFoodCollectionItems([
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: meal.id, foodId: egg.id, servings: 3,
+                               sortOrder: 0, createdAt: stamp, updatedAt: stamp),
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: meal.id, foodId: oats.id, servings: 1,
+                               sortOrder: 1, createdAt: stamp, updatedAt: stamp)
+        ])
+
+        let recipe = FoodCollection.make(userId: userId, kind: .recipe, name: "Egg Oat Bowl", servingsYield: 2,
+                                         cookedWeightGrams: 500, now: stamp)
+        localStorage.saveFoodCollection(recipe)
+        localStorage.saveFoodCollectionItems([
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: recipe.id, foodId: egg.id, servings: 2,
+                               sortOrder: 0, createdAt: stamp, updatedAt: stamp),
+            FoodCollectionItem(id: UUID(), userId: userId, collectionId: recipe.id, foodId: oats.id, servings: 2,
+                               sortOrder: 1, createdAt: stamp, updatedAt: stamp)
+        ])
+        let lines = [PlateItem(food: egg, servings: 2), PlateItem(food: oats, servings: 2)]
+        localStorage.saveFood(RecipeMath.derivedFood(for: recipe, lines: lines, existing: nil, now: stamp))
     }
 
     /// Writes the profile and one past Push workout when the store has no profile yet.
@@ -296,7 +401,8 @@ enum UITestMode {
 
     /// One Push session 3 days ago: Barbell Bench Press, 185 x 6 @1 twice then 180 x 5 @1.
     private static func seedEngineHistory(localStorage: LocalStorageService) {
-        guard let day = Calendar.current.date(byAdding: .day, value: -3, to: Date()) else { return }
+        let component: Calendar.Component = recentSessionHours == nil ? .day : .hour
+        guard let day = Calendar.current.date(byAdding: component, value: -(recentSessionHours ?? 3), to: Date()) else { return }
         var workout = Workout.create(userId: userId, workoutType: "Push", energyLevel: 7, timeAvailableMinutes: 45)
         workout.date = day
         workout.createdAt = day
@@ -533,7 +639,9 @@ final class UITestFakeAIProvider: AIProvider {
         }
         let last = messages.last?.content ?? ""
         let reply: String
-        if last.contains("completed sets") {
+        if options.task == .formFeedback {
+            reply = Self.formFeedbackJSON
+        } else if last.contains("completed sets") {
             // The merged post-workout call: progression note + rolling summary.
             reply = Self.postWorkoutJSON
         } else if expectsJSON {
@@ -549,6 +657,16 @@ final class UITestFakeAIProvider: AIProvider {
         }
         DispatchQueue.main.async { completion(.success(reply)) }
     }
+
+    static let formFeedbackJSON = """
+    {"verdict": "Steady set, with two small form details worth fixing.",
+     "positives": ["Smooth, controlled lowering"],
+     "fixes": [{"title": "Elbows drift forward", "why": "Rep 4 peak: the elbows sit well in front of the ribs.",
+                "cue": "Pin your elbows beside your ribs.", "reps": [4, 5], "frame": "Rep 4 peak"},
+               {"title": "Shoulders shrug up", "why": "Rep 2 peak: the shoulders rise toward the ears.",
+                "cue": "Keep your shoulders down and long.", "reps": [2], "frame": "Rep 2 peak"}],
+     "estimatedReps": null}
+    """
 
     static let postWorkoutJSON = """
     {"note": "Solid session. Everything moved well, so add 5 lbs to the first lift next time.",
@@ -575,30 +693,31 @@ final class UITestFakeAIProvider: AIProvider {
     ```
     """
 
-    /// A coach v3 reply: the coach writes every set. Bench has history (rails accept 135, 140 at most);
-    /// the pushdown has none and carries a warm-up at its working weight, which the app removes.
+    /// A coach reply in the decision format. The seeded Push (Bench Press, Overhead Press) is the app's draft: the coach
+    /// swaps in "Barbell Bench Press" (with `-uiTestingEngineHistory` the app's numbers come from that log and the
+    /// starting sets are ignored; without history the starting sets are used), drops the overhead press and adds an
+    /// incline press and a pushdown (starting sets validated by the app).
     static let planJSON = """
     {
-      "summary": "Good order and volume for a push day. Heaviest lifts come first.",
+      "summary": "Bench first, then upper chest and triceps. Nothing was pushed today.",
       "coaching_notes": "Focus on controlled reps today.",
       "exercises": [
-        {"name": "Barbell Bench Press", "muscle_group": "Chest", "superset": null, "cue": null,
-         "reason": "Last top 135x8 at RIR 2, so repeat it and own the reps.",
-         "sets": [{"type": "warmup", "weight": 95, "reps": 8, "rir": 4, "rest": 60},
-                  {"type": "work", "weight": 135, "reps": 8, "rir": 2, "rest": 120},
-                  {"type": "work", "weight": 135, "reps": 8, "rir": 1, "rest": 90}]},
-        {"name": "Incline Dumbbell Press", "muscle_group": "Chest", "superset": null, "cue": null,
-         "reason": "New to the log: start moderate and leave reps in reserve.",
-         "sets": [{"type": "work", "weight": 50, "reps": 10, "rir": 3, "rest": 90},
-                  {"type": "work", "weight": 50, "reps": 10, "rir": 2, "rest": 90},
-                  {"type": "work", "weight": 45, "reps": 12, "rir": 2, "rest": 90}]},
-        {"name": "Cable Triceps Pushdown", "muscle_group": "Triceps", "superset": null,
-         "cue": "Elbows pinned to your sides, no flaring.",
-         "reason": "Triceps are fresh after pressing; two hard sets finish the job.",
-         "sets": [{"type": "warmup", "weight": 185, "reps": 8, "rir": 4, "rest": 60},
-                  {"type": "work", "weight": 185, "reps": 8, "rir": 3, "rest": 90},
-                  {"type": "work", "weight": 195, "reps": 6, "rir": 2, "rest": 90}]}
-      ]
+        {"name": "Barbell Bench Press", "decision": "swap", "replaces": "Bench Press",
+         "reason": "Bench Press had 135x8 and 135x7 yesterday, so the barbell version goes first at 135 for 8.",
+         "starting_sets": [{"type": "warmup", "weight": 95, "reps": 8, "rir": 4, "rest": 60},
+                           {"type": "work", "weight": 135, "reps": 8, "rir": 2, "rest": 120},
+                           {"type": "work", "weight": 135, "reps": 8, "rir": 1, "rest": 90}]},
+        {"name": "Incline Dumbbell Press", "decision": "add",
+         "reason": "No upper-chest work in the log, so start at 50 for 10 with RIR 3.",
+         "starting_sets": [{"type": "work", "weight": 50, "reps": 10, "rir": 3, "rest": 90},
+                           {"type": "work", "weight": 50, "reps": 10, "rir": 2, "rest": 90},
+                           {"type": "work", "weight": 45, "reps": 12, "rir": 2, "rest": 90}]},
+        {"name": "Cable Triceps Pushdown", "decision": "add", "cue": "Elbows pinned to your sides, no flaring.",
+         "reason": "No pushdown in the log: 2 sets at RIR 3 and 2 finish the triceps.",
+         "starting_sets": [{"type": "work", "weight": 185, "reps": 8, "rir": 3, "rest": 90},
+                           {"type": "work", "weight": 195, "reps": 6, "rir": 2, "rest": 90}]}
+      ],
+      "dropped": [{"name": "Overhead Press", "reason": "Shoulders did 85x8 and 85x6 yesterday, so rest them today."}]
     }
     """
 }

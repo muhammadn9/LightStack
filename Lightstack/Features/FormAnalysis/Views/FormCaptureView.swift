@@ -1,144 +1,289 @@
 import SwiftUI
 import AVFoundation
 
-/// Full-screen camera view with skeleton overlay and form capture controls.
-/// Presented as a fullScreenCover from ActiveWorkoutView.
+/// Full-screen recording flow: set the phone up, count down, record, hand the result back.
+/// Presented as a fullScreenCover from ActiveWorkoutView. Text is large because the phone is propped
+/// a few metres away.
 struct FormCaptureView: View {
 
     @ObservedObject var viewModel: FormAnalysisViewModel
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     let exerciseName: String
-    let onComplete: (FormAnalysisResult) -> Void
+    let onComplete: (FormSessionResult) -> Void
 
-    @State private var captureStartTime = Date()
-    @State private var countdown = 3
-    @State private var countdownStarted = false
-
-    private let countdownTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var completed = false
+    @State private var idleTimerWasDisabled = false
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-
-            CameraPreviewView(session: viewModel.poseService.captureSession)
+            background
+            SkeletonOverlayView(frame: viewModel.latestFrame,
+                                aspectRatio: viewModel.aspectRatio,
+                                highlighted: viewModel.highlightedJoints)
                 .ignoresSafeArea()
 
-            SkeletonOverlayView(pose: viewModel.latestPose)
-                .ignoresSafeArea()
+            phaseContent
 
-            VStack {
-                topBar
-                Spacer()
-                bottomControls
-            }
-            .padding()
-
-            if viewModel.permissionDenied {
-                permissionDeniedOverlay
-            } else if lowDetectionVisible {
-                lowDetectionTip
-            }
-
-            if countdown > 0 {
-                countdownOverlay
-            }
+            if viewModel.permissionDenied { permissionDeniedOverlay }
+            if viewModel.phase == .analyzing { analyzingOverlay }
         }
         .onAppear {
-            guard !countdownStarted else { return }
-            countdownStarted = true
-            viewModel.reset()
-            viewModel.startCamera(exerciseName: exerciseName)
+            idleTimerWasDisabled = UIApplication.shared.isIdleTimerDisabled
+            UIApplication.shared.isIdleTimerDisabled = true
+            viewModel.prepare(exerciseName: exerciseName)
         }
-        .onReceive(countdownTimer) { _ in
-            guard countdown > 0 else { return }
-            countdown -= 1
-            if countdown == 0 {
-                captureStartTime = Date()
-                viewModel.beginCollecting()
-            }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = idleTimerWasDisabled
+            if !completed { viewModel.cancel() }
         }
-        .onChange(of: captureIsDone) { _, done in
-            if done, case .done(let result) = viewModel.captureState {
-                onComplete(result)
-                dismiss()
-            }
+        .onChange(of: viewModel.phase) { _, phase in
+            guard phase == .done, !completed, let result = viewModel.result else { return }
+            completed = true
+            onComplete(result)
+            dismiss()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background { viewModel.handleInterruption() }
         }
     }
 
-    // MARK: - Subviews
+    // MARK: Layers
+
+    @ViewBuilder private var background: some View {
+        if let session = viewModel.source.previewSession {
+            CameraPreviewView(session: session, source: viewModel.source)
+                .ignoresSafeArea()
+        } else {
+            Color(white: 0.08).ignoresSafeArea()   // stands in for the camera when there is none
+        }
+    }
+
+    @ViewBuilder private var phaseContent: some View {
+        switch viewModel.phase {
+        case .setup, .failed:
+            setupLayer
+        case .countdown(let remaining):
+            countdownLayer(remaining)
+        case .recording:
+            recordingLayer
+        case .analyzing, .done:
+            Color.clear
+        }
+    }
+
+    // MARK: Setup
+
+    private var setupLayer: some View {
+        VStack(spacing: 16) {
+            topBar
+            Spacer()
+            if let notice = viewModel.notice { noticeCard(notice) }
+            statusCard
+            startButton
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 24)
+        .padding(.top, 8)
+    }
 
     private var topBar: some View {
         HStack {
-            Button(action: {
-                viewModel.reset()
+            circleButton(systemName: "xmark", label: "Close", id: "formCapture.close") {
+                viewModel.cancel()
+                completed = true   // already cleaned up
                 dismiss()
-            }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .background(.black.opacity(0.45))
-                    .clipShape(Circle())
             }
             Spacer()
             Text(exerciseName)
                 .font(.headline.bold())
                 .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(.black.opacity(0.5))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.55))
                 .clipShape(Capsule())
             Spacer()
-            Button(action: { viewModel.flipCamera() }) {
-                Image(systemName: "camera.rotate")
-                    .font(.title2)
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .background(.black.opacity(0.45))
-                    .clipShape(Circle())
+            circleButton(systemName: "camera.rotate", label: "Flip camera", id: "formCapture.flip") {
+                viewModel.flipCamera()
             }
         }
+    }
+
+    private func circleButton(systemName: String, label: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: AppTheme.minTouchSize, height: AppTheme.minTouchSize)
+                .background(.black.opacity(0.55))
+                .clipShape(Circle())
+        }
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+    }
+
+    private var statusCard: some View {
+        let status = viewModel.setupStatus
+        let ready = status.isReady
+        let tracked = viewModel.profile.isTracked
+        let tint = ready ? AppTheme.accent : AppTheme.warning
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: ready ? "checkmark.circle.fill" : (tracked ? "exclamationmark.triangle.fill" : "info.circle.fill"))
+                .font(.title)
+                .foregroundStyle(tint)
+            Text(status.message)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .background(.black.opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: AppTheme.cornerRadius).stroke(tint.opacity(0.8), lineWidth: 2))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("formCapture.setupStatus")
+    }
+
+    private func noticeCard(_ text: String) -> some View {
+        Text(text)
+            .font(.headline)
+            .foregroundStyle(.white)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppTheme.warning.opacity(0.85))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var startButton: some View {
+        let ready = viewModel.setupStatus.isReady || !viewModel.profile.isTracked
+        return Button {
+            viewModel.startCountdown()
+        } label: {
+            Text(ready ? "Start" : "Start anyway")
+                .font(.title.bold())
+                .foregroundStyle(AppTheme.onAccent)
+                .frame(maxWidth: .infinity, minHeight: 68)
+                .background(ready ? AnyShapeStyle(AppTheme.accentGradient) : AnyShapeStyle(AppTheme.warning))
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
+        .accessibilityIdentifier("formCapture.start")
+    }
+
+    // MARK: Countdown
+
+    private func countdownLayer(_ remaining: Int) -> some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text("Get ready")
+                    .font(.title.bold())
+                    .foregroundStyle(.white)
+                Text("\(remaining)")
+                    .font(.system(size: 220, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
+                Text("Tap anywhere to cancel")
+                    .font(.title3)
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .shadow(color: .black.opacity(0.6), radius: 8)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { viewModel.cancelCountdown() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Starting in \(remaining). Tap to cancel.")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("formCapture.countdown")
+    }
+
+    // MARK: Recording
+
+    private var recordingLayer: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 10) {
+                Circle().fill(Color.red).frame(width: 18, height: 18)
+                Text(Self.clock(viewModel.elapsed))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 8)
+            .background(.black.opacity(0.6))
+            .clipShape(Capsule())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Recording, \(Int(viewModel.elapsed)) seconds")
+
+            Spacer()
+
+            if viewModel.profile.isTracked {
+                VStack(spacing: 0) {
+                    Text("\(viewModel.liveRepCount)")
+                        .font(.system(size: 190, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .minimumScaleFactor(0.4)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("formCapture.repCount")
+                    Text("REPS")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 8)
+                .frame(maxWidth: 320)
+                .background(.black.opacity(0.55))
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+            } else {
+                Text("Recording")
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(.white)
+                    .padding(20)
+                    .background(.black.opacity(0.55))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+            }
+
+            Spacer()
+
+            Button {
+                viewModel.finish()
+            } label: {
+                Text("Done")
+                    .font(.title.bold())
+                    .foregroundStyle(AppTheme.onAccent)
+                    .frame(maxWidth: .infinity, minHeight: 72)
+                    .background(AppTheme.accentGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
+            .accessibilityIdentifier("formCapture.done")
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 24)
         .padding(.top, 8)
     }
 
-    private var bottomControls: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: "figure.strengthtraining.traditional")
-                    .foregroundStyle(.green)
-                Text("Reps: \(viewModel.repCount)")
-                    .font(.title2.monospacedDigit().bold())
+    private static func clock(_ seconds: TimeInterval) -> String {
+        let whole = max(0, Int(seconds))
+        return String(format: "%d:%02d", whole / 60, whole % 60)
+    }
+
+    // MARK: Overlays
+
+    private var analyzingOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.75).ignoresSafeArea()
+            VStack(spacing: 16) {
+                ProgressView().controlSize(.large).tint(.white)
+                Text("Analyzing your set…")
+                    .font(.title3.bold())
                     .foregroundStyle(.white)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 10)
-            .background(.black.opacity(0.6))
-            .clipShape(Capsule())
-
-            Button(action: {
-                viewModel.stopCaptureAndAnalyze()
-            }) {
-                HStack(spacing: 10) {
-                    if captureIsAnalyzing {
-                        ProgressView().tint(AppTheme.onAccent)
-                        Text("Analyzing…")
-                    } else {
-                        Image(systemName: "stop.circle.fill")
-                        Text("Done — Analyze Form")
-                    }
-                }
-                .font(.headline.bold())
-                .foregroundStyle(AppTheme.onAccent)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(AppTheme.successActionGradient)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .disabled(captureIsAnalyzing)
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 36)
+        .accessibilityIdentifier("formCapture.analyzing")
     }
 
     private var permissionDeniedOverlay: some View {
@@ -166,65 +311,15 @@ struct FormCaptureView: View {
                 .padding(.vertical, 12)
                 .background(.white)
                 .clipShape(Capsule())
+                Button("Close") {
+                    viewModel.cancel()
+                    completed = true
+                    dismiss()
+                }
+                .foregroundStyle(.white.opacity(0.8))
+                .accessibilityIdentifier("formCapture.permissionClose")
             }
             .padding(32)
         }
-    }
-
-    private var countdownOverlay: some View {
-        ZStack {
-            Circle()
-                .fill(.black.opacity(0.55))
-                .frame(width: 160, height: 160)
-            Text("\(countdown)")
-                .font(AppTheme.plexMono(96, weight: .bold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.6), radius: 8)
-        }
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.2), value: countdown)
-    }
-
-    // MARK: - Low Detection Guidance
-
-    private var lowDetectionVisible: Bool {
-        guard Date().timeIntervalSince(captureStartTime) > 3.0 else { return false }
-        let detectedCount = viewModel.latestPose.map { pose in
-            pose.confidences.values.filter { $0 > 0.15 }.count
-        } ?? 0
-        return detectedCount < 6
-    }
-
-    private var lowDetectionTip: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "figure.walk")
-                .scaledSymbol(size: 32)
-                .foregroundStyle(.yellow)
-            Text("Body Not Detected")
-                .font(.headline.bold())
-                .foregroundStyle(.white)
-            Text("Ensure your full body is visible. For lying exercises (e.g. bench press), position the camera further away and to the side.")
-                .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.85))
-                .multilineTextAlignment(.center)
-        }
-        .padding(20)
-        .background(.black.opacity(0.75))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .padding(.horizontal, 30)
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.4), value: lowDetectionVisible)
-    }
-
-    // MARK: - Helpers
-
-    private var captureIsDone: Bool {
-        if case .done = viewModel.captureState { return true }
-        return false
-    }
-
-    private var captureIsAnalyzing: Bool {
-        if case .analyzing = viewModel.captureState { return true }
-        return false
     }
 }

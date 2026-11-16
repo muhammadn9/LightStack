@@ -104,7 +104,7 @@ struct PersonalRecord: Codable, Identifiable {
 
     /// Estimated 1-rep max using the Epley formula: weight × (1 + reps/30).
     var estimatedOneRepMax: Double {
-        weightLbs * (1 + Double(reps) / 30)
+        OneRepMax.estimate(weight: weightLbs, reps: reps)
     }
 
     // MARK: - Memberwise Init

@@ -4,6 +4,9 @@ import SwiftUI
 struct NutritionSettingsView: View {
     @ObservedObject var viewModel: NutritionViewModel
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(TrainingDayPreferences.tipsKey) private var trainingDayTips = true
+    @AppStorage(CoachPreferences.shareNutritionSummaryKey) private var shareNutrition = true
+    @AppStorage(CoachPreferences.sharePreWorkoutMealsKey) private var shareMeals = true
 
     var body: some View {
         NavigationStack {
@@ -17,6 +20,10 @@ struct NutritionSettingsView: View {
                         Label("Nutrients", systemImage: "chart.bar.doc.horizontal")
                     }
                     .accessibilityIdentifier("nutritionSettings.nutrients")
+                    NavigationLink { FavoriteUnitsSettingsView(viewModel: viewModel) } label: {
+                        Label("Favorite Serving Units", systemImage: "scalemass")
+                    }
+                    .accessibilityIdentifier("settings.favoriteUnits")
                 }
                 .listRowBackground(AppTheme.surface)
 
@@ -31,6 +38,19 @@ struct NutritionSettingsView: View {
                     Text("Water unit")
                 }
                 .listRowBackground(AppTheme.surface)
+
+                Section {
+                    Toggle("Training-day tips", isOn: $trainingDayTips)
+                        .tint(AppTheme.accent)
+                        .accessibilityIdentifier("settings.trainingDayTips")
+                } header: {
+                    Text("Journal")
+                } footer: {
+                    Text("A card on training days with your protein so far and one tip.")
+                }
+                .listRowBackground(AppTheme.surface)
+
+                CoachNutritionSettingsSection(shareNutrition: $shareNutrition, shareMeals: $shareMeals)
             }
             .nutritionFormStyle()
             .navigationTitle("Journal settings")
@@ -42,6 +62,80 @@ struct NutritionSettingsView: View {
             }
         }
         .onDisappear { viewModel.reload() }
+    }
+}
+
+// MARK: - Favorite serving units
+
+/// Pick and order the serving units shown first when logging a food.
+struct FavoriteUnitsSettingsView: View {
+    @ObservedObject var viewModel: NutritionViewModel
+    @State private var order: [NutritionUnit] = []
+    @State private var favorites: Set<NutritionUnit> = []
+
+    private func title(_ unit: NutritionUnit) -> String {
+        switch unit {
+        case .serving: return "Serving"
+        case .g: return "Grams (g)"
+        case .oz: return "Ounces (oz)"
+        case .ml: return "Millilitres (ml)"
+        case .flOz: return "Fluid ounces (fl oz)"
+        case .cup: return "Cups"
+        case .tbsp: return "Tablespoons (tbsp)"
+        case .tsp: return "Teaspoons (tsp)"
+        case .piece: return "Piece"
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(order) { unit in
+                    Button { toggle(unit) } label: {
+                        HStack {
+                            Text(title(unit)).foregroundStyle(AppTheme.textPrimary)
+                            Spacer()
+                            if favorites.contains(unit) {
+                                Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(AppTheme.accent)
+                            }
+                        }
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(favorites.contains(unit) ? .isSelected : [])
+                    .accessibilityValue(favorites.contains(unit) ? "Favorite" : "Not a favorite")
+                    .accessibilityIdentifier("settings.unit.\(unit.rawValue)")
+                }
+                .onMove { from, to in
+                    order.move(fromOffsets: from, toOffset: to)
+                    save()
+                }
+            } header: {
+                Text("Units")
+            } footer: {
+                Text("Tap to mark a favorite and drag to reorder. Favorites are listed first when you log a food.")
+            }
+            .listRowBackground(AppTheme.surface)
+        }
+        .environment(\.editMode, .constant(.active))
+        .nutritionFormStyle()
+        .navigationTitle("Favorite Serving Units")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            let saved = viewModel.favoriteServingUnits
+            favorites = Set(saved)
+            order = ServingUnitConverter.ordered(ServingUnitConverter.canonicalOrder, favorites: saved)
+        }
+    }
+
+    private func toggle(_ unit: NutritionUnit) {
+        if favorites.contains(unit) { favorites.remove(unit) } else { favorites.insert(unit) }
+        save()
+    }
+
+    private func save() {
+        viewModel.setFavoriteServingUnits(order.filter { favorites.contains($0) })
     }
 }
 
@@ -229,5 +323,37 @@ struct NutrientsSettingsView: View {
         guard let target = tracker.dailyTarget else { return "No target" }
         if tracker.nutrient == .water { return viewModel.waterUnit.format(ml: target) }
         return "\(NutritionFormat.amount(target)) \(tracker.nutrient.unit)"
+    }
+}
+
+// MARK: - Coach sharing
+
+/// The two switches for what the AI coach may read from the food log. Used by both Settings screens; both bind to
+/// the `CoachPreferences` keys, so there is one source of truth.
+struct CoachNutritionSettingsSection: View {
+    @Binding var shareNutrition: Bool
+    @Binding var shareMeals: Bool
+
+    var body: some View {
+        Section {
+            Toggle("Share nutrition summary with coach", isOn: $shareNutrition)
+                .tint(AppTheme.accent)
+                .accessibilityIdentifier("settings.shareNutrition")
+        } header: {
+            Text("Coach & nutrition")
+        } footer: {
+            Text("Averages, today's intake so far and your weight trend. Never your food list.")
+        }
+        .listRowBackground(AppTheme.surface)
+
+        Section {
+            Toggle("Share pre-workout meals with coach", isOn: $shareMeals)
+                .tint(AppTheme.accent)
+                .disabled(!shareNutrition)
+                .accessibilityIdentifier("settings.shareMeals")
+        } footer: {
+            Text("Names and macros of your last few meals before a workout, so the coach can judge how fueled you are.")
+        }
+        .listRowBackground(AppTheme.surface)
     }
 }
