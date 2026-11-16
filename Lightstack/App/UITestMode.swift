@@ -110,6 +110,7 @@ enum UITestMode {
         defaults.set(0, forKey: "selectedTab")
         defaults.set("gym", forKey: "appSide")
         defaults.removeObject(forKey: "nutritionSelectedTab")
+        defaults.removeObject(forKey: "progressSegment")
         defaults.removeObject(forKey: "nutritionSetupSkipped")
         defaults.removeObject(forKey: WaterUnit.storageKey)
         defaults.removeObject(forKey: ServingUnitPreferences.storageKey)
